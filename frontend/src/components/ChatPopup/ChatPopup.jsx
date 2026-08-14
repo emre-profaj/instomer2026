@@ -161,42 +161,112 @@ const ChatPopup = ({ conversationId, onClose }) => {
         loadDependencies();
     }, [currentWorkspace, conversationId]);
 
-    // Load conversation data with events and activities (like Inbox)
+    // Load ALL conversations for this contact — unified view
     useEffect(() => {
         if (!conversationId || !currentWorkspace) return;
 
         const loadConversation = async () => {
             setLoading(true);
             try {
+                // 1. Load the primary conversation to get contactId + conversation metadata
                 const response = await conversationAPI.getById(currentWorkspace.id, conversationId);
                 const conv = response.data.conversation || response.data;
                 setConversation(conv);
                 setAiTopic(conv.aiTopic || '');
                 setBotEnabled(!!conv.assignedBotId || !!conv.botEnabled);
 
-                // Merge messages, internal notes, events, and activities (matching Inbox pattern)
-                const msgs = conv.messages || [];
-                const notes = (conv.internalNotes || []).map(n => ({
-                    ...n,
-                    isInternalNote: true,
-                    messageType: 'NOTE',
-                    sender: n.user,
-                    isFromContact: false
-                }));
-                const events = (conv.events || []).map(e => ({
-                    id: e.id,
-                    createdAt: e.createdAt,
-                    isSystemEvent: true,
-                    eventType: e.eventType,
-                    title: e.title,
-                    actorType: e.actorType,
-                    actorId: e.actorId,
-                    details: e.details
-                }));
-
-                // Load activities for timeline
-                let formattedActivities = [];
                 const contactId = conv.contactId;
+
+                // 2. Load ALL conversations for this contact and merge messages
+                let allMsgs = [];
+                let allNotes = [];
+                let allEvents = [];
+
+                if (contactId) {
+                    try {
+                        const allConvRes = await conversationAPI.getAll(currentWorkspace.id, { contactId });
+                        const allConvs = allConvRes.data?.conversations || [];
+                        const convIds = allConvs.map(c => c.id);
+
+                        // Load each conversation's full data
+                        const loadPromises = convIds.map(cid =>
+                            conversationAPI.getById(currentWorkspace.id, cid)
+                                .then(r => r.data.conversation || r.data)
+                                .catch(() => null)
+                        );
+                        const allConvData = (await Promise.all(loadPromises)).filter(Boolean);
+
+                        // If we got a better primary conversation (non-LEAD with messages), use it
+                        const bestConv = allConvData
+                            .filter(c => c.channel !== 'LEAD' && (c.messages?.length || 0) > 0)
+                            .sort((a, b) => {
+                                const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+                                const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+                                return bTime - aTime;
+                            })[0];
+                        if (bestConv) {
+                            setConversation(bestConv);
+                            setAiTopic(bestConv.aiTopic || '');
+                            setBotEnabled(!!bestConv.assignedBotId || !!bestConv.botEnabled);
+                        }
+
+                        // Merge all messages from all conversations
+                        for (const cd of allConvData) {
+                            allMsgs.push(...(cd.messages || []));
+                            allNotes.push(...(cd.internalNotes || []).map(n => ({
+                                ...n,
+                                isInternalNote: true,
+                                messageType: 'NOTE',
+                                sender: n.user,
+                                isFromContact: false
+                            })));
+                            allEvents.push(...(cd.events || []).map(e => ({
+                                id: e.id,
+                                createdAt: e.createdAt,
+                                isSystemEvent: true,
+                                eventType: e.eventType,
+                                title: e.title,
+                                actorType: e.actorType,
+                                actorId: e.actorId,
+                                details: e.details
+                            })));
+                        }
+                    } catch (mergeErr) {
+                        console.warn('[ChatPopup] Multi-conv merge failed, using single:', mergeErr.message);
+                        // Fallback: use only the primary conversation
+                        allMsgs = conv.messages || [];
+                        allNotes = (conv.internalNotes || []).map(n => ({
+                            ...n, isInternalNote: true, messageType: 'NOTE', sender: n.user, isFromContact: false
+                        }));
+                        allEvents = (conv.events || []).map(e => ({
+                            id: e.id, createdAt: e.createdAt, isSystemEvent: true,
+                            eventType: e.eventType, title: e.title, actorType: e.actorType,
+                            actorId: e.actorId, details: e.details
+                        }));
+                    }
+                } else {
+                    // No contactId — single conversation only
+                    allMsgs = conv.messages || [];
+                    allNotes = (conv.internalNotes || []).map(n => ({
+                        ...n, isInternalNote: true, messageType: 'NOTE', sender: n.user, isFromContact: false
+                    }));
+                    allEvents = (conv.events || []).map(e => ({
+                        id: e.id, createdAt: e.createdAt, isSystemEvent: true,
+                        eventType: e.eventType, title: e.title, actorType: e.actorType,
+                        actorId: e.actorId, details: e.details
+                    }));
+                }
+
+                // Deduplicate messages by id
+                const seenIds = new Set();
+                allMsgs = allMsgs.filter(m => {
+                    if (seenIds.has(m.id)) return false;
+                    seenIds.add(m.id);
+                    return true;
+                });
+
+                // 3. Load activities
+                let formattedActivities = [];
                 if (contactId && currentWorkspace?.id) {
                     try {
                         const actRes = await activityAPI.getTimeline(contactId, currentWorkspace.id);
@@ -224,45 +294,10 @@ const ChatPopup = ({ conversationId, onClose }) => {
                     }
                 }
 
-                const combined = [...msgs, ...notes, ...events, ...formattedActivities].sort(
+                const combined = [...allMsgs, ...allNotes, ...allEvents, ...formattedActivities].sort(
                     (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
                 );
                 setMessages(combined);
-
-                // If no messages found, try to find a better conversation for this contact
-                if (combined.length === 0 && contactId) {
-                    try {
-                        const allConvRes = await conversationAPI.getAll(currentWorkspace.id, { contactId });
-                        const allConvs = allConvRes.data?.conversations || [];
-                        // Find a non-LEAD conversation with messages, sorted by most recent
-                        const betterConv = allConvs
-                            .filter(c => c.id !== conversationId && c.lastMessageAt)
-                            .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt))[0];
-                        if (betterConv) {
-                            // Re-load with the better conversation
-                            const betterRes = await conversationAPI.getById(currentWorkspace.id, betterConv.id);
-                            const betterData = betterRes.data.conversation || betterRes.data;
-                            setConversation(betterData);
-                            setAiTopic(betterData.aiTopic || '');
-                            setBotEnabled(!!betterData.assignedBotId || !!betterData.botEnabled);
-                            const betterMsgs = betterData.messages || [];
-                            const betterNotes = (betterData.internalNotes || []).map(n => ({
-                                ...n, isInternalNote: true, messageType: 'NOTE', sender: n.user, isFromContact: false
-                            }));
-                            const betterEvents = (betterData.events || []).map(e => ({
-                                id: e.id, createdAt: e.createdAt, isSystemEvent: true,
-                                eventType: e.eventType, title: e.title, actorType: e.actorType,
-                                actorId: e.actorId, details: e.details
-                            }));
-                            const betterCombined = [...betterMsgs, ...betterNotes, ...betterEvents].sort(
-                                (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-                            );
-                            setMessages(betterCombined);
-                        }
-                    } catch (fallbackErr) {
-                        console.warn('[ChatPopup] Fallback conversation lookup failed:', fallbackErr.message);
-                    }
-                }
             } catch (error) {
                 console.error('Error loading conversation for popup:', error);
             } finally {
