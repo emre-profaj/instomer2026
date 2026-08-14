@@ -3409,8 +3409,11 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     const lk = key.toLowerCase();
                     if (lk.includes('zaman') || lk.includes('saat') || lk.includes('time') || lk.includes('when') || lk.includes('ara')) {
                         if (value) {
-                            // Normalize underscored Facebook Lead Ads format: "12:00_-_15:00" → "12:00-15:00"
-                            const normalized = String(value).replace(/_/g, ' ').trim();
+                            // Normalize: underscores → spaces, dots → colons (15.00 → 15:00)
+                            const normalized = String(value)
+                                .replace(/_/g, ' ')
+                                .replace(/(\d{1,2})\.(\d{2})/g, '$1:$2')  // 15.00 → 15:00
+                                .trim();
                             const rangeMatch = normalized.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
                             if (rangeMatch) {
                                 const [, sH, sM, eH, eM] = rangeMatch.map((v, i) => i === 0 ? v : parseInt(v));
@@ -3424,7 +3427,10 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     }
                 }
 
-                triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', null, baseDate, leadPreferredWindow);
+                // ⚠️ ÖNEMLİ: triggerAutoCall ÖNCE çalışmalı (await ile) — aiAgentId atar.
+                // executeAutoCallPlanning sonra çalışır — duplicate ise atlar.
+                // Sıra bozulursa aiAgentId=null olur ve robot aramaz!
+                await triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', null, baseDate, leadPreferredWindow);
             } catch (autoCallErr) {
                 console.error('⚠️ [LEADGEN] AutoCall trigger error:', autoCallErr.message);
             }

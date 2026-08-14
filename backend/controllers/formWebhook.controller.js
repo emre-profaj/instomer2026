@@ -589,6 +589,16 @@ export const handleFormSubmission = async (req, res) => {
         // --- AUTO CALL TRIGGER ---
         const contactPhone = phone || contact?.phone;
         if (contactPhone && contact?.id) {
+            // 1. Retell AI otomatik arama (yapılandırılmışsa)
+            try {
+                const { triggerAutoCall } = await import('./retell.controller.js');
+                await triggerAutoCall(webhook.workspaceId, contactPhone, contact.id, name || contact.name, 'FORM');
+                console.log(`📞 [FormWebhook] Retell auto call triggered for ${contactPhone}`);
+            } catch (retellErr) {
+                console.error('⚠️ [FormWebhook] Retell AutoCall error:', retellErr.message);
+            }
+
+            // 2. İnsan takibi için görev aç (Retell kapalı olsa bile çalışır)
             try {
                 const { executeAutoCallPlanning } = await import('./rules.controller.js');
                 await executeAutoCallPlanning(webhook.workspaceId, contact.id, 'WEB_FORM');

@@ -1390,11 +1390,16 @@ export const processScheduledCalls = async () => {
         for (const sc of dueCalls) {
             try {
                 // Auto-cancel if overdue > 2 hours (missed window)
+                // AMA: mesai dışı saatte planlanan aramalar muaf — gece gelen lead'ler sabah aranacak
                 const overdueMs = Date.now() - new Date(sc.scheduledAt).getTime();
-                if (overdueMs > 2 * 60 * 60 * 1000) {
+                const scheduledHour = new Date(new Date(sc.scheduledAt).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' })).getHours();
+                const wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
+                if (overdueMs > 2 * 60 * 60 * 1000 && !wasScheduledOutsideBusinessHours) {
                     await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Missed window (>2h overdue)' } });
                     console.log(`📅 [ScheduledCall] Auto-cancelled overdue call for ${sc.toNumber}`);
                     continue;
+                } else if (overdueMs > 2 * 60 * 60 * 1000 && wasScheduledOutsideBusinessHours) {
+                    console.log(`📅 [ScheduledCall] Overdue but was scheduled outside business hours — executing now for ${sc.toNumber}`);
                 }
                 // ─── BAŞARILI GEÇMİŞ KONUŞMA KONTROLÜ ───────────────────────────
                 // Bu numara ile daha önce başarılı AI konuşması olmuş mu?
