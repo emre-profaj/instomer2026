@@ -107,7 +107,8 @@ export const getSettings = async (req, res) => {
                 aiFallbackEnabled: true,
                 aiFallbackDelayMinutes: true,
                 aiFallbackPoolEnabled: true,
-                retellMaxOverdueDays: true
+                retellMaxOverdueDays: true,
+                retellScheduledCallTimeoutHours: true
             }
         });
 
@@ -124,7 +125,8 @@ export const getSettings = async (req, res) => {
             aiFallbackEnabled: workspace?.aiFallbackEnabled || false,
             aiFallbackDelayMinutes: workspace?.aiFallbackDelayMinutes ?? 60,
             aiFallbackPoolEnabled: workspace?.aiFallbackPoolEnabled || false,
-            retellMaxOverdueDays: workspace?.retellMaxOverdueDays ?? 3
+            retellMaxOverdueDays: workspace?.retellMaxOverdueDays ?? 3,
+            retellScheduledCallTimeoutHours: workspace?.retellScheduledCallTimeoutHours ?? 2
         });
     } catch (error) {
         console.error('❌ [Retell] Get settings error:', error);
@@ -155,6 +157,8 @@ export const saveSettings = async (req, res) => {
         // Max overdue days
         const { retellMaxOverdueDays } = req.body;
         if (retellMaxOverdueDays !== undefined) updateData.retellMaxOverdueDays = parseInt(retellMaxOverdueDays) || 3;
+        const { retellScheduledCallTimeoutHours } = req.body;
+        if (retellScheduledCallTimeoutHours !== undefined) updateData.retellScheduledCallTimeoutHours = parseInt(retellScheduledCallTimeoutHours) || 2;
 
         await prisma.workspace.update({
             where: { id: workspaceId },
@@ -1399,16 +1403,28 @@ export const processScheduledCalls = async () => {
         if (dueCalls.length > 0) console.log(`📅 [ScheduledCall] Processing ${dueCalls.length} due call(s)`);
         for (const sc of dueCalls) {
             try {
-                // Auto-cancel if overdue > 2 hours (missed window)
+                // Auto-cancel if overdue > X hours (workspace parametrik)
                 // AMA: mesai dışı saatte planlanan aramalar muaf — gece gelen lead'ler sabah aranacak
                 const overdueMs = Date.now() - new Date(sc.scheduledAt).getTime();
                 const scheduledHour = new Date(new Date(sc.scheduledAt).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' })).getHours();
                 const wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
-                if (overdueMs > 2 * 60 * 60 * 1000 && !wasScheduledOutsideBusinessHours) {
-                    await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Missed window (>2h overdue)' } });
-                    console.log(`📅 [ScheduledCall] Auto-cancelled overdue call for ${sc.toNumber}`);
+
+                // Workspace'ten timeout süresini al (default 2 saat)
+                let timeoutHours = 2;
+                try {
+                    const wsTimeout = await prisma.workspace.findUnique({
+                        where: { id: sc.workspaceId },
+                        select: { retellScheduledCallTimeoutHours: true }
+                    });
+                    timeoutHours = wsTimeout?.retellScheduledCallTimeoutHours ?? 2;
+                } catch (_) {}
+                const timeoutMs = timeoutHours * 60 * 60 * 1000;
+
+                if (overdueMs > timeoutMs && !wasScheduledOutsideBusinessHours) {
+                    await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: `Missed window (>${timeoutHours}h overdue)` } });
+                    console.log(`📅 [ScheduledCall] Auto-cancelled overdue call for ${sc.toNumber} (>${timeoutHours}h)`);
                     continue;
-                } else if (overdueMs > 2 * 60 * 60 * 1000 && wasScheduledOutsideBusinessHours) {
+                } else if (overdueMs > timeoutMs && wasScheduledOutsideBusinessHours) {
                     console.log(`📅 [ScheduledCall] Overdue but was scheduled outside business hours — executing now for ${sc.toNumber}`);
                 }
                 // ─── BAŞARILI GEÇMİŞ KONUŞMA KONTROLÜ ───────────────────────────

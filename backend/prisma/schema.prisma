@@ -162,6 +162,7 @@ model Workspace {
   aiFallbackDelayMinutes Int     @default(60) // Kaç dk sonra AI devralır
   aiFallbackPoolEnabled  Boolean @default(false) // Havuzdaki sahipsiz görevleri AI alsın mı?
   retellMaxOverdueDays   Int     @default(3) // X günden eski gecikmiş görevleri yoksay
+  retellScheduledCallTimeoutHours Int @default(2) // Planlanan arama X saatten gecikmişse iptal et
 
   // Gayrimenkul
   realEstateEnabled Boolean @default(false)
