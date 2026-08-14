@@ -607,7 +607,7 @@ export const sendMessage = async (req, res) => {
         }
 
         const { conversationId } = req.params;
-        let { content, cc, bcc, isInternal, mentionedIds } = req.body;
+        let { content, cc, bcc, isInternal, mentionedIds, mediaUrl, mediaType, fileName } = req.body;
 
         // Cancel any pending auto-reply and message batch since human is replying
         try {
@@ -643,6 +643,7 @@ export const sendMessage = async (req, res) => {
             where: {
                 conversationId,
                 content: content,
+                mediaUrl: mediaUrl,
                 senderId: req.user.id,
                 isFromContact: false,
                 createdAt: { gte: fiveSecondsAgo }
@@ -675,13 +676,15 @@ export const sendMessage = async (req, res) => {
         // Create message in database with initial SENT status
         const message = await prisma.message.create({
             data: {
-                content,
+                content: content || (fileName || 'Dosya'),
                 conversationId,
                 senderId: req.user.id,
                 isFromContact: false,
                 messageType,
                 isInternal: isInternal || false,
                 mentionedIds: mentionedIds || null,
+                mediaUrl: mediaUrl || null,
+                mediaType: mediaType || null,
                 status: 'SENT' // Initial status - will be updated to DELIVERED/READ by webhook
             },
             include: {
@@ -702,12 +705,27 @@ export const sendMessage = async (req, res) => {
                     const isInstagram = !!conversation.instagramBusinessId;
                     console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}`);
     
-                    const fbResponse = await axios.post(
-                        `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
-                        {
+                    const fbPayload = mediaUrl
+                        ? {
+                            recipient: { id: String(conversation.contact.facebookId) },
+                            message: {
+                                attachment: {
+                                    type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'file',
+                                    payload: {
+                                        url: `${process.env.APP_URL || 'https://app.instomer.com'}${mediaUrl}`,
+                                        is_reusable: true
+                                    }
+                                }
+                            }
+                        }
+                        : {
                             recipient: { id: String(conversation.contact.facebookId) },
                             message: { text: content }
-                        },
+                        };
+
+                    const fbResponse = await axios.post(
+                        `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                        fbPayload,
                         {
                             params: {
                                 access_token: conversation.facebookPage.pageAccessToken
@@ -745,14 +763,30 @@ export const sendMessage = async (req, res) => {
                     try {
                         console.log(`📤 Sending WhatsApp message to ${sanitizedPhone} using Waba ${conversation.whatsappPhoneNumber.phoneNumberId}`);
     
-                        const waResponse = await axios.post(
-                            `https://graph.facebook.com/${GRAPH_API_VERSION}/${conversation.whatsappPhoneNumber.phoneNumberId}/messages`,
-                            {
+                        const fullMediaUrl = `${process.env.APP_URL || 'https://app.instomer.com'}${mediaUrl}`;
+                        const waPayload = mediaUrl
+                            ? {
+                                messaging_product: 'whatsapp',
+                                to: sanitizedPhone,
+                                type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'document',
+                                ...(mediaType === 'image'
+                                    ? { image: { link: fullMediaUrl, caption: content || undefined } }
+                                    : mediaType === 'video'
+                                    ? { video: { link: fullMediaUrl, caption: content || undefined } }
+                                    : mediaType === 'audio'
+                                    ? { audio: { link: fullMediaUrl } }
+                                    : { document: { link: fullMediaUrl, filename: fileName || 'dosya', caption: content || undefined } })
+                            }
+                            : {
                                 messaging_product: 'whatsapp',
                                 to: sanitizedPhone,
                                 type: 'text',
                                 text: { body: content }
-                            },
+                            };
+
+                        const waResponse = await axios.post(
+                            `https://graph.facebook.com/${GRAPH_API_VERSION}/${conversation.whatsappPhoneNumber.phoneNumberId}/messages`,
+                            waPayload,
                             {
                                 headers: {
                                     Authorization: `Bearer ${whatsappToken}`

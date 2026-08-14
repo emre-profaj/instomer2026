@@ -71,6 +71,7 @@ import marketingRoutes from './routes/marketing.routes.js';
 import contactGroupRoutes from './routes/contactGroup.routes.js';
 import unsubscribeRoutes from './routes/unsubscribe.routes.js';
 import disaoCrmRoutes from './routes/disaoCrm.routes.js';
+import mediaRoutes from './routes/media.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -215,6 +216,7 @@ app.use('/api/contact-groups', contactGroupRoutes);
 app.use('/api/casetypes', caseTypeRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/disao-crm', disaoCrmRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {

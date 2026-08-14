@@ -77,7 +77,12 @@ router.post(
     '/:workspaceId/:conversationId/messages',
     requireWorkspaceAccess,
     [
-        body('content').notEmpty().withMessage('Message content is required')
+        body('content').custom((value, { req }) => {
+            if (!value && !req.body.mediaUrl) {
+                throw new Error('Message content or media is required');
+            }
+            return true;
+        })
     ],
     sendMessage
 );
