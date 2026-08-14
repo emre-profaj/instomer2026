@@ -161,6 +161,7 @@ model Workspace {
   aiFallbackEnabled      Boolean @default(false) // İnsan aramadığında AI devreye girsin mi?
   aiFallbackDelayMinutes Int     @default(60) // Kaç dk sonra AI devralır
   aiFallbackPoolEnabled  Boolean @default(false) // Havuzdaki sahipsiz görevleri AI alsın mı?
+  retellMaxOverdueDays   Int     @default(3) // X günden eski gecikmiş görevleri yoksay
 
   // Gayrimenkul
   realEstateEnabled Boolean @default(false)

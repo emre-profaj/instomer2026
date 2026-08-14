@@ -106,7 +106,8 @@ export const getSettings = async (req, res) => {
                 retellAutoCallSchedule: true,
                 aiFallbackEnabled: true,
                 aiFallbackDelayMinutes: true,
-                aiFallbackPoolEnabled: true
+                aiFallbackPoolEnabled: true,
+                retellMaxOverdueDays: true
             }
         });
 
@@ -122,7 +123,8 @@ export const getSettings = async (req, res) => {
             // AI Devralma
             aiFallbackEnabled: workspace?.aiFallbackEnabled || false,
             aiFallbackDelayMinutes: workspace?.aiFallbackDelayMinutes ?? 60,
-            aiFallbackPoolEnabled: workspace?.aiFallbackPoolEnabled || false
+            aiFallbackPoolEnabled: workspace?.aiFallbackPoolEnabled || false,
+            retellMaxOverdueDays: workspace?.retellMaxOverdueDays ?? 3
         });
     } catch (error) {
         console.error('❌ [Retell] Get settings error:', error);
@@ -150,6 +152,9 @@ export const saveSettings = async (req, res) => {
         if (aiFallbackEnabled !== undefined) updateData.aiFallbackEnabled = aiFallbackEnabled;
         if (aiFallbackDelayMinutes !== undefined) updateData.aiFallbackDelayMinutes = parseInt(aiFallbackDelayMinutes) || 60;
         if (aiFallbackPoolEnabled !== undefined) updateData.aiFallbackPoolEnabled = aiFallbackPoolEnabled;
+        // Max overdue days
+        const { retellMaxOverdueDays } = req.body;
+        if (retellMaxOverdueDays !== undefined) updateData.retellMaxOverdueDays = parseInt(retellMaxOverdueDays) || 3;
 
         await prisma.workspace.update({
             where: { id: workspaceId },
@@ -1127,13 +1132,18 @@ async function checkOverdueAgentCalls() {
                 aiFallbackEnabled: true,
                 aiFallbackDelayMinutes: true,
                 aiFallbackPoolEnabled: true,
-                retellAutoCallTriggers: true
+                retellAutoCallTriggers: true,
+                retellMaxOverdueDays: true
             }
         });
 
         if (workspaces.length === 0) return;
 
         const workspaceIds = workspaces.map(w => w.id);
+
+        // Her workspace için max overdue tarihini hesapla (en eski tarihi kullan)
+        const oldestMaxOverdueDays = Math.max(...workspaces.map(w => w.retellMaxOverdueDays ?? 3));
+        const maxOverdueCutoff = new Date(now.getTime() - oldestMaxOverdueDays * 24 * 60 * 60 * 1000);
 
         // Load team fallback settings for resolution
         const teams = await prisma.team.findMany({
@@ -1183,7 +1193,7 @@ async function checkOverdueAgentCalls() {
                 workspaceId: { in: workspaceIds },
                 type: 'CALL',
                 status: 'PLANNED',
-                dueDate: { lte: now },
+                dueDate: { lte: now, gte: maxOverdueCutoff }, // X günden eski görevleri yoksay
                 aiAgentId: { not: null },
                 aiFallbackTriggered: false,
                 contact: { phone: { not: null } }
@@ -1201,7 +1211,7 @@ async function checkOverdueAgentCalls() {
                 workspaceId: { in: workspaceIds }, // retellAutoCallEnabled: true zaten filtre ediliyor
                 type: 'CALL',
                 status: 'PLANNED',
-                dueDate: { lte: now },
+                dueDate: { lte: now, gte: maxOverdueCutoff }, // X günden eski görevleri yoksay
                 assignedToId: null,
                 aiAgentId: null,
                 aiFallbackTriggered: false,
