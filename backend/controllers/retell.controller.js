@@ -625,7 +625,7 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             console.log(`📞 [AutoCall] Customer requested call at ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
 
         } else {
-            // No explicit customer request → apply business hours / preferred window logic
+            // No explicit customer request → check for preferred time window
             // Priority: explicitPreferredWindow (structured lead field) > parsePreferredTime (free-text)
             let preferredWindow = explicitPreferredWindow || parsePreferredTime(messageContent);
             if (explicitPreferredWindow) {
@@ -661,19 +661,20 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                 }
             }
 
-            const ruleSchedule = (triggerConfig.callStart && triggerConfig.callEnd) ? {
-                start: triggerConfig.callStart,
-                end: triggerConfig.callEnd,
-                days: workspace.retellAutoCallSchedule?.days || [0, 1, 2, 3, 4, 5, 6]
-            } : workspace.retellAutoCallSchedule;
-
-            scheduledAt = calculateScheduledAt(preferredWindow, ruleSchedule, baseDate);
-
-            console.log(`🔍 [AutoCall] parsePreferredTime result:`, JSON.stringify(preferredWindow));
             if (preferredWindow) {
-                console.log(`📞 [AutoCall] Preferred time window → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+                // Müşteri saat tercihi belirtmiş → o pencereye göre planla
+                const ruleSchedule = (triggerConfig.callStart && triggerConfig.callEnd) ? {
+                    start: triggerConfig.callStart,
+                    end: triggerConfig.callEnd,
+                    days: workspace.retellAutoCallSchedule?.days || [0, 1, 2, 3, 4, 5, 6]
+                } : workspace.retellAutoCallSchedule;
+                scheduledAt = calculateScheduledAt(preferredWindow, ruleSchedule, baseDate);
+                console.log(`🕐 [AutoCall] Preferred time window → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
             } else {
-                console.log(`📞 [AutoCall] Business hours logic → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+                // Tercih yok → ŞİMDİ planla, processScheduledCalls mesai kontrolünü zaten yapıyor (10:00-21:00)
+                // Gece/mesai dışı gelen lead'ler DB'de bekler, cron ilk mesai saatinde otomatik arar
+                scheduledAt = new Date(baseDate);
+                console.log(`📞 [AutoCall] No time preference — scheduling NOW (processScheduledCalls handles business hours)`);
             }
         }
 
