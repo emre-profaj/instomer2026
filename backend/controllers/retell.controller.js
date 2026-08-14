@@ -976,6 +976,46 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
         const assignLabel = assignedToId ? `Kişi: ${assignedToId}` : assignedTeamId ? `Takım: ${assignedTeamId}` : 'Direkt AI (sahipsiz)';
         console.log(`📋 [AutoCall] ContactActivity oluşturuldu: ${activity.id} → ${assignLabel} | Due: ${scheduledAt.toLocaleString('tr-TR')} | Fallback: ${fallbackDelayMinutes}dk`);
 
+        // ─── HEMEN ARA: Agent'ın immediateCall ayarı açıksa cron beklemeden direkt çağır ──
+        const shouldCallImmediately = agentCfg?.immediateCall === true;
+        const isWithinBusinessHours = (() => {
+            const trNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const h = trNow.getHours();
+            return h >= 10 && h < 21;
+        })();
+
+        if (shouldCallImmediately && isWithinBusinessHours) {
+            console.log(`🚀 [AutoCall] immediateCall=true → cron beklemeden direkt arama başlatılıyor!`);
+            try {
+                const retrySteps = agentCfg?.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }];
+                await prisma.scheduledCall.create({
+                    data: {
+                        workspaceId,
+                        contactId: contactId,
+                        contactName: contactName || 'Müşteri',
+                        toNumber: formattedPhone,
+                        agentId: ruleAgentId,
+                        scheduledAt: new Date(), // ŞİMDİ
+                        status: 'PENDING',
+                        createdById: `activity_${activity.id}`,
+                        dynamicVariables: dynamicVarsJson,
+                        maxAttempts: retrySteps.length + 1,
+                        retryDelayMin: retrySteps[0]?.delay || 10,
+                        attemptNumber: 1
+                    }
+                });
+                // Activity'yi de hemen triggered olarak işaretle
+                await prisma.contactActivity.update({
+                    where: { id: activity.id },
+                    data: { aiFallbackTriggered: true }
+                });
+                console.log(`🚀 [AutoCall] ScheduledCall oluşturuldu — bir sonraki cron döngüsünde aranacak (max ${60}sn)`);
+            } catch (immErr) {
+                console.error(`⚠️ [AutoCall] immediateCall ScheduledCall oluşturulamadı:`, immErr.message);
+                // Activity zaten var, cron normal şekilde alır
+            }
+        }
+
     } catch (error) {
         console.error('❌ [AutoCall] triggerAutoCall error:', error.message);
     }
