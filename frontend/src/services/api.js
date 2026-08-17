@@ -680,6 +680,21 @@ export const retellAPI = {
     }
 };
 
+export const telsamAPI = {
+    getSettings: (workspaceId) => api.get(`/telsam/${workspaceId}/settings`),
+    saveSettings: (workspaceId, data) => api.put(`/telsam/${workspaceId}/settings`, data),
+    deleteSettings: (workspaceId) => api.delete(`/telsam/${workspaceId}/settings`),
+    testConnection: (workspaceId, data) => api.post(`/telsam/${workspaceId}/test`, data),
+    initiateCall: (workspaceId, data) => api.post(`/telsam/${workspaceId}/call`, data),
+    getActiveCalls: (workspaceId) => api.get(`/telsam/${workspaceId}/active-calls`),
+    getCDR: (workspaceId, params) => api.get(`/telsam/${workspaceId}/cdr`, { params }),
+    getRecording: (workspaceId, cdrId) => api.get(`/telsam/${workspaceId}/recording/${cdrId}`, { responseType: 'blob' }),
+    syncCDR: (workspaceId, data) => api.post(`/telsam/${workspaceId}/sync-cdr`, data),
+    getExtensions: (workspaceId) => api.get(`/telsam/${workspaceId}/extensions`),
+    saveExtensions: (workspaceId, data) => api.put(`/telsam/${workspaceId}/extensions`, data),
+    getCallLogs: (workspaceId, params) => api.get(`/telsam/${workspaceId}/call-logs`, { params }),
+};
+
 
 // Quick Reply (Hazır Mesaj) API
 export const quickReplyAPI = {

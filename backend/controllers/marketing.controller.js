@@ -305,7 +305,7 @@ export const clearTemplateHistory = async (req, res) => {
 export const getMarketingContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search = '', status = '', source = '', tag = '', page = 1, limit = 50 } = req.query;
+        const { search = '', status = '', source = '', tag = '', segment = '', page = 1, limit = 50 } = req.query;
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -327,6 +327,17 @@ export const getMarketingContacts = async (req, res) => {
         if (status) where.status = status;
         if (source) where.source = source;
         if (tag) where.tags = { contains: tag };
+
+        // Smart Segment filter
+        if (segment) {
+            const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
+            const segResult = await buildSegmentWhere(segment, workspaceId);
+            if (segResult.contactIds) {
+                where.id = { in: segResult.contactIds };
+            } else if (segResult.where) {
+                Object.assign(where, segResult.where);
+            }
+        }
 
         const [contacts, total] = await Promise.all([
             prisma.contact.findMany({
@@ -371,6 +382,16 @@ export const getMarketingContacts = async (req, res) => {
             }),
         ]);
 
+        // Get distinct tags for filter dropdown
+        const allContactTags = await prisma.contact.findMany({
+            where: { workspaceId, isDeleted: false, phone: { not: null }, tags: { not: '[]' } },
+            select: { tags: true }
+        });
+        const tagSet = new Set();
+        allContactTags.forEach(c => {
+            try { JSON.parse(c.tags || '[]').forEach(t => { if (t && !t.startsWith('v_')) tagSet.add(t); }); } catch {}
+        });
+
         res.json({
             contacts: parsed,
             total,
@@ -380,6 +401,7 @@ export const getMarketingContacts = async (req, res) => {
             filters: {
                 statuses: statuses.map(s => s.status).filter(Boolean),
                 sources: sources.map(s => s.source).filter(Boolean),
+                tags: [...tagSet].sort()
             }
         });
     } catch (error) {
@@ -425,7 +447,7 @@ export const bulkSendTemplate = async (req, res) => {
 
         if (selectAll) {
             // Filter-based: fetch all matching contacts (no pagination)
-            const { search = '', status = '', source = '' } = filters;
+            const { search = '', status = '', source = '', tag = '', segment = '' } = filters;
             if (search) {
                 contactWhere.OR = [
                     { name:     { contains: search, mode: 'insensitive' } },
@@ -436,6 +458,16 @@ export const bulkSendTemplate = async (req, res) => {
             }
             if (status) contactWhere.status = status;
             if (source) contactWhere.source = source;
+            if (tag) contactWhere.tags = { contains: tag };
+            if (segment) {
+                const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
+                const segResult = await buildSegmentWhere(segment, workspaceId);
+                if (segResult.contactIds) {
+                    contactWhere.id = { in: segResult.contactIds };
+                } else if (segResult.where) {
+                    Object.assign(contactWhere, segResult.where);
+                }
+            }
         } else {
             // ID-based: specific selected contacts
             contactWhere.id = { in: contactIds };
@@ -911,7 +943,11 @@ export const sendCampaign = async (req, res) => {
             recipients = contacts.map(c => ({ contactId: c.id, phone: c.phone, name: c.name || '' }));
         } else if (segmentFilter) {
             const where = { workspaceId, phone: { not: null } };
-            if (segmentFilter.tags?.length) where.tags = { hasSome: segmentFilter.tags };
+            if (segmentFilter.tags?.length) {
+                where.AND = (where.AND || []).concat(
+                    segmentFilter.tags.map(t => ({ tags: { contains: t } }))
+                );
+            }
             if (segmentFilter.status) where.status = segmentFilter.status;
             if (segmentFilter.source) where.source = segmentFilter.source;
 
@@ -1067,7 +1103,14 @@ export const getSegments = async (req, res) => {
             prisma.contact.count({ where: { workspaceId, phone: { not: null } } })
         ]);
 
-        res.json({ statusCounts, sourceCounts, totalWithPhone });
+        const { getSegmentGroups, getSegmentCount, getSegmentList } = await import('../services/smartSegment.service.js');
+        const segmentList = getSegmentList();
+        const segmentCounts = {};
+        await Promise.all(segmentList.map(async (s) => {
+            try { segmentCounts[s.id] = await getSegmentCount(s.id, workspaceId); } catch { segmentCounts[s.id] = 0; }
+        }));
+
+        res.json({ statusCounts, sourceCounts, totalWithPhone, segments: getSegmentGroups(), segmentCounts });
     } catch (error) {
         console.error('❌ [getSegments]', error);
         res.status(500).json({ error: 'Segmentler yüklenemedi' });

@@ -73,6 +73,11 @@ function BulkSendTab({ wsId }) {
     const [inputSearch, setInputSearch] = useState(''); // raw input before commit
     const [statusFilter, setStatusFilter] = useState('');
     const [sourceFilter, setSourceFilter] = useState('');
+    const [tagFilter, setTagFilter] = useState('');
+    const [segmentFilter, setSegmentFilter] = useState('');
+    const [filterTags, setFilterTags] = useState([]);
+    const [segmentGroups, setSegmentGroups] = useState({});
+    const [segmentCounts, setSegmentCounts] = useState({});
 
     const [selected, setSelected] = useState(new Set());
     const [selectAllPages, setSelectAllPages] = useState(false);
@@ -96,6 +101,8 @@ function BulkSendTab({ wsId }) {
             if (search) params.set('search', search);
             if (statusFilter) params.set('status', statusFilter);
             if (sourceFilter) params.set('source', sourceFilter);
+            if (tagFilter) params.set('tag', tagFilter);
+            if (segmentFilter) params.set('segment', segmentFilter);
 
             const res = await api.get(`/marketing/${wsId}/contacts?${params}`);
             setContacts(res.data.contacts || []);
@@ -104,10 +111,11 @@ function BulkSendTab({ wsId }) {
             if (res.data.filters) {
                 setFilterStatuses(res.data.filters.statuses || []);
                 setFilterSources(res.data.filters.sources || []);
+                if (res.data.filters.tags) setFilterTags(res.data.filters.tags);
             }
         } catch (e) { console.error(e); }
         setLoading(false);
-    }, [wsId, search, statusFilter, sourceFilter]);
+    }, [wsId, search, statusFilter, sourceFilter, tagFilter, segmentFilter]);
 
     useEffect(() => { fetchContacts(1); setPage(1); setSelected(new Set()); setSelectAllPages(false); }, [fetchContacts]);
 
@@ -117,6 +125,24 @@ function BulkSendTab({ wsId }) {
             setTemplates((res.data.templates || []).filter(t => t.status === 'APPROVED'));
         } catch (e) { console.error(e); }
     };
+
+    const fetchSegments = useCallback(async () => {
+        if (!wsId) return;
+        try {
+            const res = await api.get(`/smart-segments/${wsId}/segments/definitions`);
+            setSegmentGroups(res.data.groups || {});
+        } catch (e) { console.error('Segment fetch error:', e); }
+    }, [wsId]);
+
+    const fetchSegmentCounts = useCallback(async () => {
+        if (!wsId) return;
+        try {
+            const res = await api.get(`/smart-segments/${wsId}/segments/counts`);
+            setSegmentCounts(res.data.counts || {});
+        } catch (e) { console.error('Segment count error:', e); }
+    }, [wsId]);
+
+    useEffect(() => { fetchSegments(); fetchSegmentCounts(); }, [fetchSegments, fetchSegmentCounts]);
 
     const handleSearchChange = (val) => setInputSearch(val);
 
@@ -165,7 +191,7 @@ function BulkSendTab({ wsId }) {
             const body = { templateId };
             if (selectAllPages) {
                 body.selectAll = true;
-                body.filters = { search, status: statusFilter, source: sourceFilter };
+                body.filters = { search, status: statusFilter, source: sourceFilter, tag: tagFilter, segment: segmentFilter };
             } else {
                 body.contactIds = [...selected];
             }
@@ -209,7 +235,7 @@ function BulkSendTab({ wsId }) {
             const body = { agentId, agentName };
             if (selectAllPages) {
                 body.selectAll = true;
-                body.filters = { search, status: statusFilter, source: sourceFilter };
+                body.filters = { search, status: statusFilter, source: sourceFilter, tag: tagFilter, segment: segmentFilter };
             } else {
                 body.contactIds = [...selected];
             }
@@ -344,8 +370,12 @@ function BulkSendTab({ wsId }) {
                             <option value="">Tüm Kaynaklar</option>
                             {filterSources.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
+                        <select className="mkt-filter-select" value={tagFilter} onChange={e => { setTagFilter(e.target.value); setSelectAllPages(false); }}>
+                            <option value="">Tüm Etiketler</option>
+                            {filterTags.map(t => <option key={t} value={t}>🏷️ {t}</option>)}
+                        </select>
                         <span className="mkt-total-badge">
-                            {search || sourceFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
+                            {search || sourceFilter || tagFilter || segmentFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
                         </span>
                     </div>
 
@@ -365,6 +395,49 @@ function BulkSendTab({ wsId }) {
                         )}
                     </div>
                 </div>
+
+                {/* Akıllı Segmentler */}
+                {Object.keys(segmentGroups).length > 0 && (
+                    <div style={{ 
+                        display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 0',
+                        borderTop: '1px solid #f1f5f9'
+                    }}>
+                        <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, width: '100%', marginBottom: 2 }}>📊 Akıllı Segmentler</span>
+                        {Object.entries(segmentGroups).map(([groupKey, segs]) => (
+                            segs.map(seg => (
+                                <button
+                                    key={seg.id}
+                                    onClick={() => {
+                                        setSegmentFilter(prev => prev === seg.id ? '' : seg.id);
+                                        setSelectAllPages(false);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                        padding: '4px 10px', borderRadius: 20,
+                                        fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                                        border: segmentFilter === seg.id ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                                        background: segmentFilter === seg.id ? '#eff6ff' : '#fff',
+                                        color: segmentFilter === seg.id ? '#2563eb' : '#475569',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <span style={{ fontSize: 13 }}>{seg.icon}</span>
+                                    {seg.label}
+                                    {segmentCounts[seg.id] !== undefined && (
+                                        <span style={{
+                                            fontSize: 10, fontWeight: 700, padding: '1px 5px',
+                                            borderRadius: 10,
+                                            background: segmentFilter === seg.id ? '#3b82f6' : '#f1f5f9',
+                                            color: segmentFilter === seg.id ? '#fff' : '#64748b'
+                                        }}>
+                                            {segmentCounts[seg.id]}
+                                        </span>
+                                    )}
+                                </button>
+                            ))
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Select-all-pages banner */}
@@ -2207,7 +2280,6 @@ export default function Marketing() {
 
     const TABS = [
         { key: 'bulk',      label: 'Toplu Gönderim',      Icon: Send },
-        { key: 'groups',    label: 'Gruplar',              Icon: Users },
         { key: 'analytics', label: 'WhatsApp Şablon Analiz', Icon: BarChart2 },
         { key: 'calls',     label: 'Arama Analizi',        Icon: Phone },
     ];
@@ -2222,7 +2294,7 @@ export default function Marketing() {
                     </div>
                     <div>
                         <h1 className="mkt-header-title">Pazarlama</h1>
-                        <p className="mkt-header-sub">Toplu gönderim, arama analizi ve grup yönetimi</p>
+                        <p className="mkt-header-sub">Toplu gönderim ve arama analizi</p>
                     </div>
                 </div>
             </div>
@@ -2246,7 +2318,6 @@ export default function Marketing() {
             {/* Tab content */}
             <div className="mkt-tab-content">
                 {activeTab === 'bulk'      && <BulkSendTab wsId={wsId} />}
-                {activeTab === 'groups'    && <GroupsTab wsId={wsId} />}
                 {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
                 {activeTab === 'calls'     && <CallAnalyticsTab wsId={wsId} />}
             </div>

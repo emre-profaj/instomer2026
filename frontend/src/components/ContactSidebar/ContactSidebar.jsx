@@ -3268,17 +3268,19 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         const allTimeline = caseTimeline;
                                         const firstConv = allTimeline
                                             .filter(i => i.sourceType === 'CONVERSATION')
-                                            .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                                            .sort((a, b) => new Date(a.createdAt || a.date) - new Date(b.createdAt || b.date))[0];
                                         if (firstConv) {
                                             const convDetail = firstConv.aiTopic 
                                                 || firstConv.lastMessageContent 
                                                 || firstConv.title 
                                                 || (firstConv.type === 'WHATSAPP' ? 'WhatsApp' : firstConv.type === 'INSTAGRAM' ? 'Instagram' : firstConv.type === 'FACEBOOK' ? 'Facebook' : 'Sohbet');
+                                            // İlk sohbetin başlangıç tarihi: createdAt (oluşturulma), date değil (son mesaj)
+                                            const convStartDate = new Date(firstConv.createdAt || firstConv.date);
                                             milestones.push({
                                                 icon: '💬',
                                                 label: 'İlk Sohbet Başladı',
                                                 detail: convDetail,
-                                                date: new Date(firstConv.date),
+                                                date: convStartDate,
                                                 color: '#ef4444',
                                                 done: true,
                                                 _type: 'CONVERSATION',
@@ -3289,9 +3291,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         // 3. Telefon alındı
                                         if (profile?.phone) {
                                             const isFromPhoneChannel = ['WHATSAPP', 'INSTAGRAM', 'PHONE'].includes(profile.source?.toUpperCase?.());
+                                            const convStartDate = firstConv ? new Date(firstConv.createdAt || firstConv.date) : null;
                                             const phoneDate = isFromPhoneChannel
                                                 ? new Date(profile.createdAt)
-                                                : (firstConv ? new Date(firstConv.date) : new Date(profile.createdAt));
+                                                : (convStartDate || new Date(profile.createdAt));
                                             milestones.push({
                                                 icon: '📱',
                                                 label: 'Telefon Alındı',
@@ -3591,8 +3594,28 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             });
                                         }
 
-                                        // Sort by date
-                                        milestones.sort((a, b) => (a.date || 0) - (b.date || 0));
+                                        // Sort by date, with type-based tiebreaker for same-second items
+                                        const typePriority = {
+                                            'RECORD': 0,       // Kayıt oluşturuldu (en önce)
+                                            'CONVERSATION': 1,  // İlk sohbet başladı
+                                            'PHONE': 2,         // Telefon alındı
+                                            'EVENT': 3,         // Akış değiştirildi, aşama değişti
+                                            'CALL_FAILED': 4,
+                                            'CALL': 5,
+                                            'NOTE': 6,
+                                            'MEETING': 7,
+                                            'VISIT': 8,
+                                            'PROPOSAL': 9,
+                                            'ORDER': 10,
+                                            'DEAL': 11,
+                                            'PLANNED_CALL': 99  // Planlananlar en sona
+                                        };
+                                        milestones.sort((a, b) => {
+                                            const timeDiff = (a.date || 0) - (b.date || 0);
+                                            if (timeDiff !== 0) return timeDiff;
+                                            // Aynı saniyedeki items için mantıksal sıralama
+                                            return (typePriority[a._type] ?? 50) - (typePriority[b._type] ?? 50);
+                                        });
 
                                         if (milestones.length === 0) return null;
 

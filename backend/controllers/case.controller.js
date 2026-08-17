@@ -313,20 +313,37 @@ export const getContactCases = async (req, res) => {
         }
         // ── AUTO-SYNC END ──
 
-        // Her case için retell call sayısını da ekle
+        // Her case için retell call sayısını + arama özetini de ekle
         const casesWithCounts = await Promise.all(cases.map(async (c) => {
-            const retellCallCount = await prisma.retellCall.count({
-                where: { caseId: c.id }
-            });
-            const totalActivityCount = await prisma.contactActivity.count({
-                where: { caseId: c.id }
-            });
+            const [retellCallCount, totalActivityCount, callActivities] = await Promise.all([
+                prisma.retellCall.count({ where: { caseId: c.id } }),
+                prisma.contactActivity.count({ where: { caseId: c.id } }),
+                prisma.contactActivity.findMany({
+                    where: { caseId: c.id, type: 'CALL' },
+                    select: {
+                        id: true, status: true, callSuccessful: true, callSentiment: true,
+                        result: true, dueDate: true, completedAt: true, createdAt: true
+                    },
+                    orderBy: { createdAt: 'desc' }
+                })
+            ]);
+            const completedCalls = callActivities.filter(a => a.status === 'COMPLETED' || a.status === 'DONE');
+            const lastCall = completedCalls[0] || callActivities[0] || null;
             return {
                 ...c,
                 _retellCallCount: retellCallCount,
                 _totalActivityCount: totalActivityCount,
                 _conversationCount: c.conversations.length,
-                _pendingActivityCount: c.activities.length
+                _pendingActivityCount: c.activities.length,
+                _callSummary: {
+                    totalCalls: callActivities.length,
+                    completedCalls: completedCalls.length,
+                    reachedCalls: completedCalls.filter(a => a.callSuccessful === true).length,
+                    lastCallDate: lastCall?.completedAt || lastCall?.dueDate || lastCall?.createdAt || null,
+                    lastCallSuccessful: lastCall?.callSuccessful ?? null,
+                    lastCallSentiment: lastCall?.callSentiment ?? null,
+                    lastCallNote: lastCall?.result ?? null
+                }
             };
         }));
 

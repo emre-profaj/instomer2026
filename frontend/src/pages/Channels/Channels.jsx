@@ -2,10 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI, telsamAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database, PhoneCall } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
 import DisaoSettingsModal from '../../components/Settings/DisaoSettingsModal';
 import './Channels.css';
@@ -55,6 +55,15 @@ const Channels = () => {
     const [disaoSuccess, setDisaoSuccess] = useState('');
     const [disaoForm, setDisaoForm] = useState({ email: '', password: '', idProject: '', idAdvice: '' });
     const [disaoConnection, setDisaoConnection] = useState(null);
+
+    // Telsam PBX states
+    const [showTelsamModal, setShowTelsamModal] = useState(false);
+    const [telsamConfig, setTelsamConfig] = useState(null);
+    const [telsamConnecting, setTelsamConnecting] = useState(false);
+    const [telsamTesting, setTelsamTesting] = useState(false);
+    const [telsamError, setTelsamError] = useState('');
+    const [telsamSuccess, setTelsamSuccess] = useState('');
+    const [telsamForm, setTelsamForm] = useState({ siteUrl: '', username: '', password: '' });
 
     // Routing states
     const [channelRoutings, setChannelRoutings] = useState([]);
@@ -134,7 +143,8 @@ const Channels = () => {
                 retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } })),
                 healthSystemAPI.getStatus(currentWorkspace.id).catch(() => ({ data: { connected: false } })),
                 funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: [] })),
-                fetch(`${API}/workspaces/${currentWorkspace.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }).then(res => res.json()).catch(() => null)
+                fetch(`${API}/workspaces/${currentWorkspace.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }).then(res => res.json()).catch(() => null),
+                telsamAPI.getSettings(currentWorkspace.id).catch(() => ({ data: null }))
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -155,6 +165,16 @@ const Channels = () => {
             setRetellSettings(retellRes.data.isConfigured ? retellRes.data : null);
             setHealthConnection(healthRes.data.connected ? healthRes.data.integration : null);
             setFunnels(funnelsRes.data?.funnels || funnelsRes.data || []);
+            const telsamData = telsamRes?.data?.data || null;
+            setTelsamConfig(telsamData);
+
+            if (telsamData) {
+                setTelsamForm({
+                    siteUrl: telsamData.siteUrl || '',
+                    username: telsamData.username || '',
+                    password: '' // Don't show password
+                });
+            }
 
             if (wsRes?.workspace) {
                 setDisaoCrmEnabled(wsRes.workspace.disaoCrmEnabled || false);
@@ -291,6 +311,53 @@ const Channels = () => {
         } catch (error) {
             console.error('Error deleting disao crm:', error);
             alert('Disao CRM bağlantısı silinemedi.');
+        }
+    };
+
+    // Telsam PBX handlers
+    const handleTelsamSave = async () => {
+        if (!telsamForm.siteUrl || !telsamForm.username || !telsamForm.password) {
+            setTelsamError('Tüm alanları doldurunuz.');
+            return;
+        }
+        setTelsamConnecting(true);
+        setTelsamError('');
+        try {
+            await telsamAPI.saveSettings(currentWorkspace.id, telsamForm);
+            setTelsamSuccess('Telsam bağlantısı kaydedildi!');
+            await loadAllChannels();
+            setTimeout(() => setShowTelsamModal(false), 1000);
+        } catch (err) {
+            setTelsamError(err.response?.data?.error || 'Bağlantı kaydedilemedi.');
+        } finally {
+            setTelsamConnecting(false);
+        }
+    };
+
+    const handleTelsamTest = async () => {
+        setTelsamTesting(true);
+        setTelsamError('');
+        setTelsamSuccess('');
+        try {
+            const res = await telsamAPI.testConnection(currentWorkspace.id, telsamForm);
+            setTelsamSuccess(`Bağlantı başarılı! ${res.data?.data?.activeCallCount ?? 0} aktif arama bulundu.`);
+        } catch (err) {
+            setTelsamError(err.response?.data?.error || 'Bağlantı testi başarısız.');
+        } finally {
+            setTelsamTesting(false);
+        }
+    };
+
+    const handleDeleteTelsam = async () => {
+        if (!confirm('Telsam PBX bağlantısını silmek istediğinize emin misiniz?')) return;
+        try {
+            await telsamAPI.deleteSettings(currentWorkspace.id);
+            setTelsamConfig(null);
+            setTelsamForm({ siteUrl: '', username: '', password: '' });
+            await loadAllChannels();
+        } catch (err) {
+            console.error('Error deleting telsam:', err);
+            alert('Telsam bağlantısı silinemedi.');
         }
     };
 
@@ -808,6 +875,23 @@ const Channels = () => {
             });
         }
 
+        // Telsam PBX
+        if (telsamConfig) {
+            channels.push({
+                id: telsamConfig.id || 'telsam-pbx',
+                type: 'telsam',
+                routingChannel: 'TELSAM',
+                icon: PhoneCall,
+                color: '#0284c7',
+                bgColor: '#f0f9ff',
+                name: 'Telsam Santral',
+                subtitle: telsamConfig.siteUrl || 'Bağlı',
+                data: telsamConfig,
+                hasRouting: false,
+                hasChatBot: false
+            });
+        }
+
         return channels;
     };
 
@@ -859,6 +943,10 @@ const Channels = () => {
                     <button className="quick-add-btn disao-crm" onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }}>
                         <Zap size={16} />
                         Disao CRM
+                    </button>
+                    <button className="quick-add-btn telsam" onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }}>
+                        <PhoneCall size={16} />
+                        Telsam Santral
                     </button>
                 </div>
             </div>
@@ -958,7 +1046,16 @@ const Channels = () => {
                                                     <Settings size={14} />
                                                 </button>
                                             )}
-                                            {channel.type !== 'retell' && channel.type !== 'health-system' && channel.type !== 'disao-crm' && (
+                                            {channel.type === 'telsam' && (
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }}
+                                                    title="Ayarlar"
+                                                >
+                                                    <Settings size={14} />
+                                                </button>
+                                            )}
+                                            {channel.type !== 'retell' && channel.type !== 'health-system' && channel.type !== 'disao-crm' && channel.type !== 'telsam' && (
                                                 <button
                                                     className="channel-delete-btn"
                                                     style={{
@@ -987,6 +1084,8 @@ const Channels = () => {
                                                             handleDeleteWebWidget(channel.id);
                                                         } else if (channel.type === 'disao-crm') {
                                                             handleDeleteDisaoCrm();
+                                                        } else if (channel.type === 'telsam') {
+                                                            handleDeleteTelsam();
                                                         }
                                                     }}
                                                     title="Sil / Kopar"
@@ -1811,6 +1910,77 @@ const Channels = () => {
                                         </button>
                                     </div>
                                 </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Telsam PBX Modal */}
+            {showTelsamModal && (
+                <div className="modal-overlay" onClick={() => setShowTelsamModal(false)}>
+                    <div className="modal-content modal-lg" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>📞 Telsam Santral Ayarları</h3>
+                            <button className="modal-close" onClick={() => setShowTelsamModal(false)}><X size={18} /></button>
+                        </div>
+                        <div className="modal-body">
+                            {telsamError && <div className="alert alert-error"><AlertCircle size={16} /> {telsamError}</div>}
+                            {telsamSuccess && <div className="alert alert-success"><CheckCircle size={16} /> {telsamSuccess}</div>}
+                            
+                            <div className="form-group">
+                                <label>Santral Adresi (Site URL)</label>
+                                <input
+                                    type="text"
+                                    placeholder="pbx.sirketiniz.telsam.com.tr"
+                                    value={telsamForm.siteUrl}
+                                    onChange={e => setTelsamForm(f => ({ ...f, siteUrl: e.target.value }))}
+                                />
+                                <small style={{ color: '#64748b', fontSize: 11 }}>Telsam panelinizden aldığınız santral adresi</small>
+                            </div>
+                            <div className="form-group">
+                                <label>API Kullanıcı Adı</label>
+                                <input
+                                    type="text"
+                                    placeholder="api_kullanici"
+                                    value={telsamForm.username}
+                                    onChange={e => setTelsamForm(f => ({ ...f, username: e.target.value }))}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>API Şifresi</label>
+                                <input
+                                    type="password"
+                                    placeholder="••••••••"
+                                    value={telsamForm.password}
+                                    onChange={e => setTelsamForm(f => ({ ...f, password: e.target.value }))}
+                                />
+                            </div>
+
+                            {telsamConfig && (
+                                <div style={{ marginTop: 16, padding: '12px 16px', background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd' }}>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0284c7', marginBottom: 4 }}>📡 Webhook URL</div>
+                                    <div style={{ fontSize: 11, color: '#475569', wordBreak: 'break-all' }}>
+                                        {window.location.origin.replace('3000', '3001')}/api/telsam/webhook/{currentWorkspace?.id}
+                                    </div>
+                                    <small style={{ color: '#64748b', fontSize: 10 }}>Bu URL'yi Telsam panelinizdeki API Entegrasyonları bölümüne ekleyin</small>
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button
+                                className="btn btn-outline"
+                                onClick={handleTelsamTest}
+                                disabled={telsamTesting || !telsamForm.siteUrl}
+                            >
+                                {telsamTesting ? <><Loader2 size={14} className="spin" /> Test Ediliyor...</> : '🔌 Bağlantı Testi'}
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleTelsamSave}
+                                disabled={telsamConnecting}
+                            >
+                                {telsamConnecting ? <><Loader2 size={14} className="spin" /> Kaydediliyor...</> : 'Kaydet'}
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -2967,3 +2967,9 @@
 .todo-scrollable::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
 }
+
+/* Activity Detail Popup Animation */
+@keyframes fadeInScale {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}

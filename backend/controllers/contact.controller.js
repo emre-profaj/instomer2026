@@ -1084,6 +1084,17 @@ export const getContacts = async (req, res) => {
             console.log(`   CallStatus filter '${callStatus}' applied`);
         }
 
+        // Smart Segment filter
+        if (req.query.segment && req.query.segment !== 'ALL') {
+            const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
+            const segResult = await buildSegmentWhere(req.query.segment, workspaceId);
+            if (segResult.contactIds) {
+                where.id = where.id ? { ...where.id, in: segResult.contactIds } : { in: segResult.contactIds };
+            } else if (segResult.where) {
+                Object.assign(where, segResult.where);
+            }
+        }
+
         // Helper function to add source field and message dates
         const enrichContactWithSource = (contact) => {
             const channels = contact.conversations?.map(c => c.channel) || [];

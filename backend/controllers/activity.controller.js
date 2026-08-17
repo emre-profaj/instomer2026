@@ -583,6 +583,7 @@ export const getContactTimeline = async (req, res) => {
                 lastMessageContent: lastMessage?.content?.substring(0, 80) || null,
                 content: summaryContent,
                 date: lastMessageDate,
+                createdAt: conv.createdAt,
                 totalMessages,
                 recentMessages,
                 conversationId: conv.id,

@@ -144,6 +144,7 @@ model Workspace {
   marketingCampaigns   MarketingCampaign[]
   topicCategories      TopicCategory[]
   classifierRules      ClassifierRule[]
+  telsamConfig         TelsamConfig?
 
   // Retell AI Voice
   retellApiKey          String?
@@ -158,11 +159,11 @@ model Workspace {
   retellAutoCallSchedule Json? // { start: "09:00", end: "18:00", days: [1,2,3,4,5] }
 
   // AI Devralma Ayarları (workspace seviyesi — genel varsayılan)
-  aiFallbackEnabled      Boolean @default(false) // İnsan aramadığında AI devreye girsin mi?
-  aiFallbackDelayMinutes Int     @default(60) // Kaç dk sonra AI devralır
-  aiFallbackPoolEnabled  Boolean @default(false) // Havuzdaki sahipsiz görevleri AI alsın mı?
-  retellMaxOverdueDays   Int     @default(3) // X günden eski gecikmiş görevleri yoksay
-  retellScheduledCallTimeoutHours Int @default(2) // Planlanan arama X saatten gecikmişse iptal et
+  aiFallbackEnabled               Boolean @default(false) // İnsan aramadığında AI devreye girsin mi?
+  aiFallbackDelayMinutes          Int     @default(60) // Kaç dk sonra AI devralır
+  aiFallbackPoolEnabled           Boolean @default(false) // Havuzdaki sahipsiz görevleri AI alsın mı?
+  retellMaxOverdueDays            Int     @default(3) // X günden eski gecikmiş görevleri yoksay
+  retellScheduledCallTimeoutHours Int     @default(2) // Planlanan arama X saatten gecikmişse iptal et
 
   // Gayrimenkul
   realEstateEnabled Boolean @default(false)
@@ -174,7 +175,6 @@ model Workspace {
   disaoCrmEnabled  Boolean @default(false)
   disaoCrmSettings Json?
 
-
   // Randevu Modülü (false = workspace'de randevu botu devre dışı)
   appointmentEnabled  Boolean @default(true)
   // Randevu saatleri: [{ day: 0-6, enabled: bool, start: "09:00", end: "18:00" }]
@@ -184,7 +184,7 @@ model Workspace {
   defaultLanguage String @default("tr-TR") // tr-TR, en-US, en-GB, de-DE, fr-FR, ar-SA, multi
 
   // AI Birleşik Çağrı (Sınıflandırma + Sohbet tek çağrıda)
-  useUnifiedAI  Boolean @default(false) // true = tek AI çağrısı, false = ayrı classifier + chat
+  useUnifiedAI Boolean @default(false) // true = tek AI çağrısı, false = ayrı classifier + chat
 
   defaultFunnelId String? // Varsayılan satış akışı ID'si
 
@@ -1406,9 +1406,9 @@ model FunnelStage {
   channelRoutings ChannelRouting[] @relation("ChannelRoutingStage")
 
   // YENİ: Aşama bazlı AI davranışı
-  aiGoal              String?  @db.Text // "Bu aşamada müşteriyi randevuya yönlendir"
-  aiInstruction       String?  @db.Text // "Müşteriyle görüşme saati belirle, telefon numarası al"
-  transitionCriteria  String?  @db.Text // JSON: { conditions: [{ field: "phone", op: "exists" }], autoTransition: true }
+  aiGoal             String? @db.Text // "Bu aşamada müşteriyi randevuya yönlendir"
+  aiInstruction      String? @db.Text // "Müşteriyle görüşme saati belirle, telefon numarası al"
+  transitionCriteria String? @db.Text // JSON: { conditions: [{ field: "phone", op: "exists" }], autoTransition: true }
 
   @@index([funnelId])
   @@map("funnel_stages")
@@ -2063,4 +2063,65 @@ model SmsTemplate {
 
   @@index([workspaceId])
   @@map("sms_templates")
+}
+
+// Telsam PBX Entegrasyonu
+model TelsamConfig {
+  id          String   @id @default(uuid())
+  workspaceId String   @unique
+  siteUrl     String // e.g. "pbx2.telsam.com.tr"
+  username    String
+  password    String
+  isActive    Boolean  @default(true)
+  webhookUrl  String? // Auto-generated webhook URL for this workspace
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  extensions TelsamExtension[]
+  callLogs   TelsamCallLog[]
+
+  @@index([workspaceId])
+  @@map("telsam_configs")
+}
+
+model TelsamExtension {
+  id        String   @id @default(uuid())
+  configId  String
+  userId    String
+  internal  String // Dahili numara (e.g. "110")
+  label     String? // Friendly name
+  createdAt DateTime @default(now())
+
+  config TelsamConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, userId])
+  @@unique([configId, internal])
+  @@map("telsam_extensions")
+}
+
+model TelsamCallLog {
+  id           String   @id @default(uuid())
+  configId     String
+  workspaceId  String
+  contactId    String?
+  externalId   String? // CDR ID from Telsam
+  direction    String // INBOUND, OUTBOUND
+  src          String // Caller number
+  dst          String // Called number  
+  duration     Int      @default(0) // Seconds
+  disposition  String? // ANSWERED, NO ANSWER, BUSY, FAILED
+  callDate     DateTime
+  recordingUrl String? // Path/URL to downloaded recording
+  transcript   String?  @db.Text
+  summary      String?  @db.Text
+  userId       String? // CRM user who handled this
+  createdAt    DateTime @default(now())
+
+  config TelsamConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, externalId])
+  @@index([workspaceId, callDate])
+  @@index([contactId])
+  @@map("telsam_call_logs")
 }

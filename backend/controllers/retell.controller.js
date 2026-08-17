@@ -2338,27 +2338,32 @@ async function handleCallStarted(call) {
 
             // Create a NEW conversation for this call ONLY if not linked to an existing one
             if (contactId && !outboundWithExistingConv) {
-                // DEDUP: Son 2dk içinde aynı contact için PHONE conversation varsa tekrar oluşturma
-                const recentPhoneConv = await prisma.conversation.findFirst({
-                    where: {
-                        workspaceId,
-                        contactId,
-                        channel: 'PHONE',
-                        createdAt: { gte: new Date(Date.now() - 120000) }
-                    },
-                    orderBy: { createdAt: 'desc' }
-                });
-                if (recentPhoneConv) {
-                    // Mevcut conversation'ı kullan, RetellCall'ı bağla
-                    try {
-                        await prisma.retellCall.update({
-                            where: { callId: call.call_id },
-                            data: { conversationId: recentPhoneConv.id }
-                        });
-                    } catch (_) {}
-                    console.log(`📞 [Retell] DEDUP: Reusing recent PHONE conversation ${recentPhoneConv.id} for ${call.call_id}`);
-                    return;
-                }
+            // 24-SAAT BİRLEŞTİRME: Son 24 saat içinde bu kişi ile mevcut conversation varsa yeniden kullan
+            const isInboundCall = call.direction === 'inbound';
+            const mergeWindow = isInboundCall ? 86400000 : 120000; // Gelen: 24 saat, Giden: 2dk
+
+            const recentConv = await prisma.conversation.findFirst({
+                where: {
+                    workspaceId,
+                    contactId,
+                    ...(isInboundCall
+                        ? { lastMessageAt: { gte: new Date(Date.now() - mergeWindow) } }
+                        : { channel: 'PHONE', createdAt: { gte: new Date(Date.now() - mergeWindow) } }
+                    )
+                },
+                orderBy: { lastMessageAt: 'desc' }
+            });
+            if (recentConv) {
+                // Mevcut conversation'ı kullan, RetellCall'ı bağla
+                try {
+                    await prisma.retellCall.update({
+                        where: { callId: call.call_id },
+                        data: { conversationId: recentConv.id }
+                    });
+                } catch (_) {}
+                console.log(`📞 [Retell] ${isInboundCall ? '24H-MERGE' : 'DEDUP'}: Reusing conversation ${recentConv.id} (${recentConv.channel}) for ${call.call_id}`);
+                return;
+            }
                 const assignedTeamId = await resolveAgentTeamId(workspaceId, call.agent_id);
                 const conversation = await prisma.conversation.create({
                     data: {
@@ -2941,6 +2946,34 @@ async function handleCallEnded(call) {
                         }
                     });
                     if (!existingCase) {
+                        // 24-SAAT CASE BİRLEŞTİRME: Son 24 saatte kapatılmış case varsa yeniden aç
+                        const recentClosedCase = await prisma.case.findFirst({
+                            where: {
+                                contactId: caseContactId,
+                                workspaceId: caseWorkspaceId,
+                                status: { in: ['RESOLVED', 'CLOSED', 'COMPLETED'] },
+                                updatedAt: { gte: new Date(Date.now() - 86400000) }
+                            },
+                            orderBy: { updatedAt: 'desc' }
+                        });
+
+                        if (recentClosedCase) {
+                            // Mevcut case'i yeniden aç
+                            await prisma.case.update({
+                                where: { id: recentClosedCase.id },
+                                data: { status: 'ACTIVE' }
+                            });
+
+                            if (callRecord.conversationId) {
+                                await prisma.conversation.update({
+                                    where: { id: callRecord.conversationId },
+                                    data: { caseId: recentClosedCase.id }
+                                });
+                            }
+
+                            console.log(`📦 [AutoCase] 24H-MERGE: Reopened case "${recentClosedCase.caseNumber}" for inbound call from contact ${caseContactId}`);
+                        } else {
+                            // Yeni case oluştur
                         // Case numarası oluştur
                         const year = new Date().getFullYear();
                         const prefix = 'CSE';
@@ -2978,6 +3011,7 @@ async function handleCallEnded(call) {
                         }
 
                         console.log(`📦 [AutoCase] Phone call → auto-created case "${caseNumber}" for contact ${caseContactId}`);
+                        }
                     }
                 }
             } catch (caseErr) {
@@ -3055,12 +3089,15 @@ async function injectTranscriptToChat(callRecord, call, duration) {
     const durationText = duration ? `${Math.floor(duration / 60)}dk ${duration % 60}sn` : '0sn';
     const createdMessages = [];
 
-    // 2. Create call header message
+    // 2. Create call header message (direction-aware)
+    const isInbound = direction === 'inbound';
+    const displayNumber = isInbound ? (callRecord.fromNumber || toNumber) : toNumber;
+    const dirHeaderLabel = isInbound ? '📲 Gelen Arama' : '📞 Giden Arama';
     const headerMsg = await prisma.message.create({
         data: {
-            content: `📞 Sesli Arama Başladı\n${toNumber} • ${durationText}`,
+            content: `${dirHeaderLabel} Tamamlandı\n${displayNumber} • ${durationText}`,
             conversationId,
-            isFromContact: false,
+            isFromContact: isInbound,
             messageType: 'CALL_TRANSCRIPT',
             status: 'SENT'
         }
@@ -3093,14 +3130,15 @@ async function injectTranscriptToChat(callRecord, call, duration) {
         createdMessages.push(msg);
     }
 
-    // 4. Create call footer message
+    // 4. Create call footer message (direction-aware)
     const sentiment = callRecord.sentiment || '';
     const sentimentEmoji = sentiment === 'Positive' ? '😊' : sentiment === 'Negative' ? '😞' : '😐';
+    const dirFooterLabel = isInbound ? '📲 Gelen Arama Sona Erdi' : '📞 Arama Sona Erdi';
     const footerMsg = await prisma.message.create({
         data: {
-            content: `📞 Arama Sona Erdi • ${durationText}${sentiment ? ` • ${sentimentEmoji} ${sentiment}` : ''}`,
+            content: `${dirFooterLabel} • ${durationText}${sentiment ? ` • ${sentimentEmoji} ${sentiment}` : ''}`,
             conversationId,
-            isFromContact: false,
+            isFromContact: isInbound,
             messageType: 'CALL_TRANSCRIPT',
             status: 'SENT',
             createdAt: new Date(Date.now() + msgIndex * 10 + 10)
@@ -3135,13 +3173,18 @@ async function handleCallAnalyzed(call) {
     try {
         const analysis = call.call_analysis || {};
 
+        // Save transcript and recording URL too — call_ended may have arrived before these were ready
+        const analyzedUpdateData = {
+            summary: analysis.call_summary || null,
+            sentiment: analysis.user_sentiment || null,
+            callSuccessful: analysis.call_successful ?? null
+        };
+        if (call.transcript) analyzedUpdateData.transcript = call.transcript;
+        if (call.recording_url) analyzedUpdateData.recordingUrl = call.recording_url;
+
         await prisma.retellCall.updateMany({
             where: { callId: call.call_id },
-            data: {
-                summary: analysis.call_summary || null,
-                sentiment: analysis.user_sentiment || null,
-                callSuccessful: analysis.call_successful ?? null
-            }
+            data: analyzedUpdateData
         });
 
         // Update conversation message with summary + recording URL
@@ -3196,25 +3239,23 @@ async function handleCallAnalyzed(call) {
             where: { callId: call.call_id }
         });
 
-        if (callRecord?.contactId && callRecord.transcript) {
-            // Check if full transcript was already injected
+        if (callRecord?.contactId && (callRecord.transcript || call.transcript)) {
+            // Check if full transcript was already injected (check both old and new header formats)
             const existingTranscript = await prisma.message.findFirst({
                 where: {
-                    conversation: {
-                        workspaceId: callRecord.workspaceId,
-                        contactId: callRecord.contactId
-                    },
+                    conversationId: callRecord.conversationId || undefined,
                     messageType: 'CALL_TRANSCRIPT',
-                    content: { contains: 'Sesli Arama Başladı' }
+                    content: { contains: 'Sona Erdi' }
                 }
             });
 
             if (!existingTranscript) {
                 try {
                     const duration = callRecord.duration || 0;
+                    const transcriptText = callRecord.transcript || call.transcript;
                     await injectTranscriptToChat(callRecord, {
                         ...call,
-                        transcript: callRecord.transcript
+                        transcript: transcriptText
                     }, duration);
                     console.log(`📞 [Retell] Transcript injected via call_analyzed fallback for ${call.call_id}`);
                 } catch (injErr) {

@@ -1116,6 +1116,75 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     </div>
                                 )}
 
+                                {/* Arama Özeti */}
+                                {c._callSummary && c._callSummary.totalCalls > 0 && (() => {
+                                    const cs = c._callSummary;
+                                    const sentimentMap = {
+                                        Positive: { emoji: '😊', label: 'Olumlu', color: '#10b981' },
+                                        Neutral: { emoji: '😐', label: 'Nötr', color: '#f59e0b' },
+                                        Negative: { emoji: '😞', label: 'Olumsuz', color: '#ef4444' }
+                                    };
+                                    const sent = sentimentMap[cs.lastCallSentiment];
+                                    return (
+                                        <div style={{
+                                            padding: '8px 10px', margin: '4px 0',
+                                            background: '#f0f9ff', borderRadius: 8,
+                                            border: '1px solid #bae6fd'
+                                        }}>
+                                            {/* Arama durumu */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: cs.lastCallNote ? 6 : 0 }}>
+                                                <span style={{ fontSize: 13 }}>📞</span>
+                                                <span style={{ fontSize: 12, fontWeight: 600, color: '#0369a1' }}>
+                                                    {cs.completedCalls > 0
+                                                        ? `✅ Arandı (${cs.completedCalls} kez)`
+                                                        : `⏳ Planlandı (${cs.totalCalls} arama)`}
+                                                </span>
+                                                {cs.completedCalls > 0 && (
+                                                    <span style={{ fontSize: 11, color: '#64748b', marginLeft: 'auto' }}>
+                                                        {cs.reachedCalls}/{cs.completedCalls} ulaşıldı
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Son sonuç + duygu */}
+                                            {cs.lastCallSuccessful !== null && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: cs.lastCallNote ? 4 : 0 }}>
+                                                    <span style={{
+                                                        fontSize: 11, fontWeight: 600,
+                                                        color: cs.lastCallSuccessful ? '#10b981' : '#ef4444'
+                                                    }}>
+                                                        {cs.lastCallSuccessful ? '✅ Ulaşıldı' : '❌ Ulaşılamadı'}
+                                                    </span>
+                                                    {sent && (
+                                                        <>
+                                                            <span style={{ color: '#cbd5e1' }}>•</span>
+                                                            <span style={{ fontSize: 12 }}>{sent.emoji}</span>
+                                                            <span style={{ fontSize: 11, fontWeight: 600, color: sent.color }}>{sent.label}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {/* Not */}
+                                            {cs.lastCallNote && (
+                                                <div style={{
+                                                    fontSize: 11, color: '#334155', lineHeight: 1.4,
+                                                    padding: '4px 6px', background: '#fff', borderRadius: 4,
+                                                    borderLeft: '2px solid #0ea5e9',
+                                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                                    maxWidth: '100%'
+                                                }}>
+                                                    📝 "{cs.lastCallNote}"
+                                                </div>
+                                            )}
+                                            {/* Son arama tarihi */}
+                                            {cs.lastCallDate && (
+                                                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
+                                                    📅 Son Arama: {new Date(cs.lastCallDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* Pipeline Stage */}
                                 <div style={{ marginBottom: 6 }}>
                                     <select

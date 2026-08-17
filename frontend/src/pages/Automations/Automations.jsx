@@ -67,7 +67,8 @@ const Automations = () => {
         reminderDelayMin: 60,
         callAgentId: '',
         appointmentType: 'GENERAL',
-        marketingTplId: ''
+        marketingTplId: '',
+        conditions: ''
     });
 
     // Send Template Modal
@@ -99,6 +100,9 @@ const Automations = () => {
     const [newKeyword, setNewKeyword] = useState('');
     const [expandedRules, setExpandedRules] = useState({ HOT_KEYWORD: true, HOT_OPPORT_EMAIL: true });
 
+    const [segmentList, setSegmentList] = useState([]);
+    const [segmentGroups, setSegmentGroups] = useState({});
+
 
 
     // Close flow dropdown on outside click
@@ -111,6 +115,16 @@ const Automations = () => {
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
+
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        api.get(`/smart-segments/${currentWorkspace.id}/segments/definitions`)
+            .then(res => {
+                setSegmentList(res.data.segments || []);
+                setSegmentGroups(res.data.groups || {});
+            })
+            .catch(err => console.error('Segment fetch error:', err));
+    }, [currentWorkspace?.id]);
 
     useEffect(() => {
         if (currentWorkspace?.id) {
@@ -314,7 +328,8 @@ const Automations = () => {
             reminderDelayMin: automation.reminderDelayMin || 60,
             callAgentId: automation.callAgentId || '',
             appointmentType: automation.appointmentType || 'GENERAL',
-            marketingTplId: automation.marketingTplId || ''
+            marketingTplId: automation.marketingTplId || '',
+            conditions: automation.conditions || ''
         });
         setShowAutomationModal(true);
     };
@@ -341,7 +356,8 @@ const Automations = () => {
             reminderDelayMin: 60,
             callAgentId: '',
             appointmentType: 'GENERAL',
-            marketingTplId: ''
+            marketingTplId: '',
+            conditions: ''
         });
     };
 
@@ -1019,6 +1035,50 @@ const Automations = () => {
                                             <option value="WHATSAPP">WhatsApp</option>
                                             <option value="FACEBOOK">Facebook</option>
                                             <option value="INSTAGRAM">Instagram</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Hedef Kitle (Opsiyonel) */}
+                                <div style={{ marginTop: 16, marginBottom: 16, padding: '12px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <span>🎯</span> Hedef Kitle <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8' }}>(opsiyonel)</span>
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
+                                        Sadece belirli segmentteki kişilere uygulanmasını istiyorsanız seçin
+                                    </div>
+                                    
+                                    {/* Segment Seçimi */}
+                                    <div style={{ marginBottom: 8 }}>
+                                        <label style={{ fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 4, display: 'block' }}>Akıllı Segment</label>
+                                        <select
+                                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, background: '#fff' }}
+                                            value={(() => { try { return JSON.parse(automationForm.conditions || '{}').segment || ''; } catch { return ''; } })()}
+                                            onChange={e => {
+                                                const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                if (e.target.value) {
+                                                    currentConds.segment = e.target.value;
+                                                } else {
+                                                    delete currentConds.segment;
+                                                }
+                                                setAutomationForm(prev => ({ ...prev, conditions: Object.keys(currentConds).length ? JSON.stringify(currentConds) : '' }));
+                                            }}
+                                        >
+                                            <option value="">Tüm kişiler (filtre yok)</option>
+                                            {Object.entries(segmentGroups).map(([groupKey, segs]) => (
+                                                <optgroup key={groupKey} label={{
+                                                    TIME: '📅 Zaman Bazlı',
+                                                    LEAD_STATUS: '🔥 Lead Durumu',
+                                                    CALL_STATUS: '📞 Arama Durumu',
+                                                    BUSINESS: '📋 İş Durumu',
+                                                    SOURCE: '🌐 Kaynak',
+                                                    ENGAGEMENT: '💤 Etkileşim'
+                                                }[groupKey] || groupKey}>
+                                                    {segs.map(seg => (
+                                                        <option key={seg.id} value={seg.id}>{seg.icon} {seg.label}</option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
                                         </select>
                                     </div>
                                 </div>

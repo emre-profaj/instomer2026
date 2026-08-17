@@ -196,6 +196,7 @@ const Calendar = () => {
     const [listFilter, setListFilter] = useState('all'); // 'all', 'appointments', 'calls'
     const [selectedContactId, setSelectedContactId] = useState(null);
     const [listSearchTerm, setListSearchTerm] = useState('');
+    const [selectedActivity, setSelectedActivity] = useState(null); // Aktivite detay popup
 
     // Quick-action kişi seçme modal state
     const [quickActionType, setQuickActionType] = useState(null); // { label, type, subtype }
@@ -1217,7 +1218,7 @@ const Calendar = () => {
                                 const act = item.data;
                                 const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
                                 return (
-                                    <div key={act.id} className="todo-item" onClick={() => { const cId = act.contactId || act.contact?.id; if (cId) setSelectedContactId(cId); }}>
+                                    <div key={act.id} className="todo-item" onClick={() => setSelectedActivity(act)}>
                                         <div className="todo-icon" style={{ backgroundColor: cfg.color }}>{cfg.icon}</div>
                                         <div className="todo-content">
                                             <span className="todo-title">{act.title || cfg.label}</span>
@@ -1461,7 +1462,7 @@ const Calendar = () => {
                                                         <div
                                                             className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
                                                             style={{ backgroundColor: aptResource?.color || apt.color }}
-                                                            onClick={(e) => { e.stopPropagation(); apt.contactId ? setSelectedContactId(apt.contactId) : openEditModal(apt); }}
+                                                            onClick={(e) => { e.stopPropagation(); openEditModal(apt); }}
                                                         >
                                                             {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
                                                             {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
@@ -1518,7 +1519,7 @@ const Calendar = () => {
                                                     <div key={`act-${act.id}`}
                                                         className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
                                                         style={{ backgroundColor: cfg.color, cursor: 'pointer' }}
-                                                        onClick={(e) => { e.stopPropagation(); const cId = act.contactId || act.contact?.id; if (cId) setSelectedContactId(cId); }}
+                                                        onClick={(e) => { e.stopPropagation(); setSelectedActivity(act); }}
                                                     >
                                                         {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
                                                         {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
@@ -2150,7 +2151,7 @@ const Calendar = () => {
                                         render: (
                                             <div key={`dp-apt-${apt.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
                                                 style={{ borderLeftColor: aptResource?.color || apt.color }}
-                                                onClick={() => { apt.contactId ? setSelectedContactId(apt.contactId) : openEditModal(apt); setDayPopup(null); }}
+                                                onClick={() => { openEditModal(apt); setDayPopup(null); }}
                                             >
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
@@ -2186,7 +2187,7 @@ const Calendar = () => {
                                         render: (
                                             <div key={`dp-act-${act.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
                                                 style={{ borderLeftColor: cfg.color }}
-                                                onClick={() => { const cId = act.contactId || act.contact?.id; if (cId) { setSelectedContactId(cId); setDayPopup(null); } }}
+                                                onClick={() => { setSelectedActivity(act); setDayPopup(null); }}
                                             >
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
@@ -2204,6 +2205,163 @@ const Calendar = () => {
                     </div>
                 </>
             )}
+
+            {/* ─── Aktivite Detay Popup ─── */}
+            {selectedActivity && (() => {
+                const act = selectedActivity;
+                const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                const actDate = new Date(act.dueDate || act.createdAt);
+                const isOverdue = actDate < new Date() && act.status !== 'COMPLETED' && act.status !== 'DONE';
+                const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
+                const sentimentMap = { Positive: { emoji: '😊', label: 'Olumlu', color: '#10b981' }, Neutral: { emoji: '😐', label: 'Nötr', color: '#f59e0b' }, Negative: { emoji: '😞', label: 'Olumsuz', color: '#ef4444' } };
+                const sent = sentimentMap[act.callSentiment];
+                return (
+                    <>
+                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9998, backdropFilter: 'blur(2px)' }} onClick={() => setSelectedActivity(null)} />
+                        <div style={{
+                            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                            background: '#fff', borderRadius: 16, padding: 0, zIndex: 9999,
+                            width: 420, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto',
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'fadeInScale 0.2s ease'
+                        }}>
+                            {/* Header */}
+                            <div style={{
+                                padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9',
+                                display: 'flex', alignItems: 'center', gap: 12
+                            }}>
+                                <div style={{
+                                    width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: cfg.color + '20', fontSize: 20
+                                }}>{cfg.icon}</div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{act.title || cfg.label}</div>
+                                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{cfg.label}</div>
+                                </div>
+                                <button onClick={() => setSelectedActivity(null)} style={{
+                                    background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 8,
+                                    color: '#94a3b8', display: 'flex'
+                                }}><X size={18} /></button>
+                            </div>
+
+                            {/* Body */}
+                            <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                {/* Durum */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{
+                                        padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                                        background: isCompleted ? '#dcfce7' : isOverdue ? '#fef2f2' : '#eff6ff',
+                                        color: isCompleted ? '#16a34a' : isOverdue ? '#ef4444' : '#3b82f6'
+                                    }}>
+                                        {isCompleted ? '✅ Tamamlandı' : isOverdue ? '⚠️ Gecikmiş' : '🔵 Planlandı'}
+                                    </span>
+                                    {act.priority && act.priority !== 'NORMAL' && (
+                                        <span style={{
+                                            padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                                            background: act.priority === 'HIGH' || act.priority === 'URGENT' ? '#fef2f2' : '#f8fafc',
+                                            color: act.priority === 'HIGH' || act.priority === 'URGENT' ? '#ef4444' : '#64748b'
+                                        }}>{act.priority === 'URGENT' ? '🔴 Acil' : act.priority === 'HIGH' ? '🟠 Yüksek' : act.priority === 'LOW' ? '🔵 Düşük' : act.priority}</span>
+                                    )}
+                                </div>
+
+                                {/* Kişi */}
+                                {act.contact?.name && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <User size={14} style={{ color: '#94a3b8' }} />
+                                        <span style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>{act.contact.name}</span>
+                                        {act.contact.phone && <span style={{ fontSize: 12, color: '#94a3b8' }}>• {act.contact.phone}</span>}
+                                    </div>
+                                )}
+
+                                {/* Tarih */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <Clock size={14} style={{ color: '#94a3b8' }} />
+                                    <span style={{ fontSize: 13, color: '#475569' }}>
+                                        {actDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                        {' '}
+                                        {actDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
+
+                                {/* Atanan */}
+                                {act.assignee?.name && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <User size={14} style={{ color: '#94a3b8' }} />
+                                        <span style={{ fontSize: 13, color: '#475569' }}>Atanan: <strong>{act.assignee.name}</strong></span>
+                                    </div>
+                                )}
+
+                                {/* Arama Sonucu */}
+                                {act.type === 'CALL' && act.callSuccessful !== undefined && act.callSuccessful !== null && (
+                                    <div style={{
+                                        background: '#f8fafc', borderRadius: 10, padding: '12px 14px',
+                                        border: '1px solid #e2e8f0'
+                                    }}>
+                                        <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                            📞 Arama Sonucu
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sent ? 6 : 0 }}>
+                                            <span style={{
+                                                fontSize: 13, fontWeight: 600,
+                                                color: act.callSuccessful ? '#10b981' : '#ef4444'
+                                            }}>
+                                                {act.callSuccessful ? '✅ Ulaşıldı' : '❌ Ulaşılamadı'}
+                                            </span>
+                                        </div>
+                                        {sent && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <span style={{ fontSize: 16 }}>{sent.emoji}</span>
+                                                <span style={{ fontSize: 13, fontWeight: 600, color: sent.color }}>{sent.label}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Not / Açıklama */}
+                                {(act.result || act.description) && (
+                                    <div style={{
+                                        background: '#fefce8', borderRadius: 10, padding: '12px 14px',
+                                        border: '1px solid #fef08a'
+                                    }}>
+                                        <div style={{ fontSize: 11, fontWeight: 600, color: '#a16207', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                            📝 Not
+                                        </div>
+                                        <div style={{ fontSize: 13, color: '#713f12', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                                            {act.result || act.description}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div style={{
+                                padding: '14px 24px', borderTop: '1px solid #f1f5f9',
+                                display: 'flex', gap: 8, justifyContent: 'flex-end'
+                            }}>
+                                {(act.contactId || act.contact?.id) && (
+                                    <button
+                                        onClick={() => { setSelectedContactId(act.contactId || act.contact?.id); setSelectedActivity(null); }}
+                                        style={{
+                                            padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0',
+                                            background: '#fff', color: '#475569', fontSize: 13, fontWeight: 500,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                                        }}
+                                    >
+                                        <User size={14} /> Kişi Profilini Aç
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setSelectedActivity(null)}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: 8, border: 'none',
+                                        background: cfg.color, color: '#fff', fontSize: 13, fontWeight: 600,
+                                        cursor: 'pointer'
+                                    }}
+                                >Kapat</button>
+                            </div>
+                        </div>
+                    </>
+                );
+            })()}
 
             {/* ContactSidebar — opens from list view */}
             {selectedContactId && (

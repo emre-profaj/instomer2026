@@ -261,6 +261,23 @@ const Customers = () => {
     const [tagFilter, setTagFilter] = useState(sf.tagFilter || 'ALL');
     const [availableTags, setAvailableTags] = useState([]);
 
+    const [segmentFilter, setSegmentFilter] = useState(sf.segmentFilter || 'ALL');
+    const [segmentGroups, setSegmentGroups] = useState({});
+    const [segmentCounts, setSegmentCounts] = useState({});
+
+    // Fetch segment definitions
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        import('../../services/api').then(({ default: api }) => {
+            api.get(`/smart-segments/${currentWorkspace.id}/segments/definitions`)
+                .then(res => setSegmentGroups(res.data.groups || {}))
+                .catch(err => console.error('Segment fetch error:', err));
+            api.get(`/smart-segments/${currentWorkspace.id}/segments/counts`)
+                .then(res => setSegmentCounts(res.data.counts || {}))
+                .catch(err => console.error('Segment count error:', err));
+        });
+    }, [currentWorkspace?.id]);
+
     // Topic category filter state
     const [topicCategoryFilter, setTopicCategoryFilter] = useState(sf.topicCategoryFilter || 'ALL');
     const [availableTopicCategories, setAvailableTopicCategories] = useState([]);
@@ -287,7 +304,7 @@ const Customers = () => {
             funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
             sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
             contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
-            onlyOpenCases, sortField, sortDir, limit, scoreFilter
+            onlyOpenCases, sortField, sortDir, limit, scoreFilter, segmentFilter
         };
         try {
             sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filtersToSave));
@@ -296,7 +313,7 @@ const Customers = () => {
         funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
         sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
         contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
-        onlyOpenCases, sortField, sortDir, limit, scoreFilter]);
+        onlyOpenCases, sortField, sortDir, limit, scoreFilter, segmentFilter]);
 
     // Inline stage change dropdown
     const [stageDropdownContactId, setStageDropdownContactId] = useState(null);
@@ -385,7 +402,7 @@ const Customers = () => {
                 silentReloadContacts();
             }
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter, segmentFilter]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -424,6 +441,7 @@ const Customers = () => {
                 contactInfo: contactInfoFilter,
                 callStatus: callStatusFilter,
                 importGroup: importGroupFilter,
+                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
                 funnelType: selectedFunnelIds.length > 0 ? 'ALL' : funnelFilter,
                 funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
                 funnelStageId: funnelStageFilter,
@@ -466,7 +484,7 @@ const Customers = () => {
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
-    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, topicCategoryFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter, quickFilterMode, scoreFilter]);
+    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, topicCategoryFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter, quickFilterMode, scoreFilter, segmentFilter]);
 
     useEffect(() => {
         const handleContactUpdate = (event) => {
@@ -570,6 +588,7 @@ const Customers = () => {
                 contactInfo: contactInfoFilter,
                 callStatus: callStatusFilter,
                 importGroup: importGroupFilter,
+                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
                 funnelType: selectedFunnelIds.length > 0 ? 'ALL' : funnelFilter,
                 funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
                 funnelStageId: funnelStageFilter,
@@ -790,6 +809,8 @@ const Customers = () => {
                 funnelType: funnelFilter !== 'ALL' ? funnelFilter : undefined,
                 funnelStageId: funnelStageFilter !== 'ALL' ? funnelStageFilter : undefined,
                 tag: tagFilter !== 'ALL' ? tagFilter : undefined,
+                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
+                topicCategory: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
                 importGroup: importGroupFilter !== 'ALL' ? importGroupFilter : undefined,
                 isArchived: showArchived
             });
@@ -920,6 +941,7 @@ const Customers = () => {
                 source: sourceFilter,
                 category: categoryFilter,
                 tag: tagFilter,
+                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
                 callStatus: callStatusFilter,
                 showArchived: showArchived.toString(),
                 onlyOpenCases: onlyOpenCases.toString(),
@@ -1453,7 +1475,7 @@ const Customers = () => {
                             <div className="contacts-filter-popover-wrapper" ref={filtersDropdownRef} style={{ position: 'relative' }}>
                                 <button
                                     className={`btn-filters-toggle ${filtersDropdownOpen ? 'active' : ''} ${
-                                        (funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL' || topicCategoryFilter !== 'ALL') ? 'has-active' : ''
+                                        (funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL' || topicCategoryFilter !== 'ALL' || segmentFilter !== 'ALL') ? 'has-active' : ''
                                     }`}
                                     onClick={() => setFiltersDropdownOpen(o => !o)}
                                     style={{
@@ -1481,6 +1503,7 @@ const Customers = () => {
                                         if (sourceFilter !== 'ALL') activeCount++;
                                         if (tagFilter !== 'ALL') activeCount++;
                                         if (topicCategoryFilter !== 'ALL') activeCount++;
+                                        if (segmentFilter !== 'ALL') activeCount++;
                                         return activeCount > 0 ? (
                                             <span className="filters-badge-count" style={{
                                                 background: '#ef4444',
@@ -1518,7 +1541,7 @@ const Customers = () => {
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px', marginBottom: '2px' }}>
                                             <span style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>Filtreler</span>
-                                            {(funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL' || topicCategoryFilter !== 'ALL') && (
+                                            {(funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL' || topicCategoryFilter !== 'ALL' || segmentFilter !== 'ALL' || scoreFilter !== 'ALL') && (
                                                 <button
                                                     onClick={() => {
                                                         setFunnelFilter('ALL');
@@ -1528,6 +1551,8 @@ const Customers = () => {
                                                         setSourceFilter('ALL');
                                                         setTagFilter('ALL');
                                                         setTopicCategoryFilter('ALL');
+                                                        setSegmentFilter('ALL');
+                                                        setScoreFilter('ALL');
                                                         setPage(1);
                                                         setFiltersDropdownOpen(false);
                                                     }}
@@ -1809,46 +1834,63 @@ const Customers = () => {
                                                 ))}
                                             </select>
                                         </div>
+
+                                        {/* Akıllı Segmentler */}
+                                        {Object.keys(segmentGroups).length > 0 && (
+                                            <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+                                                <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>📊 Akıllı Segmentler</div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                                    <button
+                                                        onClick={() => setSegmentFilter('ALL')}
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                            padding: '4px 10px', borderRadius: 16,
+                                                            fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                                                            border: segmentFilter === 'ALL' ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                                                            background: segmentFilter === 'ALL' ? '#eff6ff' : '#fff',
+                                                            color: segmentFilter === 'ALL' ? '#2563eb' : '#475569',
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                    >
+                                                        Tümü
+                                                    </button>
+                                                    {Object.entries(segmentGroups).map(([groupKey, segs]) => (
+                                                        segs.map(seg => (
+                                                            <button
+                                                                key={seg.id}
+                                                                onClick={() => setSegmentFilter(segmentFilter === seg.id ? 'ALL' : seg.id)}
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                                    padding: '4px 8px', borderRadius: 16,
+                                                                    fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                                                                    border: segmentFilter === seg.id ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                                                                    background: segmentFilter === seg.id ? '#eff6ff' : '#fff',
+                                                                    color: segmentFilter === seg.id ? '#2563eb' : '#475569',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                <span style={{ fontSize: 12 }}>{seg.icon}</span>
+                                                                {seg.label}
+                                                                {segmentCounts[seg.id] !== undefined && (
+                                                                    <span style={{
+                                                                        fontSize: 9, fontWeight: 700, padding: '1px 4px',
+                                                                        borderRadius: 8,
+                                                                        background: segmentFilter === seg.id ? '#3b82f6' : '#f1f5f9',
+                                                                        color: segmentFilter === seg.id ? '#fff' : '#64748b'
+                                                                    }}>
+                                                                        {segmentCounts[seg.id]}
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        ))
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
 
-                            {/* Skor Filtresi */}
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                <button 
-                                    onClick={() => setScoreFilter(scoreFilter === 'hot' ? 'ALL' : 'hot')}
-                                    style={{
-                                        padding: '4px 12px', borderRadius: 16, fontSize: 12, border: 'none', cursor: 'pointer',
-                                        background: scoreFilter === 'hot' ? '#fee2e2' : '#f8fafc',
-                                        color: scoreFilter === 'hot' ? '#ef4444' : '#64748b',
-                                        fontWeight: scoreFilter === 'hot' ? 600 : 400
-                                    }}
-                                >
-                                    🔥 Sıcak ({contacts.filter(c => (c.leadScore || 0) >= 70).length})
-                                </button>
-                                <button 
-                                    onClick={() => setScoreFilter(scoreFilter === 'warm' ? 'ALL' : 'warm')}
-                                    style={{
-                                        padding: '4px 12px', borderRadius: 16, fontSize: 12, border: 'none', cursor: 'pointer',
-                                        background: scoreFilter === 'warm' ? '#fef3c7' : '#f8fafc',
-                                        color: scoreFilter === 'warm' ? '#f59e0b' : '#64748b',
-                                        fontWeight: scoreFilter === 'warm' ? 600 : 400
-                                    }}
-                                >
-                                    🟡 Ilık ({contacts.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70).length})
-                                </button>
-                                <button 
-                                    onClick={() => setScoreFilter(scoreFilter === 'cold' ? 'ALL' : 'cold')}
-                                    style={{
-                                        padding: '4px 12px', borderRadius: 16, fontSize: 12, border: 'none', cursor: 'pointer',
-                                        background: scoreFilter === 'cold' ? '#dbeafe' : '#f8fafc',
-                                        color: scoreFilter === 'cold' ? '#3b82f6' : '#64748b',
-                                        fontWeight: scoreFilter === 'cold' ? 600 : 400
-                                    }}
-                                >
-                                    ❄️ Soğuk ({contacts.filter(c => (c.leadScore || 0) < 40).length})
-                                </button>
-                            </div>
                         </div>
                         {/* Date Preset Buttons — horizontal inline */}
                         <div className="contacts-date-presets">

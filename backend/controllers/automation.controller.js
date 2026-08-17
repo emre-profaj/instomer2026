@@ -1543,6 +1543,35 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
         for (const automation of automations) {
             console.log(`🤖 [AUTOMATION] Processing: ${automation.name}`);
 
+            // Smart Segment condition evaluation
+            if (automation.conditions) {
+                try {
+                    const conds = JSON.parse(automation.conditions);
+                    
+                    // Segment check
+                    if (conds.segment && contact?.id) {
+                        const { evaluateContactSegment } = await import('../services/smartSegment.service.js');
+                        const matches = await evaluateContactSegment(contact.id, conds.segment, workspaceId);
+                        if (!matches) {
+                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact not in segment ${conds.segment}`);
+                            continue;
+                        }
+                    }
+                    
+                    // Tag check
+                    if (conds.tags?.length && contact) {
+                        const contactTags = (() => { try { return JSON.parse(contact.tags || '[]'); } catch { return []; } })();
+                        const hasMatchingTag = conds.tags.some(t => contactTags.includes(t));
+                        if (!hasMatchingTag) {
+                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact missing required tags`);
+                            continue;
+                        }
+                    }
+                } catch (parseErr) {
+                    console.warn(`⚠️ [Automation] Failed to parse conditions for "${automation.name}":`, parseErr.message);
+                }
+            }
+
             // Parse actions from JSON or use legacy single action
             let actionsToExecute = [];
             try {
@@ -1731,6 +1760,35 @@ export const executeRetellAutomation = async (workspaceId, callRecord) => {
 
         for (const automation of automations) {
             console.log(`🤖 [AUTOMATION] Processing: ${automation.name} for ${callRecord.callId}`);
+
+            // Smart Segment condition evaluation
+            if (automation.conditions) {
+                try {
+                    const conds = JSON.parse(automation.conditions);
+                    
+                    // Segment check
+                    if (conds.segment && contact?.id) {
+                        const { evaluateContactSegment } = await import('../services/smartSegment.service.js');
+                        const matches = await evaluateContactSegment(contact.id, conds.segment, workspaceId);
+                        if (!matches) {
+                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact not in segment ${conds.segment}`);
+                            continue;
+                        }
+                    }
+                    
+                    // Tag check
+                    if (conds.tags?.length && contact) {
+                        const contactTags = (() => { try { return JSON.parse(contact.tags || '[]'); } catch { return []; } })();
+                        const hasMatchingTag = conds.tags.some(t => contactTags.includes(t));
+                        if (!hasMatchingTag) {
+                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact missing required tags`);
+                            continue;
+                        }
+                    }
+                } catch (parseErr) {
+                    console.warn(`⚠️ [Automation] Failed to parse conditions for "${automation.name}":`, parseErr.message);
+                }
+            }
 
             // Parse actions from JSON or use legacy single action
             let actionsToExecute = [];
@@ -2010,6 +2068,35 @@ export const executeWebFormAutomation = async (workspaceId, contact, formData = 
 
         for (const automation of automations) {
             console.log(`🤖 [AUTOMATION] Processing: ${automation.name}`);
+
+            // Smart Segment condition evaluation
+            if (automation.conditions) {
+                try {
+                    const conds = JSON.parse(automation.conditions);
+                    
+                    // Segment check
+                    if (conds.segment && contact?.id) {
+                        const { evaluateContactSegment } = await import('../services/smartSegment.service.js');
+                        const matches = await evaluateContactSegment(contact.id, conds.segment, workspaceId);
+                        if (!matches) {
+                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact not in segment ${conds.segment}`);
+                            continue;
+                        }
+                    }
+                    
+                    // Tag check
+                    if (conds.tags?.length && contact) {
+                        const contactTags = (() => { try { return JSON.parse(contact.tags || '[]'); } catch { return []; } })();
+                        const hasMatchingTag = conds.tags.some(t => contactTags.includes(t));
+                        if (!hasMatchingTag) {
+                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact missing required tags`);
+                            continue;
+                        }
+                    }
+                } catch (parseErr) {
+                    console.warn(`⚠️ [Automation] Failed to parse conditions for "${automation.name}":`, parseErr.message);
+                }
+            }
 
             // Parse actions from JSON or use legacy single action
             let actionsToExecute = [];

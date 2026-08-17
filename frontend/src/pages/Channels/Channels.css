@@ -1923,3 +1923,15 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ========== Telsam PBX ========== */
+.quick-add-btn.telsam {
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: white;
+    border-color: #0284c7;
+}
+.quick-add-btn.telsam:hover {
+    background: linear-gradient(135deg, #0369a1, #075985);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);
+}
