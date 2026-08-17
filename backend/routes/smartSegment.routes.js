@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT } from '../middleware/auth.js';
-import { requireWorkspaceAccess } from '../middleware/workspaceAccess.js';
+import { requireWorkspaceAccess } from '../middleware/auth.js';
 import { getSegmentList, getSegmentGroups, getSegmentCount, buildSegmentWhere } from '../services/smartSegment.service.js';
 import prisma from '../lib/prisma.js';
 
