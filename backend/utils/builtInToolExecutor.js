@@ -568,7 +568,7 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                 // Look for location in knowledge base or workspace settings
                 const workspace = await prisma.workspace.findUnique({
                     where: { id: workspaceId },
-                    select: { settings: true, name: true }
+                    select: { name: true }
                 });
 
                 const settings = workspace?.settings ? (typeof workspace.settings === 'string' ? JSON.parse(workspace.settings) : workspace.settings) : {};

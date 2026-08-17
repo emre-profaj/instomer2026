@@ -32,7 +32,6 @@ import authRoutes from './routes/auth.routes.js';
 import workspaceRoutes from './routes/workspace.routes.js';
 import facebookRoutes from './routes/facebook.routes.js';
 import conversationRoutes from './routes/conversation.routes.js';
-import googleContactsRoutes from './routes/google-contacts.routes.js';
 import bulkImportRoutes from './routes/bulk-import.routes.js';
 import agentRoutes from './routes/agent.routes.js';
 import netgsmRoutes from './routes/netgsm.routes.js';
