@@ -214,7 +214,8 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
     );
 
     // 11. Disao CRM — Sıcak Fırsat tetikleyicisi
-    if (newStage?.name === 'Sıcak Fırsat') {
+    const stageNameLower = (newStage?.name || '').toLowerCase().replace(/ı/g, 'i').replace(/I/g, 'i');
+    if (stageNameLower.includes('sicak firsat') || stageNameLower.includes('sıcak fırsat')) {
       try {
         const { default: disaoCrmService } = await import('./disaoCrm.service.js');
         const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { disaoCrmEnabled: true } });

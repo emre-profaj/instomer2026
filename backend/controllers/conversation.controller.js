@@ -2992,27 +2992,23 @@ export const updateFunnel = async (req, res) => {
                         });
                         console.log(`✅ [StatusSync] Contact ${existing.contactId} status updated to ${newStatus} (Stage: ${stageName})`);
 
-                        // --- Disao CRM Integration ---
-                        if (stageName === 'Sıcak Fırsat') {
+                        const cStageNameLower = (stageName || '').toLowerCase().replace(/ı/g, 'i').replace(/I/g, 'i');
+                        if (cStageNameLower.includes('sicak firsat') || cStageNameLower.includes('sıcak fırsat')) {
                             try {
                                 const contactData = await prisma.contact.findUnique({
                                     where: { id: existing.contactId },
-                                    select: { name: true, phone: true, email: true }
+                                    select: { id: true, name: true, phone: true, email: true }
                                 });
                                 
                                 if (contactData && contactData.phone) {
-                                    console.log(`🚀 [DisaoService] Stage changed to Sıcak Fırsat. Triggering Disao CRM for contact ${contactData.name}`);
-                                    const { disaoService } = await import('../services/disao.service.js');
-                                    await disaoService.addCustomer(workspaceId, {
-                                        fullName: contactData.name,
-                                        phoneNumber: contactData.phone,
-                                        mail: contactData.email
-                                    });
+                                    console.log(`🚀 [DisaoCRM] Stage changed to Sıcak Fırsat. Triggering Disao CRM for contact ${contactData.name}`);
+                                    const { default: disaoCrmService } = await import('../services/disaoCrm.service.js');
+                                    await disaoCrmService.sendCustomer(workspaceId, contactData, 'HOT_OPPORTUNITY');
                                 } else {
-                                    console.log(`⚠️ [DisaoService] Stage changed to Sıcak Fırsat but contact ${existing.contactId} has NO phone number in the database. Disao requires a phone number.`);
+                                    console.log(`⚠️ [DisaoCRM] Stage changed to Sıcak Fırsat but contact ${existing.contactId} has NO phone number in the database. Disao requires a phone number.`);
                                 }
                             } catch (disaoErr) {
-                                console.error('❌ [DisaoService] Failed to send Sıcak Fırsat to Disao CRM:', disaoErr);
+                                console.error('❌ [DisaoCRM] Failed to send Sıcak Fırsat to Disao CRM:', disaoErr);
                             }
                         }
                         // -----------------------------

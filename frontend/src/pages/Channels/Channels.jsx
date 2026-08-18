@@ -180,8 +180,14 @@ const Channels = () => {
                 setDisaoCrmEnabled(wsRes.workspace.disaoCrmEnabled || false);
                 if (wsRes.workspace.disaoCrmSettings) {
                     try {
-                        const settings = typeof wsRes.workspace.disaoCrmSettings === 'string' ? JSON.parse(wsRes.workspace.disaoCrmSettings) : wsRes.workspace.disaoCrmSettings;
-                        setDisaoConnection({ email: settings.email });
+                        let parsedSettings = wsRes.workspace.disaoCrmSettings;
+                        if (typeof parsedSettings === 'string') {
+                            parsedSettings = JSON.parse(parsedSettings);
+                        }
+                        if (typeof parsedSettings === 'string') {
+                            parsedSettings = JSON.parse(parsedSettings);
+                        }
+                        setDisaoConnection(parsedSettings);
                     } catch (e) {
                         console.error('Error parsing disao settings', e);
                     }
@@ -859,7 +865,7 @@ const Channels = () => {
         }
 
         // Disao CRM
-        if (disaoConnection) {
+        if (disaoConnection || disaoCrmEnabled) {
             channels.push({
                 id: 'disao-crm',
                 type: 'disao-crm',
@@ -868,8 +874,8 @@ const Channels = () => {
                 color: '#6366f1',
                 bgColor: '#eef2ff',
                 name: 'Disao CRM',
-                subtitle: disaoConnection.email || 'Bağlı',
-                data: disaoConnection,
+                subtitle: disaoConnection?.username || disaoConnection?.email || 'Bağlı',
+                data: disaoConnection || {},
                 hasRouting: false,
                 hasChatBot: false
             });
@@ -1741,179 +1747,6 @@ const Channels = () => {
                 </div>
             )}
 
-            {/* Disao CRM Modal */}
-            {showDisaoModal && (
-                <div className="modal-overlay" onClick={() => setShowDisaoModal(false)}>
-                    <div className="modal-content disao-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2><Zap size={20} /> Disao CRM Entegrasyonu</h2>
-                            <button className="modal-close" onClick={() => setShowDisaoModal(false)}><X size={20} /></button>
-                        </div>
-
-                        <div className="modal-body">
-                            <p className="modal-desc">
-                                Disao CRM entegrasyonunu aktif ederek Facebook Lead'leri ve Sıcak Fırsat aşamasındaki kişileri otomatik olarak Disao CRM'e gönderebilirsiniz.
-                            </p>
-
-                            {disaoConnection && (
-                                <div className="disao-status-card connected">
-                                    <CheckCircle size={18} />
-                                    <span>Disao CRM Bağlı — {disaoConnection.user?.username || disaoConnection.email || ''}</span>
-                                    <button className="btn-sm danger" onClick={async () => {
-                                        try {
-                                            const API = import.meta.env.VITE_API_URL;
-                                            await fetch(`${API}/disao-crm/${currentWorkspace.id}/settings`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                                                body: JSON.stringify({ disaoCrmEnabled: false, disaoCrmSettings: null })
-                                            });
-                                            setDisaoConnection(null);
-                                            setDisaoCrmEnabled(false);
-                                            setDisaoSuccess('Disao CRM bağlantısı kaldırıldı');
-                                        } catch (e) {
-                                            setDisaoError('Bağlantı kaldırılamadı');
-                                        }
-                                    }}>
-                                        <Unplug size={14} /> Bağlantıyı Kes
-                                    </button>
-                                </div>
-                            )}
-
-                            {disaoError && <div className="alert error"><AlertCircle size={16} /> {disaoError}</div>}
-                            {disaoSuccess && <div className="alert success"><CheckCircle size={16} /> {disaoSuccess}</div>}
-
-
-                            <div className="disao-form">
-                                    <div className="form-group">
-                                        <label>Kullanıcı Adı (E-posta)</label>
-                                        <input
-                                            type="text"
-                                            placeholder="Disao CRM kullanıcı adınız"
-                                            value={disaoForm.email}
-                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, email: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Şifre</label>
-                                        <input
-                                            type="password"
-                                            placeholder="Disao CRM şifreniz"
-                                            value={disaoForm.password}
-                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, password: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Proje ID</label>
-                                        <input
-                                            type="number"
-                                            placeholder="Disao proje ID'si (zorunlu)"
-                                            value={disaoForm.idProject}
-                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, idProject: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Tavsiye Kaynağı ID <span className="optional">(Opsiyonel)</span></label>
-                                        <input
-                                            type="number"
-                                            placeholder="idAdvice değeri"
-                                            value={disaoForm.idAdvice}
-                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, idAdvice: e.target.value }))}
-                                        />
-                                    </div>
-
-                                    <div className="disao-btn-row">
-                                        <button
-                                            className="btn-test"
-                                            disabled={disaoTesting || !disaoForm.email || !disaoForm.password}
-                                            onClick={async () => {
-                                                setDisaoTesting(true);
-                                                setDisaoError('');
-                                                setDisaoSuccess('');
-                                                try {
-                                                    const API = import.meta.env.VITE_API_URL;
-                                                    const res = await fetch(`${API}/disao-crm/test-connection`, {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                                                        body: JSON.stringify({ email: disaoForm.email, password: disaoForm.password })
-                                                    });
-                                                    const data = await res.json();
-                                                    if (data.success) {
-                                                        setDisaoSuccess('✅ Bağlantı başarılı! Kullanıcı: ' + (data.user?.username || disaoForm.email));
-                                                    } else {
-                                                        setDisaoError(data.message || 'Bağlantı başarısız');
-                                                    }
-                                                } catch (e) {
-                                                    setDisaoError('Bağlantı testi sırasında hata oluştu');
-                                                } finally {
-                                                    setDisaoTesting(false);
-                                                }
-                                            }}
-                                        >
-                                            {disaoTesting ? <><Loader2 size={16} className="spin" /> Test Ediliyor...</> : <><Shield size={16} /> Bağlantıyı Test Et</>}
-                                        </button>
-
-                                        <button
-                                            className="btn-connect"
-                                            disabled={disaoConnecting || !disaoForm.email || !disaoForm.password || !disaoForm.idProject}
-                                            onClick={async () => {
-                                                setDisaoConnecting(true);
-                                                setDisaoError('');
-                                                setDisaoSuccess('');
-                                                try {
-                                                    const API = import.meta.env.VITE_API_URL;
-                                                    // First test connection
-                                                    const testRes = await fetch(`${API}/disao-crm/test-connection`, {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                                                        body: JSON.stringify({ email: disaoForm.email, password: disaoForm.password })
-                                                    });
-                                                    const testData = await testRes.json();
-                                                    if (!testData.success) {
-                                                        setDisaoError(testData.message || 'Kimlik doğrulama başarısız');
-                                                        return;
-                                                    }
-
-                                                    // Save settings to workspace
-                                                    const settings = {
-                                                        email: disaoForm.email,
-                                                        password: disaoForm.password,
-                                                        idProject: parseInt(disaoForm.idProject) || null,
-                                                        idAdvice: disaoForm.idAdvice ? parseInt(disaoForm.idAdvice) : null,
-                                                        disaoWorkspaceId: '0c128f78-d034-4704-af57-18bd9215affe'
-                                                    };
-
-                                                    const saveRes = await fetch(`${API}/disao-crm/${currentWorkspace.id}/settings`, {
-                                                        method: 'PUT',
-                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                                                        body: JSON.stringify({
-                                                            disaoCrmEnabled: true,
-                                                            disaoCrmSettings: JSON.stringify(settings)
-                                                        })
-                                                    });
-
-                                                    const saveData = await saveRes.json();
-                                                    if (saveData.success || saveRes.ok) {
-                                                        setDisaoSuccess('✅ Disao CRM başarıyla bağlandı!');
-                                                        setDisaoConnection({ email: disaoForm.email, user: testData.user });
-                                                        setDisaoCrmEnabled(true);
-                                                    } else {
-                                                        setDisaoError(saveData.error || 'Ayarlar kaydedilemedi');
-                                                    }
-                                                } catch (e) {
-                                                    setDisaoError('Bağlantı sırasında hata oluştu: ' + e.message);
-                                                } finally {
-                                                    setDisaoConnecting(false);
-                                                }
-                                            }}
-                                        >
-                                            {disaoConnecting ? <><Loader2 size={16} className="spin" /> Bağlanıyor...</> : <><Zap size={16} /> Kaydet & Bağlan</>}
-                                        </button>
-                                    </div>
-                                </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Telsam PBX Modal */}
             {showTelsamModal && (

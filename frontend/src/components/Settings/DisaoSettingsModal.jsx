@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, Database, Shield } from 'lucide-react';
+import { X, CheckCircle, Database, Shield, Unplug } from 'lucide-react';
 import { workspaceAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -9,6 +9,7 @@ const DisaoSettingsModal = ({ isOpen, onClose, onSaved }) => {
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
     const [enabled, setEnabled] = useState(false);
+    const [wasEnabled, setWasEnabled] = useState(false);
     const [settings, setSettings] = useState({
         username: '',
         password: '',
@@ -29,11 +30,17 @@ const DisaoSettingsModal = ({ isOpen, onClose, onSaved }) => {
         try {
             const res = await workspaceAPI.getById(currentWorkspace.id);
             if (res.data) {
-                setEnabled(res.data.disaoCrmEnabled || false);
-                if (res.data.disaoCrmSettings) {
-                    const parsed = typeof res.data.disaoCrmSettings === 'string' 
-                        ? JSON.parse(res.data.disaoCrmSettings)
-                        : res.data.disaoCrmSettings;
+                const ws = res.data.workspace || res.data;
+                setEnabled(ws.disaoCrmEnabled || false);
+                setWasEnabled(ws.disaoCrmEnabled || false);
+                if (ws.disaoCrmSettings) {
+                    let parsed = ws.disaoCrmSettings;
+                    if (typeof parsed === 'string') {
+                        parsed = JSON.parse(parsed);
+                    }
+                    if (typeof parsed === 'string') {
+                        parsed = JSON.parse(parsed);
+                    }
                     setSettings({
                         ...settings,
                         ...parsed
@@ -44,6 +51,25 @@ const DisaoSettingsModal = ({ isOpen, onClose, onSaved }) => {
             console.error('Error fetching Disao CRM settings:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDisconnect = async () => {
+        if (!window.confirm('Disao CRM bağlantısını kesmek istediğinize emin misiniz? Tüm ayarlar silinecektir.')) return;
+        setSaving(true);
+        try {
+            await workspaceAPI.updateDisaoCrmSettings(currentWorkspace.id, {
+                enabled: false,
+                settings: null
+            });
+            if (onSaved) onSaved();
+            onClose();
+            window.location.reload();
+        } catch (err) {
+            console.error('Error disconnecting:', err);
+            alert('Bağlantı kesilirken bir hata oluştu.');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -61,7 +87,8 @@ const DisaoSettingsModal = ({ isOpen, onClose, onSaved }) => {
             window.location.reload();
         } catch (err) {
             console.error('Error saving Disao CRM settings:', err);
-            alert('Ayarlar kaydedilirken bir hata oluştu.');
+            const errorMessage = err.response?.data?.details || err.response?.data?.error || err.message || 'Bilinmeyen hata';
+            alert(`Ayarlar kaydedilirken bir hata oluştu: ${errorMessage}`);
         } finally {
             setSaving(false);
         }
@@ -187,13 +214,18 @@ const DisaoSettingsModal = ({ isOpen, onClose, onSaved }) => {
                         
                         <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <div>
+                                {wasEnabled && (
+                                    <button type="button" className="btn btn-outline-danger" onClick={handleDisconnect} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626', borderColor: '#dc2626' }}>
+                                        <Unplug size={16} /> Bağlantıyı Kes
+                                    </button>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
                                 {enabled && (
                                     <button type="button" className="btn btn-outline-primary" onClick={handleTest} disabled={testing || saving} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <Shield size={16} /> {testing ? 'Sınanıyor...' : 'Bağlantıyı Sına'}
                                     </button>
                                 )}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
                                 <button type="button" className="btn btn-secondary" onClick={onClose}>İptal</button>
                                 <button type="submit" className="btn btn-primary" disabled={saving || testing} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {saving ? 'Kaydediliyor...' : <><CheckCircle size={16} /> Kaydet</>}

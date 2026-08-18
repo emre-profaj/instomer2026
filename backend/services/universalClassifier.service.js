@@ -218,6 +218,12 @@ SADECE JSON döndür, başka bir şey yazma:
 
         const parsed = JSON.parse(responseText);
 
+        // Kategori ID doğrulaması (LLM halüsinasyonlarını engellemek için)
+        if (parsed.topicCategoryId && !categoryMap.has(parsed.topicCategoryId)) {
+            console.log(`⚠️ [Classifier] Geçersiz/Halüsinasyon topicCategoryId: ${parsed.topicCategoryId}, null yapıldı`);
+            parsed.topicCategoryId = null;
+        }
+
         // Lead kalifikasyonu: İsim + Telefon + Konu
         const ed = parsed.extractedData || {};
         const hasName = ed.name && ed.name !== 'null';

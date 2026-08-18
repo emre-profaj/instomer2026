@@ -37,8 +37,8 @@ export const authenticateJWT = (req, res, next) => {
             console.error('Middleware database error:', dbError);
             return res.status(500).json({ error: 'Internal server error' });
         }
-    };
-
+    })(req, res, next);
+};
 export const authenticate = authenticateJWT;
 
 export const requireRole = (...roles) => {

@@ -933,7 +933,7 @@ export const updateDisaoCrmSettings = async (req, res) => {
             where: { id: workspaceId },
             data: {
                 disaoCrmEnabled: Boolean(enabled),
-                disaoCrmSettings: settings || null
+                disaoCrmSettings: settings ? JSON.stringify(settings) : null
             },
             select: { id: true, name: true, disaoCrmEnabled: true, disaoCrmSettings: true }
         });
@@ -941,22 +941,29 @@ export const updateDisaoCrmSettings = async (req, res) => {
         res.json({ success: true, workspace });
     } catch (error) {
         console.error('updateDisaoCrmSettings error:', error);
-        res.status(500).json({ error: 'Disao CRM ayarları güncellenemedi.' });
+        res.status(500).json({ error: 'Disao CRM ayarları güncellenemedi.', details: error.message || String(error) });
     }
 };
 
 export const testDisaoCrmConnection = async (req, res) => {
     try {
         const { settings } = req.body;
-        const result = await disaoService.testConnection(settings);
+        const { default: disaoCrmService } = await import('../services/disaoCrm.service.js');
+        const loginEmail = settings?.username || settings?.email;
         
-        if (result.success) {
+        if (!loginEmail || !settings?.password) {
+             return res.json({ success: false, error: 'Eksik kullanıcı adı veya şifre' });
+        }
+        
+        const loginResult = await disaoCrmService.login(loginEmail, settings.password);
+        
+        if (loginResult && loginResult.accessToken) {
             res.json({ success: true, message: 'Bağlantı başarılı!' });
         } else {
-            res.json({ success: false, error: result.error });
+            res.json({ success: false, error: 'Bilinmeyen hata (Token alınamadı)' });
         }
     } catch (error) {
         console.error('testDisaoCrmConnection error:', error);
-        res.status(500).json({ error: 'Bağlantı test edilemedi.' });
+        res.status(500).json({ error: 'Bağlantı test edilemedi.', details: error.message });
     }
 };
