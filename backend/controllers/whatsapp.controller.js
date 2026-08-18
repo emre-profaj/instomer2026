@@ -835,6 +835,11 @@ export const webhookHandler = async (req, res) => {
                 const from = message.from; // sender phone number
                 const wamid = message.id;
 
+                if (!from) {
+                    console.log('⚠️ [WhatsApp] Message missing "from" field, skipping');
+                    return res.sendStatus(200);
+                }
+
                 // 0. Acquire processing lock to prevent duplicate processing
                 if (!acquireMessageLock(wamid)) {
                     console.log(`🔒 [WhatsApp] Message ${wamid} already being processed, skipping`);

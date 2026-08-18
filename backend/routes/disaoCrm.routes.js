@@ -55,7 +55,7 @@ router.put('/:workspaceId/settings', authenticateJWT, async (req, res) => {
 
     const updateData = {};
     if (disaoCrmEnabled !== undefined) updateData.disaoCrmEnabled = disaoCrmEnabled;
-    if (disaoCrmSettings !== undefined) updateData.disaoCrmSettings = disaoCrmSettings;
+    if (disaoCrmSettings !== undefined) updateData.disaoCrmSettings = disaoCrmSettings ? JSON.stringify(disaoCrmSettings) : null;
 
     const workspace = await prisma.workspace.update({
       where: { id: workspaceId },
@@ -102,13 +102,15 @@ router.get('/:workspaceId/settings', authenticateJWT, async (req, res) => {
     let settings = null;
     if (workspace.disaoCrmSettings) {
       try {
-        settings = JSON.parse(workspace.disaoCrmSettings);
-        // Şifreyi maskele
-        if (settings.password) {
+        settings = typeof workspace.disaoCrmSettings === 'string'
+          ? JSON.parse(workspace.disaoCrmSettings)
+          : workspace.disaoCrmSettings;
+        
+        if (settings && settings.password) {
           settings.password = '••••••••';
         }
       } catch (e) {
-        settings = null;
+        settings = workspace.disaoCrmSettings;
       }
     }
 

@@ -46,9 +46,13 @@ class DisaoCrmService {
    */
   async login(email, password) {
     try {
+      const emailTrimmed = email ? email.trim() : '';
+      const passwordTrimmed = password ? password.trim() : '';
+      
       const response = await axios.post(`${DISAO_BASE_URL}/login`, {
-        email,
-        password
+        email: emailTrimmed,
+        username: emailTrimmed,
+        password: passwordTrimmed
       }, {
         headers: { 'Content-Type': 'application/json', 'lang': '2' },
         timeout: 15000
@@ -56,24 +60,20 @@ class DisaoCrmService {
 
       const data = response.data;
 
-      if (!data.token || !data.result) {
-        throw new Error(data.resultMessage || 'Login başarısız');
+      const tokenStr = data.accessToken || data.token || data.access_token || (data.data && data.data.token);
+      if (!tokenStr) {
+        throw new Error(data.message || data.resultMessage || data.error || 'Login başarısız: Token alınamadı');
       }
 
       return {
-        accessToken: data.token,
-        tokenType: 'Bearer',
-        expiresIn: 3600,
+        accessToken: tokenStr,
+        tokenType: data.tokenType || 'Bearer',
+        expiresIn: data.expiresIn || 3600,
         user: {
-          id: data.idUser,
-          username: data.name || data.email,
-          name: data.name,
-          surname: data.surname,
-          email: data.email,
-          idBuilder: data.idBuilder
+          id: data.user?.id || data.idUser || 0,
+          username: data.user?.username || data.name || email
         }
       };
-
     } catch (error) {
       if (error.response) {
         const status = error.response.status;
@@ -96,11 +96,12 @@ class DisaoCrmService {
 
     // Yeni token al
     const settings = await this.getSettings(workspaceId);
-    if (!settings?.email || !settings?.password) {
-      throw new Error('Disao CRM ayarları eksik (email/password)');
+    const loginEmail = settings?.username || settings?.email;
+    if (!loginEmail || !settings?.password) {
+      throw new Error('Disao CRM ayarları eksik (username/password)');
     }
 
-    const loginResult = await this.login(settings.email, settings.password);
+    const loginResult = await this.login(loginEmail, settings.password);
 
     // Cache'e kaydet (expire süresi - 60 saniye güvenlik payı)
     const tokenData = {
@@ -135,43 +136,49 @@ class DisaoCrmService {
     let phoneCode = '+90'; // varsayılan
 
     // Telefon kodunu parse et
-    if (rawPhone.startsWith('+')) {
-      // +90 5XX... formatı
-      if (rawPhone.startsWith('+90')) {
-        phoneCode = '+90';
-        rawPhone = rawPhone.substring(3);
-      } else if (rawPhone.startsWith('+1')) {
-        phoneCode = '+1';
-        rawPhone = rawPhone.substring(2);
-      } else {
-        // Diğer ülke kodları (+XX veya +XXX)
-        const match = rawPhone.match(/^\+(\d{1,3})/);
-        if (match) {
-          phoneCode = '+' + match[1];
-          rawPhone = rawPhone.substring(match[0].length);
-        }
+    if (rawPhone.startsWith('+90')) {
+      phoneCode = '+90';
+      rawPhone = rawPhone.substring(3);
+    } else if (rawPhone.startsWith('+1')) {
+      phoneCode = '+1';
+      rawPhone = rawPhone.substring(2);
+    } else if (rawPhone.startsWith('+')) {
+      const match = rawPhone.match(/^\+(\d{1,3})/);
+      if (match) {
+        phoneCode = '+' + match[1];
+        rawPhone = rawPhone.substring(match[0].length);
       }
+    } else if (rawPhone.startsWith('90') && rawPhone.length >= 12) {
+      phoneCode = '+90';
+      rawPhone = rawPhone.substring(2);
+    } else if (rawPhone.startsWith('0')) {
+      phoneCode = '+90';
+      rawPhone = rawPhone.substring(1);
     }
 
     // Sadece rakamları al
     const phoneNumber = rawPhone.replace(/[^0-9]/g, '');
 
-    return {
-      name: firstName,
-      surname: lastName,
-      phoneNumber,
-      mail: contact.email || '',
-      job: '',
-      idAdvice: settings.idAdvice ? parseInt(settings.idAdvice) : null,
-      note: `Kaynak: Instomer | ID: ${contact.id}`,
+    const payload = {
+      name: firstName || 'Müşteri',
+      firstName: firstName || 'Müşteri',
+      surname: lastName || 'Yeni',
+      lastName: lastName || 'Yeni',
+      phoneNumber: phoneNumber || '',
+      mail: contact.email || `${phoneNumber || 'musteri'}@bilinmeyen.com`,
+      email: contact.email || `${phoneNumber || 'musteri'}@bilinmeyen.com`,
       phoneCode,
-      nationality: 1,
-      recordType: 2,
-      idProject: settings.idProject ? parseInt(settings.idProject) : null,
-      housingUnitType: '',
-      customerStatus: 1,
-      idUser: userId || null
+      nationality: parseInt(settings.nationality) || 1,
+      recordType: parseInt(settings.recordType) || 2,
+      idProject: parseInt(settings.projectId || settings.idProject) || 131,
+      idUser: parseInt(userId) || parseInt(settings.userId) || 0
     };
+
+    const adviceId = settings.idAdvice || settings.adviceId;
+    if (adviceId) payload.idAdvice = parseInt(adviceId);
+    payload.note = `Kaynak: Instomer | ID: ${contact.id}`;
+
+    return payload;
   }
 
   /**
@@ -257,6 +264,36 @@ class DisaoCrmService {
       }
 
       console.error(`[DisaoCRM] ❌ Müşteri gönderilemedi (${status || 'N/A'}): ${message}`);
+      
+      // Hata durumunda da UI'da göstermek için Activity Log oluştur
+      try {
+        const conversation = await prisma.conversation.findFirst({
+          where: { contactId: contact.id, workspaceId },
+          orderBy: { updatedAt: 'desc' }
+        });
+
+        if (conversation) {
+          await prisma.conversationEvent.create({
+            data: {
+              conversationId: conversation.id,
+              contactId: contact.id,
+              workspaceId,
+              eventType: 'DISAO_CRM_SYNC',
+              title: 'Disao CRM Gönderim Hatası',
+              details: JSON.stringify({
+                error: message,
+                status: status || 'UNKNOWN',
+                source,
+                sentAt: new Date().toISOString()
+              }),
+              actorType: 'SYSTEM'
+            }
+          });
+        }
+      } catch (logErr) {
+        console.error('[DisaoCRM] Error log failed:', logErr);
+      }
+
       throw error;
     }
   }
