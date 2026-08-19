@@ -1418,3 +1418,90 @@ export const webhookHandler = async (req, res) => {
         res.sendStatus(500);
     }
 };
+
+// ═══════════════════════════════════════════════════════════════
+// Reusable helper: send a WhatsApp text message via Graph API
+// Used by: conversationRouting.service.js (Bot Scheduler),
+//          flow.controller.js (Flow SEND_MESSAGE step)
+// ═══════════════════════════════════════════════════════════════
+export const sendWhatsAppMessage = async (workspaceIdOrWaNumber, recipientPhone, messageText, conversationId = null) => {
+    try {
+        let waNumber;
+
+        // Support two calling conventions:
+        //   1) sendWhatsAppMessage(workspaceId: string, phone, text)  — flow.controller.js
+        //   2) sendWhatsAppMessage(waNumberObj: object, phone, text, convId)  — conversationRouting.service.js
+        if (typeof workspaceIdOrWaNumber === 'string') {
+            // Caller passed a workspaceId — look up the connected WA number
+            waNumber = await prisma.whatsappPhoneNumber.findFirst({
+                where: { workspaceId: workspaceIdOrWaNumber, isConnected: true }
+            });
+            if (!waNumber) {
+                console.error(`❌ [sendWhatsAppMessage] No connected WhatsApp number for workspace ${workspaceIdOrWaNumber}`);
+                return null;
+            }
+        } else if (workspaceIdOrWaNumber && typeof workspaceIdOrWaNumber === 'object') {
+            // Caller passed the waNumber object directly
+            waNumber = workspaceIdOrWaNumber;
+        } else {
+            console.error('❌ [sendWhatsAppMessage] Invalid first argument');
+            return null;
+        }
+
+        if (!recipientPhone) {
+            console.error('❌ [sendWhatsAppMessage] No recipient phone provided');
+            return null;
+        }
+
+        // Normalize the phone number (remove spaces, dashes, leading zeros, etc.)
+        const normalizedPhone = normalizePhone(recipientPhone);
+
+        const response = await axios.post(
+            `https://graph.facebook.com/${GRAPH_API_VERSION}/${waNumber.phoneNumberId}/messages`,
+            {
+                messaging_product: 'whatsapp',
+                to: normalizedPhone,
+                text: { body: messageText }
+            },
+            {
+                headers: { Authorization: `Bearer ${waNumber.accessToken}` }
+            }
+        );
+
+        const waMsgId = response.data?.messages?.[0]?.id;
+
+        // If a conversationId was provided, save the message to DB and emit socket event
+        if (conversationId) {
+            const botMessage = await prisma.message.create({
+                data: {
+                    content: messageText,
+                    conversationId,
+                    isFromContact: false,
+                    messageType: 'WHATSAPP',
+                    senderId: null,
+                    whatsappMessageId: waMsgId || null,
+                    status: 'SENT'
+                }
+            });
+
+            // Emit socket event
+            try {
+                emitToWorkspace(waNumber.workspaceId, 'new_message', {
+                    workspaceId: waNumber.workspaceId,
+                    conversationId,
+                    message: botMessage,
+                    channel: 'WHATSAPP'
+                });
+            } catch (socketErr) {
+                console.error('⚠️ [sendWhatsAppMessage] Socket emit error:', socketErr.message);
+            }
+
+            return botMessage;
+        }
+
+        return { success: true, wamid: waMsgId };
+    } catch (error) {
+        console.error('❌ [sendWhatsAppMessage] Error:', error.response?.data || error.message);
+        return null;
+    }
+};

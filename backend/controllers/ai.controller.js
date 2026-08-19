@@ -1455,9 +1455,10 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             if (conversation?.teamIds) {
                 try {
                     const teamIds = JSON.parse(conversation.teamIds);
-                    if (teamIds.length > 0) {
+                    const validTeamIds = teamIds.filter(id => id != null && id !== '');
+                    if (validTeamIds.length > 0) {
                         const team = await prisma.team.findFirst({
-                            where: { id: teamIds[0] },
+                            where: { id: validTeamIds[0] },
                             include: {
                                 assignedBot: { include: { documents: true } },
                                 members: {
