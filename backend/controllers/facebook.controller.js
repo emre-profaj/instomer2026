@@ -927,17 +927,28 @@ async function processWebhookAsync(body) {
                                     console.log(`✅ Created conversation for comment thread`);
                                 }
 
-                                // Save message
-                                const newMessage = await prisma.message.create({
-                                    data: {
-                                        conversationId: conversation.id,
-                                        content: processedCommentText,
-                                        isFromContact: true,
-                                        messageType: 'TEXT',
-                                        facebookMessageId: commentId,
-                                        createdAt: new Date()
+                                // Save message (handle duplicate webhook from Facebook)
+                                let newMessage;
+                                try {
+                                    newMessage = await prisma.message.create({
+                                        data: {
+                                            conversationId: conversation.id,
+                                            content: processedCommentText,
+                                            isFromContact: true,
+                                            messageType: 'TEXT',
+                                            facebookMessageId: commentId,
+                                            createdAt: new Date()
+                                        }
+                                    });
+                                } catch (dbError) {
+                                    if (dbError.code === 'P2002') {
+                                        console.log(`ℹ️ [FB Comment] Duplicate webhook, comment already saved: ${commentId}`);
+                                        newMessage = await prisma.message.findUnique({ where: { facebookMessageId: commentId } });
+                                        if (!newMessage) return;
+                                    } else {
+                                        throw dbError;
                                     }
-                                });
+                                }
 
                                 // Madde 0: Pipeline post-processing
                                 try {
