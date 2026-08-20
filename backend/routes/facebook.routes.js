@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import {
     connectPage,
     getPages,
+    getPageForms,
     getAvailablePages,
     webhookVerify,
     webhookHandler,
@@ -64,6 +65,9 @@ router.get('/pages/available', getAvailablePages);
 
 // Get connected pages for workspace
 router.get('/pages/:workspaceId', requireWorkspaceAccess, getPages);
+
+// Get lead forms for workspace (from DB)
+router.get('/pages/:workspaceId/forms', requireWorkspaceAccess, getPageForms);
 
 // Disconnect page
 router.delete('/pages/:pageId', disconnectPage);

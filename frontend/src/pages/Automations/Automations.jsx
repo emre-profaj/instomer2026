@@ -713,6 +713,65 @@ const Automations = () => {
                             </table>
                         </div>
 
+                        {/* Otomatik Görev Kuralları */}
+                        <div style={{ marginTop: '32px' }}>
+                            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                ⚡ Otomatik Görev Kuralları
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {/* SALES_PHONE_CALL Toggle */}
+                                <div style={{
+                                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px',
+                                    padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                }}>
+                                    <div>
+                                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#111827' }}>
+                                            📞 Arama Talebi Algılama
+                                        </div>
+                                        <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: '4px', lineHeight: 1.5 }}>
+                                            Form dolduran, mesajla telefon numarası veren veya "beni arayın" diyen kişiler için
+                                            otomatik arama görevi oluşturur ve sorumlu takıma atar.
+                                        </div>
+                                    </div>
+                                    <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '20px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={getRule('SALES_PHONE_CALL').isActive}
+                                            onChange={() => toggleRule('SALES_PHONE_CALL')}
+                                            disabled={rulesSaving['SALES_PHONE_CALL']}
+                                        />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </div>
+
+                                {/* APPOINTMENT_AUTO_PLAN Toggle */}
+                                <div style={{
+                                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px',
+                                    padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                }}>
+                                    <div>
+                                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#111827' }}>
+                                            📅 Randevu Talebi Algılama
+                                        </div>
+                                        <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: '4px', lineHeight: 1.5 }}>
+                                            Yazışma, AI arama veya formda randevu talebi algılandığında otomatik
+                                            randevu görevi oluşturur ve sorumlu takıma atar. Tarih/saat bilgisi varsa kullanır.
+                                        </div>
+                                    </div>
+                                    <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '20px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={getRule('APPOINTMENT_AUTO_PLAN').isActive}
+                                            onChange={() => toggleRule('APPOINTMENT_AUTO_PLAN')}
+                                            disabled={rulesSaving['APPOINTMENT_AUTO_PLAN']}
+                                        />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
 
                     </div>
                 )}

@@ -364,6 +364,7 @@ export const getConversations = async (req, res) => {
             const acts = activityMap[c.contactId] || { types: [], overdue: false, nextDueDate: null };
             c.hasPlannedCall = acts.types.includes('CALL');
             c.hasPlannedMeeting = acts.types.includes('MEETING') || acts.types.includes('VISIT');
+            c.hasPlannedAppointment = acts.types.includes('APPOINTMENT');
             c.activityOverdue = acts.overdue;
             c.nextActivityDate = acts.nextDueDate;
             return c;

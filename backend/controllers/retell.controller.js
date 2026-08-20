@@ -4,6 +4,8 @@ import { createNotification } from './notification.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { emitToWorkspace } from '../socket.js';
 import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
+import { PDFParse } from 'pdf-parse';
+import mammoth from 'mammoth';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -3352,6 +3354,24 @@ async function handleCallAnalyzed(call) {
                                 }
                             });
                             console.log(`✅ [Retell Transcript] Otomatik ${actType} aktivitesi oluşturuldu`);
+
+                            // Rule engine tetikle — takım ataması ve bildirimler için
+                            if (actType === 'MEETING' || actType === 'VISIT') {
+                                try {
+                                    const { executeAppointmentPlanning } = await import('./rules.controller.js');
+                                    executeAppointmentPlanning(callRecord.workspaceId, callRecord.contactId, 'RETELL_CALL', {
+                                        topic: transcriptResult.rawRequest || 'AI Arama — Randevu Talebi',
+                                        dateTime: dueDate
+                                    }).catch(e => console.error('⚠️ [Retell] Appointment planning error:', e.message));
+                                } catch(e) {}
+                            } else if (actType === 'CALL') {
+                                try {
+                                    const { executeAutoCallPlanning } = await import('./rules.controller.js');
+                                    executeAutoCallPlanning(callRecord.workspaceId, callRecord.contactId, 'RETELL_CALL').catch(e =>
+                                        console.error('⚠️ [Retell] Auto call planning error:', e.message)
+                                    );
+                                } catch(e) {}
+                            }
                         }
                     }
                 }
@@ -4485,5 +4505,231 @@ export const deleteAgent = async (req, res) => {
     } catch (error) {
         console.error('❌ [Agent] deleteAgent error:', error.message);
         res.status(500).json({ error: error.message || 'Agent silinemedi' });
+    }
+};
+
+/**
+ * GET /:workspaceId/knowledge-bases/retell
+ * Retell'deki tüm KB'leri dosyalarıyla listele
+ */
+export const listRetellKnowledgeBases = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const kbList = await client.knowledgeBase.list();
+
+        const kbsWithSources = await Promise.all((kbList || []).map(async (kb) => {
+            try {
+                const detail = await client.knowledgeBase.retrieve(kb.knowledge_base_id);
+                return {
+                    knowledge_base_id: kb.knowledge_base_id,
+                    knowledge_base_name: kb.knowledge_base_name,
+                    created_at: kb.created_at,
+                    sources: detail.knowledge_base_sources || []
+                };
+            } catch {
+                return {
+                    knowledge_base_id: kb.knowledge_base_id,
+                    knowledge_base_name: kb.knowledge_base_name,
+                    created_at: kb.created_at,
+                    sources: []
+                };
+            }
+        }));
+
+        res.json({ knowledgeBases: kbsWithSources });
+    } catch (error) {
+        console.error('❌ [RetellKB] listRetellKnowledgeBases error:', error.message);
+        res.status(500).json({ error: error.message || 'KB listesi alınamadı' });
+    }
+};
+
+/**
+ * POST /:workspaceId/knowledge-bases/retell
+ * Yeni KB oluştur — body: { name }
+ */
+export const createRetellKnowledgeBase = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { name } = req.body;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const kb = await client.knowledgeBase.create({
+            knowledge_base_name: name || `KB — ${new Date().toLocaleDateString('tr-TR')}`
+        });
+        res.json({ success: true, knowledgeBase: kb });
+    } catch (error) {
+        console.error('❌ [RetellKB] createRetellKnowledgeBase error:', error.message);
+        res.status(500).json({ error: error.message || 'KB oluşturulamadı' });
+    }
+};
+
+/**
+ * DELETE /:workspaceId/knowledge-bases/retell/:kbId
+ * KB sil
+ */
+export const deleteRetellKnowledgeBase = async (req, res) => {
+    try {
+        const { workspaceId, kbId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        await client.knowledgeBase.delete(kbId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [RetellKB] deleteRetellKnowledgeBase error:', error.message);
+        res.status(500).json({ error: error.message || 'KB silinemedi' });
+    }
+};
+
+/**
+ * POST /:workspaceId/knowledge-bases/retell/:kbId/sources
+ * KB'ye metin veya URL kaynağı ekle — body: { type, title?, text?, url? }
+ * Retell API multipart/form-data istiyor
+ */
+export const addRetellKBSource = async (req, res) => {
+    try {
+        const { workspaceId, kbId } = req.params;
+        const { type = 'text', title, text, url } = req.body;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const form = new FormData();
+        if (type === 'text') {
+            form.append('knowledge_base_texts', JSON.stringify([{ title: title || 'Metin', text: text || '' }]));
+        } else if (type === 'url') {
+            form.append('knowledge_base_urls', JSON.stringify([url]));
+        }
+
+        const axios = (await import('axios')).default;
+        const response = await axios.post(
+            `https://api.retellai.com/add-knowledge-base-sources/${kbId}`,
+            form,
+            {
+                headers: {
+                    'Authorization': `Bearer ${workspace.retellApiKey}`,
+                    ...form.getHeaders?.() || {}
+                }
+            }
+        );
+        res.json({ success: true, knowledgeBase: response.data });
+    } catch (error) {
+        const respData = error.response?.data;
+        const errMsg = respData?.message || respData?.error || error.message || 'Kaynak eklenemedi';
+        console.error('❌ [RetellKB] addRetellKBSource error:', errMsg, 'data:', JSON.stringify(respData));
+        res.status(error.response?.status || 500).json({ error: errMsg });
+    }
+};
+
+/**
+ * POST /:workspaceId/knowledge-bases/retell/:kbId/upload
+ * KB'ye dosya yükle — Retell API multipart/form-data bekliyor
+ * Desteklenen: .txt .md .csv .pdf .docx .doc
+ */
+export const uploadRetellKBFile = async (req, res) => {
+    try {
+        const { workspaceId, kbId } = req.params;
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: 'Dosya bulunamadı' });
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const originalName = file.originalname || 'file';
+        const ext = originalName.split('.').pop().toLowerCase();
+        const mime = file.mimetype || 'application/octet-stream';
+
+        let textContent = '';
+
+        if (ext === 'pdf' || mime === 'application/pdf') {
+            try {
+                const parser = new PDFParse({ data: file.buffer });
+                const result = await parser.getText();
+                textContent = result.text || '';
+                await parser.destroy();
+                if (!textContent.trim()) return res.status(400).json({ error: 'PDF içeriği boş veya okunamadı' });
+            } catch (e) {
+                return res.status(400).json({ error: `PDF okunamadı: ${e.message}` });
+            }
+        } else if (['docx', 'doc'].includes(ext) || mime.includes('wordprocessingml') || mime.includes('msword')) {
+            try {
+                const result = await mammoth.extractRawText({ buffer: file.buffer });
+                textContent = result.value || '';
+                if (!textContent.trim()) return res.status(400).json({ error: 'DOCX içeriği boş veya okunamadı' });
+            } catch (e) {
+                return res.status(400).json({ error: `DOCX okunamadı: ${e.message}` });
+            }
+        } else {
+            textContent = file.buffer.toString('utf-8');
+            if (!textContent.trim()) return res.status(400).json({ error: 'Dosya içeriği boş' });
+        }
+
+        // Retell API multipart/form-data istiyor (cURL --form ile)
+        const form = new FormData();
+        form.append('knowledge_base_texts', JSON.stringify([{ title: originalName, text: textContent }]));
+
+        const axios = (await import('axios')).default;
+        const response = await axios.post(
+            `https://api.retellai.com/add-knowledge-base-sources/${kbId}`,
+            form,
+            {
+                headers: {
+                    'Authorization': `Bearer ${workspace.retellApiKey}`,
+                    ...form.getHeaders?.() || {}
+                }
+            }
+        );
+
+        console.log(`✅ [RetellKB] Uploaded "${originalName}" to KB ${kbId}`);
+        res.json({ success: true, knowledgeBase: response.data, fileName: originalName });
+    } catch (error) {
+        const respData = error.response?.data;
+        const errMsg = respData?.message || respData?.error || respData?.error_message || error.message || 'Dosya yüklenemedi';
+        console.error('❌ [RetellKB] uploadRetellKBFile error:', errMsg, 'status:', error.response?.status, 'data:', JSON.stringify(respData));
+        res.status(error.response?.status || 500).json({ error: errMsg });
+    }
+};
+
+/**
+ * DELETE /:workspaceId/knowledge-bases/retell/:kbId/sources/:sourceId
+ * KB'den belirli kaynağı sil
+ */
+export const deleteRetellKBSource = async (req, res) => {
+    try {
+        const { workspaceId, kbId, sourceId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        // SDK v5: deleteSource(sourceId, { knowledge_base_id: kbId })
+        await client.knowledgeBase.deleteSource(sourceId, { knowledge_base_id: kbId });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [RetellKB] deleteRetellKBSource error:', error.message);
+        res.status(500).json({ error: error.message || 'Kaynak silinemedi' });
     }
 };

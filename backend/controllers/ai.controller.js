@@ -3976,6 +3976,29 @@ Konu başlığı:`;
         }
         // ── AUTO-CASE END ──
 
+        // ── AUTO-APPOINTMENT: Topic "randevu" içeriyorsa otomatik randevu görevi oluştur ──
+        try {
+            const appointmentKeywords = ['randevu', 'görüşme', 'ziyaret', 'appointment', 'meeting', 'toplantı'];
+            const topicLower = topic.toLowerCase();
+            const hasAppointmentIntent = appointmentKeywords.some(kw => topicLower.includes(kw));
+            if (hasAppointmentIntent) {
+                const convForAppt = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { contactId: true }
+                });
+                if (convForAppt?.contactId) {
+                    const { executeAppointmentPlanning } = await import('./rules.controller.js');
+                    executeAppointmentPlanning(workspaceId, convForAppt.contactId, 'AI_TOPIC', { topic }).catch(e =>
+                        console.error('⚠️ [AutoAppointment] Error:', e.message)
+                    );
+                    console.log(`📅 [AutoTopic] Appointment intent detected in topic "${topic}" → triggering appointment planning`);
+                }
+            }
+        } catch (apptErr) {
+            console.error(`⚠️ [AutoAppointment] Failed in autoGenerateTopic:`, apptErr.message);
+        }
+        // ── AUTO-APPOINTMENT END ──
+
         console.log(`✅ [AutoTopic] Conv ${conversationId} (${totalCustomerMsgs} msgs): "${topic}"`);
     } catch (err) {
         console.error('❌ [AutoTopic] Error:', err.message);

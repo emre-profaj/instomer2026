@@ -145,6 +145,11 @@ const DEFAULT_RULES = [
         ruleType: 'SALES_PHONE_CALL',
         isActive: false,
         config: JSON.stringify({ funnelName: 'Satış Akışı', teamId: null })
+    },
+    {
+        ruleType: 'APPOINTMENT_AUTO_PLAN',
+        isActive: false,
+        config: JSON.stringify({ teamId: null })
     }
 ];
 
@@ -188,7 +193,7 @@ export const upsertRule = async (req, res) => {
         const { workspaceId, ruleType } = req.params;
         const { isActive, config } = req.body;
 
-        const validTypes = ['PHONE_CAPTURE', 'HOT_KEYWORD', 'HOT_OPPORT_EMAIL', 'SALES_PHONE_CALL'];
+        const validTypes = ['PHONE_CAPTURE', 'HOT_KEYWORD', 'HOT_OPPORT_EMAIL', 'SALES_PHONE_CALL', 'APPOINTMENT_AUTO_PLAN'];
         if (!validTypes.includes(ruleType)) {
             return res.status(400).json({ error: 'Geçersiz kural tipi' });
         }
@@ -1046,5 +1051,240 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
 
     } catch (error) {
         console.error('❌ [RULE:AUTO_CALL] Error:', error.message);
+    }
+};
+
+// ============================================
+// Rule 5 — APPOINTMENT_AUTO_PLAN
+// ============================================
+/**
+ * Triggered when appointment intent is detected in a conversation.
+ * Creates an APPOINTMENT activity for the contact.
+ * Sources: AI response detection, Retell call result, form submission with "randevu" topic.
+ */
+const APPOINTMENT_INTENT_KEYWORDS = [
+    'randevu', 'randevu almak', 'randevu istiyorum', 'randevu planla',
+    'randevu ayarla', 'randevumu', 'randevu oluştur',
+    'görüşme ayarla', 'görüşme planla', 'görüşmek istiyorum',
+    'ne zaman müsaitsiniz', 'ne zaman gelebilirim', 'ne zaman uygun',
+    'ziyaret etmek', 'gelip görmek', 'gelip bakabilir miyim',
+    'toplantı ayarla', 'toplantı planla',
+    'appointment', 'meeting',
+    'hangi gün uygun', 'müsait misiniz',
+    'gelmek istiyorum', 'uğramak istiyorum',
+];
+
+if (!global._appointmentPlanningLocks) {
+    global._appointmentPlanningLocks = new Map();
+}
+
+export const executeAppointmentPlanning = async (workspaceId, contactId, source = 'AUTOMATION', appointmentDetails = null) => {
+    // Race-condition guard
+    const lockKey = `${workspaceId}:${contactId}`;
+    if (global._appointmentPlanningLocks.has(lockKey)) {
+        console.log(`⚠️ [RULE:APPOINTMENT] Lock active for ${contactId}, skipping`);
+        return;
+    }
+    global._appointmentPlanningLocks.set(lockKey, Date.now());
+    setTimeout(() => global._appointmentPlanningLocks.delete(lockKey), 30000);
+
+    try {
+        // 1. Check if rule is active
+        const rule = await prisma.workspaceRule.findUnique({
+            where: { workspaceId_ruleType: { workspaceId, ruleType: 'APPOINTMENT_AUTO_PLAN' } }
+        });
+        if (rule && !rule.isActive) {
+            console.log(`ℹ️ [RULE:APPOINTMENT] Rule is disabled for workspace ${workspaceId}`);
+            return;
+        }
+        const config = rule ? safeParseJSON(rule.config, {}) : {};
+
+        // 2. Get contact
+        const contact = await prisma.contact.findUnique({
+            where: { id: contactId }
+        });
+        if (!contact) return;
+
+        // 3. Check for duplicate — already PLANNED appointment?
+        const existingAppointment = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId,
+                type: 'APPOINTMENT',
+                status: 'PLANNED'
+            }
+        });
+        if (existingAppointment) {
+            console.log(`ℹ️ [RULE:APPOINTMENT] Contact ${contactId} already has a planned appointment, skipping`);
+            return;
+        }
+
+        // 4. Get latest conversation for context + assignment inheritance
+        const latestConversation = await prisma.conversation.findFirst({
+            where: { workspaceId, contactId },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true, aiTopic: true, channel: true, assignedToId: true, assignedTeamId: true, teamIds: true, caseId: true }
+        });
+
+        // 5. Detect appointment intent in recent messages (if not explicitly triggered)
+        if (!appointmentDetails) {
+            const recentMessages = await prisma.message.findMany({
+                where: { conversation: { workspaceId, contactId } },
+                orderBy: { createdAt: 'desc' },
+                take: 15,
+                select: { content: true, isFromContact: true, messageType: true }
+            });
+
+            const hasAppointmentIntent = recentMessages.some(msg => {
+                if (msg.messageType === 'TEMPLATE') return false;
+                const lower = (msg.content || '').toLowerCase();
+                return APPOINTMENT_INTENT_KEYWORDS.some(kw => lower.includes(kw));
+            });
+
+            if (!hasAppointmentIntent) {
+                console.log(`ℹ️ [RULE:APPOINTMENT] No appointment intent detected for contact ${contactId}, skipping`);
+                return;
+            }
+        }
+
+        // 6. Find team: conversation team → config team → 'Randevu' team → default
+        let teamId = null;
+
+        // 6a. Conversation team
+        if (latestConversation?.assignedTeamId) {
+            teamId = latestConversation.assignedTeamId;
+        }
+        if (!teamId && latestConversation?.teamIds) {
+            try {
+                const arr = JSON.parse(latestConversation.teamIds);
+                if (Array.isArray(arr) && arr.length > 0) teamId = arr[0];
+            } catch(e) {}
+        }
+
+        // 6b. Config team
+        if (!teamId && config.teamId) {
+            teamId = config.teamId;
+        }
+
+        // 6c. 'Randevu' named team
+        if (!teamId) {
+            const randevuTeam = await prisma.team.findFirst({
+                where: { workspaceId, name: { contains: 'randevu', mode: 'insensitive' } }
+            });
+            teamId = randevuTeam?.id;
+        }
+
+        // 6d. Default team
+        if (!teamId) {
+            const defaultTeam = await prisma.team.findFirst({
+                where: { workspaceId },
+                orderBy: { createdAt: 'asc' },
+                select: { id: true }
+            });
+            teamId = defaultTeam?.id;
+        }
+
+        // 7. Assignment inheritance
+        const inheritedAssigneeId = latestConversation?.assignedToId || null;
+        const inheritedCaseId = latestConversation?.caseId || null;
+
+        // 8. Calculate due date from appointmentDetails or messages
+        let dueDate;
+        const now = new Date();
+
+        if (appointmentDetails?.dateTime) {
+            dueDate = new Date(appointmentDetails.dateTime);
+        } else {
+            // Try to parse timing from messages
+            try {
+                const recentMsgs = await prisma.message.findMany({
+                    where: { conversation: { workspaceId, contactId }, isFromContact: true },
+                    orderBy: { createdAt: 'desc' },
+                    take: 10,
+                    select: { content: true }
+                });
+                const combinedText = recentMsgs.map(m => m.content || '').join(' ');
+                const customerTiming = parseCallTimingFromMessages(combinedText);
+                if (customerTiming) {
+                    dueDate = customerTiming;
+                    console.log(`🕐 [RULE:APPOINTMENT] Customer timing preference: ${dueDate.toISOString()}`);
+                }
+            } catch (err) {
+                console.error('⚠️ [RULE:APPOINTMENT] Timing parse error:', err.message);
+            }
+        }
+
+        // Fallback: next business day 10:00
+        if (!dueDate) {
+            const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const hour = nowTR.getHours();
+            if (hour >= 9 && hour < 18) {
+                // Business hours — 1 hour from now
+                dueDate = new Date(now.getTime() + 60 * 60 * 1000);
+            } else {
+                // After hours — next day 10:00
+                dueDate = new Date(now);
+                dueDate.setDate(dueDate.getDate() + 1);
+                dueDate.setUTCHours(10 - 3, 0, 0, 0); // 10:00 TR = 07:00 UTC
+            }
+        }
+
+        // Safety: dueDate must be in the future
+        if (dueDate <= now) {
+            dueDate = new Date(now);
+            dueDate.setDate(dueDate.getDate() + 1);
+            dueDate.setUTCHours(10 - 3, 0, 0, 0);
+        }
+
+        // 9. Build description
+        const topicText = appointmentDetails?.topic || latestConversation?.aiTopic || '-';
+        const description = `Randevu talebi algılandı. Otomatik randevu görevi oluşturuldu.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${topicText}\nTelefon: ${contact.phone || '-'}\nKaynak: ${source}${latestConversation?.channel ? ' (' + latestConversation.channel + ')' : ''}`;
+
+        // 10. Create APPOINTMENT activity
+        await prisma.contactActivity.create({
+            data: {
+                workspaceId,
+                contactId,
+                type: 'APPOINTMENT',
+                title: appointmentDetails?.title || 'Randevu Planlandı (Otomatik)',
+                description,
+                dueDate,
+                status: 'PLANNED',
+                teamId: teamId || null,
+                assignedToId: inheritedAssigneeId,
+                source: 'AUTOMATION',
+                ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
+                ...(inheritedAssigneeId ? {
+                    assignedById: null,
+                    assignedByType: 'SYSTEM',
+                    assignedAt: new Date()
+                } : {})
+            }
+        });
+        console.log(`📅 [RULE:APPOINTMENT] APPOINTMENT activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, team: ${teamId || 'YOK'}, user: ${inheritedAssigneeId || 'HAVUZ'})`);
+
+        // 11. Emit socket events
+        emitToWorkspace(workspaceId, 'activity_created', {
+            contactId,
+            type: 'APPOINTMENT',
+            status: 'PLANNED',
+            dueDate: dueDate.toISOString(),
+        });
+
+        // 12. Send notification to team
+        const dueDateTR = dueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        if (teamId) {
+            await createTeamNotifications(
+                workspaceId,
+                teamId,
+                'APPOINTMENT',
+                '📅 Yeni randevu talebi',
+                `${contact.name || contact.phone || 'Müşteri'} için ${dueDateTR} tarihinde randevu planlandı.`,
+                { contactId, dueDate: dueDate.toISOString() }
+            );
+        }
+
+    } catch (error) {
+        console.error('❌ [RULE:APPOINTMENT] Error:', error.message);
     }
 };

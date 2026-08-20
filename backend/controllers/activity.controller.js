@@ -188,29 +188,8 @@ export const createActivity = async (req, res) => {
             console.error('Activity socket emit error:', socketErr);
         }
 
-        // Konuşmaya sistem mesajı ekle
-        try {
-            const activeConv = await prisma.conversation.findFirst({
-                where: { contactId, workspaceId, status: { not: 'RESOLVED' } },
-                orderBy: { lastMessageAt: 'desc' }
-            });
-            if (activeConv) {
-                const typeLabels = { CALL: '📞 Arama', TASK: '✅ Görev', MEETING: '🤝 Görüşme', NOTE: '📝 Not', REMINDER: '🔔 Hatırlatıcı', PROPOSAL: '📋 Teklif', ORDER: '🛒 Sipariş', INVOICE: '🧾 Fatura', PAYMENT: '💰 Tahsilat' };
-                const label = typeLabels[newActivity.type] || '📋 Aktivite';
-                await prisma.message.create({
-                    data: {
-                        conversationId: activeConv.id,
-                        content: `${label}: ${newActivity.title || ''}${newActivity.description ? '\n' + newActivity.description.substring(0, 200) : ''}`,
-                        isFromContact: false,
-                        messageType: 'SYSTEM',
-                        isInternal: true,
-                        senderId: req.user?.id || null
-                    }
-                });
-            }
-        } catch (sysMsgErr) {
-            console.error('Activity system message error:', sysMsgErr);
-        }
+        // Note: We no longer create a redundant 'SYSTEM' message in the Conversation here.
+        // Activities are rendered via the dedicated Activity Card UI using ContactActivity timeline.
 
         if (newActivity.status === 'COMPLETED') {
             try {
@@ -291,6 +270,27 @@ export const createActivity = async (req, res) => {
 
                     autoActivity = { id: planned.id, type: intent.action, dueDate: intent.dueDate, summary: intent.summary };
                     console.log(`🤖 [AutoIntent/Activity] ${intent.summary}`);
+
+                    // Nottan algılanan intent'e göre rule engine tetikle
+                    // (takım ataması, bildirimler, socket event'ler için)
+                    try {
+                        if (intent.action === 'CALL') {
+                            const { executeAutoCallPlanning } = await import('./rules.controller.js');
+                            executeAutoCallPlanning(workspaceId, contactId, 'NOT_INTENT').catch(e =>
+                                console.error('⚠️ [AutoIntent] Call planning error:', e.message)
+                            );
+                        } else if (intent.action === 'MEETING') {
+                            const { executeAppointmentPlanning } = await import('./rules.controller.js');
+                            executeAppointmentPlanning(workspaceId, contactId, 'NOT_INTENT', {
+                                topic: newActivity.description?.substring(0, 100) || 'Randevu Talebi',
+                                dateTime: intent.dueDate
+                            }).catch(e =>
+                                console.error('⚠️ [AutoIntent] Appointment planning error:', e.message)
+                            );
+                        }
+                    } catch (ruleErr) {
+                        console.error('⚠️ [AutoIntent] Rule trigger error:', ruleErr.message);
+                    }
                 }
             } catch (intentErr) {
                 console.error('Intent parser error in createActivity (non-blocking):', intentErr);
@@ -1099,7 +1099,7 @@ export const getWorkspaceCallQueue = async (req, res) => {
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const where = {
             workspaceId,
-            type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
+            type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER', 'APPOINTMENT'] },
             OR: [
                 { status: 'PLANNED' },
                 { status: 'COMPLETED', updatedAt: { gte: twentyFourHoursAgo } }

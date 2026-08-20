@@ -171,6 +171,24 @@
     letter-spacing: 0.5px;
 }
 
+.map-group-header-row {
+    padding: 10px 20px;
+    background-color: #f3f4f6;
+    font-size: 13px;
+    font-weight: 600;
+    color: #4b5563;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.map-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.map-group:not(:first-child) > .map-group-header-row {
+    border-top: 1px solid #e5e7eb;
+}
+
 .map-row {
     display: grid;
     grid-template-columns: 1fr 1fr 0.8fr 60px;
@@ -792,4 +810,19 @@ input:checked + .toggle-slider:before {
 
 .channel-option input[type="checkbox"] {
     margin: 0;
+}
+
+/* Lead Count Badge — Facebook Lead Form kanallarında lead sayısı */
+.lead-count-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #FF6B35;
+    background: #FFF3ED;
+    border-radius: 10px;
+    border: 1px solid #FFD5BF;
+    line-height: 1.4;
+    vertical-align: middle;
 }

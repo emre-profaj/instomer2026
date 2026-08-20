@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -61,16 +61,16 @@ const Sidebar = () => {
     ];
 
     const settingsSubItems = [
-        { path: '/channels', icon: Radio, label: t('channels.title') },
+        { path: '/channels', icon: Radio, label: 'Kanallar ve Entegrasyonlar' },
         { path: '/classifier', icon: GitBranch, label: 'Sınıflandırıcı' },
+        { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
         { path: '/templates', icon: FileSignature, label: 'Şablonlar (Mesaj/E-posta)' },
-        { path: '/integrations', icon: Wrench, label: 'Entegrasyonlar' },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
-        { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
         { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' },
-        { path: '/automations', icon: Zap, label: t('nav.automations') }
+        { path: '/automations', icon: Zap, label: t('nav.automations') },
+        { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' }
     ];
 
     const salesSubItems = [
@@ -181,7 +181,7 @@ const Sidebar = () => {
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
         setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
-        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations'].some(p => path === p));
+        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/notification-settings'].some(p => path === p));
     }, [location.pathname]);
 
 
@@ -436,9 +436,10 @@ const Sidebar = () => {
                                         <div className="nav-submenu">
                                             {settingsSubItems.map(item => (
                                                 <Link key={item.path} to={item.path}
-                                                    className={`sidebar-nav-item submenu-item ${location.pathname === item.path ? 'active' : ''}`}>
+                                                    className={`sidebar-nav-item submenu-item ${location.pathname === item.path ? 'active' : ''}`}
+                                                >
                                                     <item.icon size={18} className="nav-icon" />
-                                                    <span>{item.label}</span>
+                                                    <span style={{ flex: 1 }}>{item.label}</span>
                                                 </Link>
                                             ))}
                                         </div>

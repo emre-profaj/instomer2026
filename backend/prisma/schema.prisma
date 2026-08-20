@@ -45,6 +45,7 @@ model User {
   assignedActivities    ContactActivity[]      @relation("ActivityAssignee")
   createdActivities     ContactActivity[]      @relation("ActivityCreator")
   assignedCases         Case[]                 @relation("CaseAssignee")
+  notificationPreferences Json?
 
   @@map("users")
 }

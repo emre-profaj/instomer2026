@@ -1,0 +1,110 @@
+/* NotificationSettings — ws-settings pattern'ine uygun */
+
+.notif-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 40px 0;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.notif-spin {
+    animation: notifSpin 1s linear infinite;
+}
+
+@keyframes notifSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.notif-content {
+    max-width: 720px;
+}
+
+.notif-saved {
+    color: #22c55e;
+    font-weight: 600;
+    font-size: 13px;
+    margin-right: 4px;
+}
+
+/* Icon varyantları */
+.icon-green {
+    background: #dcfce7 !important;
+    color: #16a34a !important;
+}
+
+.icon-blue {
+    background: #dbeafe !important;
+    color: #2563eb !important;
+}
+
+/* WhatsApp Telefon Kartı */
+.notif-phone-card {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+.notif-phone-card label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #166534;
+    margin-bottom: 8px;
+}
+
+.notif-phone-row {
+    display: flex;
+    gap: 8px;
+}
+
+.notif-phone-row input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    background: #fff;
+    transition: border-color 0.15s;
+}
+
+.notif-phone-row input:focus {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34,197,94,0.1);
+}
+
+.notif-phone-save {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #22c55e;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.notif-phone-save:hover {
+    background: #16a34a;
+}
+
+.notif-phone-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.notif-phone-hint {
+    display: block;
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 6px;
+}

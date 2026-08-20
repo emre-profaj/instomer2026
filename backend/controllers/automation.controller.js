@@ -3,6 +3,7 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -613,7 +614,7 @@ export const sendTemplateMessage = async (req, res) => {
         }
 
         // Clean phone number (remove + and spaces)
-        recipientPhone = recipientPhone.replace(/[\s\+\-]/g, '');
+        recipientPhone = normalizePhone(recipientPhone);
 
         // Build template message payload
         const templatePayload = {
@@ -842,12 +843,8 @@ export const sendTemplateFromInbox = async (req, res) => {
         }
 
         // Clean phone number
-        recipientPhone = recipientPhone.replace(/[\s\+\-\(\)]/g, '');
+        recipientPhone = normalizePhone(recipientPhone);
 
-        // Ensure it starts with country code
-        if (!recipientPhone.startsWith('90') && recipientPhone.length === 10) {
-            recipientPhone = '90' + recipientPhone;
-        }
 
         console.log('📞 Cleaned phone number:', recipientPhone);
 
@@ -1031,15 +1028,8 @@ export const sendTemplateDynamic = async (req, res) => {
         }
 
         // 3. CLEAN PHONE NUMBER
-        let recipientPhone = phoneNumber.replace(/[\s\+\-\(\)]/g, '');
-
-        // Add Turkey country code if missing
-        if (recipientPhone.startsWith('0')) {
-            recipientPhone = '90' + recipientPhone.substring(1);
-        } else if (!recipientPhone.startsWith('90') && recipientPhone.length === 10) {
-            recipientPhone = '90' + recipientPhone;
-        }
-
+        let recipientPhone = normalizePhone(phoneNumber);
+        
         console.log('📞 [sendTemplateDynamic] Recipient phone:', recipientPhone);
 
         // 4. BUILD TEMPLATE PAYLOAD
@@ -1879,7 +1869,7 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
             return;
         }
 
-        const recipientPhone = contact.phone.replace(/[\s\+\-]/g, '');
+        const recipientPhone = normalizePhone(contact.phone);
 
         const templatePayload = {
             messaging_product: 'whatsapp',

@@ -208,6 +208,9 @@ export const facebookAPI = {
     checkPageHealth: (pageId) => api.get(`/facebook/pages/${pageId}/health`),
     resubscribeWebhook: (pageId) => api.post(`/facebook/pages/${pageId}/resubscribe`),
 
+    // Get lead forms for workspace (from DB)
+    getPageForms: (workspaceId) => api.get(`/facebook/pages/${workspaceId}/forms`),
+
     // Sync historical conversations with SSE progress
     syncHistoricalConversations: (workspaceId, data, onProgress) => {
         return new Promise((resolve, reject) => {

@@ -5,7 +5,9 @@
 
 .main-content {
     flex: 1;
-    margin-left: 225px;
+    margin-left: 265px;
+    background-color: #f1f5f9;
+    /* Soft gray background for the app */
     display: flex;
     flex-direction: column;
     height: 100vh;

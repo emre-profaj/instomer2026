@@ -2362,7 +2362,20 @@ const Inbox = () => {
                 setUnreadCount(prev => Math.max(0, prev - unreadForThis));
             }
 
-            const msgs = response.data.conversation.messages || [];
+            let msgs = response.data.conversation.messages || [];
+            
+            // Filter out legacy redundant activity system messages (they are rendered properly by the Activity Timeline now)
+            msgs = msgs.filter(m => {
+                if (m.isInternal && m.messageType === 'SYSTEM') {
+                    const c = m.content || '';
+                    if (c.includes('Arama:') || c.includes('Görev:') || c.includes('Görüşme:') || 
+                        c.includes('Not:') || c.includes('Hatırlatıcı:') || c.includes('Aktivite:')) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
             const notes = response.data.conversation.internalNotes || [];
             const events = response.data.conversation.events || [];
 
@@ -3970,6 +3983,7 @@ const Inbox = () => {
                                     const fallback = [];
                                     if (item.hasPlannedCall) fallback.push({ type: 'CALL', status: 'PLANNED', dueDate: item.nextActivityDate });
                                     if (item.hasPlannedMeeting) fallback.push({ type: 'MEETING', status: 'PLANNED', dueDate: item.nextActivityDate });
+                                    if (item.hasPlannedAppointment) fallback.push({ type: 'APPOINTMENT', status: 'PLANNED', dueDate: item.nextActivityDate });
                                     activityEntries = fallback;
                                 }
                                 const hasApt = hasReminder(item);
@@ -4096,14 +4110,19 @@ const Inbox = () => {
                                                 {/* Activity Icons - sağ taraf */}
                                                 {(() => {
                                                     if (activityEntries.length === 0 && !hasApt) return null;
-                                                    const iconMap = (done, isOverdue) => ({
-                                                        NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
-                                                        MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        VISIT:    <MapPin size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    });
+                                                    const iconMap = (done, isOverdue) => {
+                                                        // Yeşil=yapıldı, Turuncu=açık, Kırmızı=gecikti
+                                                        const c = done ? '#10b981' : (isOverdue ? '#ef4444' : '#f97316');
+                                                        return {
+                                                            NOTE:        <StickyNote size={13} color={c} />,
+                                                            CALL:        <PhoneCall size={13} color={c} />,
+                                                            MEETING:     <CalendarDays size={13} color={c} />,
+                                                            APPOINTMENT: <CalendarDays size={13} color={c} />,
+                                                            REMINDER:    <Bell size={13} color={c} />,
+                                                            TASK:        <Bell size={13} color={c} />,
+                                                            VISIT:       <MapPin size={13} color={c} />,
+                                                        };
+                                                    };
                                                     return (
                                                         <span className="planned-activity-badges"
                                                             onClick={e => { e.stopPropagation(); setSelectedItem(item); setShowContactSidebar(true); }}
@@ -4112,24 +4131,24 @@ const Inbox = () => {
                                                         >
                                                             {activityEntries.map((e, idx) => {
                                                                 const done = e.status === 'COMPLETED';
-                                                                const isCall = e.type === 'CALL';
                                                                 const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
-                                                                const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
-                                                                const brd = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
+                                                                // Yeşil=yapıldı, Turuncu=açık, Kırmızı=gecikti
+                                                                const bg = done ? '#dcfce7' : (isOverdue ? '#fee2e2' : '#fff7ed');
+                                                                const brd = `1px solid ${done ? '#86efac' : (isOverdue ? '#fca5a5' : '#fdba74')}`;
                                                                 // AI/İnsan göstergesi
                                                                 const isAI = e.source === 'AI' || e.source === 'RETELL' || e.assignedByType === 'AI';
                                                                 const callerLabel = isAI ? '🤖' : (e.assigneeName ? e.assigneeName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : '');
                                                                 return (
                                                                     <span key={idx}
                                                                         className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
-                                                                        title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}${e.assigneeName ? ' • ' + e.assigneeName : ''}${isAI ? ' • AI' : ''}`}
+                                                                        title={`${e.type} - ${done ? 'Tamamlandı' : (isOverdue ? 'Gecikti' : 'Planlandı')}${e.assigneeName ? ' • ' + e.assigneeName : ''}${isAI ? ' • AI' : ''}`}
                                                                         style={{
                                                                             display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                                                                             minWidth: 22, height: callerLabel ? 30 : 22, borderRadius: callerLabel ? 11 : '50%',
                                                                             background: bg, border: brd, padding: callerLabel ? '1px 3px' : 0, gap: 0
                                                                         }}
                                                                     >
-                                                                        {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
+                                                                        {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : (isOverdue ? '#ef4444' : '#f97316')} />}
                                                                         {callerLabel && (
                                                                             <span style={{ fontSize: '0.45rem', lineHeight: 1, fontWeight: 700, color: isAI ? '#6366f1' : '#374151', marginTop: -1 }}>
                                                                                 {callerLabel}

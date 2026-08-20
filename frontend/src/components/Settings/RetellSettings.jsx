@@ -3,11 +3,12 @@ import { useAuth } from '../../context/AuthContext';
 import { retellAPI, facebookAPI, whatsappAPI, emailAPI, formWebhookAPI, webWidgetAPI } from '../../services/api';
 import { Phone, Key, Bot, Save, Loader, CheckCircle, AlertCircle, RefreshCw, Clock, Calendar, PhoneCall, Trash2, Plus, Zap, XCircle, BookOpen } from 'lucide-react';
 import { RetellAgentManager, RetellKnowledgeBaseSync } from './RetellAgentManager';
+import { RetellKnowledgeBaseManager } from './RetellKnowledgeBaseManager';
 
 const RetellSettings = ({ onSave, hideApiSetup = false }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
-    const [activeTab, setActiveTab] = useState(hideApiSetup ? 'agents' : 'general');
+    const [activeTab, setActiveTab] = useState('general');
 
     const [settings, setSettings] = useState({
         retellApiKey: '',
@@ -307,16 +308,13 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
 
     return (
         <div className="settings-section">
-
             {/* Tab Navigation */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 }}>
                 {[
-                    { id: 'general', icon: <Phone size={15} />, label: '⚙️ Genel Ayarlar' },
-                    { id: 'agents',  icon: <BookOpen size={15} />,   label: '📚 Bilgi Bankası' },
+                    { id: 'general', label: '⚙️ Genel Ayarlar' },
+                    { id: 'kb', label: '📚 Knowledge Base' },
                 ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                         style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '8px 16px', border: 'none', background: 'none',
@@ -325,18 +323,20 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
                             fontWeight: activeTab === tab.id ? 700 : 500,
                             fontSize: '0.85rem', cursor: 'pointer', marginBottom: -1,
                             transition: 'all 0.15s'
-                        }}
-                    >
+                        }}>
                         {tab.label}
                     </button>
                 ))}
             </div>
 
-            {activeTab === 'agents' && (
-                <RetellAgentManager workspaceId={workspaceId} />
+            {/* Knowledge Base Tab */}
+            {activeTab === 'kb' && (
+                <RetellKnowledgeBaseManager workspaceId={workspaceId} />
             )}
 
-            {activeTab === 'general' && (<>
+            {/* General Tab */}
+            {activeTab === 'general' && <>
+            <RetellAgentManager workspaceId={workspaceId} />
 
             {message && (
                 <div style={{
@@ -414,170 +414,8 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
             </div>
             )}
 
-            {/* AUTO CALL CARD — Routing Style */}
-            <div className="card" style={{ padding: 24, marginTop: 20 }}>
-                {/* Header with toggle */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: settings.retellAutoCallEnabled ? 8 : 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <PhoneCall size={18} style={{ color: '#6366f1' }} />
-                        <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>Otomatik Arama (Auto-Call)</span>
-                    </div>
-                    <div
-                        onClick={() => setSettings(prev => ({ ...prev, retellAutoCallEnabled: !prev.retellAutoCallEnabled }))}
-                        style={{
-                            width: 48, height: 26, borderRadius: 13,
-                            background: settings.retellAutoCallEnabled ? '#10b981' : '#d1d5db',
-                            cursor: 'pointer', position: 'relative', transition: 'background 0.3s'
-                        }}>
-                        <div style={{
-                            width: 22, height: 22, borderRadius: '50%', background: '#fff',
-                            position: 'absolute', top: 2,
-                            left: settings.retellAutoCallEnabled ? 24 : 2,
-                            transition: 'left 0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                        }} />
-                    </div>
-                </div>
-
-                {settings.retellAutoCallEnabled && (
-                    <>
-                        <p style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: 0, marginBottom: 20 }}>
-                            Belirli kanallardan numara geldiğinde otomatik arama başlatır.
-                        </p>
-
-                        {/* Çalışma Saatleri */}
-                        <div style={{ marginBottom: 18, padding: '16px 18px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                <Clock size={16} style={{ color: '#6366f1' }} />
-                                <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e1b4b' }}>Çalışma Saatleri</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                                <input type="time"
-                                    value={settings.retellAutoCallSchedule.start || '09:00'}
-                                    onChange={e => setSettings(prev => ({
-                                        ...prev,
-                                        retellAutoCallSchedule: { ...prev.retellAutoCallSchedule, start: e.target.value }
-                                    }))}
-                                    style={{ ...inputStyle, flex: 1, maxWidth: 140 }}
-                                />
-                                <span style={{ color: '#9ca3af', fontSize: '0.85rem', fontWeight: 600 }}>—</span>
-                                <input type="time"
-                                    value={settings.retellAutoCallSchedule.end || '18:00'}
-                                    onChange={e => setSettings(prev => ({
-                                        ...prev,
-                                        retellAutoCallSchedule: { ...prev.retellAutoCallSchedule, end: e.target.value }
-                                    }))}
-                                    style={{ ...inputStyle, flex: 1, maxWidth: 140 }}
-                                />
-                            </div>
-                            <div>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Aktif Günler</span>
-                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                    {dayLabels.map(d => (
-                                        <button key={d.value} type="button"
-                                            onClick={() => toggleDay(d.value)}
-                                            style={{
-                                                padding: '5px 10px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600,
-                                                border: (settings.retellAutoCallSchedule.days || []).includes(d.value) ? '1px solid #6366f1' : '1px solid #e5e7eb',
-                                                background: (settings.retellAutoCallSchedule.days || []).includes(d.value) ? '#eef2ff' : '#fff',
-                                                color: (settings.retellAutoCallSchedule.days || []).includes(d.value) ? '#4338ca' : '#9ca3af',
-                                                cursor: 'pointer', transition: 'all 0.15s'
-                                            }}
-                                        >{d.label}</button>
-                                    ))}
-                                </div>
-                                <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 0 }}>Seçili günlerde ve saatlerde otomatik arama yapılır.</p>
-                            </div>
-                        </div>
-
-                        {/* Arama Kuralları */}
-                        <div style={{ marginBottom: 12 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151' }}>Arama Kuralları</span>
-                                <button type="button" onClick={addRule}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: 4,
-                                        padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600,
-                                        border: '1px dashed #c7d2fe', background: '#eef2ff', color: '#6366f1',
-                                        cursor: 'pointer'
-                                    }}>
-                                    <Plus size={14} /> Kural Ekle
-                                </button>
-                            </div>
-                            {rules.length === 0 && (
-                                <div style={{ textAlign: 'center', padding: '20px', background: '#f9fafb', borderRadius: 8, border: '1px dashed #e5e7eb', color: '#9ca3af', fontSize: '0.82rem' }}>
-                                    Henüz kural eklenmedi. "Kural Ekle" ile başlayın.
-                                </div>
-                            )}
-                            {rules.map((rule, i) => (
-                                <div key={i} style={{
-                                    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
-                                    background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb',
-                                    marginBottom: 6, flexWrap: 'wrap'
-                                }}>
-                                    <select value={rule.source} onChange={e => updateRuleField(i, 'source', e.target.value)}
-                                        style={{ ...selectStyle, minWidth: 120, flex: 1 }}>
-                                        {getAvailableChannels(rule.source).map(ch => (
-                                            <option key={ch} value={ch}>{channelLabels[ch] || ch}</option>
-                                        ))}
-                                    </select>
-                                    <select value={rule.delay} onChange={e => updateRuleField(i, 'delay', parseInt(e.target.value))}
-                                        style={{ ...selectStyle, minWidth: 90 }}>
-                                        <option value={0}>Hemen</option>
-                                        <option value={5}>5 dk</option>
-                                        <option value={10}>10 dk</option>
-                                        <option value={15}>15 dk</option>
-                                        <option value={30}>30 dk</option>
-                                        <option value={60}>1 saat</option>
-                                        <option value={120}>2 saat</option>
-                                    </select>
-                                    {agents.length > 0 && (
-                                        <select value={rule.agentId || ''} onChange={e => updateRuleField(i, 'agentId', e.target.value)}
-                                            style={{ ...selectStyle, minWidth: 120, flex: 1 }}>
-                                            <option value="">Varsayılan Agent</option>
-                                            {agents.map(a => <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>)}
-                                        </select>
-                                    )}
-                                    <button type="button" onClick={() => removeRule(i)}
-                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}>
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
-            </div>
-
             {/* Action Buttons */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-                {/* Sync Result */}
-                {syncResult && (
-                    <div style={{
-                        fontSize: '0.82rem', padding: '6px 12px', borderRadius: 6,
-                        background: syncResult.error ? '#fef2f2' : '#f0fdf4',
-                        color: syncResult.error ? '#dc2626' : '#16a34a',
-                        border: `1px solid ${syncResult.error ? '#fecaca' : '#bbf7d0'}`
-                    }}>
-                        {syncResult.error
-                            ? `❌ ${syncResult.error}`
-                            : `✅ ${syncResult.total} arama çekildi — ${syncResult.created} yeni, ${syncResult.updated} güncellendi${syncResult.deleted > 0 ? `, ${syncResult.deleted} fazladan kayıt silindi` : ''}${syncResult.errors > 0 ? `, ${syncResult.errors} hata` : ''}`
-                        }
-                    </div>
-                )}
-
-                {/* Sync Button */}
-                <button onClick={handleSyncCalls} disabled={syncing}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 20px', background: '#6366f1', color: '#fff',
-                        border: 'none', borderRadius: 8, fontSize: '0.9rem',
-                        fontWeight: 600, cursor: syncing ? 'not-allowed' : 'pointer',
-                        opacity: syncing ? 0.7 : 1
-                    }}>
-                    {syncing ? <Loader size={16} className="spin" /> : <RefreshCw size={16} />}
-                    {syncing ? 'Senkronize ediliyor...' : 'Geçmiş Aramaları Çek'}
-                </button>
-
                 {/* Save Button */}
                 <button onClick={handleSave} disabled={saving}
                     style={{
@@ -591,150 +429,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
                     {saving ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>
             </div>
-
-            {/* ─── AI Devralma Ayarları Kartı ─────────────────────────────── */}
-            {settings.retellAutoCallEnabled && (
-            <div className="card" style={{ padding: 24, marginTop: 20, border: '1px solid #e5e7eb' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Bot size={18} style={{ color: '#8b5cf6' }} />
-                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e1b4b' }}>AI Arama Devralma</span>
-                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 20 }}>YENİ</span>
-                </div>
-                <p style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: 0, marginBottom: 16 }}>
-                    AI ses agent'ı hangi arama görevlerini üstlenebilir?
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {/* Checkbox 1: Kendi Görevleri (always on) */}
-                    <label style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'default',
-                        padding: '12px 14px', borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0'
-                    }}>
-                        <input type="checkbox" checked={true} disabled
-                            style={{ marginTop: 2, accentColor: '#10b981', width: 16, height: 16 }} />
-                        <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.87rem', color: '#065f46' }}>Sadece Kendi Arama Görevleri</div>
-                            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>
-                                AI agent'a doğrudan atanmış aramalar. Her zaman aktiftir.
-                            </div>
-                        </div>
-                    </label>
-
-                    {/* Checkbox 2: Havuz */}
-                    <label style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
-                        padding: '12px 14px', borderRadius: 10,
-                        background: settings.aiFallbackPoolEnabled ? '#eff6ff' : '#f9fafb',
-                        border: `1px solid ${settings.aiFallbackPoolEnabled ? '#93c5fd' : '#e5e7eb'}`,
-                        transition: 'all 0.2s'
-                    }}>
-                        <input type="checkbox"
-                            checked={settings.aiFallbackPoolEnabled}
-                            onChange={e => setSettings(prev => ({ ...prev, aiFallbackPoolEnabled: e.target.checked }))}
-                            style={{ marginTop: 2, accentColor: '#3b82f6', width: 16, height: 16 }} />
-                        <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.87rem', color: '#1e3a5f' }}>Havuzdaki Sahipsiz Görevler</div>
-                            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>
-                                Kimseye atanmamış arama görevlerini AI üstlensin.
-                            </div>
-                        </div>
-                    </label>
-
-                    {/* Checkbox 3: Aynı Takım — Timeout */}
-                    <label style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
-                        padding: '12px 14px', borderRadius: 10,
-                        background: settings.aiFallbackEnabled ? '#faf5ff' : '#f9fafb',
-                        border: `1px solid ${settings.aiFallbackEnabled ? '#c4b5fd' : '#e5e7eb'}`,
-                        transition: 'all 0.2s'
-                    }}>
-                        <input type="checkbox"
-                            checked={settings.aiFallbackEnabled}
-                            onChange={e => setSettings(prev => ({ ...prev, aiFallbackEnabled: e.target.checked }))}
-                            style={{ marginTop: 2, accentColor: '#8b5cf6', width: 16, height: 16 }} />
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 600, fontSize: '0.87rem', color: '#3b0764' }}>Aynı Takımdaki Yapılmamış Aramalar</div>
-                            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>
-                                İnsan agent süresinde aramazsa AI devreye girsin.
-                            </div>
-                            {settings.aiFallbackEnabled && (
-                                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                    <Clock size={14} color="#8b5cf6" />
-                                    <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 500 }}>Bekleme süresi:</span>
-                                    <select
-                                        value={settings.aiFallbackDelayMinutes}
-                                        onChange={e => setSettings(prev => ({ ...prev, aiFallbackDelayMinutes: parseInt(e.target.value) }))}
-                                        style={{
-                                            padding: '6px 12px', borderRadius: 8, border: '1px solid #c4b5fd',
-                                            fontSize: '0.84rem', background: '#faf5ff', cursor: 'pointer',
-                                            fontWeight: 600, color: '#5b21b6'
-                                        }}
-                                    >
-                                        <option value={15}>15 dakika</option>
-                                        <option value={30}>30 dakika</option>
-                                        <option value={60}>1 saat</option>
-                                        <option value={120}>2 saat</option>
-                                        <option value={180}>3 saat</option>
-                                        <option value={240}>4 saat</option>
-                                        <option value={480}>8 saat (iş günü)</option>
-                                        <option value={1440}>24 saat</option>
-                                    </select>
-                                    <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>sonra AI arar</span>
-                                </div>
-                            )}
-                        </div>
-                    </label>
-                </div>
-
-                <div style={{ marginTop: 14, padding: '8px 12px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', fontSize: '0.78rem', color: '#92400e' }}>
-                    💡 <strong>Not:</strong> Mevcut otomatik arama kurallarınız aynen çalışmaya devam eder. Bu ayarlar sadece yeni AI devralma özelliklerini kontrol eder.
-                </div>
-            </div>
-            )}
-
-            {/* Arama Senkronizasyonu */}
-            <div className="card" style={{ padding: 20, marginTop: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                    <PhoneCall size={16} style={{ color: '#6366f1' }} />
-                    <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e1b4b' }}>Tek Arama Getir</span>
-                    <span style={{ fontSize: '0.78rem', color: '#6b7280', marginLeft: 4 }}>— Sadece bu arama eklenir, diğerlerine dokunulmaz</span>
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input
-                        type="text"
-                        value={singleCallId}
-                        onChange={e => setSingleCallId(e.target.value)}
-                        placeholder="call_85ebb2d4f1e18bc1acd9f8e3796"
-                        style={{ flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, border: '1px solid #c7d2fe', fontSize: '0.83rem', fontFamily: 'monospace' }}
-                        onKeyDown={e => e.key === 'Enter' && handleSyncSingleCall()}
-                    />
-                    <button onClick={handleSyncSingleCall} disabled={singleSyncing || !singleCallId.trim()}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '8px 18px', background: '#6366f1', color: '#fff',
-                            border: 'none', borderRadius: 8, fontSize: '0.85rem',
-                            fontWeight: 600, cursor: (singleSyncing || !singleCallId.trim()) ? 'not-allowed' : 'pointer',
-                            opacity: (singleSyncing || !singleCallId.trim()) ? 0.6 : 1, whiteSpace: 'nowrap'
-                        }}>
-                        {singleSyncing ? <Loader size={14} className="spin" /> : <RefreshCw size={14} />}
-                        {singleSyncing ? 'Getiriliyor...' : 'Getir'}
-                    </button>
-                </div>
-                {singleSyncResult && (
-                    <div style={{
-                        marginTop: 8, fontSize: '0.82rem', padding: '6px 12px', borderRadius: 6,
-                        background: singleSyncResult.error ? '#fef2f2' : '#f0fdf4',
-                        color: singleSyncResult.error ? '#dc2626' : '#16a34a',
-                        border: `1px solid ${singleSyncResult.error ? '#fecaca' : '#bbf7d0'}`
-                    }}>
-                        {singleSyncResult.error
-                            ? `❌ ${singleSyncResult.error}`
-                            : `✅ Arama başarıyla eklendi — Süre: ${Math.floor((singleSyncResult.duration || 0) / 60)}dk ${(singleSyncResult.duration || 0) % 60}sn`
-                        }
-                    </div>
-                )}
-            </div>
-            </>)} {/* end activeTab === 'general' */}
+            </>}
         </div>
     );
 };

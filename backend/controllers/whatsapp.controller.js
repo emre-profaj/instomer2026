@@ -1385,7 +1385,7 @@ export const webhookHandler = async (req, res) => {
                     // Run for ALL message types with text content (text, image captions, doc captions, etc.)
                     if (msg_body && msg_body.trim()) {
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAppointmentPlanning } = await import('./rules.controller.js');
                             // Phone capture MUST run first and be awaited
                             await executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:PHONE_CAPTURE] error:', e.message)
@@ -1402,6 +1402,15 @@ export const webhookHandler = async (req, res) => {
                             // executeAutoCallPlanning burada ÇAĞRILMAZ
                             // Her mesajda arama planlamak çok agresif — müşteri aranma istememiş olabilir
                             // Auto-call sadece: manuel kişi ekleme, form, lead form için çalışır
+
+                            // Randevu niyeti algılama — keyword ön filtre
+                            const msgLower = msg_body.toLowerCase();
+                            const apptKeywords = ['randevu', 'görüşme', 'toplantı', 'ziyaret', 'gelmek istiyorum', 'ne zaman müsait', 'appointment', 'meeting'];
+                            if (apptKeywords.some(kw => msgLower.includes(kw)) && conversation.contactId) {
+                                executeAppointmentPlanning(waNumber.workspaceId, conversation.contactId, 'WHATSAPP_MSG').catch(e =>
+                                    console.error('❌ [RULE:APPOINTMENT] WA async error:', e.message)
+                                );
+                            }
                         } catch (ruleErr) {
                             console.error('❌ [RULES] Import error:', ruleErr.message);
                         }

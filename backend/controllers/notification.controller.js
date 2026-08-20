@@ -105,8 +105,23 @@ export const deleteAllNotifications = async (req, res) => {
 };
 
 // Helper: Create notification and emit via socket
+// Kullanıcının bildirim tercihlerini kontrol eder + WhatsApp/Email bildirim gönderir
 export const createNotification = async (workspaceId, userId, type, title, body, data = null) => {
     try {
+        // Kullanıcının tercihlerini kontrol et
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { notificationPreferences: true, email: true }
+        });
+
+        const prefs = user?.notificationPreferences || { assignment: true, newRequest: true, dealStage: true, fbLead: true };
+
+        // Tercih kontrolü — type'a göre
+        if (type === 'CONVERSATION_ASSIGNED' && prefs.assignment === false) return null;
+        if (['NEW_MESSAGE', 'BOT_ROUTING'].includes(type) && prefs.newRequest === false) return null;
+        if (type === 'DEAL_STAGE_CHANGED' && prefs.dealStage === false) return null;
+        if (type === 'FB_LEAD' && prefs.fbLead === false) return null;
+
         const notification = await prisma.notification.create({
             data: {
                 workspaceId,
@@ -123,6 +138,26 @@ export const createNotification = async (workspaceId, userId, type, title, body,
             notification,
             targetUserId: userId
         });
+
+        // E-posta bildirim gönder (isteğe bağlı)
+        if (prefs.emailEnabled && user?.email) {
+            try {
+                const { sendSystemEmail } = await import('../services/systemEmail.service.js');
+                const emailBody = `
+                    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;border:1px solid #eaeaea;border-radius:10px;">
+                        <h2 style="color:#1a1a2e;font-size:18px;margin-top:0;">🔔 ${title}</h2>
+                        <p style="color:#4b5563;font-size:15px;line-height:1.6;">${body}</p>
+                        <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0;">
+                        <p style="color:#9ca3af;font-size:12px;margin-bottom:0;">Bu bildirimi Instomer panelindeki <strong>Ayarlar → Bildirim Ayarları</strong> menüsünden kapatabilirsiniz.</p>
+                    </div>
+                `;
+                // Instomer sistem mailinden kullanıcının mailine gönder
+                await sendSystemEmail(user.email, `Instomer Bildirimi: ${title}`, emailBody, { isHtml: true });
+                console.log(`📧 [Notification] System email sent to ${user.email}: ${title}`);
+            } catch (emailErr) {
+                console.error('❌ [Notification] System email send error:', emailErr.message);
+            }
+        }
 
         console.log(`🔔 [Notification] Created for user ${userId}: ${title}`);
         return notification;
@@ -155,5 +190,52 @@ export const createTeamNotifications = async (workspaceId, teamId, type, title, 
     } catch (error) {
         console.error('❌ [Notification] Error creating team notifications:', error);
         return [];
+    }
+};
+
+// GET /:workspaceId/preferences — Kullanıcının bildirim tercihlerini getir
+export const getNotificationPreferences = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { notificationPreferences: true }
+        });
+
+        const defaults = { assignment: true, newRequest: true, dealStage: true, fbLead: true, whatsappEnabled: false, whatsappPhone: '', emailEnabled: false };
+        const prefs = user?.notificationPreferences || defaults;
+
+        res.json({ preferences: { ...defaults, ...prefs } });
+    } catch (error) {
+        console.error('Error getting notification preferences:', error);
+        res.status(500).json({ error: 'Tercihler alınamadı' });
+    }
+};
+
+// PUT /:workspaceId/preferences — Kullanıcının bildirim tercihlerini güncelle
+export const updateNotificationPreferences = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { assignment, newRequest, dealStage, fbLead, whatsappEnabled, whatsappPhone, emailEnabled } = req.body;
+
+        const prefs = {
+            assignment: assignment !== false,
+            newRequest: newRequest !== false,
+            dealStage: dealStage !== false,
+            fbLead: fbLead !== false,
+            whatsappEnabled: whatsappEnabled === true,
+            whatsappPhone: whatsappPhone || '',
+            emailEnabled: emailEnabled === true
+        };
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { notificationPreferences: prefs }
+        });
+
+        res.json({ success: true, preferences: prefs });
+    } catch (error) {
+        console.error('Error updating notification preferences:', error);
+        res.status(500).json({ error: 'Tercihler güncellenemedi' });
     }
 };
