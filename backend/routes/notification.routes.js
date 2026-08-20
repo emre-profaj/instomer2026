@@ -5,12 +5,18 @@ import {
     getUnreadCount,
     markAsRead,
     markAllAsRead,
-    deleteAllNotifications
+    deleteAllNotifications,
+    getNotificationPreferences,
+    updateNotificationPreferences
 } from '../controllers/notification.controller.js';
 
 const router = express.Router();
 
 router.use(authenticateJWT);
+
+// Notification preferences
+router.get('/:workspaceId/preferences', requireWorkspaceAccess, getNotificationPreferences);
+router.put('/:workspaceId/preferences', requireWorkspaceAccess, updateNotificationPreferences);
 
 // Get notifications for workspace
 router.get('/:workspaceId', requireWorkspaceAccess, getNotifications);

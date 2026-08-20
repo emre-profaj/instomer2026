@@ -236,6 +236,96 @@ export const getPages = async (req, res) => {
     }
 };
 
+// Get lead forms for all connected pages in a workspace (from Meta API + DB lead counts)
+export const getPageForms = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        // 1. Get all connected pages with access tokens
+        const pages = await prisma.facebookPage.findMany({
+            where: { workspaceId },
+            select: { id: true, pageId: true, pageName: true, pageAccessToken: true }
+        });
+
+        if (!pages.length) {
+            return res.json({ forms: [] });
+        }
+
+        // 2. Get lead counts from DB grouped by formId
+        let leadCounts = {};
+        try {
+            const dbForms = await prisma.facebookLead.groupBy({
+                by: ['formId'],
+                where: { workspaceId },
+                _count: { _all: true }
+            });
+            dbForms.forEach(f => { leadCounts[f.formId] = f._count._all; });
+        } catch (e) {
+            console.error('Lead count query error:', e.message);
+        }
+
+        // 3. Fetch leadgen forms from Meta API for each page
+        const allForms = [];
+        for (const page of pages) {
+            if (!page.pageAccessToken) continue;
+            try {
+                const response = await axios.get(
+                    `https://graph.facebook.com/${GRAPH_API_VERSION}/${page.pageId}/leadgen_forms`,
+                    {
+                        params: {
+                            access_token: page.pageAccessToken,
+                            fields: 'id,name,status,leads_count,created_time'
+                        }
+                    }
+                );
+                const forms = response.data.data || [];
+                forms.forEach(f => {
+                    allForms.push({
+                        formId: f.id,
+                        formName: f.name || `Form ${f.id.slice(-4)}`,
+                        formStatus: f.status,
+                        facebookPageId: page.id,
+                        pageNameRef: page.pageName,
+                        leadCount: leadCounts[f.id] || 0,
+                        metaLeadCount: f.leads_count || 0,
+                        createdTime: f.created_time
+                    });
+                });
+            } catch (apiErr) {
+                console.error(`Meta API leadgen_forms error for page ${page.pageName}:`, apiErr.response?.data?.error?.message || apiErr.message);
+                // Fallback: add forms from DB for this page
+                try {
+                    const dbOnlyForms = await prisma.facebookLead.findMany({
+                        where: { workspaceId, facebookPageId: page.id },
+                        distinct: ['formId'],
+                        select: { formId: true, formName: true }
+                    });
+                    dbOnlyForms.forEach(f => {
+                        if (!allForms.find(af => af.formId === f.formId)) {
+                            allForms.push({
+                                formId: f.formId,
+                                formName: f.formName || `Form ${f.formId.slice(-4)}`,
+                                formStatus: 'ACTIVE',
+                                facebookPageId: page.id,
+                                pageNameRef: page.pageName,
+                                leadCount: leadCounts[f.formId] || 0,
+                                metaLeadCount: 0
+                            });
+                        }
+                    });
+                } catch (dbErr) {
+                    console.error('DB fallback forms error:', dbErr.message);
+                }
+            }
+        }
+
+        res.json({ forms: allForms });
+    } catch (error) {
+        console.error('Get page forms error:', error);
+        res.status(500).json({ error: 'Failed to fetch page forms' });
+    }
+};
+
 // Get available pages from user's Facebook account for selection
 export const getAvailablePages = async (req, res) => {
     try {
@@ -927,17 +1017,28 @@ async function processWebhookAsync(body) {
                                     console.log(`✅ Created conversation for comment thread`);
                                 }
 
-                                // Save message
-                                const newMessage = await prisma.message.create({
-                                    data: {
-                                        conversationId: conversation.id,
-                                        content: processedCommentText,
-                                        isFromContact: true,
-                                        messageType: 'TEXT',
-                                        facebookMessageId: commentId,
-                                        createdAt: new Date()
+                                // Save message (handle duplicate webhook from Facebook)
+                                let newMessage;
+                                try {
+                                    newMessage = await prisma.message.create({
+                                        data: {
+                                            conversationId: conversation.id,
+                                            content: processedCommentText,
+                                            isFromContact: true,
+                                            messageType: 'TEXT',
+                                            facebookMessageId: commentId,
+                                            createdAt: new Date()
+                                        }
+                                    });
+                                } catch (dbError) {
+                                    if (dbError.code === 'P2002') {
+                                        console.log(`ℹ️ [FB Comment] Duplicate webhook, comment already saved: ${commentId}`);
+                                        newMessage = await prisma.message.findUnique({ where: { facebookMessageId: commentId } });
+                                        if (!newMessage) return;
+                                    } else {
+                                        throw dbError;
                                     }
-                                });
+                                }
 
                                 // Madde 0: Pipeline post-processing
                                 try {
@@ -1532,7 +1633,7 @@ async function processWebhookAsync(body) {
                                 console.log(`✅ [FB Sync] Updated: "${currentName}" → "${metaName}"`);
                             }
                         } catch (err) {
-                            console.error('❌ [FB Name Sync Error]:', err.message);
+                            console.error('❌ [FB Name Sync Error]:', err.response?.data?.error?.message || err.message);
                         }
                     }
                 }
@@ -1860,7 +1961,7 @@ async function processWebhookAsync(body) {
                     // --- AUTOMATION RULES (run before AI reply to avoid being skipped by continue) ---
                     if (!isOutgoingMessage && message?.text) {
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAppointmentPlanning } = await import('./rules.controller.js');
                             await executePhoneCaptureRule(facebookPage.workspaceId, conversation.id, message.text);
                             executeHotKeywordRule(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [RULE:HOT_KEYWORD] FB/IG async error:', e.message)
@@ -1871,6 +1972,15 @@ async function processWebhookAsync(body) {
                             );
                             // executeAutoCallPlanning burada ÇAĞRILMAZ
                             // Her mesajda arama planlamak çok agresif
+
+                            // Randevu niyeti algılama — keyword ön filtre
+                            const msgLower = message.text.toLowerCase();
+                            const apptKeywords = ['randevu', 'görüşme', 'toplantı', 'ziyaret', 'gelmek istiyorum', 'ne zaman müsait', 'appointment', 'meeting'];
+                            if (apptKeywords.some(kw => msgLower.includes(kw)) && conversation.contactId) {
+                                executeAppointmentPlanning(facebookPage.workspaceId, conversation.contactId, 'FACEBOOK_MSG').catch(e =>
+                                    console.error('❌ [RULE:APPOINTMENT] FB/IG async error:', e.message)
+                                );
+                            }
                         } catch (ruleErr) {
                             console.error('❌ [RULES] FB/IG error:', ruleErr.message);
                         }
@@ -3353,6 +3463,27 @@ async function handleLeadgenEvent(leadValue, entryId) {
             });
 
             console.log('📡 [LEADGEN] Socket events emitted');
+
+            // Tüm workspace üyelerine FB Lead bildirimi gönder
+            try {
+                const { createNotification } = await import('./notification.controller.js');
+                const wsMembers = await prisma.workspaceMember.findMany({
+                    where: { workspaceId: facebookPage.workspaceId },
+                    select: { userId: true }
+                });
+                for (const member of wsMembers) {
+                    await createNotification(
+                        facebookPage.workspaceId,
+                        member.userId,
+                        'FB_LEAD',
+                        '📋 Yeni Facebook Lead',
+                        `${leadName || 'İsimsiz'} — ${formName || 'Lead Formu'}${leadPhone ? ` • ${leadPhone}` : ''}`,
+                        { conversationId: conversation?.id, contactId: contact?.id }
+                    );
+                }
+            } catch (notifErr) {
+                console.error('Lead notification error:', notifErr.message);
+            }
         } catch (socketErr) {
             console.error('Socket error:', socketErr);
         }

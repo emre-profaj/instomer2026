@@ -15,6 +15,32 @@ const DEFAULT_TEAMS = [
 ];
 
 /**
+ * Default workspace rules to be seeded for every new workspace.
+ * SALES_PHONE_CALL: Otomatik arama görevi — form dolduran veya mesajla
+ * "beni arayın" diyen kişi için CALL activity oluşturur.
+ */
+const DEFAULT_RULES = [
+    {
+        ruleType: 'SALES_PHONE_CALL',
+        isActive: true,
+        config: JSON.stringify({
+            callDelayMinutes: 15,
+            assignDirectly: false  // Havuza düşsün, takımdan biri üstlensin
+        })
+    },
+    {
+        ruleType: 'PHONE_CAPTURE',
+        isActive: true,
+        config: JSON.stringify({})
+    },
+    {
+        ruleType: 'APPOINTMENT_AUTO_PLAN',
+        isActive: true,
+        config: JSON.stringify({ teamId: null })
+    }
+];
+
+/**
  * Seeds the default teams for a newly created workspace.
  * Safe to call — skips if teams already exist for the workspace.
  *
@@ -30,21 +56,23 @@ export async function seedDefaultTeams(workspaceId) {
 
         if (existingCount > 0) {
             console.log(`⏭️  Workspace ${workspaceId} already has ${existingCount} teams, skipping seed.`);
-            return 0;
+        } else {
+            // Create all default teams
+            const created = await prisma.team.createMany({
+                data: DEFAULT_TEAMS.map(t => ({
+                    name: t.name,
+                    description: t.description,
+                    workspaceId,
+                })),
+                skipDuplicates: true,
+            });
+            console.log(`🌱 Seeded ${created.count} default teams for workspace ${workspaceId}`);
         }
 
-        // Create all default teams
-        const created = await prisma.team.createMany({
-            data: DEFAULT_TEAMS.map(t => ({
-                name: t.name,
-                description: t.description,
-                workspaceId,
-            })),
-            skipDuplicates: true,
-        });
+        // Seed default workspace rules (idempotent — upsert)
+        await seedDefaultRules(workspaceId);
 
-        console.log(`🌱 Seeded ${created.count} default teams for workspace ${workspaceId}`);
-        return created.count;
+        return existingCount > 0 ? 0 : DEFAULT_TEAMS.length;
     } catch (error) {
         // Non-blocking: log but don't throw so workspace creation isn't affected
         console.error(`⚠️  Failed to seed default teams for workspace ${workspaceId}:`, error.message);
@@ -52,4 +80,33 @@ export async function seedDefaultTeams(workspaceId) {
     }
 }
 
+/**
+ * Seeds default workspace rules (SALES_PHONE_CALL, PHONE_CAPTURE).
+ * Uses upsert — safe to call multiple times.
+ *
+ * @param {string} workspaceId - The workspace to seed rules for
+ */
+export async function seedDefaultRules(workspaceId) {
+    try {
+        for (const rule of DEFAULT_RULES) {
+            await prisma.workspaceRule.upsert({
+                where: {
+                    workspaceId_ruleType: { workspaceId, ruleType: rule.ruleType }
+                },
+                create: {
+                    workspaceId,
+                    ruleType: rule.ruleType,
+                    isActive: rule.isActive,
+                    config: rule.config
+                },
+                update: {} // Var olan kuralı değiştirme
+            });
+        }
+        console.log(`🌱 Seeded default rules for workspace ${workspaceId}`);
+    } catch (error) {
+        console.error(`⚠️  Failed to seed default rules for workspace ${workspaceId}:`, error.message);
+    }
+}
+
 export default seedDefaultTeams;
+

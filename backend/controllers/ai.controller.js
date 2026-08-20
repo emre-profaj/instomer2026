@@ -1456,9 +1456,10 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             if (conversation?.teamIds) {
                 try {
                     const teamIds = JSON.parse(conversation.teamIds);
-                    if (teamIds.length > 0) {
+                    const validTeamIds = teamIds.filter(id => id != null && id !== '');
+                    if (validTeamIds.length > 0) {
                         const team = await prisma.team.findFirst({
-                            where: { id: teamIds[0] },
+                            where: { id: validTeamIds[0] },
                             include: {
                                 assignedBot: { include: { documents: true } },
                                 members: {
@@ -3976,6 +3977,29 @@ Konu başlığı:`;
             console.error(`⚠️ [AutoCase] Failed in autoGenerateTopic:`, caseErr.message);
         }
         // ── AUTO-CASE END ──
+
+        // ── AUTO-APPOINTMENT: Topic "randevu" içeriyorsa otomatik randevu görevi oluştur ──
+        try {
+            const appointmentKeywords = ['randevu', 'görüşme', 'ziyaret', 'appointment', 'meeting', 'toplantı'];
+            const topicLower = topic.toLowerCase();
+            const hasAppointmentIntent = appointmentKeywords.some(kw => topicLower.includes(kw));
+            if (hasAppointmentIntent) {
+                const convForAppt = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { contactId: true }
+                });
+                if (convForAppt?.contactId) {
+                    const { executeAppointmentPlanning } = await import('./rules.controller.js');
+                    executeAppointmentPlanning(workspaceId, convForAppt.contactId, 'AI_TOPIC', { topic }).catch(e =>
+                        console.error('⚠️ [AutoAppointment] Error:', e.message)
+                    );
+                    console.log(`📅 [AutoTopic] Appointment intent detected in topic "${topic}" → triggering appointment planning`);
+                }
+            }
+        } catch (apptErr) {
+            console.error(`⚠️ [AutoAppointment] Failed in autoGenerateTopic:`, apptErr.message);
+        }
+        // ── AUTO-APPOINTMENT END ──
 
         console.log(`✅ [AutoTopic] Conv ${conversationId} (${totalCustomerMsgs} msgs): "${topic}"`);
     } catch (err) {

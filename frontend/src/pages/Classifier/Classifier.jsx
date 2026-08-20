@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { classifierAPI, funnelAPI, facebookAPI, whatsappAPI, formWebhookAPI, webWidgetAPI } from '../../services/api';
-import { Plus, GitBranch, ArrowRight, X, ChevronUp, ChevronDown, Trash2, Edit2, Zap, AlertCircle, Phone, Facebook, Globe, FileText, Bot, Map, List, Settings, Clock, Hash, Brain, ChevronRight, AlertTriangle, MessageCircle, Instagram } from 'lucide-react';
+import { Plus, GitBranch, ArrowRight, X, ChevronUp, ChevronDown, Trash2, Edit2, Zap, AlertCircle, Phone, Facebook, Globe, FileText, Bot, Map, List, Settings, Clock, Hash, Brain, ChevronRight, AlertTriangle, MessageCircle, Instagram, MessageSquare } from 'lucide-react';
 import './Classifier.css';
 
 const Classifier = () => {
@@ -52,13 +52,14 @@ const Classifier = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [rulesRes, funnelsRes, pagesRes, waRes, formRes, widgetRes] = await Promise.all([
+            const [rulesRes, funnelsRes, pagesRes, waRes, formRes, widgetRes, fbFormsRes] = await Promise.all([
                 classifierAPI.getRules(currentWorkspace.id).catch(() => ({ data: { rules: [] } })),
                 funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: { funnels: [] } })),
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 whatsappAPI.getPhoneNumbers(currentWorkspace.id).catch(() => ({ data: { phoneNumbers: [] } })),
                 formWebhookAPI.getWebhooks(currentWorkspace.id).catch(() => ({ data: { webhooks: [] } })),
-                webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } }))
+                webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } })),
+                facebookAPI.getPageForms(currentWorkspace.id).catch(() => ({ data: { forms: [] } }))
             ]);
 
             const loadedRules = rulesRes.data.rules || [];
@@ -69,10 +70,34 @@ const Classifier = () => {
             // Combine all channels into a flat list
             const combinedChannels = [];
             (pagesRes.data.pages || []).forEach(p => {
-                combinedChannels.push({ id: `fb-${p.id}`, rawId: p.id, name: p.pageName, type: 'facebook', icon: Facebook, color: '#1877F2' });
+                // Facebook Mesajlar — ayrı satır
+                combinedChannels.push({
+                    id: `fb-msg-${p.id}`, rawId: p.id,
+                    name: `${p.pageName} — Mesajlar`,
+                    type: 'facebook', subType: 'message',
+                    icon: MessageCircle, color: '#1877F2'
+                });
+                // Facebook Yorumlar — ayrı satır
+                combinedChannels.push({
+                    id: `fb-comment-${p.id}`, rawId: p.id,
+                    name: `${p.pageName} — Yorumlar`,
+                    type: 'facebook_comment', subType: 'comment',
+                    icon: MessageSquare, color: '#42b883'
+                });
                 if (p.instagramBusinessId) {
                     combinedChannels.push({ id: `ig-${p.id}`, rawId: p.id, name: `@${p.instagramUsername || 'Instagram'}`, type: 'instagram', icon: Instagram, color: '#E4405F' });
                 }
+            });
+            // Facebook Lead Formlar — her form ayrı satır
+            (fbFormsRes.data.forms || []).forEach((f, idx) => {
+                combinedChannels.push({
+                    id: `fb-form-${f.formId}`, rawId: f.formId,
+                    name: f.formName || `Form ${idx + 1}`,
+                    type: 'facebook_form', subType: 'leadform',
+                    icon: FileText, color: '#FF6B35',
+                    parentPageId: f.facebookPageId,
+                    leadCount: f.leadCount || 0
+                });
             });
             (waRes.data.phoneNumbers || []).forEach(w => {
                 combinedChannels.push({ id: `wa-${w.id}`, rawId: w.id, name: w.displayPhoneNumber || w.phoneNumber, type: 'whatsapp', icon: Phone, color: '#25D366' });
@@ -96,8 +121,13 @@ const Classifier = () => {
                 
                 if (rule.conditionType === 'CHANNEL' && cond.channels) {
                     cond.channels.forEach(chId => {
-                        if (!assignments[chId]) {
-                            assignments[chId] = { funnelId: rule.targetFunnelId, stageId: rule.targetStageId, ruleId: rule.id, ruleName: rule.name };
+                        // Migration: eski fb-{id} formatını fb-msg-{id} olarak eşle
+                        let mappedId = chId;
+                        if (chId.startsWith('fb-') && !chId.startsWith('fb-msg-') && !chId.startsWith('fb-comment-') && !chId.startsWith('fb-form-')) {
+                            mappedId = `fb-msg-${chId.replace('fb-', '')}`;
+                        }
+                        if (!assignments[mappedId]) {
+                            assignments[mappedId] = { funnelId: rule.targetFunnelId, stageId: rule.targetStageId, ruleId: rule.id, ruleName: rule.name };
                         }
                     });
                 }
@@ -199,7 +229,9 @@ const Classifier = () => {
 
     const getChannelIcon = (type) => {
         switch (type) {
-            case 'facebook': return { icon: Facebook, color: '#1877F2', label: 'Facebook' };
+            case 'facebook': return { icon: MessageCircle, color: '#1877F2', label: 'Facebook Mesajlar' };
+            case 'facebook_comment': return { icon: MessageSquare, color: '#42b883', label: 'Facebook Yorumlar' };
+            case 'facebook_form': return { icon: FileText, color: '#FF6B35', label: 'Facebook Lead Form' };
             case 'instagram': return { icon: Instagram, color: '#E4405F', label: 'Instagram' };
             case 'whatsapp': return { icon: Phone, color: '#25D366', label: 'WhatsApp' };
             case 'webform': return { icon: FileText, color: '#f59e0b', label: 'Web Form' };
@@ -406,135 +438,166 @@ const Classifier = () => {
                                 <p>Henüz kanal eklenmemiş. Önce Kanallar sayfasından kanal ekleyin.</p>
                             </div>
                         ) : (
-                            channels.map(ch => {
-                                const assignment = channelAssignments[ch.id] || {};
-                                const selectedFunnel = funnels.find(f => f.id === assignment.funnelId);
-                                const iconInfo = getChannelIcon(ch.type);
-                                const ChannelIcon = iconInfo.icon;
-                                const isExpanded = expandedChannel === ch.id;
-                                const isSaving = savingChannel === ch.id;
-                                const isUnassigned = !assignment.funnelId;
+                            (() => {
+                                const groups = {
+                                    'Sosyal Medya Mesaj & Yorumları': [],
+                                    'Facebook Lead Formları': [],
+                                    'WhatsApp & Diğer': []
+                                };
+                                
+                                channels.forEach(ch => {
+                                    if (ch.type === 'facebook' || ch.type === 'facebook_comment' || ch.type === 'instagram') {
+                                        groups['Sosyal Medya Mesaj & Yorumları'].push(ch);
+                                    } else if (ch.type === 'facebook_form') {
+                                        groups['Facebook Lead Formları'].push(ch);
+                                    } else {
+                                        groups['WhatsApp & Diğer'].push(ch);
+                                    }
+                                });
 
-                                return (
-                                    <React.Fragment key={ch.id}>
-                                        <div className={`map-row ${isUnassigned ? 'unassigned' : ''} ${isSaving ? 'saving' : ''}`}>
-                                            {/* Channel info */}
-                                            <div className="map-col-channel">
-                                                <div className="channel-info">
-                                                    <div className="channel-icon-badge" style={{ background: `${iconInfo.color}15` }}>
-                                                        <ChannelIcon size={18} color={iconInfo.color} />
-                                                    </div>
-                                                    <div>
-                                                        <div className="channel-name">{ch.name}</div>
-                                                        <div className="channel-type">{iconInfo.label}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                return Object.entries(groups).map(([groupName, groupChannels]) => {
+                                    if (groupChannels.length === 0) return null;
+                                    return (
+                                        <div key={groupName} className="map-group">
+                                            <div className="map-group-header-row">{groupName}</div>
+                                            {groupChannels.map(ch => {
+                                                const assignment = channelAssignments[ch.id] || {};
+                                                const selectedFunnel = funnels.find(f => f.id === assignment.funnelId);
+                                                const iconInfo = getChannelIcon(ch.type);
+                                                const ChannelIcon = iconInfo.icon;
+                                                const isExpanded = expandedChannel === ch.id;
+                                                const isSaving = savingChannel === ch.id;
+                                                const isUnassigned = !assignment.funnelId;
 
-                                            {/* Funnel dropdown */}
-                                            <div className="map-col-funnel">
-                                                <select
-                                                    className={`map-select ${isUnassigned ? 'empty' : ''}`}
-                                                    value={assignment.funnelId || ''}
-                                                    onChange={e => handleChannelFunnelChange(ch.id, e.target.value)}
-                                                    disabled={isSaving}
-                                                >
-                                                    <option value="">Seçiniz...</option>
-                                                    {funnels.map(f => (
-                                                        <option key={f.id} value={f.id}>
-                                                            {f.name} {f.funnelType === 'MAIN' ? '(Ana)' : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                {isDefaultFunnel(assignment.funnelId) && (
-                                                    <span className="default-badge">AI sınıflandırır</span>
-                                                )}
-                                            </div>
-
-                                            {/* Stage dropdown */}
-                                            <div className="map-col-stage">
-                                                {selectedFunnel?.stages?.length > 0 ? (
-                                                    <select
-                                                        className="map-select map-select-sm"
-                                                        value={assignment.stageId || ''}
-                                                        onChange={e => handleChannelStageChange(ch.id, e.target.value)}
-                                                        disabled={isSaving}
-                                                    >
-                                                        <option value="">İlk aşama</option>
-                                                        {selectedFunnel.stages.map(s => (
-                                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                                        ))}
-                                                    </select>
-                                                ) : (
-                                                    <span className="stage-na">—</span>
-                                                )}
-                                            </div>
-
-                                            {/* Detail rules button */}
-                                            <div className="map-col-actions">
-                                                <button
-                                                    className={`detail-rules-btn ${isExpanded ? 'active' : ''}`}
-                                                    onClick={() => setExpandedChannel(isExpanded ? null : ch.id)}
-                                                    title="Detay kuralları (zaman, keyword)"
-                                                >
-                                                    <Settings size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Expanded detail rules panel */}
-                                        {isExpanded && (
-                                            <div className="detail-rules-panel">
-                                                <div className="detail-rules-header">
-                                                    <span>📋 İçerik Kuralları — {ch.name}</span>
-                                                    <button 
-                                                        className="btn-add-detail-rule"
-                                                        onClick={() => {
-                                                            setDetailRuleChannel(ch);
-                                                            setDetailRuleForm({
-                                                                name: '',
-                                                                conditionType: 'KEYWORD',
-                                                                conditions: { keywords: '', matchMode: 'ANY', aiDescription: '', timeStart: '09:00', timeEnd: '18:00', days: [] },
-                                                                targetFunnelId: '',
-                                                                targetStageId: ''
-                                                            });
-                                                            setShowDetailRuleModal(true);
-                                                        }}
-                                                    >
-                                                        <Plus size={14} /> Kural Ekle
-                                                    </button>
-                                                </div>
-                                                <div className="detail-rules-list">
-                                                    {getDetailRulesForChannel(ch.id).length === 0 ? (
-                                                        <div className="detail-rules-empty">
-                                                            İçerik kuralı yok. Tüm mesajlar varsayılan hedefe gider.
-                                                        </div>
-                                                    ) : (
-                                                        getDetailRulesForChannel(ch.id).map(rule => (
-                                                            <div key={rule.id} className="detail-rule-item">
-                                                                <div className="detail-rule-condition">
-                                                                    {renderConditionBadge(rule.conditionType)}
-                                                                    {renderConditionPreview(rule)}
+                                                return (
+                                                    <React.Fragment key={ch.id}>
+                                                        <div className={`map-row ${isUnassigned ? 'unassigned' : ''} ${isSaving ? 'saving' : ''}`}>
+                                                            {/* Channel info */}
+                                                            <div className="map-col-channel">
+                                                                <div className="channel-info">
+                                                                    <div className="channel-icon-badge" style={{ background: `${iconInfo.color}15` }}>
+                                                                        <ChannelIcon size={18} color={iconInfo.color} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="channel-name">{ch.name}</div>
+                                                                        <div className="channel-type">
+                                                                            {iconInfo.label}
+                                                                            {ch.type === 'facebook_form' && ch.leadCount > 0 && (
+                                                                                <span className="lead-count-badge">{ch.leadCount} lead</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
-                                                                <ArrowRight size={16} color="#9ca3af" />
-                                                                <div className="detail-rule-target">
-                                                                    {getTargetName(rule.targetFunnelId, rule.targetStageId)}
-                                                                </div>
-                                                                <button className="action-btn delete" onClick={() => handleDeleteRule(rule.id)}>
-                                                                    <Trash2 size={14} />
+                                                            </div>
+
+                                                            {/* Funnel dropdown */}
+                                                            <div className="map-col-funnel">
+                                                                <select
+                                                                    className={`map-select ${isUnassigned ? 'empty' : ''}`}
+                                                                    value={assignment.funnelId || ''}
+                                                                    onChange={e => handleChannelFunnelChange(ch.id, e.target.value)}
+                                                                    disabled={isSaving}
+                                                                >
+                                                                    <option value="">Seçiniz...</option>
+                                                                    {funnels.map(f => (
+                                                                        <option key={f.id} value={f.id}>
+                                                                            {f.name} {f.funnelType === 'MAIN' ? '(Ana)' : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                {isDefaultFunnel(assignment.funnelId) && (
+                                                                    <span className="default-badge">AI sınıflandırır</span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Stage dropdown */}
+                                                            <div className="map-col-stage">
+                                                                {selectedFunnel?.stages?.length > 0 ? (
+                                                                    <select
+                                                                        className="map-select map-select-sm"
+                                                                        value={assignment.stageId || ''}
+                                                                        onChange={e => handleChannelStageChange(ch.id, e.target.value)}
+                                                                        disabled={isSaving}
+                                                                    >
+                                                                        <option value="">İlk aşama</option>
+                                                                        {selectedFunnel.stages.map(s => (
+                                                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <span className="stage-na">—</span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Detail rules button */}
+                                                            <div className="map-col-actions">
+                                                                <button
+                                                                    className={`detail-rules-btn ${isExpanded ? 'active' : ''}`}
+                                                                    onClick={() => setExpandedChannel(isExpanded ? null : ch.id)}
+                                                                    title="Detay kuralları (zaman, keyword)"
+                                                                >
+                                                                    <Settings size={16} />
                                                                 </button>
                                                             </div>
-                                                        ))
-                                                    )}
-                                                </div>
-                                                <div className="detail-rules-footer">
-                                                    Eşleşme yoksa → <strong>{getTargetName(assignment.funnelId, assignment.stageId)}</strong> (dropdown'daki)
-                                                </div>
-                                            </div>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            })
+                                                        </div>
+
+                                                        {/* Expanded detail rules panel */}
+                                                        {isExpanded && (
+                                                            <div className="detail-rules-panel">
+                                                                <div className="detail-rules-header">
+                                                                    <span>📋 İçerik Kuralları — {ch.name}</span>
+                                                                    <button 
+                                                                        className="btn-add-detail-rule"
+                                                                        onClick={() => {
+                                                                            setDetailRuleChannel(ch);
+                                                                            setDetailRuleForm({
+                                                                                name: '',
+                                                                                conditionType: 'KEYWORD',
+                                                                                conditions: { keywords: '', matchMode: 'ANY', aiDescription: '', timeStart: '09:00', timeEnd: '18:00', days: [] },
+                                                                                targetFunnelId: '',
+                                                                                targetStageId: ''
+                                                                            });
+                                                                            setShowDetailRuleModal(true);
+                                                                        }}
+                                                                    >
+                                                                        <Plus size={14} /> Kural Ekle
+                                                                    </button>
+                                                                </div>
+                                                                <div className="detail-rules-list">
+                                                                    {getDetailRulesForChannel(ch.id).length === 0 ? (
+                                                                        <div className="detail-rules-empty">
+                                                                            İçerik kuralı yok. Tüm mesajlar varsayılan hedefe gider.
+                                                                        </div>
+                                                                    ) : (
+                                                                        getDetailRulesForChannel(ch.id).map(rule => (
+                                                                            <div key={rule.id} className="detail-rule-item">
+                                                                                <div className="detail-rule-condition">
+                                                                                    {renderConditionBadge(rule.conditionType)}
+                                                                                    {renderConditionPreview(rule)}
+                                                                                </div>
+                                                                                <ArrowRight size={16} color="#9ca3af" />
+                                                                                <div className="detail-rule-target">
+                                                                                    {getTargetName(rule.targetFunnelId, rule.targetStageId)}
+                                                                                </div>
+                                                                                <button className="action-btn delete" onClick={() => handleDeleteRule(rule.id)}>
+                                                                                    <Trash2 size={14} />
+                                                                                </button>
+                                                                            </div>
+                                                                        ))
+                                                                    )}
+                                                                </div>
+                                                                <div className="detail-rules-footer">
+                                                                    Eşleşme yoksa → <strong>{getTargetName(assignment.funnelId, assignment.stageId)}</strong> (dropdown'daki)
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                });
+                            })()
                         )}
                     </div>
 

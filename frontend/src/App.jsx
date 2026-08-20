@@ -42,6 +42,7 @@ import Calendar from './pages/Calendar/Calendar';
 
 
 import Automations from './pages/Automations/Automations';
+import NotificationSettings from './pages/Settings/NotificationSettings';
 // Functions page removed - merged into Integrations
 import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
@@ -134,6 +135,7 @@ function App() {
               <Route path="activities/calendar" element={<Calendar />} />
 
               <Route path="automations" element={<Automations />} />
+              <Route path="notification-settings" element={<NotificationSettings />} />
               {/* Functions route removed - merged into Integrations */}
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />

@@ -449,21 +449,23 @@ const Funnels = () => {
                     <Kanban size={22} />
                     {t('funnels.management')}
                 </h2>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <button
-                        className={`flow-map-toggle${viewMode === 'pipeline' ? ' active' : ''}`}
-                        onClick={() => setViewMode('pipeline')}
-                    >
-                        <Kanban size={14} /> Pipeline
-                    </button>
-                    <button
-                        className={`flow-map-toggle${viewMode === 'flowbuilder' ? ' active' : ''}`}
-                        onClick={() => setViewMode('flowbuilder')}
-                    >
-                        <Workflow size={14} /> Flow Builder
-                    </button>
-                    <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)}>
-                        <Plus size={15} />
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div className="funnel-view-toggle">
+                        <button
+                            className={`view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
+                            onClick={() => setViewMode('pipeline')}
+                        >
+                            <Kanban size={14} /> Pipeline
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${viewMode === 'flowbuilder' ? 'active' : ''}`}
+                            onClick={() => setViewMode('flowbuilder')}
+                        >
+                            <Workflow size={14} /> Flow Builder
+                        </button>
+                    </div>
+                    <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 16px', borderRadius: 8, fontSize: 14, fontWeight: 500 }}>
+                        <Plus size={16} />
                         Yeni Akış
                     </button>
                 </div>
@@ -1315,51 +1317,6 @@ const Funnels = () => {
                                 </div>
                             </div>
 
-                            {/* Kanal Yönlendirme */}
-                            <div className="settings-section">
-                                <div className="settings-section-title">📡 Giriş Kuralları</div>
-                                <p className="settings-hint">Hangi kanallardan gelen mesajlar bu akışa yönlendirilsin</p>
-                                {(() => {
-                                    const channels = [
-                                        { value: 'INSTAGRAM', label: '📷 Instagram' },
-                                        { value: 'FACEBOOK', label: '👤 Facebook' },
-                                        { value: 'WHATSAPP', label: '💬 WhatsApp' },
-                                        { value: 'EMAIL', label: '📧 E-posta' },
-                                        { value: 'WEB_WIDGET', label: '🌐 Web Widget' },
-                                        { value: 'FORM', label: '📝 Form' },
-                                        { value: 'LEAD', label: '🎯 Lead' }
-                                    ];
-                                    const routings = funnelPanel._routings || [];
-                                    return (
-                                        <>
-                                            {routings.map((r, i) => (
-                                                <div key={i} className="automation-item">
-                                                    <select value={r.channel} onChange={e => {
-                                                        const newRoutings = [...routings];
-                                                        newRoutings[i] = { ...r, channel: e.target.value };
-                                                        setFunnelPanel(p => ({ ...p, _routings: newRoutings }));
-                                                    }}>
-                                                        {channels.map(ch => <option key={ch.value} value={ch.value}>{ch.label}</option>)}
-                                                    </select>
-                                                    <input placeholder="Sayfa/Hesap ID (opsiyonel)" value={r.pageId || ''}
-                                                        onChange={e => {
-                                                            const newRoutings = [...routings];
-                                                            newRoutings[i] = { ...r, pageId: e.target.value || null };
-                                                            setFunnelPanel(p => ({ ...p, _routings: newRoutings }));
-                                                        }}
-                                                    />
-                                                    <button className="btn-icon" onClick={() => {
-                                                        setFunnelPanel(p => ({ ...p, _routings: routings.filter((_, idx) => idx !== i) }));
-                                                    }}><X size={12} /></button>
-                                                </div>
-                                            ))}
-                                            <button className="btn-add-sm" onClick={() => {
-                                                setFunnelPanel(p => ({ ...p, _routings: [...routings, { channel: 'WHATSAPP', pageId: null }] }));
-                                            }}>+ Kanal Bağla</button>
-                                        </>
-                                    );
-                                })()}
-                            </div>
 
                             {/* Actions */}
                             <div className="panel-actions">

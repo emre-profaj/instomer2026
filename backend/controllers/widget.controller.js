@@ -403,7 +403,7 @@ export const handleWidgetChat = async (req, res) => {
 
         // --- AUTOMATION RULES (Widget) ---
         try {
-            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning, executeAppointmentPlanning } = await import('./rules.controller.js');
             // Await phone capture so contact.phone is updated before auto call planning
             await executePhoneCaptureRule(workspaceId, conversation.id, message);
             executeHotKeywordRule(workspaceId, conversation.id, message).catch(e =>
@@ -417,6 +417,15 @@ export const handleWidgetChat = async (req, res) => {
             if (updatedContact?.phone) {
                 await executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
                     console.error('❌ [RULE:AUTO_CALL] Widget async error:', e.message)
+                );
+            }
+
+            // Randevu niyeti algılama — keyword ön filtre
+            const msgLower = message.toLowerCase();
+            const apptKeywords = ['randevu', 'görüşme', 'toplantı', 'ziyaret', 'gelmek istiyorum', 'ne zaman müsait', 'appointment', 'meeting'];
+            if (apptKeywords.some(kw => msgLower.includes(kw))) {
+                executeAppointmentPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
+                    console.error('❌ [RULE:APPOINTMENT] Widget async error:', e.message)
                 );
             }
         } catch (ruleErr) {

@@ -7,6 +7,22 @@ const __envDir = _dirname(_fileURLToPath(import.meta.url));
 dotenv.config({ path: _join(__envDir, '.env') });
 console.log(`🔑 [Startup] JWT_SECRET loaded: ${process.env.JWT_SECRET ? 'YES (' + process.env.JWT_SECRET.substring(0, 6) + '...)' : '❌ NO!'}`);
 
+// ═══════════════════════════════════════════════════════════════
+// GLOBAL ERROR HANDLERS — Process crash'i engellemek için
+// Bu handler'lar olmadan herhangi bir unhandled promise rejection
+// (Retell API key hatası, template hatası vb.) tüm process'i
+// öldürür ve tüm müşterilerin bağlantısı kopar.
+// ═══════════════════════════════════════════════════════════════
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ [UNHANDLED REJECTION] Caught to prevent crash:', reason?.message || reason);
+    if (reason?.stack) console.error(reason.stack);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('🚨 [UNCAUGHT EXCEPTION] Caught to prevent crash:', error.message);
+    console.error(error.stack);
+    // Not exiting — PM2 will handle restarts if truly unrecoverable
+});
 import './polyfill.js';
 import express from 'express';
 import { createServer } from 'http';

@@ -198,6 +198,10 @@ class DisaoCrmService {
       // Veriyi hazırla
       const customerData = this.mapContactToDisao(contact, settings, tokenData.userId);
 
+      if (source === 'FACEBOOK_LEAD') {
+        customerData.verifiedCustomer = true;
+      }
+
       // Not alanına kaynak bilgisi ekle
       customerData.note = `Kaynak: ${source} | Instomer ID: ${contact.id} | Tarih: ${new Date().toISOString()}`;
 
