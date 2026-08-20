@@ -240,12 +240,21 @@ export async function executeSingleAction(action, contactId, workspaceId) {
         }
 
         case ACTION_TYPES.CREATE_CALL_TASK: {
-            // Atama önceliği: 1) Aktif Case sorumlusu, 2) Konuşma sorumlusu
+            const contactForCall = await prisma.contact.findUnique({
+                where: { id: contactId },
+                select: { phone: true, name: true, firstName: true }
+            });
+
+            if (!contactForCall?.phone) {
+                console.log(`[StageAutomation] CREATE_CALL_TASK: Kişinin telefonu yok, görev oluşturulamadı`);
+                break;
+            }
+
+            // Görev tabanlı: ContactActivity oluştur → cron / human timeout halleder
             let callAssigneeId = null;
             let callTeamId = null;
             let callCaseId = null;
 
-            // 1. Aktif Case'den sorumluyu al
             try {
                 const activeCase = await prisma.case.findFirst({
                     where: { contactId, workspaceId, status: 'ACTIVE' },
@@ -256,11 +265,9 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     callCaseId = activeCase.id;
                     callAssigneeId = activeCase.assignedToId || null;
                     callTeamId = activeCase.assignedTeamId || null;
-                    console.log(`📋 [StageAutomation] Arama Case sorumlusuna atandı: case=${callCaseId}, user=${callAssigneeId}, team=${callTeamId}`);
                 }
             } catch (_) {}
 
-            // 2. Case'de atama yoksa → konuşma sorumlusuna bak
             if (!callAssigneeId && !callTeamId) {
                 try {
                     const latestConv = await prisma.conversation.findFirst({
@@ -271,20 +278,7 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     callAssigneeId = latestConv?.assignedToId || null;
                     callTeamId = latestConv?.assignedTeamId || null;
                     if (!callCaseId) callCaseId = latestConv?.caseId || null;
-                    if (callAssigneeId || callTeamId) {
-                        console.log(`💬 [StageAutomation] Arama konuşma sorumlusuna atandı: user=${callAssigneeId}, team=${callTeamId}`);
-                    }
                 } catch (_) {}
-            }
-
-            const contactForCall = await prisma.contact.findUnique({
-                where: { id: contactId },
-                select: { phone: true, name: true, firstName: true }
-            });
-
-            if (!contactForCall?.phone) {
-                console.log(`[StageAutomation] CREATE_CALL_TASK: Kişinin telefonu yok, görev oluşturulamadı`);
-                break;
             }
 
             await prisma.contactActivity.create({
@@ -296,11 +290,14 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     description: action.description || `${contactForCall.firstName || contactForCall.name || 'Müşteri'} aranacak — ${contactForCall.phone}`,
                     assignedToId: callAssigneeId,
                     teamId: callTeamId,
-                    caseId: callCaseId,
-                    sourceType: 'STAGE_ACTION',
+                    ...(callCaseId ? { caseId: callCaseId } : {}),
+                    source: 'AUTOMATION',
                     retellExcluded: false,
                     status: 'PLANNED',
-                    dueDate: new Date()
+                    dueDate: new Date(),
+                    aiAgentId: null, // İnsana önce şans ver
+                    fallbackToAi: true,
+                    aiFallbackTriggered: false,
                 }
             });
 
@@ -314,7 +311,7 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                 });
             } catch (_) {}
 
-            console.log(`[StageAutomation] CREATE_CALL_TASK: ${contactForCall.phone} için arama görevi oluşturuldu`);
+            console.log(`[StageAutomation] CREATE_CALL_TASK: Arama görevi oluşturuldu → insana atandı, timeout sonrası robot`);
             break;
         }
 
@@ -461,11 +458,25 @@ export async function executeSingleAction(action, contactId, workspaceId) {
             const contactRetell = await prisma.contact.findUnique({ where: { id: contactId } });
             if (contactRetell?.phone) {
                 try {
-                    const { triggerAutoCall } = await import('../controllers/retell.controller.js');
-                    await triggerAutoCall(workspaceId, contactRetell.phone, contactId, contactRetell.firstName || contactRetell.name || 'Müşteri', 'STAGE_AUTOMATION');
-                    console.log(`[StageAutomation] Retell call triggered for ${contactRetell.phone}`);
+                    await prisma.contactActivity.create({
+                        data: {
+                            contactId,
+                            workspaceId,
+                            type: 'CALL',
+                            title: '📞 Arama Görevi (Stage Otomasyon)',
+                            description: `Stage otomasyon: RETELL_CALL`,
+                            status: 'PLANNED',
+                            source: 'AUTOMATION',
+                            dueDate: new Date(),
+                            aiAgentId: null,
+                            fallbackToAi: true,
+                            aiFallbackTriggered: false,
+                            retellExcluded: false,
+                        }
+                    });
+                    console.log(`[StageAutomation] RETELL_CALL: Arama görevi oluşturuldu → ${contactRetell.phone}`);
                 } catch (err) {
-                    console.error('[StageAutomation] Retell call failed:', err.message);
+                    console.error('[StageAutomation] RETELL_CALL görev oluşturma hatası:', err.message);
                 }
             }
             break;

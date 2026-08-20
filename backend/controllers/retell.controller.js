@@ -496,18 +496,28 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             return;
         }
 
-        // CHAT_REQUEST: user asked to be called from chat → bypass trigger config, use workspace defaults
+        // System triggers → config'de tanımlıysa onu kullan, yoksa workspace defaults (asla skip etme)
+        const BYPASS_TRIGGER_CONFIG = ['CHAT_REQUEST', 'STAGE_ACTION', 'STAGE_AUTOMATION', 'LEAD', 'FORM'];
         let triggerConfig;
-        if (triggerSource === 'CHAT_REQUEST') {
+        const triggers = workspace.retellAutoCallTriggers || {};
+
+        if (BYPASS_TRIGGER_CONFIG.includes(triggerSource)) {
             if (!workspace.retellApiKey || !workspace.retellAgentId || !workspace.retellFromNumber) {
-                console.log(`⏭️ [AutoCall] CHAT_REQUEST: workspace not fully configured`);
+                console.log(`⏭️ [AutoCall] ${triggerSource}: workspace not fully configured`);
                 return;
             }
-            // Synthetic config: call immediately with no delay, no status filter
-            triggerConfig = { enabled: true, delay: 0, agentId: workspace.retellAgentId };
+            // Config'de tanımlıysa o ayarları kullan (agent, delay vb.)
+            const configuredTrigger = triggers[triggerSource] || triggers['ALL'];
+            if (configuredTrigger?.enabled) {
+                triggerConfig = configuredTrigger;
+                console.log(`🔄 [AutoCall] System trigger "${triggerSource}" — config bulundu, config ayarları kullanılıyor`);
+            } else {
+                // Config'de yok veya kapalı → workspace defaults ile çalış
+                triggerConfig = { enabled: true, delay: 0, agentId: workspace.retellAgentId };
+                console.log(`🔄 [AutoCall] System trigger "${triggerSource}" — config yok, workspace defaults kullanılıyor`);
+            }
         } else {
-            // Check if this trigger source is enabled (specific channel OR 'ALL' catch-all)
-            const triggers = workspace.retellAutoCallTriggers || {};
+            // Normal trigger → config'de tanımlı olmalı
             triggerConfig = triggers[triggerSource] || triggers['ALL'];
             if (!triggerConfig || !triggerConfig.enabled) {
                 console.log(`⏭️ [AutoCall] Skipping: trigger "${triggerSource}" (and ALL) disabled for workspace ${workspaceId}`);
@@ -1244,9 +1254,10 @@ async function checkOverdueAgentCalls() {
                 workspaceId: { in: workspaceIds },
                 type: 'CALL',
                 status: 'PLANNED',
-                dueDate: { lte: now, gte: maxOverdueCutoff }, // X günden eski görevleri yoksay
+                dueDate: { lte: now, gte: maxOverdueCutoff },
                 aiAgentId: { not: null },
                 aiFallbackTriggered: false,
+                retellExcluded: { not: true },
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
@@ -1259,13 +1270,14 @@ async function checkOverdueAgentCalls() {
         // mevcut kurulumlar için geriye dönük uyumluluk korunur.
         const poolActivities = await prisma.contactActivity.findMany({
             where: {
-                workspaceId: { in: workspaceIds }, // retellAutoCallEnabled: true zaten filtre ediliyor
+                workspaceId: { in: workspaceIds },
                 type: 'CALL',
                 status: 'PLANNED',
-                dueDate: { lte: now, gte: maxOverdueCutoff }, // X günden eski görevleri yoksay
+                dueDate: { lte: now, gte: maxOverdueCutoff },
                 assignedToId: null,
                 aiAgentId: null,
                 aiFallbackTriggered: false,
+                retellExcluded: { not: true },
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
@@ -1281,8 +1293,9 @@ async function checkOverdueAgentCalls() {
                 status: 'PLANNED',
                 aiFallbackTriggered: false,
                 assignedToId: { not: null },
-                aiAgentId: null, // aiAgentId varsa Scenario 1 halleder — duplicate önlenir
+                aiAgentId: null,
                 dueDate: { not: null },
+                retellExcluded: { not: true },
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
@@ -1645,6 +1658,179 @@ export const processScheduledCalls = async () => {
 
     } catch (e) {
         console.error('❌ [ScheduledCall] Processor error:', e.message);
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PUSH: Açık arama görevlerini hemen işle veya AI agent'a ata
+// POST /:workspaceId/push-calls
+// Body: {
+//   teamId?: string,         — belirli takım
+//   contactId?: string,      — belirli kişi
+//   activityIds?: string[],  — belirli görev ID'leri
+//   dueBefore?: string,      — bu tarihten ÖNCE gecikmiş
+//   dueAfter?: string,       — bu tarihten SONRA oluşmuş
+//   mode?: 'call' | 'assign' — 'call': hemen ara, 'assign': AI agent ata (cron arar)
+//   limit?: number           — max görev sayısı (default: 50)
+// }
+// ═══════════════════════════════════════════════════════════════
+export const pushCallTasks = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { teamId, contactId, activityIds, dueBefore, dueAfter, mode = 'call', limit = 50 } = req.body || {};
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true, retellAgentId: true, retellFromNumber: true }
+        });
+
+        if (!workspace?.retellApiKey || !workspace?.retellAgentId || !workspace?.retellFromNumber) {
+            return res.status(400).json({ error: 'AI Arama yapılandırması eksik' });
+        }
+
+        // Filtre oluştur
+        const where = {
+            workspaceId,
+            type: 'CALL',
+            status: 'PLANNED',
+            retellExcluded: { not: true },
+            contact: { phone: { not: null } }
+        };
+        if (teamId) where.teamId = teamId;
+        if (contactId) where.contactId = contactId;
+        if (activityIds?.length > 0) where.id = { in: activityIds };
+        if (dueBefore || dueAfter) {
+            where.dueDate = {};
+            if (dueBefore) where.dueDate.lte = new Date(dueBefore);
+            if (dueAfter) where.dueDate.gte = new Date(dueAfter);
+        }
+
+        const openTasks = await prisma.contactActivity.findMany({
+            where,
+            include: { contact: true },
+            take: Math.min(limit, 100),
+            orderBy: { dueDate: 'asc' }
+        });
+
+        if (openTasks.length === 0) {
+            return res.json({ message: 'Açık arama görevi bulunamadı', processed: 0, total: 0 });
+        }
+
+        // ═══ MODE: ASSIGN — sadece aiAgentId ata, cron arasın ═══
+        if (mode === 'assign') {
+            let assigned = 0;
+            for (const task of openTasks) {
+                if (!task.aiAgentId || task.aiFallbackTriggered) {
+                    await prisma.contactActivity.update({
+                        where: { id: task.id },
+                        data: {
+                            aiAgentId: workspace.retellAgentId,
+                            fallbackToAi: true,
+                            aiFallbackTriggered: false, // Cron tekrar alsın
+                            dueDate: task.dueDate || new Date()
+                        }
+                    });
+                    assigned++;
+                }
+            }
+            console.log(`🔄 [Push/Assign] ${assigned} görev AI agent'a atandı — cron alacak`);
+            return res.json({
+                message: `${assigned} görev AI agent'a atandı, cron 60s içinde arayacak`,
+                assigned,
+                total: openTasks.length,
+                mode: 'assign'
+            });
+        }
+
+        // ═══ MODE: CALL — hemen ara ═══
+        let processed = 0;
+        let skipped = 0;
+        const results = [];
+
+        for (const task of openTasks) {
+            try {
+                // Dedup: Son 24 saatte bu kişiye başarılı arama yapılmış mı?
+                const recentCall = await prisma.retellCall.findFirst({
+                    where: {
+                        workspaceId,
+                        contactId: task.contactId,
+                        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+                        status: { in: ['ended', 'completed'] }
+                    }
+                });
+                if (recentCall) {
+                    skipped++;
+                    results.push({ contactId: task.contactId, name: task.contact?.name, status: 'skipped', reason: 'Son 24h aranmış' });
+                    continue;
+                }
+
+                // Zaten PENDING ScheduledCall var mı?
+                const existingSC = await prisma.scheduledCall.findFirst({
+                    where: { workspaceId, contactId: task.contactId, status: 'PENDING' }
+                });
+                if (existingSC) {
+                    skipped++;
+                    results.push({ contactId: task.contactId, name: task.contact?.name, status: 'skipped', reason: 'Zaten planlanmış' });
+                    continue;
+                }
+
+                const effectiveAgentId = task.aiAgentId || workspace.retellAgentId;
+
+                const sc = await prisma.scheduledCall.create({
+                    data: {
+                        workspaceId,
+                        toNumber: task.contact.phone,
+                        contactId: task.contactId,
+                        contactName: task.contact.firstName || task.contact.name || 'Müşteri',
+                        agentId: effectiveAgentId,
+                        scheduledAt: new Date(),
+                        status: 'PENDING',
+                        source: 'PUSH',
+                        createdById: `activity_${task.id}`,
+                    }
+                });
+
+                await prisma.contactActivity.update({
+                    where: { id: task.id },
+                    data: { aiFallbackTriggered: true, aiAgentId: effectiveAgentId }
+                });
+
+                // Hemen ara
+                const callResponse = await executeScheduledCall(
+                    workspaceId, task.contact.phone, effectiveAgentId,
+                    task.contactId, task.contact.firstName || task.contact.name || 'Müşteri',
+                    'PUSH', `activity_${task.id}`, {}
+                );
+
+                if (callResponse?.call_id) {
+                    await prisma.scheduledCall.update({
+                        where: { id: sc.id },
+                        data: { status: 'COMPLETED', retellCallId: callResponse.call_id }
+                    });
+                }
+
+                processed++;
+                results.push({ contactId: task.contactId, name: task.contact?.name, status: 'called', callId: callResponse?.call_id });
+                console.log(`🚀 [Push] ${task.contact.phone} arandı (task: ${task.id})`);
+
+            } catch (taskErr) {
+                results.push({ contactId: task.contactId, name: task.contact?.name, status: 'error', error: taskErr.message });
+                console.error(`❌ [Push] ${task.contactId} hatası:`, taskErr.message);
+            }
+        }
+
+        return res.json({
+            message: `${processed} görev arandı, ${skipped} atlandı`,
+            processed,
+            skipped,
+            total: openTasks.length,
+            mode: 'call',
+            results
+        });
+
+    } catch (error) {
+        console.error('❌ [Push] Error:', error.message);
+        return res.status(500).json({ error: error.message });
     }
 };
 

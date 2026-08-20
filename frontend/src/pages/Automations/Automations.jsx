@@ -13,7 +13,7 @@ import FlowBuilder from './FlowBuilder';
 const Automations = () => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
-    const [activeTab, setActiveTab] = useState('templates');
+    const [activeTab, setActiveTab] = useState('automations');
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
 
@@ -525,18 +525,7 @@ const Automations = () => {
                     Otomasyonlar
                 </h1>
                 <div className="header-actions">
-                    {activeTab === 'templates' && (
-                        <>
-                            <button className="btn btn-secondary" onClick={handleSyncTemplates} disabled={syncing} style={{ marginRight: '10px' }}>
-                                <RefreshCw size={16} className={syncing ? "spin" : ""} style={{ marginRight: '6px' }} />
-                                {syncing ? 'Eşitleniyor...' : 'Şablonları Eşitle'}
-                            </button>
-                            <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
-                                <Plus size={16} />
-                                Şablon Ekle
-                            </button>
-                        </>
-                    )}
+
                     {activeTab === 'automations' && (
                         <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setEditingAutomation(null); setShowAutomationModal(true); }}>
                             <Plus size={16} />
@@ -549,13 +538,6 @@ const Automations = () => {
 
             {/* Tabs */}
             <div className="automations-tabs">
-                <button
-                    className={`tab-btn ${activeTab === 'templates' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('templates')}
-                >
-                    <MessageSquare size={18} />
-                    Şablonlar ({templates.length})
-                </button>
                 <button
                     className={`tab-btn ${activeTab === 'automations' ? 'active' : ''}`}
                     onClick={() => setActiveTab('automations')}
@@ -570,78 +552,11 @@ const Automations = () => {
                     <GitBranch size={18} />
                     Dinamik Otomasyonlar
                 </button>
-
             </div>
 
             {/* Content */}
             <div className="automations-content">
-                {/* Templates Tab */}
-                {activeTab === 'templates' && (
-                    <div className="templates-grid">
-                        {templates.length === 0 ? (
-                            <div className="empty-state">
-                                <div className="icon">📝</div>
-                                <h3>Henüz şablon yok</h3>
-                                <p>{t('automations.addTemplateDesc') || "Yeni bir şablon oluşturmak için Şablon Ekle butonuna tıklayın."}</p>
-                                <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
-                                    <Plus size={18} />
-                                    Şablon Ekle
-                                </button>
-                            </div>
-                        ) : (
-                            templates.map(template => (
-                                <div key={template.id} className="template-card">
-                                    <div className="template-header">
-                                        <div className="template-info">
-                                            <h3 className="template-name">{template.name}</h3>
-                                            <div className="template-id">{template.templateId}</div>
-                                        </div>
-                                        <span className={`template-status ${template.status.toLowerCase()}`}>
-                                            {getStatusIcon(template.status)}
-                                            {template.status === 'APPROVED' ? 'ONAYLI' : template.status === 'PENDING' ? 'BEKLİYOR' : template.status === 'REJECTED' ? 'REDDEDİLDİ' : template.status}
-                                        </span>
-                                    </div>
 
-                                    <div className="template-tags">
-                                        <span className="template-tag">
-                                            {template.category === 'MARKETING' ? 'PAZARLAMA' : template.category === 'UTILITY' ? 'HİZMET' : template.category === 'AUTHENTICATION' ? 'DOĞRULAMA' : template.category}
-                                        </span>
-                                        {template.headerType && (
-                                            <span className="template-tag media">
-                                                {template.headerType === 'IMAGE' && '🖼️ Resim'}
-                                                {template.headerType === 'VIDEO' && '🎬 Video'}
-                                                {template.headerType === 'DOCUMENT' && '📄 Döküman'}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="template-body">
-                                        <p>{template.bodyText}</p>
-                                    </div>
-
-                                    <div className="template-meta">
-                                        <span><Globe size={14} /> {template.language}</span>
-                                        {template.whatsappPhoneNumber && (
-                                            <span><Smartphone size={14} /> {template.whatsappPhoneNumber.displayPhoneNumber}</span>
-                                        )}
-                                    </div>
-
-                                    <div className="template-actions">
-                                        <button className="btn btn-success btn-sm" onClick={() => openSendModal(template)}>
-                                            <Send size={14} /> Gönder
-                                        </button>
-                                        <button className="btn btn-secondary btn-sm btn-icon" onClick={() => openEditTemplate(template)}>
-                                            <Edit2 size={14} />
-                                        </button>
-                                        <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteTemplate(template.id)}>
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                )}
 
                 {/* Basit Otomasyonlar Tab (Automations + Rules merged) */}
                 {activeTab === 'automations' && (

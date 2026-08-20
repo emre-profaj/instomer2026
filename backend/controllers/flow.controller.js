@@ -635,18 +635,51 @@ async function executeAICall(workspaceId, step, context) {
         return;
     }
 
+    const contactId = context.contact?.id;
+    if (!contactId) {
+        console.log(`  ⚠️ [FLOW STEP] AI_CALL: No contact ID available`);
+        return;
+    }
+
     try {
-        const { triggerAutoCall } = await import('./retell.controller.js');
-        await triggerAutoCall(
-            workspaceId,
-            phone,
-            context.contact?.id || null,
-            context.contact?.name || context.formData?.name || 'Müşteri',
-            'FLOW_TRIGGER',
-            null,
-            new Date()
-        );
-        console.log(`  ✅ [FLOW STEP] AI_CALL: Call triggered for ${phone}`);
+        // Workspace AI agent bilgisi
+        const ws = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellAgentId: true }
+        });
+
+        // 24h dedup
+        const recentTask = await prisma.contactActivity.findFirst({
+            where: {
+                contactId,
+                workspaceId,
+                type: 'CALL',
+                status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+            }
+        });
+
+        if (!recentTask) {
+            await prisma.contactActivity.create({
+                data: {
+                    workspaceId,
+                    contactId,
+                    type: 'CALL',
+                    title: `Arama Görevi (Flow: ${step.config?.label || 'AI_CALL'})`,
+                    description: `Flow otomasyon adımı: AI_CALL`,
+                    status: 'PLANNED',
+                    source: 'AUTOMATION',
+                    dueDate: new Date(),
+                    aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+                    fallbackToAi: true,
+                    aiFallbackTriggered: false,
+                    retellExcluded: false,
+                }
+            });
+            console.log(`  ✅ [FLOW STEP] AI_CALL: Arama görevi oluşturuldu → cron arayacak: ${phone}`);
+        } else {
+            console.log(`  ⏭️ [FLOW STEP] AI_CALL: Son 24h'de zaten arama görevi var — skip`);
+        }
     } catch (err) {
         console.error(`  ❌ [FLOW STEP] AI_CALL error:`, err.message);
     }
@@ -1042,17 +1075,23 @@ async function executeRetryCall(workspaceId, step, context) {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const { triggerAutoCall } = await import('./retell.controller.js');
-            await triggerAutoCall(
-                workspaceId,
-                phone,
-                context.contact?.id || null,
-                context.contact?.name || context.formData?.name || 'Müşteri',
-                'FLOW_RETRY',
-                null,
-                new Date()
-            );
-            console.log(`  ✅ [FLOW STEP] RETRY_CALL: Attempt ${attempt}/${maxRetries} triggered for ${phone}`);
+            await prisma.contactActivity.create({
+                data: {
+                    workspaceId,
+                    contactId: context.contact?.id,
+                    type: 'CALL',
+                    title: `Arama Görevi (Flow Retry ${attempt}/${maxRetries})`,
+                    description: `Flow RETRY_CALL: Deneme ${attempt}/${maxRetries}`,
+                    status: 'PLANNED',
+                    source: 'AUTOMATION',
+                    dueDate: new Date(),
+                    aiAgentId: null, // cron'dan alacak
+                    fallbackToAi: true,
+                    aiFallbackTriggered: false,
+                    retellExcluded: false,
+                }
+            });
+            console.log(`  ✅ [FLOW STEP] RETRY_CALL: Attempt ${attempt}/${maxRetries} — arama görevi oluşturuldu`);
 
             // Wait between retries (but not after the last one)
             if (attempt < maxRetries) {

@@ -19,7 +19,8 @@ import {
     syncSingleCall,
     bulkCall,
     getBulkCallBatches,
-    getBulkCallBatch
+    getBulkCallBatch,
+    pushCallTasks
 } from '../controllers/retell.controller.js';
 import {
     handleRetellAction,
@@ -78,6 +79,9 @@ router.post('/:workspaceId/schedule-call', requireWorkspaceAccess, scheduleCall)
 router.get('/:workspaceId/scheduled-calls', requireWorkspaceAccess, getScheduledCalls);
 router.patch('/:workspaceId/scheduled-calls/:id', requireWorkspaceAccess, updateScheduledCall);
 router.delete('/:workspaceId/scheduled-calls/:id', requireWorkspaceAccess, cancelScheduledCall);
+
+// Push: Açık arama görevlerini hemen işle
+router.post('/:workspaceId/push-calls', requireWorkspaceAccess, pushCallTasks);
 
 // Recovery & Sync
 router.post('/:workspaceId/recover-calls', requireWorkspaceAccess, recoverCallConversations);

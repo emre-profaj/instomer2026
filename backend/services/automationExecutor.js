@@ -7,7 +7,6 @@
  *   context: { workspaceId, contactId, conversationId, message, contact }
  */
 import prisma from '../lib/prisma.js';
-import { triggerAutoCall } from '../controllers/retell.controller.js';
 import { emitToWorkspace } from '../socket.js';
 
 // ─── Main dispatcher ─────────────────────────────────────────────
@@ -163,30 +162,55 @@ async function handleStartCall(automation, context) {
     const contact = await prisma.contact.findUnique({ where: { id: contactId } });
     if (!contact?.phone) return { success: false, error: 'Kişinin telefon numarası yok' };
 
-    // Build dynamic variables from automation context
-    const dynVars = {};
-    if (automation.callAgentId) dynVars.override_agent = automation.callAgentId;
-    if (automation.name) dynVars.automation_name = automation.name;
+    // 24h dedup
+    const recentTask = await prisma.contactActivity.findFirst({
+        where: {
+            contactId,
+            workspaceId,
+            type: 'CALL',
+            status: { in: ['PLANNED', 'IN_PROGRESS'] },
+            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        }
+    });
 
-    // If automation has custom instructions for the call, pass them
-    if (automation.callInstructions) {
-        dynVars.custom_instruction = automation.callInstructions;
+    if (recentTask) {
+        console.log(`📞 [AutomationExecutor] START_CALL: Son 24h'de zaten arama görevi var — skip`);
+        return { success: true, action: 'START_CALL', skipped: true };
     }
 
-    // Use Retell triggerAutoCall with dynamic variables
-    await triggerAutoCall(
-        workspaceId,
-        contact.phone,
-        contactId,
-        contact.name || 'Müşteri',
-        'AUTOMATION',
-        message || null,
-        new Date(),
-        null, // no explicit preferred window
-        Object.keys(dynVars).length > 0 ? dynVars : null // extraDynamicVariables
-    );
+    // Conversation'dan atama bilgisi
+    let assignedToId = null, teamId = null, caseId = null;
+    if (conversationId) {
+        const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { assignedToId: true, assignedTeamId: true, caseId: true }
+        });
+        assignedToId = conv?.assignedToId || null;
+        teamId = conv?.assignedTeamId || null;
+        caseId = conv?.caseId || null;
+    }
 
-    console.log(`📞 [AutomationExecutor] START_CALL: ${contact.phone} (agent: ${automation.callAgentId || 'default'})`);
+    await prisma.contactActivity.create({
+        data: {
+            workspaceId,
+            contactId,
+            type: 'CALL',
+            title: `Arama Görevi (Otomasyon: ${automation.name || 'START_CALL'})`,
+            description: `Otomasyon tetikledi: ${automation.name || '-'}`,
+            status: 'PLANNED',
+            source: 'AUTOMATION',
+            dueDate: new Date(),
+            aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+            fallbackToAi: true,
+            aiFallbackTriggered: false,
+            retellExcluded: false,
+            assignedToId,
+            teamId,
+            ...(caseId ? { caseId } : {}),
+        }
+    });
+
+    console.log(`📞 [AutomationExecutor] START_CALL: Arama görevi oluşturuldu → ${contact.phone}`);
     return { success: true, action: 'START_CALL' };
 }
 

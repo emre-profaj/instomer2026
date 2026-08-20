@@ -26,12 +26,26 @@ export async function applyDefaultStageActions(workspaceId) {
         let entryActions = null;
         let entryRules = null;
 
-        // Fırsat aşaması — telefon varsa otomatik gir
+        // Fırsat aşaması — telefon varsa otomatik gir + arama planla
         if (stageName.includes('fırsat') || stageName.includes('firsat')) {
             entryRules = JSON.stringify({
                 matchType: 'ANY',
                 rules: [
                     { type: 'FIELD_EXISTS', field: 'phone' }
+                ]
+            });
+
+            entryActions = JSON.stringify({
+                actions: [
+                    {
+                        type: 'CREATE_CALL_TASK',
+                        title: '📞 Müşteri Aranacak',
+                        description: 'Fırsat tespit edildi — müşteri aranacak'
+                    },
+                    {
+                        type: 'NOTIFY_TEAM',
+                        message: '🎯 Yeni fırsat! Arama planlandı.'
+                    }
                 ]
             });
         }

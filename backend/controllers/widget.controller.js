@@ -653,26 +653,8 @@ export const handlePrechat = async (req, res) => {
             console.error('❌ [Widget Prechat] Socket emit error:', socketError);
         }
 
-        // --- AUTO CALL TRIGGER ---
-        if (normalizedPhone) {
-            try {
-                const { triggerAutoCall } = await import('./retell.controller.js');
-                triggerAutoCall(workspaceId, normalizedPhone, contact?.id, name, 'WIDGET');
-            } catch (autoCallErr) {
-                console.error('⚠️ [Widget Prechat] AutoCall trigger error:', autoCallErr.message);
-            }
-        }
-
-        // --- AUTO CALL PLANNING (Prechat Form) ---
-        try {
-            const { executeAutoCallPlanning } = await import('./rules.controller.js');
-            await executeAutoCallPlanning(workspaceId, contact.id, 'FORM').catch(e =>
-                console.error('❌ [RULE:AUTO_CALL] Prechat async error:', e.message)
-            );
-        } catch (ruleErr) {
-            console.error('❌ [RULES] Prechat error:', ruleErr.message);
-        }
-        // --- AUTO CALL PLANNING END ---
+        // Arama tetikleme: executeClassificationActions → createIntentActivity → ContactActivity → cron arar
+        // (aşağıdaki classifier bloğu halledecek, burada ayrıca triggerAutoCall çağırmaya gerek yok)
 
         // --- 🎯 EVRENSEL SINIFLANDIRICI (Widget Prechat Form) ---
         try {

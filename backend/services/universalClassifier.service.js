@@ -168,7 +168,12 @@ ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşa
    - email: E-posta adresi (konuşmada paylaştıysa. Yoksa null)
    - topic: Konuşmanın ana konusu / ilgilenilen hizmet (kısa, 3-5 kelime)
    - preferredCallTime: Aranmak istediği zaman (örn: "12:00-15:00", "yarın öğleden sonra")
-   - requestedAction: CALL (aranmak istiyor), VISIT (ziyaret istiyor), MEETING (görüşme istiyor), null
+   - requestedAction: Kişi AÇIKÇA bir aksiyon talep ediyorsa set et, yoksa null.
+     • CALL: "beni arayın", "aranmak istiyorum", "telefon numaramı bırakıyorum, beni arar mısınız" gibi NET aranma talebi
+     • VISIT: "yerinize gelmek istiyorum", "ofise gelip bakabilir miyim", "showroom nerede" gibi NET ziyaret talebi
+     • MEETING: "randevu almak istiyorum", "ne zaman görüşebiliriz", "müsait bir gün ayarlayalım" gibi NET görüşme/randevu talebi
+     • null: Bilgi sorma ("fiyat ne?", "bilgi alabilir miyim?"), genel sorular, sadece ilgi gösterme
+     ⚠️ DİKKAT: "Bilgi alabilir miyim?", "Detay verir misiniz?" gibi bilgi talepleri requestedAction DEĞİLDİR → null yaz! Sadece kişi açıkça aranmak, ziyaret etmek veya randevu almak istediğinde set et.
    - requestedDate: Talep edilen tarih (ISO format: "2026-06-05", null ise bugün)
    - branchInfo: Şube veya branş bilgisi (varsa)
    - budget: Bütçe/fiyat aralığı (konuşmada belirtildiyse, null yoksa)
@@ -543,8 +548,6 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         }
 
         // --- Lead / Form → OPPORTUNITY olarak işaretle ---
-        // Aşama ataması yukarıda changeFunnelStage ile zaten yapıldı.
-        // Stage entryActions (CREATE_CALL_TASK) arama görevini otomatik oluşturur.
         if (isQualifiedLead || channel === 'FORM') {
             try {
                 await prisma.contact.update({
@@ -553,6 +556,16 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 });
                 console.log(`🏷️ [Classifier] Kişi OPPORTUNITY olarak işaretlendi`);
             } catch (_) {}
+
+            // Lead/Form → arama niyeti olarak işaretle
+            // createIntentActivity tek merkezden triggerAutoCall'ı çağıracak
+            if (!classificationResult.extractedData) {
+                classificationResult.extractedData = {};
+            }
+            if (!classificationResult.extractedData.requestedAction) {
+                classificationResult.extractedData.requestedAction = 'CALL';
+                console.log(`📞 [Classifier] Lead/Form → requestedAction: CALL olarak enjekte edildi`);
+            }
         }
 
         // --- Case'İ tip, ürün ve kategori ile güncelle ---
@@ -711,187 +724,13 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // ─── EVRENSEL NİYET → ARAMA PLANLAMA & RANDEVU OLUŞTURMA ───
-        // Stage/funnel'dan bağımsız — AI niyet tespit ettiyse otomatik planla
+        // --- Niyet algılama → Görev oluşturma (TEK MERKEZ) ---
+        // createIntentActivity: CALL niyeti → triggerAutoCall, VISIT/MEETING → aktivite oluşturma
         try {
-            const ed = extractedData || {};
-            const { requestedAction, preferredCallTime, requestedDate } = ed;
-            
-            // Case ID'yi al (varsa)
-            let activeCaseId = null;
-            try {
-                const convForCase = await prisma.conversation.findUnique({
-                    where: { id: conversationId },
-                    select: { caseId: true }
-                });
-                activeCaseId = convForCase?.caseId || null;
-            } catch (_) {}
-
-            // 1. ARAMA PLANLAMA — requestedAction CALL/VISIT/MEETING ise
-            if (requestedAction === 'CALL' || requestedAction === 'VISIT' || requestedAction === 'MEETING') {
-                // 24 saat içinde aynı kişiye açılmış bekleyen arama var mı?
-                const existingCallTask = await prisma.contactActivity.findFirst({
-                    where: {
-                        contactId,
-                        workspaceId,
-                        type: 'CALL',
-                        status: { in: ['PLANNED', 'IN_PROGRESS'] },
-                        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-                    }
-                });
-
-                if (!existingCallTask) {
-                    const { assignedToId: callAssignee, assignedTeamId: callTeam } = await resolveAssignment(workspaceId, conversationId);
-                    const scheduledTime = parsePreferredTime(preferredCallTime);
-
-                    const actionLabels = { CALL: 'Geri Arama', VISIT: 'Ziyaret', MEETING: 'Görüşme' };
-                    const callActivity = await prisma.contactActivity.create({
-                        data: {
-                            contactId,
-                            workspaceId,
-                            type: 'CALL',
-                            title: `📞 ${actionLabels[requestedAction] || 'Arama'} Planlandı`,
-                            description: [
-                                `AI tespit etti: Müşteri ${actionLabels[requestedAction]?.toLowerCase() || 'aranmak'} istiyor.`,
-                                ed.topic ? `Konu: ${ed.topic}` : null,
-                                preferredCallTime ? `Tercih: ${preferredCallTime}` : null,
-                                ed.name ? `Kişi: ${ed.name}` : null,
-                                ed.phone ? `Tel: ${ed.phone}` : null
-                            ].filter(Boolean).join('\n'),
-                            dueDate: scheduledTime,
-                            status: 'PLANNED',
-                            priority: 'HIGH',
-                            source: 'SYSTEM',
-                            assignedToId: callAssignee,
-                            teamId: callTeam,
-                            callTopic: ed.topic || null,
-                            caseId: activeCaseId
-                        }
-                    });
-
-                    console.log(`📞 [Intent] Arama planlandı: ${callActivity.id} | Zaman: ${scheduledTime?.toISOString()} | Atanan: ${callAssignee || callTeam || 'atanmamış'}`);
-
-                    // Socket ile bildirim
-                    try {
-                        const { emitToWorkspace } = await import('../socket.js');
-                        emitToWorkspace(workspaceId, 'activity_created', {
-                            activity: callActivity,
-                            contactId,
-                            conversationId,
-                            type: 'CALL',
-                            source: 'AI_INTENT'
-                        });
-                    } catch (_) {}
-                } else {
-                    console.log(`⏭️ [Intent] Arama planlaması atlandı — 24 saat içinde zaten mevcut görev: ${existingCallTask.id}`);
-                }
-            }
-
-            // 2. RANDEVU OLUŞTURMA — classification RANDEVU ise
-            if (classification === 'RANDEVU') {
-                // 24 saat içinde aynı kişiye açılmış bekleyen randevu var mı?
-                const existingApptTask = await prisma.contactActivity.findFirst({
-                    where: {
-                        contactId,
-                        workspaceId,
-                        type: 'MEETING',
-                        status: { in: ['PLANNED', 'IN_PROGRESS'] },
-                        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-                    }
-                });
-
-                if (!existingApptTask) {
-                    const { assignedToId: apptAssignee, assignedTeamId: apptTeam } = await resolveAssignment(workspaceId, conversationId);
-
-                    // Randevu zamanını belirle
-                    let appointmentTime = null;
-                    if (requestedDate) {
-                        try { appointmentTime = new Date(requestedDate); } catch (_) {}
-                    }
-                    if (!appointmentTime || isNaN(appointmentTime.getTime())) {
-                        appointmentTime = parsePreferredTime(preferredCallTime);
-                    }
-
-                    // ContactActivity olarak randevu görevi
-                    const apptActivity = await prisma.contactActivity.create({
-                        data: {
-                            contactId,
-                            workspaceId,
-                            type: 'MEETING',
-                            title: `📅 Randevu Talebi${ed.topic ? ': ' + ed.topic : ''}`,
-                            description: [
-                                'AI tespit etti: Müşteri randevu almak istiyor.',
-                                ed.topic ? `Konu: ${ed.topic}` : null,
-                                requestedDate ? `Talep edilen tarih: ${requestedDate}` : null,
-                                preferredCallTime ? `Tercih: ${preferredCallTime}` : null,
-                                ed.branchInfo ? `Şube: ${ed.branchInfo}` : null,
-                                ed.name ? `Kişi: ${ed.name}` : null,
-                                ed.phone ? `Tel: ${ed.phone}` : null
-                            ].filter(Boolean).join('\n'),
-                            dueDate: appointmentTime,
-                            status: 'PLANNED',
-                            priority: 'HIGH',
-                            source: 'SYSTEM',
-                            assignedToId: apptAssignee,
-                            teamId: apptTeam,
-                            callTopic: ed.topic || null,
-                            caseId: activeCaseId
-                        }
-                    });
-
-                    // Ayrıca Appointment tablosuna da kaydet (takvimde görünsün)
-                    try {
-                        const startTime = appointmentTime || new Date();
-                        const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 saat
-
-                        // Contact bilgilerini al
-                        const contactInfo = await prisma.contact.findUnique({
-                            where: { id: contactId },
-                            select: { name: true, phone: true, email: true }
-                        });
-
-                        await prisma.appointment.create({
-                            data: {
-                                workspaceId,
-                                title: `📅 ${ed.topic || 'Randevu Talebi'}`,
-                                description: `AI tarafından tespit edilen randevu talebi.\n${ed.branchInfo ? 'Şube: ' + ed.branchInfo : ''}`,
-                                startTime,
-                                endTime,
-                                assignedToId: apptAssignee,
-                                contactId,
-                                contactName: contactInfo?.name || ed.name || null,
-                                contactPhone: contactInfo?.phone || ed.phone || null,
-                                contactEmail: contactInfo?.email || ed.email || null,
-                                status: 'SCHEDULED',
-                                branch: ed.branchInfo || null,
-                                conversationId,
-                                createdById: apptAssignee || 'system',
-                                createdByBotId: 'ai-classifier'
-                            }
-                        });
-                        console.log(`📅 [Intent] Randevu oluşturuldu: ${apptActivity.id} | Zaman: ${startTime.toISOString()}`);
-                    } catch (apptErr) {
-                        console.error('⚠️ [Intent] Appointment tablosuna yazma hatası (kritik değil):', apptErr.message);
-                    }
-
-                    // Socket ile bildirim
-                    try {
-                        const { emitToWorkspace } = await import('../socket.js');
-                        emitToWorkspace(workspaceId, 'activity_created', {
-                            activity: apptActivity,
-                            contactId,
-                            conversationId,
-                            type: 'MEETING',
-                            source: 'AI_INTENT'
-                        });
-                    } catch (_) {}
-                } else {
-                    console.log(`⏭️ [Intent] Randevu planlaması atlandı — 24 saat içinde zaten mevcut görev: ${existingApptTask.id}`);
-                }
-            }
+            const { createIntentActivity } = await import('./intentStage.service.js');
+            await createIntentActivity(workspaceId, contactId, classificationResult, conversationId);
         } catch (intentErr) {
-            // Niyet tespiti hatası ana akışı ENGELLEMEMELİ
-            console.error('⚠️ [Intent] Arama/Randevu planlama hatası (kritik değil):', intentErr.message);
+            console.warn(`⚠️ [Classifier] createIntentActivity hatası:`, intentErr.message);
         }
 
         console.log(`✅ [Classifier] Aksiyon tamamlandı: ${classification} | Lead: ${isQualifiedLead} | Funnel: ${targetFunnelId || 'N/A'}`);
@@ -903,41 +742,6 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
 // =============================================
 // YARDIMCI FONKSİYONLAR (Türkiye saati UTC+3)
 // =============================================
-
-/**
- * Konuşmanın atanmış kişi/takımını belirle.
- * Öncelik: conversation.assignedToId > conversation.assignedTeamId > channelRouting default team
- */
-async function resolveAssignment(workspaceId, conversationId) {
-    try {
-        // 1. Konuşmanın mevcut atamasını kontrol et
-        const conv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { assignedToId: true, assignedTeamId: true, channel: true, pageId: true }
-        });
-
-        if (conv?.assignedToId || conv?.assignedTeamId) {
-            return { assignedToId: conv.assignedToId || null, assignedTeamId: conv.assignedTeamId || null };
-        }
-
-        // 2. Fallback: Channel routing'den varsayılan takımı al
-        const routing = await prisma.channelRouting.findFirst({
-            where: {
-                workspaceId,
-                channel: conv?.channel || 'WHATSAPP',
-                isActive: true
-            },
-            orderBy: { createdAt: 'desc' },
-            select: { teamId: true }
-        });
-
-        return { assignedToId: null, assignedTeamId: routing?.teamId || null };
-    } catch (err) {
-        console.error('⚠️ [resolveAssignment] Hata:', err.message);
-        return { assignedToId: null, assignedTeamId: null };
-    }
-}
-
 
 /**
  * Türkiye saatini döndürür (UTC+3)

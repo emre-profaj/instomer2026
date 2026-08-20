@@ -1360,12 +1360,11 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                         } catch (_) {}
                     }
 
-                    // Aksiyonları çalıştır: Lead olduysa VEYA telefon numarası varsa VEYA niyet tespiti varsa
+                    // Aksiyonları çalıştır: Lead olduysa VEYA telefon numarası varsa
                     // Contact.phone'u taze oku — executePhoneCaptureRule tarafından güncellenmiş olabilir
                     const freshContact = await prisma.contact.findUnique({ where: { id: conv.contactId }, select: { phone: true } });
                     const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
-                    const hasIntentAction = !!(classResult.extractedData?.requestedAction || classResult.classification === 'RANDEVU');
-                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone || hasIntentAction;
+                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone;
                     if (shouldRunActions) {
                         await executeClassificationActions(
                             workspaceId, conversationId, conv.contactId, classResult
@@ -1681,9 +1680,8 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                                 }
                             });
 
-                            // Lead, arama niyeti veya randevu tespiti → aksiyonları çalıştır
-                            const hasIntent = classResult.extractedData?.requestedAction || classResult.classification === 'RANDEVU';
-                            if (classResult.isQualifiedLead || hasIntent) {
+                            // Lead ise aksiyonları çalıştır
+                            if (classResult.isQualifiedLead) {
                                 try {
                                     const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
                                     await executeClassificationActions(

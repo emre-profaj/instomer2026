@@ -586,25 +586,50 @@ export const handleFormSubmission = async (req, res) => {
             console.error('⚠️ [AutoCase] FormWebhook import error:', caseErr.message);
         }
 
-        // --- AUTO CALL TRIGGER ---
+        // --- ARAMA GÖREVİ OLUŞTUR (görev tabanlı) ---
         const contactPhone = phone || contact?.phone;
         if (contactPhone && contact?.id) {
-            // 1. Retell AI otomatik arama (yapılandırılmışsa)
             try {
-                const { triggerAutoCall } = await import('./retell.controller.js');
-                await triggerAutoCall(webhook.workspaceId, contactPhone, contact.id, name || contact.name, 'FORM');
-                console.log(`📞 [FormWebhook] Retell auto call triggered for ${contactPhone}`);
-            } catch (retellErr) {
-                console.error('⚠️ [FormWebhook] Retell AutoCall error:', retellErr.message);
-            }
+                // Workspace AI agent bilgisini al
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: webhook.workspaceId },
+                    select: { retellAgentId: true }
+                });
 
-            // 2. İnsan takibi için görev aç (Retell kapalı olsa bile çalışır)
-            try {
-                const { executeAutoCallPlanning } = await import('./rules.controller.js');
-                await executeAutoCallPlanning(webhook.workspaceId, contact.id, 'WEB_FORM');
-                console.log(`📞 [FormWebhook] Auto call planned for contact ${contact.id} (phone: ${contactPhone})`);
-            } catch (autoCallErr) {
-                console.error('⚠️ [FormWebhook] AutoCall planning error:', autoCallErr.message);
+                // 24h dedup kontrolü
+                const recentTask = await prisma.contactActivity.findFirst({
+                    where: {
+                        contactId: contact.id,
+                        workspaceId: webhook.workspaceId,
+                        type: 'CALL',
+                        status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+                    }
+                });
+
+                if (!recentTask) {
+                    await prisma.contactActivity.create({
+                        data: {
+                            workspaceId: webhook.workspaceId,
+                            contactId: contact.id,
+                            type: 'CALL',
+                            title: `Arama Görevi (Form: ${name || 'Anonim'})`,
+                            description: `Form webhook üzerinden gelen lead.`,
+                            status: 'PLANNED',
+                            source: 'AUTOMATION',
+                            dueDate: new Date(),
+                            aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+                            fallbackToAi: true,
+                            aiFallbackTriggered: false,
+                            retellExcluded: false,
+                        }
+                    });
+                    console.log(`📞 [FormWebhook] CALL görevi oluşturuldu → insana atandı, timeout sonrası robot: ${contactPhone}`);
+                } else {
+                    console.log(`📞 [FormWebhook] Son 24h'de zaten arama görevi var — skip`);
+                }
+            } catch (callTaskErr) {
+                console.error('⚠️ [FormWebhook] CALL görev oluşturma hatası:', callTaskErr.message);
             }
         } else {
             console.log(`ℹ️ [FormWebhook] No phone found (form: ${phone || 'null'}, contact: ${contact?.phone || 'null'}) — skipping auto call`);

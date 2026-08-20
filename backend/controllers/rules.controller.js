@@ -128,7 +128,7 @@ const DEFAULT_HOT_KEYWORDS = [
 const DEFAULT_RULES = [
     {
         ruleType: 'PHONE_CAPTURE',
-        isActive: false,
+        isActive: true,
         config: '{}'
     },
     {
@@ -143,15 +143,16 @@ const DEFAULT_RULES = [
     },
     {
         ruleType: 'SALES_PHONE_CALL',
-        isActive: false,
+        isActive: true,
         config: JSON.stringify({ funnelName: 'Satış Akışı', teamId: null })
     },
     {
         ruleType: 'APPOINTMENT_AUTO_PLAN',
-        isActive: false,
+        isActive: true,
         config: JSON.stringify({ teamId: null })
     }
 ];
+
 
 export const getRules = async (req, res) => {
     try {
@@ -738,6 +739,10 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'SALES_PHONE_CALL' } }
         });
+        if (rule && !rule.isActive) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Rule is disabled for workspace ${workspaceId}`);
+            return;
+        }
         const config = rule ? safeParseJSON(rule.config, {}) : {};
 
         // 2. Get contact + latest conversation for context

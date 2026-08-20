@@ -3,7 +3,32 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // Eagerly establish DB connection pool to prevent cold-start failures
-prisma.$connect().catch(err => console.error('❌ Prisma connection error:', err.message));
+prisma.$connect()
+    .then(async () => {
+        // 1) Eksik kuralları oluştur (mevcut olanlara dokunma)
+        const workspaces = await prisma.workspace.findMany({ select: { id: true } });
+        const rules = workspaces.flatMap(ws => [
+            { workspaceId: ws.id, ruleType: 'SALES_PHONE_CALL', isActive: true, config: JSON.stringify({ callDelayMinutes: 15, assignDirectly: false }) },
+            { workspaceId: ws.id, ruleType: 'APPOINTMENT_AUTO_PLAN', isActive: true, config: JSON.stringify({ teamId: null }) },
+            { workspaceId: ws.id, ruleType: 'PHONE_CAPTURE', isActive: true, config: '{}' }
+        ]);
+        const { count: created } = await prisma.workspaceRule.createMany({ data: rules, skipDuplicates: true });
+        if (created > 0) console.log(`✅ [Startup] ${created} eksik niyet algılama kuralı oluşturuldu`);
+
+        // 2) Eski seed'den kapalı kalanları BİR KERE aç (sadece hiç elle dokunulmamışlar)
+        //    updatedAt = createdAt → kullanıcı hiç toggle yapmamış demek
+        const migrated = await prisma.$executeRaw`
+            UPDATE "workspace_rules"
+            SET "isActive" = true, "updatedAt" = NOW()
+            WHERE "ruleType" IN ('SALES_PHONE_CALL', 'APPOINTMENT_AUTO_PLAN', 'PHONE_CAPTURE')
+              AND "isActive" = false
+              AND "updatedAt" = "createdAt"
+        `;
+        if (migrated > 0) console.log(`🔄 [Startup] ${migrated} eski kapalı kural aktifleştirildi (tek seferlik)`);
+    })
+    .catch(err => console.error('❌ Prisma connection error:', err.message));
+
+
 
 // Legacy middleware that automatically promoted contacts with phone numbers to HOT_OPPORTUNITY
 // has been removed. This logic is incompatible with the dynamic Funnel Stage ID architecture.

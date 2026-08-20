@@ -3512,58 +3512,60 @@ async function handleLeadgenEvent(leadValue, entryId) {
         }
         // --- FLOW ENGINE TRIGGER END ---
 
-        // --- AUTO CALL TRIGGER ---
+        // --- ARAMA GÖREVİ OLUŞTUR (görev tabanlı) ---
         if (leadPhone) {
             try {
-                const { triggerAutoCall } = await import('./retell.controller.js');
-                const baseDate = leadData.created_time ? new Date(leadData.created_time) : new Date();
-
-                // Extract preferred call-time window directly from lead form fieldData.
-                // We do this here (structured data) rather than relying on message-content parsing,
-                // because LEAD triggers intentionally disable message parsing to prevent date strings
-                // like "23.03.2026" from being misread as "23:03".
-                // Facebook Lead Ads encodes range values with underscores: "12:00_-_15:00"
-                let leadPreferredWindow = null;
+                // Tercih edilen arama zamanını form verilerinden çıkar
+                let preferredTimeStr = null;
                 for (const [key, value] of Object.entries(fieldData)) {
                     const lk = key.toLowerCase();
                     if (lk.includes('zaman') || lk.includes('saat') || lk.includes('time') || lk.includes('when') || lk.includes('ara')) {
                         if (value) {
-                            // Normalize: underscores → spaces, dots → colons (15.00 → 15:00)
-                            const normalized = String(value)
-                                .replace(/_/g, ' ')
-                                .replace(/(\d{1,2})\.(\d{2})/g, '$1:$2')  // 15.00 → 15:00
-                                .trim();
-                            const rangeMatch = normalized.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
-                            if (rangeMatch) {
-                                const [, sH, sM, eH, eM] = rangeMatch.map((v, i) => i === 0 ? v : parseInt(v));
-                                if (sH >= 6 && eH > sH && eH <= 23) {
-                                    leadPreferredWindow = { startHour: sH, startMinute: sM, endHour: eH, endMinute: eM };
-                                    console.log(`🕐 [LEADGEN] Preferred call window from lead form field "${key}": ${sH}:${String(sM).padStart(2,'0')}-${eH}:${String(eM).padStart(2,'0')}`);
-                                    break;
-                                }
-                            }
+                            preferredTimeStr = String(value).replace(/_/g, ' ').trim();
+                            break;
                         }
                     }
                 }
 
-                // ⚠️ ÖNEMLİ: triggerAutoCall ÖNCE çalışmalı (await ile) — aiAgentId atar.
-                // executeAutoCallPlanning sonra çalışır — duplicate ise atlar.
-                // Sıra bozulursa aiAgentId=null olur ve robot aramaz!
-                await triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', null, baseDate, leadPreferredWindow);
-            } catch (autoCallErr) {
-                console.error('⚠️ [LEADGEN] AutoCall trigger error:', autoCallErr.message);
-            }
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: facebookPage.workspaceId },
+                    select: { retellAgentId: true }
+                });
 
-            // Ayrıca insan takibi için ContactActivity/PLANNED oluştur (Retell kapalı olsa bile çalışır)
-            if (contact?.id) {
-                try {
-                    const { executeAutoCallPlanning } = await import('./rules.controller.js');
-                    executeAutoCallPlanning(facebookPage.workspaceId, contact.id, 'LEAD_FORM').catch(e =>
-                        console.error('❌ [RULE:AUTO_CALL] Leadgen async error:', e.message)
-                    );
-                } catch (planErr) {
-                    console.error('⚠️ [LEADGEN] AutoCallPlanning error:', planErr.message);
+                // 24h dedup kontrolü
+                const recentTask = await prisma.contactActivity.findFirst({
+                    where: {
+                        contactId: contact?.id,
+                        workspaceId: facebookPage.workspaceId,
+                        type: 'CALL',
+                        status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+                    }
+                });
+
+                if (!recentTask && contact?.id) {
+                    await prisma.contactActivity.create({
+                        data: {
+                            workspaceId: facebookPage.workspaceId,
+                            contactId: contact.id,
+                            type: 'CALL',
+                            title: `Arama Görevi (Facebook Lead: ${leadName})`,
+                            description: `Facebook Lead Ads.${preferredTimeStr ? `\nTercih edilen zaman: ${preferredTimeStr}` : ''}`,
+                            status: 'PLANNED',
+                            source: 'AUTOMATION',
+                            dueDate: new Date(),
+                            aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+                            fallbackToAi: true,
+                            aiFallbackTriggered: false,
+                            retellExcluded: false,
+                        }
+                    });
+                    console.log(`📞 [LEADGEN] CALL görevi oluşturuldu → insana atandı, timeout sonrası robot: ${leadPhone}`);
+                } else {
+                    console.log(`📞 [LEADGEN] Son 24h'de zaten arama görevi var veya contact yok — skip`);
                 }
+            } catch (callTaskErr) {
+                console.error('⚠️ [LEADGEN] CALL görev oluşturma hatası:', callTaskErr.message);
             }
         }
 

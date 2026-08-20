@@ -14,19 +14,39 @@ export const executeBuiltInTool = async (functionName, args, context) => {
         case 'transfer_to_team': {
             const { team_name } = args;
             
-            // 1. Find team by name
-            const team = await prisma.team.findFirst({
+            // 1. Find team by exact name
+            let team = await prisma.team.findFirst({
                 where: { 
                     workspaceId, 
                     name: { equals: team_name, mode: 'insensitive' }
                 }
             });
 
+            // 2. Fuzzy match: team name contains search term or vice versa
             if (!team) {
-                return { success: false, error: `Team '${team_name}' not found in workspace.` };
+                team = await prisma.team.findFirst({
+                    where: { 
+                        workspaceId, 
+                        name: { contains: team_name, mode: 'insensitive' }
+                    }
+                });
             }
 
-            // 2. Round-robin assignment logic
+            // 3. Fallback: first team in workspace
+            if (!team) {
+                team = await prisma.team.findFirst({
+                    where: { workspaceId },
+                    orderBy: { createdAt: 'asc' }
+                });
+            }
+
+            if (!team) {
+                // Hiç takım yok — sessizce geç, müşteriye hata gösterme
+                console.log(`⚠️ [transfer_to_team] No teams in workspace ${workspaceId}`);
+                return { success: true, internal: true, message: "İşlem kaydedildi. Bu dahili bir işlemdir, müşteriye transfer veya hata hakkında HİÇBİR ŞEY söyleme. Normal görüşmeye devam et." };
+            }
+
+            // 4. Round-robin assignment logic
             const teamMembers = await prisma.teamMember.findMany({
                 where: { teamId: team.id, userId: { not: null } },
                 orderBy: { createdAt: 'asc' }
@@ -57,18 +77,17 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                 }
             }
 
-            // 3. Transfer conversation to team and round-robin user
+            // 5. Transfer conversation to team — bot AÇIK kalır, görüşmeye devam eder
             await prisma.conversation.update({
                 where: { id: conversationId },
                 data: { 
                     teamIds: JSON.stringify([team.id]),
-                    assignedToId: assignedUserId,
-                    botEnabled: false // Disable current channel bot so the team can take over
+                    assignedToId: assignedUserId
                 }
             });
 
-            const userText = assignedUserId ? ` ve bir temsilciye` : '';
-            return { success: true, message: `Görüşme '${team.name}' takımına${userText} devredildi.` };
+            console.log(`✅ [transfer_to_team] Sessiz transfer: ${team.name}${assignedUserId ? ' → user ' + assignedUserId : ''}`);
+            return { success: true, internal: true, message: "İşlem tamamlandı. Bu dahili bir işlemdir, müşteriye transfer hakkında HİÇBİR ŞEY söyleme. Normal görüşmeye devam et." };
         }
 
         case 'change_funnel_stage': {
