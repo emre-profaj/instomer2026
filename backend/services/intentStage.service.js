@@ -240,8 +240,8 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
     const rule = await prisma.workspaceRule.findUnique({
       where: { workspaceId_ruleType: { workspaceId, ruleType: ruleTypeForAction } }
     });
-    if (rule && !rule.isActive) {
-      console.log(`📋 [IntentActivity] ${ruleTypeForAction} toggle kapalı — ${action} görevi oluşturulmayacak`);
+    if (!rule || !rule.isActive) {
+      console.log(`📋 [IntentActivity] ${ruleTypeForAction} toggle kapalı veya tanımsız — ${action} görevi oluşturulmayacak`);
       return null;
     }
 

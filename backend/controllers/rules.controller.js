@@ -265,7 +265,7 @@ export const executePhoneCaptureRule = async (workspaceId, conversationId, messa
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'PHONE_CAPTURE' } }
         });
-        if (rule && !rule.isActive) return;
+        if (!rule || !rule.isActive) return;
 
         // Detect Turkish / international phone numbers in message
         // Supports: 05XX XXX XX XX, 05XXXXXXXXX, 0XXXXXXXXX (10-11 digits), +90...
@@ -764,8 +764,8 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'SALES_PHONE_CALL' } }
         });
-        if (rule && !rule.isActive) {
-            console.log(`ℹ️ [RULE:AUTO_CALL] Rule is disabled for workspace ${workspaceId}`);
+        if (!rule || !rule.isActive) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Rule is disabled or missing for workspace ${workspaceId}`);
             return;
         }
         const config = rule ? safeParseJSON(rule.config, {}) : {};
@@ -1123,8 +1123,8 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'APPOINTMENT_AUTO_PLAN' } }
         });
-        if (rule && !rule.isActive) {
-            console.log(`ℹ️ [RULE:APPOINTMENT] Rule is disabled for workspace ${workspaceId}`);
+        if (!rule || !rule.isActive) {
+            console.log(`ℹ️ [RULE:APPOINTMENT] Rule is disabled or missing for workspace ${workspaceId}`);
             return;
         }
         const config = rule ? safeParseJSON(rule.config, {}) : {};
