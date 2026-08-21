@@ -1482,10 +1482,8 @@ async function checkOverdueAgentCalls() {
 // Cron: process due ScheduledCalls every 60 seconds (persistent across restarts)
 export const processScheduledCalls = async () => {
     try {
-        // ⚠️ checkOverdueAgentCalls DEVRE DIŞI — otomatik AI arama kapatıldı
-        // Arama planlaması artık sadece executeSalesPhoneCallRule tarafından yapılır
-        // AI fallback istendiğinde bu satır tekrar açılabilir:
-        // await checkOverdueAgentCalls();
+        // AI Fallback kontrolü aktif:
+        await checkOverdueAgentCalls();
 
         const dueCalls = await prisma.scheduledCall.findMany({
             where: { status: 'PENDING', scheduledAt: { lte: new Date() } },
