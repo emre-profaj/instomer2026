@@ -490,10 +490,8 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                             </div>
                         </div>
 
-                        {/* ── 2. Gecikme Süresi ──────────────────── */}
+                        {/* ── 2. Gecikme & Yaş Sınırı (tek satır) ──────── */}
                         <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>⏱️ Gecikme Süresi</span>
-                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>Görev geciktikten</span>
                             <select
                                 value={agentConfig.fallbackDelayMinutes}
                                 onChange={e => setAgentConfig({ ...agentConfig, fallbackDelayMinutes: parseInt(e.target.value) })}
@@ -508,12 +506,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                                 <option value={30}>30 dk</option>
                                 <option value={60}>1 saat</option>
                             </select>
-                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>sonra AI arasın</span>
-                        </div>
-
-                        {/* ── 3. Maksimum Yaş Sınırı ──────────────── */}
-                        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>📛 Yaş Sınırı</span>
+                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>gecikme ile</span>
                             <select
                                 value={agentConfig.maxOverdueDays}
                                 onChange={e => setAgentConfig({ ...agentConfig, maxOverdueDays: parseInt(e.target.value) })}
@@ -526,7 +519,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                                 <option value={21}>21 gün</option>
                                 <option value={30}>30 gün</option>
                             </select>
-                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>den eski görevleri aramasın</span>
+                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>arası gecikmiş görevleri arasın</span>
                         </div>
 
                         {/* ── 4. Tekrar Arama Kademesi ────────────── */}
