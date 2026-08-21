@@ -81,6 +81,26 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
         }
     }, [workspaceId]);
 
+    // Load agent config when agent or settings change
+    useEffect(() => {
+        if (selectedAgentId && wsSettings?.retellAutoCallTriggers?.agentConfigs) {
+            const ac = wsSettings.retellAutoCallTriggers.agentConfigs[selectedAgentId];
+            if (ac) {
+                setAgentConfig({
+                    businessHourStart: ac.businessHourStart ?? 10,
+                    businessHourEnd: ac.businessHourEnd ?? 21,
+                    callDelayMinutes: ac.callDelayMinutes ?? 15,
+                    fallbackToAi: ac.fallbackToAi ?? true,
+                    fallbackDelayMinutes: ac.fallbackDelayMinutes ?? 3,
+                    handlePool: ac.handlePool ?? false,
+                    handleUnassigned: ac.handleUnassigned ?? false,
+                    handleTeamFallback: ac.handleTeamFallback ?? true,
+                    maxOverdueDays: ac.maxOverdueDays ?? 3
+                });
+            }
+        }
+    }, [selectedAgentId, wsSettings]);
+
     const fetchAgents = async () => {
         try {
             const resSettings = await api.get(`/retell/${workspaceId}/settings`);
