@@ -11,6 +11,18 @@ const API_BASE = '/api';
 // ─── Agent Yönetimi Sekmesi ─────────────────────────────────────────────────
 export function RetellAgentManager({ workspaceId }) {
     const [agents, setAgents] = useState([]);
+    const [wsSettings, setWsSettings] = useState(null);
+    const [agentConfig, setAgentConfig] = useState({
+        businessHourStart: 10,
+        businessHourEnd: 21,
+        callDelayMinutes: 15,
+        fallbackToAi: true,
+        fallbackDelayMinutes: 3,
+        handlePool: false,
+        handleUnassigned: false,
+        handleTeamFallback: true,
+        maxOverdueDays: 3
+    });
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [agentDetail, setAgentDetail] = useState(null);
     const [llmDetail, setLlmDetail] = useState(null);
@@ -70,6 +82,13 @@ export function RetellAgentManager({ workspaceId }) {
     }, [workspaceId]);
 
     const fetchAgents = async () => {
+        try {
+            const resSettings = await api.get(`/retell/${workspaceId}/settings`);
+            setWsSettings(resSettings.data);
+        } catch (e) {
+            console.error('Settings fetch error', e);
+        }
+
         try {
             const res = await api.get(`/retell/${workspaceId}/agents`);
             setAgents(res.data.agents || []);
@@ -180,7 +199,26 @@ export function RetellAgentManager({ workspaceId }) {
             payload.boostedKeywords = boostedKeywords ? boostedKeywords.split(',').map(k => k.trim()).filter(Boolean) : undefined;
 
             await api.patch(`/retell/${workspaceId}/agents/${selectedAgentId}/prompt`, payload);
-            setMessage({ type: 'success', text: '✅ Agent başarıyla kaydedildi!' });
+            
+            // Ayrıca Workspace Settings'e bu Agent'in konfigürasyonunu (arama gecikmesi vb.) kaydet
+            if (wsSettings) {
+                const triggers = wsSettings.retellAutoCallTriggers || {};
+                const agentConfigs = triggers.agentConfigs || {};
+                
+                agentConfigs[selectedAgentId] = agentConfig;
+                
+                await api.post(`/retell/${workspaceId}/settings`, {
+                    retellAutoCallTriggers: { ...triggers, agentConfigs }
+                });
+                
+                // State'i güncelle
+                setWsSettings(prev => ({
+                    ...prev,
+                    retellAutoCallTriggers: { ...triggers, agentConfigs }
+                }));
+            }
+            
+            setMessage({ type: 'success', text: '✅ Agent ve arama kuralları başarıyla kaydedildi!' });
         } catch (e) {
             setMessage({ type: 'error', text: e.response?.data?.error || 'Kayıt başarısız' });
         } finally {

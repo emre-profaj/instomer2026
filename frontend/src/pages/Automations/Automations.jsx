@@ -667,141 +667,17 @@ const Automations = () => {
                                             marginTop: '16px', paddingTop: '16px',
                                             borderTop: '1px solid #f1f5f9'
                                         }}>
-                                            {/* Saat aralığı */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                                                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>🕐 Çalışma saatleri</span>
-                                                <select
-                                                    value={getRule('SALES_PHONE_CALL').config?.businessHourStart ?? 10}
-                                                    onChange={(e) => {
-                                                        const rule = getRule('SALES_PHONE_CALL');
-                                                        saveRule('SALES_PHONE_CALL', {
-                                                            isActive: rule.isActive,
-                                                            config: { ...rule.config, businessHourStart: parseInt(e.target.value) }
-                                                        });
-                                                    }}
-                                                    style={{
-                                                        padding: '6px 10px', borderRadius: '8px', border: '1px solid #d1d5db',
-                                                        fontSize: '0.82rem', fontWeight: 500, background: '#fff', cursor: 'pointer',
-                                                        color: '#111827'
-                                                    }}
-                                                >
-                                                    {Array.from({ length: 24 }, (_, i) => (
-                                                        <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
-                                                    ))}
-                                                </select>
-                                                <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>—</span>
-                                                <select
-                                                    value={getRule('SALES_PHONE_CALL').config?.businessHourEnd ?? 21}
-                                                    onChange={(e) => {
-                                                        const rule = getRule('SALES_PHONE_CALL');
-                                                        saveRule('SALES_PHONE_CALL', {
-                                                            isActive: rule.isActive,
-                                                            config: { ...rule.config, businessHourEnd: parseInt(e.target.value) }
-                                                        });
-                                                    }}
-                                                    style={{
-                                                        padding: '6px 10px', borderRadius: '8px', border: '1px solid #d1d5db',
-                                                        fontSize: '0.82rem', fontWeight: 500, background: '#fff', cursor: 'pointer',
-                                                        color: '#111827'
-                                                    }}
-                                                >
-                                                    {Array.from({ length: 24 }, (_, i) => (
-                                                        <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            {/* Gecikme süresi */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>⏱️ Arama gecikmesi</span>
-                                                <select
-                                                    value={getRule('SALES_PHONE_CALL').config?.callDelayMinutes ?? 15}
-                                                    onChange={(e) => {
-                                                        const rule = getRule('SALES_PHONE_CALL');
-                                                        saveRule('SALES_PHONE_CALL', {
-                                                            isActive: rule.isActive,
-                                                            config: { ...rule.config, callDelayMinutes: parseInt(e.target.value) }
-                                                        });
-                                                    }}
-                                                    style={{
-                                                        padding: '6px 10px', borderRadius: '8px', border: '1px solid #d1d5db',
-                                                        fontSize: '0.82rem', fontWeight: 500, background: '#fff', cursor: 'pointer',
-                                                        color: '#111827'
-                                                    }}
-                                                >
-                                                    <option value={1}>1 dakika</option>
-                                                    <option value={3}>3 dakika</option>
-                                                    <option value={5}>5 dakika</option>
-                                                    <option value={10}>10 dakika</option>
-                                                    <option value={15}>15 dakika</option>
-                                                    <option value={30}>30 dakika</option>
-                                                    <option value={60}>1 saat</option>
-                                                </select>
-                                                <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>sonra planla</span>
-                                            </div>
-
-                                            {/* Ayırıcı */}
-                                            <div style={{ borderTop: '1px solid #f1f5f9', margin: '14px 0' }} />
-
-                                            {/* AI Fallback toggle */}
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                            <div style={{ display: 'flex', gap: 10, background: '#f8fafc', padding: '12px 16px', borderRadius: 8, border: '1px solid #e2e8f0', alignItems: 'flex-start' }}>
+                                                <div style={{ fontSize: '1.2rem' }}>ℹ️</div>
                                                 <div>
-                                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        🤖 Gecikmiş Aramalarda AI Devreye Girsin
+                                                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+                                                        Arama Ayarları Taşındı
                                                     </div>
-                                                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '2px' }}>
-                                                        Atanan kişi belirlenen sürede aramazsa Retell AI otomatik arar.
+                                                    <div style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.5 }}>
+                                                        Çalışma saatleri, arama gecikmesi ve AI bekleme süresi ayarları artık her bir arama asistanı için <b>özel olarak</b> yapılandırılmaktadır.<br/>
+                                                        Lütfen <b>Takımlar ve Temsilciler</b> sayfasına gidip arama asistanınızın kartına tıklayarak ayarlarını yapın.
                                                     </div>
                                                 </div>
-                                                <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '16px' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={getRule('SALES_PHONE_CALL').config?.aiFallbackEnabled ?? false}
-                                                        onChange={() => {
-                                                            const rule = getRule('SALES_PHONE_CALL');
-                                                            saveRule('SALES_PHONE_CALL', {
-                                                                isActive: rule.isActive,
-                                                                config: { ...rule.config, aiFallbackEnabled: !rule.config?.aiFallbackEnabled }
-                                                            });
-                                                        }}
-                                                    />
-                                                    <span className="toggle-slider" />
-                                                </label>
-                                            </div>
-
-                                            {/* AI Fallback delay — sadece toggle açıksa */}
-                                            {getRule('SALES_PHONE_CALL').config?.aiFallbackEnabled && (
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                                                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>⏳ AI bekleme süresi</span>
-                                                    <select
-                                                        value={getRule('SALES_PHONE_CALL').config?.aiFallbackDelayMinutes ?? 15}
-                                                        onChange={(e) => {
-                                                            const rule = getRule('SALES_PHONE_CALL');
-                                                            saveRule('SALES_PHONE_CALL', {
-                                                                isActive: rule.isActive,
-                                                                config: { ...rule.config, aiFallbackDelayMinutes: parseInt(e.target.value) }
-                                                            });
-                                                        }}
-                                                        style={{
-                                                            padding: '6px 10px', borderRadius: '8px', border: '1px solid #d1d5db',
-                                                            fontSize: '0.82rem', fontWeight: 500, background: '#fff', cursor: 'pointer',
-                                                            color: '#111827'
-                                                        }}
-                                                    >
-                                                        <option value={1}>1 dakika</option>
-                                                        <option value={3}>3 dakika</option>
-                                                        <option value={5}>5 dakika</option>
-                                                        <option value={10}>10 dakika</option>
-                                                        <option value={15}>15 dakika</option>
-                                                        <option value={30}>30 dakika</option>
-                                                        <option value={60}>1 saat</option>
-                                                    </select>
-                                                    <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>sonra AI arasın</span>
-                                                </div>
-                                            )}
-
-                                            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '10px', lineHeight: 1.5 }}>
-                                                Çalışma saatleri dışında gelen talepler, bir sonraki iş günü başlangıç saatine planlanır.
                                             </div>
                                         </div>
                                     )}

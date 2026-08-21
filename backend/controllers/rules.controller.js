@@ -585,6 +585,41 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         
         console.log(`ℹ️ [RULE:PHONE_CALL] Creating call task in current stage. Team: ${salesTeamId}`);
 
+        // FETCH AGENT SPECIFIC CONFIG
+        let agentConfigOverrides = {};
+        let aiFallbackTriggered = false; // We just pass this field to the Activity creation if fallbackToAi is explicitly false? Actually fallbackToAi goes into fallbackToAi field.
+        let agentFallbackToAi = null;
+        let agentFallbackDelay = null;
+        
+        try {
+            // Find the agent assigned to this team
+            let resolvedAgentId = null;
+            if (salesTeamId) {
+                const teamMember = await prisma.teamMember.findFirst({
+                    where: { teamId: salesTeamId, retellAgentId: { not: null } }
+                });
+                resolvedAgentId = teamMember?.retellAgentId;
+            }
+            if (!resolvedAgentId) {
+                const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { retellAgentId: true } });
+                resolvedAgentId = ws?.retellAgentId;
+            }
+            
+            if (resolvedAgentId) {
+                const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { retellAutoCallTriggers: true } });
+                const allAgentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
+                const ac = allAgentConfigs[resolvedAgentId];
+                if (ac) {
+                    agentConfigOverrides = ac;
+                    agentFallbackToAi = ac.fallbackToAi;
+                    agentFallbackDelay = ac.fallbackDelayMinutes;
+                    console.log(`ℹ️ [RULE:PHONE_CALL] Using custom config for AI Agent ${resolvedAgentId}: `, ac);
+                }
+            }
+        } catch(e) {
+            console.error('Error fetching agent specific config:', e);
+        }
+
         // 10. Detect customer-stated time (HH:MM or HH.MM format)
         const timeRegex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/;
         const allMessageContent = recentMessages.map(m => m.content || '').join(' ') + ' ' + messageContent;
@@ -599,15 +634,15 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             dueDate = dt;
             console.log(`⏰ [RULE:SALES_PHONE_CALL] Customer-stated time: ${h}:${m}`);
         } else {
-            // Business hours check (configurable, default 10:00 - 21:00 Turkey time)
-            const businessStart = config.businessHourStart ?? 10;
-            const businessEnd = config.businessHourEnd ?? 21;
+            // Business hours check (Agent config > Rule config > defaults)
+            const businessStart = agentConfigOverrides.businessHourStart ?? config.businessHourStart ?? 10;
+            const businessEnd = agentConfigOverrides.businessHourEnd ?? config.businessHourEnd ?? 21;
             const now = new Date();
             const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
             const hour = nowTR.getHours();
             if (hour >= businessStart && hour < businessEnd) {
-                // Within business hours → delay from config (default 15 min)
-                const delayMin = config.callDelayMinutes || 15;
+                // Within business hours → delay from config
+                const delayMin = agentConfigOverrides.callDelayMinutes ?? config.callDelayMinutes ?? 15;
                 dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
             } else {
                 // Outside business hours → next day at businessStart:15
@@ -657,6 +692,8 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 teamId: salesTeamId || null,
                 assignedToId: inheritedAssigneeId,
                 source: 'AUTOMATION',
+                fallbackToAi: agentFallbackToAi !== null ? agentFallbackToAi : undefined,
+                fallbackDelayMinutes: agentFallbackDelay !== null ? agentFallbackDelay : undefined,
                 ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
                 ...(inheritedAssigneeId ? {
                     assignedById: null,
