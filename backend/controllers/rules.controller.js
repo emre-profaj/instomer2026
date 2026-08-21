@@ -570,81 +570,20 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         }
 
 
-        // 5. Already in sales funnel? → skip to avoid duplicate
-        if (conversation.funnelStageId) {
-            const stage = await prisma.funnelStage.findUnique({
-                where: { id: conversation.funnelStageId },
-                include: { funnel: true }
-            });
-            if (stage?.funnel?.name?.toLowerCase().includes('satış')) {
-                console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Conversation ${conversationId} already in sales funnel, skipping`);
-                return;
-            }
+        // 5. DO NOT MOVE FUNNEL STAGE. Just use current team!
+        let salesTeamId = null;
+        if (conversation.caseId) {
+            const cse = await prisma.case.findUnique({ where: { id: conversation.caseId } });
+            if (cse && cse.assignedTeamId) salesTeamId = cse.assignedTeamId;
         }
-
-        // 6. Find "Satış Akışı" funnel
-        const salesFunnel = await prisma.funnel.findFirst({
-            where: { workspaceId, name: { contains: salesFunnelName.split(' ')[0], mode: 'insensitive' } },
-            include: { stages: { orderBy: { order: 'asc' } } }
-        });
-        if (!salesFunnel || salesFunnel.stages.length === 0) {
-            console.log(`⚠️ [RULE:SALES_PHONE_CALL] Sales funnel "${salesFunnelName}" not found`);
-            return;
+        if (!salesTeamId && conversation.teamIds) {
+            try {
+                const parsed = JSON.parse(conversation.teamIds);
+                if (Array.isArray(parsed) && parsed.length > 0) salesTeamId = parsed[0];
+            } catch (_) {}
         }
-        const firstStage = salesFunnel.stages[0];
-
-        // 7. Find sales team (funnel.assignedTeamId → config.teamId → name match)
-        let salesTeamId = salesFunnel.assignedTeamId || config.teamId;
-        if (!salesTeamId) {
-            const namedTeam = await prisma.team.findFirst({
-                where: { workspaceId, name: { contains: 'satış', mode: 'insensitive' } }
-            });
-            salesTeamId = namedTeam?.id;
-        }
-
-        // 8. Aramayı takıma ata (havuza düşsün, biri üstlensin)
-        // Kişiye direkt atama yapılmaz — havuzdan biri üstlenmezse gecikmiş arama olur
-
-        // 9. Update conversation: funnel stage + team + agent
-        const updateData = {
-            funnelType: salesFunnel.id,
-            funnelStageId: firstStage.id,
-        };
-        if (salesTeamId) {
-            updateData.teamIds = JSON.stringify([salesTeamId]);
-        }
-        // Only assign directly if config.assignDirectly is true, otherwise keep it in the team pool
-        if (config.assignDirectly === true) {
-            // Round-robin agent selection from sales team (only if assignDirectly)
-            if (salesTeamId) {
-                const teamMembers = await prisma.teamMember.findMany({
-                    where: { teamId: salesTeamId, userId: { not: null } },
-                    include: { user: { select: { id: true, name: true } } },
-                    orderBy: { createdAt: 'asc' }
-                });
-                const userMembers = teamMembers.filter(m => m.userId);
-                if (userMembers.length > 0) {
-                    const lastConv = await prisma.conversation.findFirst({
-                        where: {
-                            workspaceId,
-                            teamIds: { contains: salesTeamId },
-                            assignedToId: { not: null },
-                            id: { not: conversationId }
-                        },
-                        orderBy: { updatedAt: 'desc' },
-                        select: { assignedToId: true }
-                    });
-                    const lastIdx = lastConv
-                        ? userMembers.findIndex(m => m.userId === lastConv.assignedToId)
-                        : -1;
-                    const nextIdx = lastIdx >= 0 && lastIdx < userMembers.length - 1 ? lastIdx + 1 : 0;
-                    updateData.assignedToId = userMembers[nextIdx].userId;
-                    console.log(`👤 [RULE:SALES_PHONE_CALL] Round-robin → ${userMembers[nextIdx].user?.name}`);
-                }
-            }
-        }
-        await prisma.conversation.update({ where: { id: conversationId }, data: updateData });
-        console.log(`🔀 [RULE:SALES_PHONE_CALL] Conversation ${conversationId} → "${salesFunnel.name}" / "${firstStage.name}"`);
+        
+        console.log(`ℹ️ [RULE:PHONE_CALL] Creating call task in current stage. Team: ${salesTeamId}`);
 
         // 10. Detect customer-stated time (HH:MM or HH.MM format)
         const timeRegex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/;
