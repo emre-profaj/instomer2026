@@ -1171,17 +1171,23 @@ async function checkOverdueAgentCalls() {
     try {
         const now = new Date();
 
-        // 1. Find workspaces with active Retell auto-call settings
+        // 1. Find workspaces with Retell configured + either retellAutoCallEnabled OR aiFallbackEnabled
+        //    retellAutoCallEnabled → eski triggerAutoCall sistemi
+        //    aiFallbackEnabled → SALES_PHONE_CALL toggle'ından gelen AI fallback
         const workspaces = await prisma.workspace.findMany({
             where: {
-                retellAutoCallEnabled: true,
                 retellApiKey: { not: null },
                 retellAgentId: { not: null },
-                retellFromNumber: { not: null }
+                retellFromNumber: { not: null },
+                OR: [
+                    { retellAutoCallEnabled: true },
+                    { aiFallbackEnabled: true }
+                ]
             },
             select: {
                 id: true,
                 retellAgentId: true,
+                retellAutoCallEnabled: true,
                 aiFallbackEnabled: true,
                 aiFallbackDelayMinutes: true,
                 aiFallbackPoolEnabled: true,

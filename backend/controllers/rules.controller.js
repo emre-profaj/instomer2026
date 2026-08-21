@@ -222,13 +222,15 @@ export const upsertRule = async (req, res) => {
             }
         });
 
-        // ── Auto-sync workspace AI settings when SALES_PHONE_CALL config changes ──
+        // ── Auto-sync workspace AI fallback settings when SALES_PHONE_CALL config changes ──
+        // NOT: retellAutoCallEnabled KASITLI OLARAK sync EDİLMİYOR
+        // retellAutoCallEnabled → triggerAutoCall'ı aktive eder (mesaj gelince anında arar)
+        // Biz sadece checkOverdueAgentCalls'daki HUMAN_TIMEOUT senaryosu için aiFallbackEnabled yeterli
         if (ruleType === 'SALES_PHONE_CALL' && config) {
             try {
                 const wsUpdate = {};
-                if (config.aiFallbackEnabled) {
-                    wsUpdate.retellAutoCallEnabled = true;
-                    wsUpdate.aiFallbackEnabled = true;
+                if (config.aiFallbackEnabled !== undefined) {
+                    wsUpdate.aiFallbackEnabled = config.aiFallbackEnabled;
                     if (config.aiFallbackDelayMinutes) {
                         wsUpdate.aiFallbackDelayMinutes = config.aiFallbackDelayMinutes;
                     }
@@ -238,7 +240,7 @@ export const upsertRule = async (req, res) => {
                         where: { id: workspaceId },
                         data: wsUpdate
                     });
-                    console.log(`🔄 [SALES_PHONE_CALL] Workspace AI settings synced:`, wsUpdate);
+                    console.log(`🔄 [SALES_PHONE_CALL] Workspace AI fallback synced:`, wsUpdate);
                 }
             } catch (syncErr) {
                 console.error('Workspace AI sync error (non-blocking):', syncErr.message);
@@ -1061,8 +1063,8 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 teamId: salesTeamId || null,
                 assignedToId: inheritedAssigneeId,
                 source: 'AUTOMATION',
-                fallbackToAi: true,
-                fallbackDelayMinutes: 0,
+                fallbackToAi: config.aiFallbackEnabled ?? false,
+                fallbackDelayMinutes: config.aiFallbackDelayMinutes ?? 15,
                 aiFallbackTriggered: false,
                 ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
                 ...(inheritedAssigneeId ? {
