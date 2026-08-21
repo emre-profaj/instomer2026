@@ -1680,11 +1680,23 @@ export const processScheduledCalls = async () => {
                     const startMinutes = startH * 60 + startM;
                     const endMinutes = endH * 60 + endM;
                     if (currentMinutes < startMinutes || currentMinutes >= endMinutes) {
+                        // Mesai dışı — aramayı bir sonraki mesai başlangıcına ertele
+                        // (böylece 2 saatlik timeout'a takılıp iptal olmaz)
+                        const nextStart = new Date(nowTRAgent);
+                        if (currentMinutes >= endMinutes) {
+                            // Bugün mesai bitti → yarın sabah
+                            nextStart.setDate(nextStart.getDate() + 1);
+                        }
+                        nextStart.setHours(startH, startM, 0, 0);
+                        
                         await prisma.scheduledCall.updateMany({
                             where: { id: sc.id, status: 'COMPLETED' },
-                            data: { status: 'PENDING' }
+                            data: { 
+                                status: 'PENDING',
+                                scheduledAt: nextStart // Zamanlayıcıyı ilerlet → timeout resetlenir
+                            }
                         });
-                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} mesai dışı (${agentStart}-${agentEnd}, şimdi: ${nowTRAgent.getHours()}:${String(nowTRAgent.getMinutes()).padStart(2,'0')}) — call ${sc.id} PENDING bırakıldı`);
+                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} mesai dışı (${agentStart}-${agentEnd}, şimdi: ${nowTRAgent.getHours()}:${String(nowTRAgent.getMinutes()).padStart(2,'0')}) — call ${sc.id} → ${nextStart.toISOString()} ertelendi`);
                         continue;
                     }
                 }
