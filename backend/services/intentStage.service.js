@@ -245,76 +245,10 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
       return null;
     }
 
-    // CALL niyeti → açık arama görevi oluştur (checkOverdueAgentCalls cron'u yürütecek)
+    // CALL niyeti → executeSalesPhoneCallRule TEK MERKEZ olarak hallediyor
+    // Burada ayrıca CALL aktivitesi oluşturmak çift görev + anında arama sorununa yol açar
     if (action === 'CALL') {
-      try {
-        const contact = await prisma.contact.findUnique({
-          where: { id: contactId },
-          select: { phone: true, name: true, firstName: true }
-        });
-        if (!contact?.phone) {
-          console.log(`📞 [IntentActivity] CALL niyeti algılandı ama telefon yok`);
-          return null;
-        }
-
-        // Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla
-        const recentActivity = await prisma.contactActivity.findFirst({
-          where: {
-            contactId,
-            workspaceId,
-            status: 'PLANNED',
-            createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) }
-          }
-        });
-        if (recentActivity) {
-          console.log(`📞 [IntentActivity] Son 5 dk'da zaten planlı aktivite var (${recentActivity.type}), skip`);
-          return null;
-        }
-
-        // Workspace'in AI agent bilgisini al
-        const workspace = await prisma.workspace.findUnique({
-          where: { id: workspaceId },
-          select: { retellAgentId: true }
-        });
-
-        // Conversation'dan atama bilgisini al
-        const conversation = await prisma.conversation.findUnique({
-          where: { id: conversationId },
-          select: { assignedToId: true, assignedTeamId: true, caseId: true }
-        });
-
-        // Atama mantığı:
-        // - İnsana/takıma atanmışsa → aiAgentId: null, fallbackToAi: true
-        //   → Scenario 3 (Human Timeout Fallback): İnsan X dk aramazsa robot devralır
-        // - Kimse atanmamışsa → aiAgentId: null, fallbackToAi: true  
-        //   → Scenario 2 (Pool): Sahipsiz görev, pool ayarına göre robot alır
-        const hasHumanAssignment = !!(conversation?.assignedToId || conversation?.assignedTeamId);
-
-        const activity = await prisma.contactActivity.create({
-          data: {
-            workspaceId,
-            contactId,
-            type: 'CALL',
-            title: `Arama Görevi (${extractedData?.topic || classification || 'Otomatik'})`,
-            description: `AI niyet algılama: ${classification}\nKonu: ${extractedData?.topic || '-'}`,
-            status: 'PLANNED',
-            source: 'AUTOMATION',
-            dueDate: new Date(),
-            aiAgentId: null, // Doğrudan robot atama YAPMA — insana önce şans ver
-            fallbackToAi: true, // Süre dolunca robot devralabilir
-            aiFallbackTriggered: false,
-            retellExcluded: false,
-            assignedToId: conversation?.assignedToId || null,
-            teamId: conversation?.assignedTeamId || null,
-            ...(conversation?.caseId ? { caseId: conversation.caseId } : {}),
-          }
-        });
-
-        console.log(`📞 [IntentActivity] CALL görevi oluşturuldu: ${activity.id} → ${hasHumanAssignment ? 'insana atandı, timeout sonrası robot' : 'pool, ayara göre robot'}`);
-        return activity;
-      } catch (callErr) {
-        console.warn(`⚠️ [IntentActivity] CALL görev oluşturma hatası:`, callErr.message);
-      }
+      console.log(`📞 [IntentActivity] CALL niyeti algılandı — executeSalesPhoneCallRule halledecek, burada skip`);
       return null;
     }
 
