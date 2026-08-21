@@ -655,7 +655,7 @@ export const handlePrechat = async (req, res) => {
                     phone: normalizedPhone,
                     topic: subject || 'Web Widget İletişim',
                     preferredCallTime: null,
-                    requestedAction: null, // CALL artık executeSalesPhoneCallRule'dan yönetilir
+                    requestedAction: normalizedPhone ? 'CALL' : null,
                     requestedDate: null,
                     branchInfo: null
                 },

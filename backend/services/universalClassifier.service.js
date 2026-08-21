@@ -557,8 +557,17 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 console.log(`🏷️ [Classifier] Kişi OPPORTUNITY olarak işaretlendi`);
             } catch (_) {}
 
-            // NOT: requestedAction: CALL enjeksiyonu KALDIRILDI
-            // Arama planlaması artık executeSalesPhoneCallRule TEK MERKEZDEN yapılır
+            // Telefonu olan lead/form → CALL aksiyonu enjekte et (createIntentActivity halledecek)
+            if (!classificationResult.extractedData.requestedAction) {
+                const contact = await prisma.contact.findUnique({
+                    where: { id: contactId },
+                    select: { phone: true }
+                });
+                if (contact?.phone) {
+                    classificationResult.extractedData.requestedAction = 'CALL';
+                    console.log(`📞 [Classifier] Telefonu olan lead → CALL aksiyonu enjekte edildi`);
+                }
+            }
         }
 
         // --- Case'İ tip, ürün ve kategori ile güncelle ---

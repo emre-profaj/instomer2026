@@ -245,19 +245,14 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
       return null;
     }
 
-    // CALL niyeti → executeSalesPhoneCallRule TEK MERKEZ olarak hallediyor
-    // Burada ayrıca CALL aktivitesi oluşturmak çift görev + anında arama sorununa yol açar
-    if (action === 'CALL') {
-      console.log(`📞 [IntentActivity] CALL niyeti algılandı — executeSalesPhoneCallRule halledecek, burada skip`);
-      return null;
-    }
-
     const activityTypeMap = {
+      'CALL': 'CALL',
       'VISIT': 'MEETING',
       'MEETING': 'MEETING',
     };
 
     const type = activityTypeMap[action];
+
     if (!type) return null;
 
     // Kişinin iletişim bilgisi var mı? Telefon veya e-posta olmadan görüşme planlamak anlamsız
@@ -295,7 +290,7 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
         workspaceId,
         contactId,
         type,
-        title: action === 'VISIT' ? 'Ziyaret Talebi (Otomatik)' : 'Görüşme Talebi (Otomatik)',
+        title: action === 'CALL' ? 'Arama Planlandı (Otomatik)' : action === 'VISIT' ? 'Ziyaret Talebi (Otomatik)' : 'Görüşme Talebi (Otomatik)',
         description: `AI niyet algılama: ${classification}\nKonu: ${extractedData.topic || '-'}\nTarih: ${extractedData.requestedDate || 'Belirtilmedi'}`,
         status: 'PLANNED',
         source: 'AUTOMATION',
