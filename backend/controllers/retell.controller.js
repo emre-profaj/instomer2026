@@ -1274,11 +1274,13 @@ async function checkOverdueAgentCalls() {
             return { enabled, delayMinutes, poolEnabled: ws?.aiFallbackPoolEnabled || false };
         };
 
-        // ─── SCENARIO 1: Direct AI Assignment (YENİ) ──────────────────────
-        // Activity'ye açıkça aiAgentId atanmış → her zaman çalışır (kullanıcı bilerek seçti)
-        const directAiActivities = await prisma.contactActivity.findMany({
+        // ─── SCENARIO 1: Direct AI Assignment ──────────────────────
+        // Activity'ye açıkça aiAgentId atanmış → sadece retellAutoCallEnabled workspace'lerde
+        const retellEnabledIds = activeWorkspaces.filter(w => w.retellAutoCallEnabled).map(w => w.id);
+
+        const directAiActivities = retellEnabledIds.length > 0 ? await prisma.contactActivity.findMany({
             where: {
-                workspaceId: { in: activeWorkspaceIds },
+                workspaceId: { in: retellEnabledIds },
                 type: 'CALL',
                 status: 'PLANNED',
                 dueDate: { lte: now, gte: maxOverdueCutoff },
@@ -1288,16 +1290,14 @@ async function checkOverdueAgentCalls() {
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
-        });
+        }) : [];
 
-        // ─── SCENARIO 2: Pool / Sahipsiz Görevler (ESKİ DAVRANIŞ — AYNEN KORUNUYOR) ──
-        // retellAutoCallEnabled: true olan workspace'lerde sahipsiz (assignedToId=null)
-        // aramaları otomatik yapar. Bu eski davranıştır, bozulmaz.
-        // NOT: aiFallbackPoolEnabled SADECE ek kontrol olarak kullanılabilir, ama
-        // mevcut kurulumlar için geriye dönük uyumluluk korunur.
-        const poolActivities = await prisma.contactActivity.findMany({
+        // ─── SCENARIO 2: Pool / Sahipsiz Görevler ──
+        // SADECE retellAutoCallEnabled: true olan workspace'lerde çalışır.
+        // aiFallbackEnabled workspace'lerde POOL ÇALIŞMAZ — insana şans verilir.
+        const poolActivities = retellEnabledIds.length > 0 ? await prisma.contactActivity.findMany({
             where: {
-                workspaceId: { in: activeWorkspaceIds },
+                workspaceId: { in: retellEnabledIds },
                 type: 'CALL',
                 status: 'PLANNED',
                 dueDate: { lte: now, gte: maxOverdueCutoff },
@@ -1308,21 +1308,21 @@ async function checkOverdueAgentCalls() {
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
-        });
+        }) : [];
 
         // ─── SCENARIO 3: Human Timeout Fallback ───────────
-        // İnsana atanmış, aiAgentId yok, süresinde yapılmamış → AI devralır
-        // NOT: aiAgentId varsa Scenario 1 zaten hallediyor, burada tekrar işleme alınmasın
+        // İnsana/takıma atanmış, aiAgentId yok, süresinde yapılmamış → AI devralır
+        // Kişi atanmış VEYA takım atanmış ama kimse üstlenmemiş → aynı mantık
         const humanFallbackCandidates = await prisma.contactActivity.findMany({
             where: {
                 workspaceId: { in: activeWorkspaceIds },
                 type: 'CALL',
                 status: 'PLANNED',
                 aiFallbackTriggered: false,
-                assignedToId: { not: null },
                 aiAgentId: null,
                 dueDate: { not: null },
                 retellExcluded: { not: true },
+                fallbackToAi: true,
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
