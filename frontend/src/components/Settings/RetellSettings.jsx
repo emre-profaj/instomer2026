@@ -336,7 +336,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
 
             {/* General Tab */}
             {activeTab === 'general' && <>
-            <RetellAgentManager workspaceId={workspaceId} />
+            <RetellAgentManager workspaceId={workspaceId} initialAgentId={initialAgentId} />
 
             {message && (
                 <div style={{

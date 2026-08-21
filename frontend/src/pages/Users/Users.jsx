@@ -925,7 +925,7 @@ const UsersTeams = () => {
                                         className="ut-user-card ut-bot-card"
                                         draggable
                                         onDragStart={e => handleRetellAgentDragStart(e, agent)}
-                                        onClick={() => setShowRetellModal(true)}
+                                        onClick={() => setShowRetellModal(agent.agent_id)}
                                         title="Düzenlemek için tıklayın. Takıma eklemek için sürükleyin."
                                         style={{ borderLeftColor: '#0d9488', cursor: 'pointer' }}
                                     >
@@ -1070,7 +1070,7 @@ const UsersTeams = () => {
                             <button className="ut-modal-close" onClick={() => setShowRetellModal(false)}><X size={20} color="#6b7280" /></button>
                         </div>
                         <div className="ut-modal-body" style={{ padding: '24px', paddingTop: '40px' }}>
-                            <RetellSettings hideApiSetup={true} onSave={() => loadUsersAndTeams()} />
+                            <RetellSettings hideApiSetup={true} initialAgentId={typeof showRetellModal === 'string' ? showRetellModal : null} onSave={() => loadUsersAndTeams()} />
                         </div>
                     </div>
                 </div>

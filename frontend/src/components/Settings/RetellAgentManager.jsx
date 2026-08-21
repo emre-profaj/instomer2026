@@ -9,7 +9,7 @@ import {
 const API_BASE = '/api';
 
 // ─── Agent Yönetimi Sekmesi ─────────────────────────────────────────────────
-export function RetellAgentManager({ workspaceId }) {
+export function RetellAgentManager({ workspaceId, initialAgentId }) {
     const [agents, setAgents] = useState([]);
     const [wsSettings, setWsSettings] = useState(null);
     const [agentConfig, setAgentConfig] = useState({
@@ -92,6 +92,9 @@ export function RetellAgentManager({ workspaceId }) {
         try {
             const res = await api.get(`/retell/${workspaceId}/agents`);
             setAgents(res.data.agents || []);
+            if (initialAgentId) {
+                selectAgent(initialAgentId);
+            }
         } catch (e) {
             console.error(e);
         }
