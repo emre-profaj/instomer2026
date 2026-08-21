@@ -30,6 +30,7 @@ const AICallAnalytics = () => {
     const [searchInput, setSearchInput] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [sentimentFilter, setSentimentFilter] = useState('ALL');
+    const [directionFilter, setDirectionFilter] = useState('ALL');
     const limit = 15;
 
     // Bulk selection
@@ -42,12 +43,12 @@ const AICallAnalytics = () => {
         if (currentWorkspace) {
             loadData();
         }
-    }, [currentWorkspace, dateFilter, page, search, statusFilter, sentimentFilter, startDate, endDate]);
+    }, [currentWorkspace, dateFilter, page, search, statusFilter, sentimentFilter, directionFilter, startDate, endDate]);
 
     // Clear selection on filter change
     useEffect(() => {
         setSelectedCalls(new Set());
-    }, [statusFilter, sentimentFilter, page, search, dateFilter, startDate, endDate]);
+    }, [statusFilter, sentimentFilter, directionFilter, page, search, dateFilter, startDate, endDate]);
 
     const getDateParams = () => {
         const { startDate: sd, endDate: ed } = getDateRangeLogic(dateFilter, startDate, endDate);
@@ -74,6 +75,7 @@ const AICallAnalytics = () => {
             };
             if (search) callParams.search = search;
             if (statusFilter !== 'ALL') callParams.status = statusFilter;
+            if (directionFilter !== 'ALL') callParams.direction = directionFilter;
             if (sentimentFilter === 'positive' || sentimentFilter === 'negative' || sentimentFilter === 'neutral') {
                 callParams.sentiment = sentimentFilter;
             }
@@ -355,6 +357,20 @@ const AICallAnalytics = () => {
                                             <option value="error">Hata</option>
                                         </select>
                                     </div>
+                                    <div className="aicall-status-filter">
+                                        <PhoneCall size={14} />
+                                        <select
+                                            value={directionFilter}
+                                            onChange={(e) => {
+                                                setDirectionFilter(e.target.value);
+                                                setPage(0);
+                                            }}
+                                        >
+                                            <option value="ALL">Tüm Yönler</option>
+                                            <option value="outbound">📞 Giden</option>
+                                            <option value="inbound">📲 Gelen</option>
+                                        </select>
+                                    </div>
                                     <div className="aicall-search">
                                         <Search size={16} className="search-icon" />
                                         <input
@@ -452,6 +468,7 @@ const AICallAnalytics = () => {
                                                     </button>
                                                 </div>
                                                 <div className="aicall-th">Tarih</div>
+                                                <div className="aicall-th">Yön</div>
                                                 <div className="aicall-th">Arayan</div>
                                                 <div className="aicall-th">Aranan</div>
                                                 <div className="aicall-th">{t('flowBuilder.duration')}</div>
@@ -477,6 +494,12 @@ const AICallAnalytics = () => {
                                                                 </button>
                                                             </div>
                                                             <div className="aicall-td">{formatDate(call.startedAt || call.createdAt)}</div>
+                                                            <div className="aicall-td">
+                                                                {call.direction === 'inbound'
+                                                                    ? <span className="call-badge badge-inbound" title="Gelen Arama">📲 Gelen</span>
+                                                                    : <span className="call-badge badge-outbound" title="Giden Arama">📞 Giden</span>
+                                                                }
+                                                            </div>
                                                             <div className="aicall-td phone-cell">{call.fromNumber}</div>
                                                             <div className="aicall-td phone-cell">{call.toNumber}</div>
                                                             <div className="aicall-td">{formatDuration(call.duration)}</div>

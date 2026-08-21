@@ -236,6 +236,16 @@
     border: 1px solid var(--border-color);
 }
 
+.badge-inbound {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+}
+
+.badge-outbound {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
 /* Sentiment */
 .sentiment-positive {
     color: var(--success);

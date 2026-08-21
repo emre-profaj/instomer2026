@@ -2214,12 +2214,13 @@ export const makeCall = async (req, res) => {
 export const getCallHistory = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { contactId, search, status, sentiment, callSuccessful, startDate, endDate, limit = 20, offset = 0 } = req.query;
+        const { contactId, search, status, sentiment, callSuccessful, direction, startDate, endDate, limit = 20, offset = 0 } = req.query;
 
         const where = { workspaceId };
         if (contactId) where.contactId = contactId;
         if (status) where.status = status;
         if (sentiment) where.sentiment = sentiment;
+        if (direction) where.direction = direction;
         if (callSuccessful === 'true') where.callSuccessful = true;
         if (callSuccessful === 'false') where.callSuccessful = false;
 
@@ -2827,21 +2828,92 @@ async function handleCallEnded(call) {
                 }
             });
         } else {
-            // No existing record — create one
-            await prisma.retellCall.updateMany({
-                where: { callId: call.call_id },
-                data: {
-                    status: 'ended',
-                    duration,
-                    transcript: call.transcript || null,
-                    recordingUrl: call.recording_url || null,
-                    endedReason: call.disconnection_reason || null,
-                    cost: call.call_cost?.combined_cost ?? null
+            // No existing record — CREATE one (e.g. inbound call where call_started webhook was missed)
+            console.log(`📞 [Retell] call_ended: no existing record for ${call.call_id}, creating new record`);
+
+            // Determine workspace from agent_id or phone numbers
+            let workspaceId = call.metadata?.workspaceId || null;
+            if (!workspaceId) {
+                const ws = await prisma.workspace.findFirst({
+                    where: {
+                        OR: [
+                            ...(call.agent_id ? [{ retellAgentId: call.agent_id }] : []),
+                            ...(toNumber ? [{ retellFromNumber: toNumber }] : []),
+                            ...(fromNumber ? [{ retellFromNumber: fromNumber }] : [])
+                        ]
+                    },
+                    select: { id: true, retellFromNumber: true }
+                });
+                workspaceId = ws?.id;
+            }
+
+            if (workspaceId) {
+                // Detect direction: if toNumber matches workspace's retellFromNumber → inbound
+                const wsInfo = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { retellFromNumber: true }
+                });
+                const isInbound = call.direction === 'inbound' ||
+                    (wsInfo?.retellFromNumber && normalizePhone(toNumber) === normalizePhone(wsInfo.retellFromNumber));
+
+                // Try to find contact
+                let contactId = null;
+                const lookupPhone = isInbound ? fromNumber : toNumber;
+                if (lookupPhone) {
+                    const normalized = normalizePhone(lookupPhone);
+                    const contact = await prisma.contact.findFirst({
+                        where: {
+                            workspaceId,
+                            OR: [
+                                { phone: normalized },
+                                { phone: lookupPhone },
+                                { phone: lookupPhone.replace(/\D/g, '') }
+                            ]
+                        },
+                        select: { id: true }
+                    });
+                    contactId = contact?.id || null;
                 }
-            });
-            callRecord = await prisma.retellCall.findUnique({
-                where: { callId: call.call_id }
-            });
+
+                // Create new contact for unknown inbound callers
+                if (!contactId && isInbound && fromNumber) {
+                    const normalized = normalizePhone(fromNumber) || fromNumber;
+                    const newContact = await prisma.contact.create({
+                        data: {
+                            workspaceId,
+                            name: `Arayan: ${fromNumber}`,
+                            phone: normalized,
+                            status: 'NEW_APPLICATION',
+                            category: 'NEW_APPLICATION'
+                        }
+                    });
+                    contactId = newContact.id;
+                    console.log(`📞 [Retell] call_ended fallback: created new contact ${contactId} for ${fromNumber}`);
+                }
+
+                callRecord = await prisma.retellCall.create({
+                    data: {
+                        workspaceId,
+                        callId: call.call_id,
+                        agentId: call.agent_id || '',
+                        fromNumber,
+                        toNumber,
+                        direction: isInbound ? 'inbound' : (call.direction || 'outbound'),
+                        status: 'ended',
+                        duration,
+                        transcript: call.transcript || null,
+                        recordingUrl: call.recording_url || null,
+                        endedReason: call.disconnection_reason || null,
+                        cost: call.call_cost?.combined_cost ?? null,
+                        contactId,
+                        createdById: '',
+                        ...(call.start_timestamp ? { createdAt: new Date(call.start_timestamp) } : {})
+                    }
+                });
+                console.log(`📞 [Retell] call_ended: created missing record ${callRecord.id} for ${call.call_id} (${isInbound ? 'inbound' : 'outbound'})`);
+            } else {
+                console.warn(`📞 [Retell] call_ended: no workspace found for orphan call ${call.call_id}`);
+            }
         }
 
         if (callRecord) {
@@ -4079,6 +4151,8 @@ export const syncRetellCalls = async (req, res) => {
                             callSuccessful: data.callSuccessful,
                             endedReason:   data.endedReason,
                             cost:          data.cost,
+                            // Always update direction from Retell source of truth
+                            direction:     data.direction,
                             ...(data.toNumber   && !existing.toNumber   ? { toNumber: data.toNumber }     : {}),
                             ...(data.fromNumber && !existing.fromNumber ? { fromNumber: data.fromNumber } : {}),
                             ...(callTime ? { createdAt: callTime } : {}),
