@@ -257,18 +257,17 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
           return null;
         }
 
-        // 24 saat dedup: aynı kişiye yakın zamanda arama görevi oluşturulmuş mu?
-        const recentCallTask = await prisma.contactActivity.findFirst({
+        // Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla
+        const recentActivity = await prisma.contactActivity.findFirst({
           where: {
             contactId,
             workspaceId,
-            type: 'CALL',
-            status: { in: ['PLANNED', 'IN_PROGRESS'] },
-            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+            status: 'PLANNED',
+            createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) }
           }
         });
-        if (recentCallTask) {
-          console.log(`📞 [IntentActivity] Son 24h'de zaten arama görevi var, skip`);
+        if (recentActivity) {
+          console.log(`📞 [IntentActivity] Son 5 dk'da zaten planlı aktivite var (${recentActivity.type}), skip`);
           return null;
         }
 
@@ -337,16 +336,19 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
       return null;
     }
 
-    // Çakışma kontrolü: Son 24 saatte aynı tip aktivite oluşturulmuş mu
+    // Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla
     const recentActivity = await prisma.contactActivity.findFirst({
       where: {
         contactId,
         workspaceId,
-        type,
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        status: 'PLANNED',
+        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) }
       }
     });
-    if (recentActivity) return null;
+    if (recentActivity) {
+      console.log(`📋 [IntentActivity] Son 5 dk'da zaten planlı aktivite var (${recentActivity.type}), ${type} atlanıyor`);
+      return null;
+    }
 
     // Conversation'dan takım/agent bilgisini al
     const conversation = await prisma.conversation.findUnique({

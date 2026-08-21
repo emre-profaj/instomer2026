@@ -688,6 +688,22 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         const contact = conversation.contact;
         const inheritedAssigneeId = conversation.assignedToId || null;
         const inheritedCaseId = conversation.caseId || null;
+
+        // ─── Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla ──
+        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const recentActivity = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId: contact.id,
+                status: 'PLANNED',
+                createdAt: { gte: fiveMinAgo }
+            }
+        });
+        if (recentActivity) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Contact ${contact.id} already has a planned activity (${recentActivity.type}) from last 5 min, skipping`);
+            return;
+        }
+
         await prisma.contactActivity.create({
             data: {
                 workspaceId,
@@ -1135,17 +1151,18 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
         });
         if (!contact) return;
 
-        // 3. Check for duplicate — already PLANNED appointment?
-        const existingAppointment = await prisma.contactActivity.findFirst({
+        // 3. Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla
+        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const existingActivity = await prisma.contactActivity.findFirst({
             where: {
                 workspaceId,
                 contactId,
-                type: 'APPOINTMENT',
-                status: 'PLANNED'
+                status: 'PLANNED',
+                createdAt: { gte: fiveMinAgo }
             }
         });
-        if (existingAppointment) {
-            console.log(`ℹ️ [RULE:APPOINTMENT] Contact ${contactId} already has a planned appointment, skipping`);
+        if (existingActivity) {
+            console.log(`ℹ️ [RULE:APPOINTMENT] Contact ${contactId} already has a planned activity (${existingActivity.type}) from last 5 min, skipping`);
             return;
         }
 
