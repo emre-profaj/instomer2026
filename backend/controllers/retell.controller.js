@@ -1326,15 +1326,8 @@ async function checkOverdueAgentCalls() {
             include: { contact: true }
         });
 
-        // Parametrik kontrol: sadece ayarı açık olanları al
-        const humanTimeoutActivities = humanFallbackCandidates.filter(a => {
-            const ws = activeWorkspaces.find(w => w.id === a.workspaceId);
-            const settings = resolveSettings(a, a.aiAgentId || ws?.retellAgentId);
-            if (!settings.enabled) return false; // AI devralma kapalı → atla
-            const dueTime = new Date(a.dueDate).getTime();
-            const fallbackMs = settings.delayMinutes * 60 * 1000;
-            return now.getTime() >= dueTime + fallbackMs;
-        });
+        // Let the loop handle settings and delays asynchronously
+        const humanTimeoutActivities = humanFallbackCandidates;
 
         const allActivities = [
             ...directAiActivities.map(a => ({ ...a, _scenario: 'DIRECT_AI' })),
@@ -1377,6 +1370,22 @@ async function checkOverdueAgentCalls() {
             if (!agentId) {
                 console.log(`⏭️ [CallRouter] No AI agent found for activity ${activity.id}, skipping`);
                 continue;
+            }
+
+            // ─── DİNAMİK AYAR KONTROLÜ (HUMAN_TIMEOUT İÇİN) ───
+            if (activity._scenario === 'HUMAN_TIMEOUT') {
+                const settings = resolveSettings(activity, agentId);
+                if (!settings.enabled) {
+                    console.log(`⏭️ [CallRouter] Agent ${agentId} AI Fallback kapalı — timeout görev atlanıyor (activity: ${activity.id})`);
+                    continue;
+                }
+                const dueTime = new Date(activity.dueDate).getTime();
+                const fallbackMs = settings.delayMinutes * 60 * 1000;
+                if (now.getTime() < dueTime + fallbackMs) {
+                    // Henüz vakti gelmemiş
+                    continue;
+                }
+                activity.fallbackDelayMinutes = settings.delayMinutes; // Log için kaydet
             }
 
             // ─── AGENT SCOPE KONTROLÜ ────────────────────────────────────────
