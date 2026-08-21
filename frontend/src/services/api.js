@@ -658,7 +658,7 @@ export const retellAPI = {
     createAgent: (workspaceId, data) => api.post(`/retell/${workspaceId}/agents`, data),
     deleteAgent: (workspaceId, agentId) => api.delete(`/retell/${workspaceId}/agents/${agentId}`),
     updateAgentPrompt: (workspaceId, agentId, data) => api.patch(`/retell/${workspaceId}/agents/${agentId}/prompt`, data),
-    makeCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/call`, data),
+    makeCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/make-call`, data),
     getCallHistory: (workspaceId, params = {}) => {
         const query = new URLSearchParams(params).toString();
         return api.get(`/retell/${workspaceId}/calls${query ? `?${query}` : ''}`);
