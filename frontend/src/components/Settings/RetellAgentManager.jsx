@@ -322,7 +322,8 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
 
     return (
         <div>
-            {/* Agent Seçici */}
+            {/* Agent Seçici — initialAgentId varsa gösterme, zaten seçili */}
+            {!initialAgentId && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
                 <select
                     value={selectedAgentId}
@@ -343,6 +344,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                     <RefreshCw size={14} /> Yenile
                 </button>
             </div>
+            )}
 
             {loading && (
                 <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
