@@ -1178,11 +1178,7 @@ async function checkOverdueAgentCalls() {
             where: {
                 retellApiKey: { not: null },
                 retellAgentId: { not: null },
-                retellFromNumber: { not: null },
-                OR: [
-                    { retellAutoCallEnabled: true },
-                    { aiFallbackEnabled: true }
-                ]
+                retellFromNumber: { not: null }
             },
             select: {
                 id: true,
@@ -1245,10 +1241,13 @@ async function checkOverdueAgentCalls() {
             const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
             const agentCfgDelay = resolvedAgentId ? agentConfigs[resolvedAgentId]?.fallbackDelayMinutes : null;
 
-            // Enabled: activity.fallbackToAi > SALES_PHONE_CALL config > team > workspace
+            // Enabled: activity.fallbackToAi > Agent Config > SALES_PHONE_CALL config > team > workspace
+            const agentCfgFallbackToAi = resolvedAgentId ? agentConfigs[resolvedAgentId]?.fallbackToAi : null;
             let enabled;
             if (activity.fallbackToAi !== undefined && activity.fallbackToAi !== null) {
                 enabled = activity.fallbackToAi;
+            } else if (agentCfgFallbackToAi !== undefined && agentCfgFallbackToAi !== null) {
+                enabled = agentCfgFallbackToAi;
             } else if (salesCfg.aiFallbackEnabled !== undefined) {
                 enabled = salesCfg.aiFallbackEnabled;
             } else if (team?.aiFallbackEnabled !== null && team?.aiFallbackEnabled !== undefined) {
@@ -1322,7 +1321,6 @@ async function checkOverdueAgentCalls() {
                 aiAgentId: null,
                 dueDate: { not: null },
                 retellExcluded: { not: true },
-                fallbackToAi: true,
                 contact: { phone: { not: null } }
             },
             include: { contact: true }
