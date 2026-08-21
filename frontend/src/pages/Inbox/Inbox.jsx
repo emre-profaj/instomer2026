@@ -1276,65 +1276,6 @@ const Inbox = () => {
 
                 // Browser notifications are now handled globally in ToastProvider (Toast.jsx)
 
-                // === CHAT CALL DETECTION ===
-                // Detects call requests in INCOMING contact messages and schedules via retellAPI
-                if (data.message?.isFromContact && data.message?.content) {
-                    const callIntent = detectCallIntentFrontend(data.message.content);
-                    if (callIntent) {
-                        const contactPhone = data.contact?.phone;
-                        const msgText = data.message.content;
-                        let phoneToCall = contactPhone;
-
-                        if (!phoneToCall) {
-                            const phoneMatch = msgText.match(/(?:\+90|0090|90)?[\s]?(?:5\d{2})[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
-                            if (phoneMatch) {
-                                const digits = phoneMatch[0].replace(/\D/g, '');
-                                phoneToCall = digits.startsWith('90') ? '+' + digits
-                                    : digits.startsWith('0') ? '+90' + digits.slice(1)
-                                    : '+90' + digits;
-                            }
-                        }
-
-                        if (phoneToCall) {
-                            if (callIntent.type === 'immediate') {
-                                console.log(`📞 [ChatCallDetect] Immediate call → ${phoneToCall}`);
-                                retellAPI.makeCall(currentWorkspace.id, {
-                                    toNumber: phoneToCall,
-                                    contactName: data.contact?.name || 'Müşteri',
-                                    contactId: data.contact?.id || null,
-                                    conversationId: data.conversationId || null,
-                                }).then(() => {
-                                    console.log(`✅ [ChatCallDetect] Immediate call initiated`);
-                                }).catch(e => {
-                                    console.warn('⚠️ [ChatCallDetect] Immediate call failed:', e.message);
-                                    retellAPI.scheduleCall(currentWorkspace.id, {
-                                        toNumber: phoneToCall,
-                                        contactName: data.contact?.name || 'Müşteri',
-                                        contactId: data.contact?.id || null,
-                                        scheduledAt: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
-                                    }).catch(() => {});
-                                });
-                            } else if (callIntent.type === 'scheduled') {
-                                console.log(`📅 [ChatCallDetect] Scheduled call → ${phoneToCall} at ${callIntent.scheduledAt.toLocaleTimeString('tr-TR')}`);
-                                retellAPI.scheduleCall(currentWorkspace.id, {
-                                    toNumber: phoneToCall,
-                                    contactName: data.contact?.name || 'Müşteri',
-                                    contactId: data.contact?.id || null,
-                                    scheduledAt: callIntent.scheduledAt.toISOString(),
-                                }).then(() => {
-                                    console.log(`✅ [ChatCallDetect] Scheduled call saved`);
-                                }).catch(e => {
-                                    console.warn('⚠️ [ChatCallDetect] Could not save scheduled call:', e.message);
-                                });
-                            }
-                        } else {
-                            console.log('⚠️ [ChatCallDetect] Call intent detected but no phone number found');
-                        }
-                    }
-                }
-                // === END CHAT CALL DETECTION ===
-
-
 
             } else {
                 console.log('⚠️ new_message - workspace mismatch:', data.workspaceId, 'vs', currentWorkspace?.id);
