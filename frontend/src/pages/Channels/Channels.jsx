@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI, telsamAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI, telsamAPI, classifierAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database, PhoneCall } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database, PhoneCall, ArrowRight, ChevronUp, ChevronDown, Edit2, Map, List, Brain, Hash, AlertTriangle, MessageSquare, Radio } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
 import DisaoSettingsModal from '../../components/Settings/DisaoSettingsModal';
 import './Channels.css';
@@ -109,6 +109,33 @@ const Channels = () => {
     const [pageSelectChannelType, setPageSelectChannelType] = useState('facebook');
     const [pageSearchTerm, setPageSearchTerm] = useState('');
 
+    // Classifier states
+    const [classifierRules, setClassifierRules] = useState([]);
+    const [channelAssignments, setChannelAssignments] = useState({});
+    const [expandedChannel, setExpandedChannel] = useState(null);
+    const [savingChannel, setSavingChannel] = useState(null);
+    const [viewMode, setViewMode] = useState('channels'); // 'channels' | 'rules'
+    const [showDetailRuleModal, setShowDetailRuleModal] = useState(false);
+    const [detailRuleChannel, setDetailRuleChannel] = useState(null);
+    const [detailRuleForm, setDetailRuleForm] = useState({
+        name: '',
+        conditionType: 'KEYWORD',
+        conditions: { keywords: '', matchMode: 'ANY', aiDescription: '', timeStart: '', timeEnd: '', days: [] },
+        targetFunnelId: '',
+        targetStageId: ''
+    });
+    const [showRuleModal, setShowRuleModal] = useState(false);
+    const [editingRule, setEditingRule] = useState(null);
+    const [ruleFormData, setRuleFormData] = useState({
+        name: '',
+        conditionType: 'KEYWORD',
+        conditions: { keywords: '', matchMode: 'ANY', aiDescription: '', channels: [], formIds: [] },
+        targetFunnelId: '',
+        targetStageId: '',
+        isActive: true
+    });
+    const [fbForms, setFbForms] = useState([]);
+
     const workspaceMemberRole = currentWorkspace?.members?.find(m => m.userId === user?.id)?.role;
     const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(workspaceMemberRole || user?.role);
 
@@ -131,7 +158,7 @@ const Channels = () => {
         setLoading(true);
         try {
             const API = import.meta.env.VITE_API_URL || 'http://localhost:5008';
-            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes, wsRes] = await Promise.all([
+            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes, wsRes, telsamRes, rulesRes, formsRes] = await Promise.all([
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
@@ -144,7 +171,9 @@ const Channels = () => {
                 healthSystemAPI.getStatus(currentWorkspace.id).catch(() => ({ data: { connected: false } })),
                 funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: [] })),
                 fetch(`${API}/workspaces/${currentWorkspace.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }).then(res => res.json()).catch(() => null),
-                telsamAPI.getSettings(currentWorkspace.id).catch(() => ({ data: null }))
+                telsamAPI.getSettings(currentWorkspace.id).catch(() => ({ data: null })),
+                classifierAPI.getRules(currentWorkspace.id).catch(() => ({ data: { rules: [] } })),
+                facebookAPI.getPageForms(currentWorkspace.id).catch(() => ({ data: { forms: [] } }))
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -167,6 +196,32 @@ const Channels = () => {
             setFunnels(funnelsRes.data?.funnels || funnelsRes.data || []);
             const telsamData = telsamRes?.data?.data || null;
             setTelsamConfig(telsamData);
+
+            const loadedRules = rulesRes.data?.rules || [];
+            setClassifierRules(loadedRules);
+            setFbForms(formsRes.data?.forms || []);
+
+            // Build channel assignments from existing rules
+            const assignments = {};
+            const loadedFunnels = funnelsRes.data?.funnels || funnelsRes.data || [];
+
+            loadedRules.forEach(rule => {
+                if (!rule.isActive) return;
+                const cond = typeof rule.conditions === 'string' ? JSON.parse(rule.conditions) : rule.conditions;
+                
+                if (rule.conditionType === 'CHANNEL' && cond.channels) {
+                    cond.channels.forEach(chId => {
+                        let mappedId = chId;
+                        if (chId.startsWith('fb-') && !chId.startsWith('fb-msg-') && !chId.startsWith('fb-comment-') && !chId.startsWith('fb-form-')) {
+                            mappedId = `fb-msg-${chId.replace('fb-', '')}`;
+                        }
+                        if (!assignments[mappedId]) {
+                            assignments[mappedId] = { funnelId: rule.targetFunnelId, stageId: rule.targetStageId, ruleId: rule.id, ruleName: rule.name };
+                        }
+                    });
+                }
+            });
+            setChannelAssignments(assignments);
 
             if (telsamData) {
                 setTelsamForm({
@@ -901,14 +956,401 @@ const Channels = () => {
         return channels;
     };
 
+    // === CLASSIFIER FUNCTIONS ===
+    const getDefaultFunnel = () => funnels.find(f => f.isDefault || f.funnelType === 'MAIN') || funnels[0];
+    
+    const isDefaultFunnel = (funnelId) => {
+        const df = getDefaultFunnel();
+        return df && df.id === funnelId;
+    };
+
+    const getClassifierChannelId = (channel) => {
+        // Map Channels page channel to Classifier-style channel ID
+        if (channel.type === 'facebook') return `fb-msg-${channel.id}`;
+        if (channel.type === 'instagram') return `ig-${channel.pageId || channel.id}`;
+        if (channel.type === 'whatsapp') return `wa-${channel.id}`;
+        if (channel.type === 'webform') return `form-${channel.id}`;
+        if (channel.type === 'webwidget') return `widget-${channel.id}`;
+        return channel.id;
+    };
+
+    const [groupAssignments, setGroupAssignments] = useState({});
+    const [channelOverrides, setChannelOverrides] = useState({});
+
+    const handleChannelFunnelChange = async (classifierId, funnelId, isGroupChange = false) => {
+        if (!isGroupChange) {
+            setChannelOverrides(prev => ({ ...prev, [classifierId]: true }));
+        }
+        const prev = channelAssignments[classifierId];
+        setChannelAssignments(a => ({ ...a, [classifierId]: { ...a[classifierId], funnelId, stageId: '' } }));
+        setSavingChannel(classifierId);
+
+        try {
+            if (prev?.ruleId) {
+                await classifierAPI.updateRule(currentWorkspace.id, prev.ruleId, {
+                    targetFunnelId: funnelId,
+                    targetStageId: null
+                });
+            } else {
+                const funnel = funnels.find(f => f.id === funnelId);
+                const res = await classifierAPI.createRule(currentWorkspace.id, {
+                    name: `${classifierId} → ${funnel?.name || 'Akış'}`,
+                    conditionType: 'CHANNEL',
+                    conditions: JSON.stringify({ channels: [classifierId] }),
+                    targetFunnelId: funnelId,
+                    isActive: true
+                });
+                setChannelAssignments(a => ({ ...a, [classifierId]: { ...a[classifierId], ruleId: res.data.rule?.id } }));
+            }
+        } catch (err) {
+            console.error('Funnel assignment error:', err);
+            if (prev) setChannelAssignments(a => ({ ...a, [classifierId]: prev }));
+        } finally {
+            setSavingChannel(null);
+        }
+    };
+
+    const handleChannelStageChange = async (classifierId, stageId, isGroupChange = false) => {
+        if (!isGroupChange) {
+            setChannelOverrides(prev => ({ ...prev, [classifierId]: true }));
+        }
+        const prev = channelAssignments[classifierId];
+        setChannelAssignments(a => ({ ...a, [classifierId]: { ...a[classifierId], stageId } }));
+        setSavingChannel(classifierId);
+        try {
+            if (prev?.ruleId) {
+                await classifierAPI.updateRule(currentWorkspace.id, prev.ruleId, { targetStageId: stageId || null });
+            }
+        } catch (err) {
+            console.error('Stage update error:', err);
+        } finally {
+            setSavingChannel(null);
+        }
+    };
+
+    const handleGroupFunnelChange = async (groupKey, funnelId) => {
+        setGroupAssignments(prev => ({ ...prev, [groupKey]: { ...prev[groupKey], funnelId, stageId: '' } }));
+        const groupChannels = routingChannels.filter(ch => ch.group === groupKey);
+        for (const ch of groupChannels) {
+            if (!channelOverrides[ch.id]) {
+                await handleChannelFunnelChange(ch.id, funnelId, true);
+            }
+        }
+    };
+
+    const handleGroupStageChange = async (groupKey, stageId) => {
+        setGroupAssignments(prev => ({ ...prev, [groupKey]: { ...prev[groupKey], stageId } }));
+        const groupChannels = routingChannels.filter(ch => ch.group === groupKey);
+        for (const ch of groupChannels) {
+            if (!channelOverrides[ch.id]) {
+                await handleChannelStageChange(ch.id, stageId, true);
+            }
+        }
+    };
+
+    const handleChannelSettings = (channel) => {
+        if (channel.type === 'facebook' || channel.type === 'instagram') {
+            // No direct sync modal in this simple refactor, just alert or we could find the full channel object and handle sync
+            // For now, this is a placeholder or you can implement a custom modal
+            alert('Kanal ayarları: Chat Sync vb.');
+        } else if (channel.type === 'webform') {
+            const webhook = formWebhooks.find(f => f.id === channel.rawId);
+            if (webhook) handleToggleFormWebhook(webhook);
+        } else if (channel.type === 'webwidget') {
+            const widget = webWidgets.find(w => w.id === channel.rawId);
+            if (widget) {
+                setSelectedWidget(widget);
+                setWidgetModalMode('edit');
+                setShowWidgetModal(true);
+            }
+        } else if (channel.type === 'retell') {
+            setShowRetellModal(true);
+        } else if (channel.type === 'telsam') {
+            setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true);
+        } else if (channel.type === 'whatsapp') {
+            setShowWhatsAppModal(true);
+        }
+    };
+
+    const handleDeleteChannel = (channel) => {
+        if (channel.type === 'facebook') {
+            handleDisconnectPage(channel.rawId, 'facebook');
+        } else if (channel.type === 'instagram') {
+            handleDisconnectPage(channel.rawId, 'instagram');
+        } else if (channel.type === 'whatsapp') {
+            handleDeleteWhatsapp(channel.rawId);
+        } else if (channel.type === 'webform') {
+            handleDeleteFormWebhook(channel.rawId);
+        } else if (channel.type === 'webwidget') {
+            handleDeleteWebWidget(channel.rawId);
+        } else if (channel.type === 'telsam') {
+            handleDeleteTelsam();
+        } else if (channel.type === 'email') {
+            handleDeleteEmail(channel.rawId);
+        } else if (channel.type === 'disao-crm') {
+            handleDeleteDisaoCrm();
+        }
+    };
+
+    const getDetailRulesForChannel = (classifierId) => {
+        return classifierRules.filter(rule => {
+            if (rule.conditionType === 'CHANNEL') return false;
+            const cond = typeof rule.conditions === 'string' ? JSON.parse(rule.conditions) : rule.conditions;
+            return cond.channels && cond.channels.includes(classifierId);
+        });
+    };
+
+    const handleDeleteClassifierRule = async (ruleId) => {
+        if (!confirm('Bu kuralı silmek istediğinize emin misiniz?')) return;
+        try {
+            await classifierAPI.deleteRule(currentWorkspace.id, ruleId);
+            setClassifierRules(prev => prev.filter(r => r.id !== ruleId));
+            loadAllChannels();
+        } catch (err) {
+            console.error('Rule delete error:', err);
+        }
+    };
+
+    const handleToggleClassifierRule = async (ruleId) => {
+        try {
+            await classifierAPI.toggleRule(currentWorkspace.id, ruleId);
+            setClassifierRules(prev => prev.map(r => r.id === ruleId ? { ...r, isActive: !r.isActive } : r));
+        } catch (err) {
+            console.error('Rule toggle error:', err);
+        }
+    };
+
+    const moveRule = async (index, direction) => {
+        const newRules = [...classifierRules];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= newRules.length) return;
+        [newRules[index], newRules[targetIndex]] = [newRules[targetIndex], newRules[index]];
+        const updatedRules = newRules.map((r, i) => ({ id: r.id, priority: i }));
+        setClassifierRules(newRules);
+        try {
+            await classifierAPI.reorderRules(currentWorkspace.id, updatedRules);
+        } catch (err) {
+            console.error('Reorder error:', err);
+            loadAllChannels();
+        }
+    };
+
+    const openRuleModal = (rule = null) => {
+        if (rule) {
+            const cond = typeof rule.conditions === 'string' ? JSON.parse(rule.conditions) : rule.conditions;
+            setEditingRule(rule);
+            setRuleFormData({
+                name: rule.name,
+                conditionType: rule.conditionType,
+                conditions: { keywords: cond.keywords || '', matchMode: cond.matchMode || 'ANY', aiDescription: cond.aiDescription || '', channels: cond.channels || [], formIds: cond.formIds || [], timeStart: cond.timeStart || '', timeEnd: cond.timeEnd || '', days: cond.days || [] },
+                targetFunnelId: rule.targetFunnelId || '',
+                targetStageId: rule.targetStageId || '',
+                isActive: rule.isActive
+            });
+        } else {
+            setEditingRule(null);
+            setRuleFormData({ name: '', conditionType: 'KEYWORD', conditions: { keywords: '', matchMode: 'ANY', aiDescription: '', channels: [], formIds: [] }, targetFunnelId: '', targetStageId: '', isActive: true });
+        }
+        setShowRuleModal(true);
+    };
+
+    const handleSaveRule = async () => {
+        try {
+            const payload = {
+                name: ruleFormData.name,
+                conditionType: ruleFormData.conditionType,
+                conditions: JSON.stringify(ruleFormData.conditions),
+                targetFunnelId: ruleFormData.targetFunnelId,
+                targetStageId: ruleFormData.targetStageId || null,
+                isActive: ruleFormData.isActive
+            };
+            if (editingRule) {
+                await classifierAPI.updateRule(currentWorkspace.id, editingRule.id, payload);
+            } else {
+                await classifierAPI.createRule(currentWorkspace.id, payload);
+            }
+            setShowRuleModal(false);
+            loadAllChannels();
+        } catch (err) {
+            console.error('Rule save error:', err);
+        }
+    };
+
+    const handleSaveDetailRule = async () => {
+        try {
+            const payload = {
+                name: detailRuleForm.name || `${detailRuleChannel?.name || ''} Kuralı`,
+                conditionType: detailRuleForm.conditionType,
+                conditions: JSON.stringify({ ...detailRuleForm.conditions, channels: [detailRuleChannel?.classifierId] }),
+                targetFunnelId: detailRuleForm.targetFunnelId,
+                targetStageId: detailRuleForm.targetStageId || null,
+                isActive: true
+            };
+            await classifierAPI.createRule(currentWorkspace.id, payload);
+            setShowDetailRuleModal(false);
+            loadAllChannels();
+        } catch (err) {
+            console.error('Detail rule save error:', err);
+        }
+    };
+
+    const renderConditionBadge = (type) => {
+        const badges = {
+            'KEYWORD': { label: 'Kelime', className: 'badge-keyword' },
+            'AI': { label: 'Yapay Zeka', className: 'badge-ai' },
+            'CHANNEL': { label: 'Kanal', className: 'badge-channel' },
+            'DEFAULT': { label: 'Varsayılan', className: 'badge-default' },
+            'TIME': { label: 'Zaman', className: 'badge-time' }
+        };
+        const b = badges[type] || { label: type, className: '' };
+        return <span className={`rule-badge ${b.className}`}>{b.label}</span>;
+    };
+
+    const renderConditionPreview = (rule) => {
+        const cond = typeof rule.conditions === 'string' ? JSON.parse(rule.conditions) : rule.conditions;
+        if (rule.conditionType === 'KEYWORD') return `"${(cond.keywords || '').substring(0, 40)}" geçiyorsa`;
+        if (rule.conditionType === 'AI') return `AI: "${(cond.aiDescription || '').substring(0, 40)}"`;
+        if (rule.conditionType === 'TIME') return `⏰ ${cond.timeStart || '?'}-${cond.timeEnd || '?'}`;
+        if (rule.conditionType === 'DEFAULT') return 'Varsayılan kural';
+        if (rule.conditionType === 'CHANNEL') return `${(cond.channels || []).length} kanal`;
+        return '';
+    };
+
+    const getTargetName = (funnelId, stageId) => {
+        const funnel = funnels.find(f => f.id === funnelId);
+        if (!funnel) return 'Bilinmiyor';
+        const stage = stageId && funnel.stages ? funnel.stages.find(s => s.id === stageId) : null;
+        return stage ? `${funnel.name} ➔ ${stage.name}` : funnel.name;
+    };
+
     const channelList = buildChannelList();
     const hasAnyChannel = channelList.length > 0;
+
+    // --- Build combined channels for routing ---
+    const routingChannels = [];
+    
+    // Chat Kanalları
+    (facebookPages || []).forEach(p => {
+        routingChannels.push({
+            id: `fb-msg-${p.id}`, rawId: p.id, type: 'facebook',
+            name: `${p.pageName}`,
+            groupLabel: 'Facebook Mesajlar',
+            group: 'chat',
+            icon: Facebook, color: '#1877F2'
+        });
+        if (p.instagramBusinessId) {
+            routingChannels.push({
+                id: `ig-${p.id}`, rawId: p.id, type: 'instagram',
+                name: `@${p.instagramUsername || 'Instagram'}`,
+                groupLabel: 'DM',
+                group: 'chat',
+                icon: Instagram, color: '#E4405F'
+            });
+        }
+    });
+    (whatsappNumbers || []).forEach(w => {
+        routingChannels.push({
+            id: `wa-${w.id}`, rawId: w.id, type: 'whatsapp',
+            name: w.displayPhoneNumber || w.phoneNumber,
+            groupLabel: 'WhatsApp',
+            group: 'chat',
+            icon: MessageCircle, color: '#25D366'
+        });
+    });
+    (webWidgets || []).forEach(w => {
+        routingChannels.push({
+            id: `widget-${w.id}`, rawId: w.id, type: 'webwidget',
+            name: w.name || w.domain || 'Web Widget',
+            groupLabel: 'Web Chat',
+            group: 'chat',
+            icon: Globe, color: '#3b82f6'
+        });
+    });
+
+    // Web Formları
+    (formWebhooks || []).forEach(f => {
+        routingChannels.push({
+            id: `form-${f.id}`, rawId: f.id, type: 'webform',
+            name: f.name,
+            groupLabel: 'Web Form',
+            group: 'webforms',
+            icon: FileText, color: '#8B5CF6'
+        });
+    });
+
+    // Facebook Lead Formları
+    (fbForms || []).forEach(f => {
+        routingChannels.push({
+            id: `fb-form-${f.formId}`, rawId: f.formId, type: 'fb-form',
+            name: f.formName || 'Form',
+            groupLabel: 'Facebook Lead',
+            group: 'fbforms',
+            icon: FileText, color: '#FF6B35',
+            leadCount: f.leadCount || 0
+        });
+    });
+
+    // AI Arama
+    if (retellSettings) {
+        routingChannels.push({
+            id: 'retell', rawId: 'retell', type: 'retell',
+            name: retellSettings.retellFromNumber || 'AI Call',
+            groupLabel: 'AI Sesli Arama',
+            group: 'aicall',
+            icon: Phone, color: '#0d9488'
+        });
+    }
+    if (telsamConfig) {
+        routingChannels.push({
+            id: 'telsam', rawId: telsamConfig.id, type: 'telsam',
+            name: 'Telsam Santral',
+            groupLabel: 'Santral',
+            group: 'aicall',
+            icon: PhoneCall, color: '#0284c7'
+        });
+    }
+
+    // Yorumlar
+    (facebookPages || []).forEach(p => {
+        routingChannels.push({
+            id: `fb-comment-${p.id}`, rawId: p.id, type: 'facebook-comment',
+            name: `${p.pageName}`,
+            groupLabel: 'Facebook Yorumlar',
+            group: 'comments',
+            icon: MessageSquare, color: '#42b883'
+        });
+        if (p.instagramBusinessId) {
+            routingChannels.push({
+                id: `ig-comment-${p.id}`, rawId: p.id, type: 'instagram-comment',
+                name: `@${p.instagramUsername || 'Instagram'}`,
+                groupLabel: 'Instagram Yorumlar',
+                group: 'comments',
+                icon: Instagram, color: '#E4405F'
+            });
+        }
+    });
+
+    const groupDefs = [
+        { key: 'chat', title: '💬 Chat Kanalları', borderColor: '#3b82f6' },
+        { key: 'webforms', title: '📋 Web Formları', borderColor: '#8b5cf6' },
+        { key: 'fbforms', title: '📋 Facebook Lead Formları', borderColor: '#FF6B35' },
+        { key: 'aicall', title: '📞 AI Arama', borderColor: '#0d9488' },
+        { key: 'comments', title: '💬 Yorumlar', borderColor: '#22c55e' }
+    ];
+
+    const getUnassignedCount = () => routingChannels.filter(ch => !channelAssignments[ch.id]?.funnelId).length;
+
+    // Integrations styles
+    const connectBtnStyle = { background: '#2563eb', color: 'white', border: 'none', padding: '6px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 500 };
+    const settingsBtnStyle = { background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '6px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 500 };
+    const disconnectBtnStyle = { background: '#fef2f2', color: '#dc2626', border: 'none', padding: '6px 16px', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: 500 };
 
     return (
         <div className="channels-container">
             <div className="channels-header">
                 <div className="channels-title-row">
-                    <h1>Bağlı Kanallar</h1>
+                    <h1>Kanallar ve Yönlendirme</h1>
+                    <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>Kanallarınızı yönetin, yönlendirme kurallarını belirleyin</p>
                 </div>
 
                 {/* Quick Add Buttons */}
@@ -957,253 +1399,305 @@ const Channels = () => {
                 </div>
             </div>
 
-
             <div className="channels-content">
                 {loading ? (
                     <div className="loading">{t('channels.loading')}</div>
-                ) : !hasAnyChannel ? (
-                    <div className="empty-state">
-                        <Globe size={64} />
-                        <h3>{t('channels.noChannels')}</h3>
-                        <p>{t('channels.noChannelsDesc')}</p>
-                    </div>
                 ) : (
-                    <div className="unified-channels-grid">
-                        {channelList.map((channel) => {
-                            const ChannelIcon = channel.icon;
+                    <div className="map-view">
+                        {getUnassignedCount() > 0 && (
+                            <div className="map-warning" style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '8px', padding: '10px 16px', fontSize: '13px', fontWeight: 500, color: '#92400e' }}>
+                                <AlertTriangle size={18} />
+                                <span>{getUnassignedCount()} kanal henüz atanmamış!</span>
+                            </div>
+                        )}
 
-                            return (
-                                <div key={channel.id} className="unified-channel-card">
-                                    <div className="channel-card-header">
-                                        <div className="channel-icon-wrapper" style={{ backgroundColor: channel.bgColor }}>
-                                            <ChannelIcon size={24} color={channel.color} />
-                                        </div>
-                                        <div className="channel-actions">
-                                            {channel.type === 'email' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => handleSyncEmail(channel.id)}
-                                                    title="Senkronize Et"
-                                                >
-                                                    <RefreshCcw size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type === 'webform' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => handleToggleFormWebhook(channel.data)}
-                                                    title={channel.isActive ? 'Devre Dışı Bırak' : 'Etkinleştir'}
-                                                >
-                                                    {channel.isActive ? <Eye size={14} /> : <EyeOff size={14} />}
-                                                </button>
-                                            )}
-                                            {(channel.type === 'facebook' || channel.type === 'instagram') && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => handleOAuthConnect(channel.type === 'instagram' ? 'instagram' : 'facebook')}
-                                                    title="Yeniden Bağlan (Token Yenile)"
-                                                    style={{
-                                                        background: '#e8f5e9',
-                                                        color: '#2e7d32'
-                                                    }}
-                                                >
-                                                    <RefreshCcw size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type === 'webwidget' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => {
-                                                        setSelectedWidget(channel.data);
-                                                        setWidgetModalMode('edit');
-                                                        setShowWidgetModal(true);
-                                                    }}
-                                                    title="Ayarlar"
-                                                >
-                                                    <Settings size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type === 'retell' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => setShowRetellModal(true)}
-                                                    title="Ayarlar"
-                                                >
-                                                    <Settings size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type === 'health-system' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }}
-                                                    title="Bağlantı Ayarları"
-                                                    style={{ background: '#f5f3ff', color: '#7c3aed' }}
-                                                >
-                                                    <Settings size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type === 'disao-crm' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }}
-                                                    title="Bağlantı Ayarları"
-                                                    style={{ background: '#eef2ff', color: '#6366f1' }}
-                                                >
-                                                    <Settings size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type === 'telsam' && (
-                                                <button
-                                                    className="btn-icon-sm"
-                                                    onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }}
-                                                    title="Ayarlar"
-                                                >
-                                                    <Settings size={14} />
-                                                </button>
-                                            )}
-                                            {channel.type !== 'retell' && channel.type !== 'health-system' && channel.type !== 'disao-crm' && channel.type !== 'telsam' && (
-                                                <button
-                                                    className="channel-delete-btn"
-                                                    style={{
-                                                        width: '28px',
-                                                        height: '28px',
-                                                        border: 'none',
-                                                        background: '#fef2f2',
-                                                        borderRadius: '6px',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center'
-                                                    }}
-                                                    onClick={() => {
-                                                        if (channel.type === 'facebook') {
-                                                            handleDisconnectPage(channel.id, 'facebook');
-                                                        } else if (channel.type === 'instagram') {
-                                                            handleDisconnectPage(channel.pageId, 'instagram');
-                                                        } else if (channel.type === 'email') {
-                                                            handleDeleteEmail(channel.id);
-                                                        } else if (channel.type === 'webform') {
-                                                            handleDeleteFormWebhook(channel.id);
-                                                        } else if (channel.type === 'whatsapp') {
-                                                            handleDeleteWhatsapp(channel.id);
-                                                        } else if (channel.type === 'webwidget') {
-                                                            handleDeleteWebWidget(channel.id);
-                                                        } else if (channel.type === 'disao-crm') {
-                                                            handleDeleteDisaoCrm();
-                                                        } else if (channel.type === 'telsam') {
-                                                            handleDeleteTelsam();
-                                                        }
-                                                    }}
-                                                    title="Sil / Kopar"
-                                                >
-                                                    <Trash2 size={14} color="#dc2626" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
+                        <div className="map-table">
+                            <div className="map-table-header">
+                                <div className="map-col-channel">Kanal</div>
+                                <div className="map-col-funnel">Hedef Akış</div>
+                                <div className="map-col-stage">Aşama</div>
+                                <div className="map-col-actions">İşlemler</div>
+                            </div>
 
-                                    <div className="channel-card-body">
-                                        <h3 className="channel-name">{channel.name}</h3>
-                                        <p className="channel-subtitle">{channel.subtitle}</p>
-                                    </div>
-
-                                    {/* Sub-channels Display for FB/IG */}
-                                    {channel.subchannels && channel.subchannels.length > 0 && (
-                                        <div className="channel-subchannels">
-                                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '8px', padding: '0 16px' }}>
-                                                Sınıflandırıcı Kanalları
-                                            </div>
-                                            <div style={{ padding: '0 16px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                                {channel.subchannels.map(sub => {
-                                                    const SubIcon = sub.icon;
-                                                    return (
-                                                        <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', color: '#475569' }}>
-                                                            <SubIcon size={14} />
-                                                            {sub.label}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Webhook URL for Web Form */}
-                                    {channel.type === 'webform' && (
-                                        <div className="channel-card-footer webform-footer">
-                                            <label className="footer-label">Webhook URL</label>
-                                            <div className="webhook-url-row">
-                                                <input
-                                                    type="text"
-                                                    value={channel.data.webhookUrl}
-                                                    readOnly
-                                                    className="webhook-url-input"
-                                                />
-                                                <button
-                                                    className="btn-copy"
-                                                    onClick={() => copyToClipboard(channel.data.webhookUrl, channel.id)}
-                                                >
-                                                    {copiedUrl === channel.id ? <Check size={14} /> : <Copy size={14} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Chat History Sync for Facebook/Instagram/WhatsApp */}
-                                    {(channel.type === 'facebook' || channel.type === 'instagram' || channel.type === 'whatsapp') && (
-                                        <div className="channel-sync-section">
-                                            <div className="sync-section-header">
-                                                <History size={12} />
-                                                <span>Sohbet Geçmişi Senkronizasyonu</span>
-                                            </div>
-                                            <div className="sync-section-body">
-                                                <select
-                                                    className="sync-period-select"
-                                                    value={syncPeriods[channel.id] || 0}
-                                                    onChange={(e) => setSyncPeriods(prev => ({
-                                                        ...prev,
-                                                        [channel.id]: parseFloat(e.target.value)
-                                                    }))}
-                                                    disabled={syncing[channel.id]}
-                                                >
-                                                    {channel.type === 'whatsapp' ? (
-                                                        <>
-                                                            <option value={0}>Süre Seçin</option>
-                                                            <option value={1}>Son 24 Saat</option>
-                                                        </>
-                                                    ) : (
-                                                        SYNC_PERIOD_OPTIONS.map(option => (
-                                                            <option key={option.value} value={option.value}>
-                                                                {option.label}
-                                                            </option>
-                                                        ))
-                                                    )}
-                                                </select>
-                                                <button
-                                                    className={`btn-sync ${syncing[channel.id] ? 'syncing' : ''}`}
-                                                    onClick={() => handleChannelSync(channel)}
-                                                    disabled={!syncPeriods[channel.id] || syncing[channel.id]}
-                                                >
-                                                    {syncing[channel.id] ? (
-                                                        <><RefreshCcw size={12} className="spin" /> Syncing...</>
-                                                    ) : (
-                                                        <><History size={12} /> Sync</>
-                                                    )}
-                                                </button>
-                                            </div>
-                                            {syncResults[channel.id] && (
-                                                <div className={`sync-result-inline ${syncResults[channel.id].success ? 'success' : 'error'}`}>
-                                                    {syncResults[channel.id].success ? (
-                                                        <><CheckCircle size={12} /> {syncResults[channel.id].totalConversations} sohbet, {syncResults[channel.id].totalMessages} mesaj eklendi</>
-                                                    ) : (
-                                                        <><AlertCircle size={12} /> {syncResults[channel.id].error}</>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
+                            {routingChannels.length === 0 ? (
+                                <div className="map-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '48px', color: '#9ca3af', textAlign: 'center' }}>
+                                    <Globe size={32} />
+                                    <p>Henüz kanal eklenmemiş.</p>
                                 </div>
-                            );
-                        })}
+                            ) : (
+                                groupDefs.map(g => {
+                                    const groupChannels = routingChannels.filter(ch => ch.group === g.key);
+                                    
+                                    if (groupChannels.length === 0) return null;
+                                    
+                                    const renderChannels = (channelsToRender) => channelsToRender.map(ch => {
+                                        const assignment = channelAssignments[ch.id] || {};
+                                        const selectedFunnel = funnels.find(f => f.id === assignment.funnelId);
+                                        const ChannelIcon = ch.icon;
+                                        const isExpanded = expandedChannel === ch.id;
+                                        const isSaving = savingChannel === ch.id;
+                                        const isUnassigned = !assignment.funnelId;
+                                        const isOverridden = channelOverrides[ch.id];
+
+                                        return (
+                                            <Fragment key={ch.id}>
+                                                <div className={`map-row ${isUnassigned ? 'unassigned' : ''} ${isExpanded ? 'expanded' : ''} ${isSaving ? 'saving' : ''}`}>
+                                                    <div className="map-col-channel" onClick={() => setExpandedChannel(isExpanded ? null : ch.id)} style={{ cursor: 'pointer' }}>
+                                                        <div className="channel-info">
+                                                            <div className="channel-icon-badge" style={{ background: `${ch.color}15` }}>
+                                                                <ChannelIcon size={18} color={ch.color} />
+                                                            </div>
+                                                            <div>
+                                                                <div className="channel-name">{ch.name}</div>
+                                                                <div className="channel-type">
+                                                                    {ch.groupLabel}
+                                                                    {ch.leadCount > 0 && (
+                                                                        <span className="lead-count-badge" style={{ marginLeft: '6px', fontSize: '11px', background: '#fef2f2', color: '#dc2626', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>{ch.leadCount} lead</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="map-col-funnel">
+                                                        <select
+                                                            className={`map-select ${isUnassigned ? 'empty' : ''}`}
+                                                            style={{ fontWeight: isOverridden ? 600 : 400, color: isOverridden ? '#111827' : '#6b7280' }}
+                                                            value={assignment.funnelId || ''}
+                                                            onChange={e => handleChannelFunnelChange(ch.id, e.target.value)}
+                                                            disabled={isSaving}
+                                                        >
+                                                            <option value="">Seçiniz...</option>
+                                                            {funnels.map(f => (
+                                                                <option key={f.id} value={f.id}>
+                                                                    {f.name} {f.funnelType === 'MAIN' ? '(Ana)' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        {isDefaultFunnel(assignment.funnelId) && (
+                                                            <span className="default-badge">AI sınıflandırır</span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="map-col-stage">
+                                                        {selectedFunnel?.stages?.length > 0 ? (
+                                                            <select
+                                                                className="map-select map-select-sm"
+                                                                style={{ fontWeight: isOverridden ? 600 : 400, color: isOverridden ? '#111827' : '#6b7280' }}
+                                                                value={assignment.stageId || ''}
+                                                                onChange={e => handleChannelStageChange(ch.id, e.target.value)}
+                                                                disabled={isSaving}
+                                                            >
+                                                                <option value="">İlk aşama</option>
+                                                                {selectedFunnel.stages.map(s => (
+                                                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <span className="stage-na">—</span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="map-col-actions">
+                                                        <button
+                                                            className="detail-rules-btn"
+                                                            onClick={(e) => { e.stopPropagation(); handleChannelSettings(ch); }}
+                                                            title="Kanal ayarları"
+                                                        >
+                                                            <Settings size={16} />
+                                                        </button>
+                                                        <button
+                                                            className="action-btn delete"
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteChannel(ch); }}
+                                                            title="Kanalı sil"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {isExpanded && (
+                                                    <div className="detail-rules-panel">
+                                                        <div className="detail-rules-header">
+                                                            <span>📋 İçerik Kuralları — {ch.name}</span>
+                                                            <button
+                                                                className="btn-add-detail-rule"
+                                                                onClick={() => {
+                                                                    setDetailRuleChannel(ch);
+                                                                    setDetailRuleForm({
+                                                                        name: '',
+                                                                        conditionType: 'KEYWORD',
+                                                                        conditions: { keywords: '', matchMode: 'ANY', aiDescription: '', timeStart: '09:00', timeEnd: '18:00', days: [] },
+                                                                        targetFunnelId: '',
+                                                                        targetStageId: ''
+                                                                    });
+                                                                    setShowDetailRuleModal(true);
+                                                                }}
+                                                            >
+                                                                <Plus size={14} /> Kural Ekle
+                                                            </button>
+                                                        </div>
+                                                        <div className="detail-rules-list">
+                                                            {getDetailRulesForChannel(ch.id).length === 0 ? (
+                                                                <div className="detail-rules-empty">
+                                                                    İçerik kuralı yok. Tüm mesajlar varsayılan hedefe gider.
+                                                                </div>
+                                                            ) : (
+                                                                getDetailRulesForChannel(ch.id).map(rule => (
+                                                                    <div key={rule.id} className="detail-rule-item">
+                                                                        <div className="detail-rule-condition">
+                                                                            {renderConditionBadge(rule.conditionType)}
+                                                                            {renderConditionPreview(rule)}
+                                                                        </div>
+                                                                        <ArrowRight size={16} color="#9ca3af" />
+                                                                        <div className="detail-rule-target">
+                                                                            {getTargetName(rule.targetFunnelId, rule.targetStageId)}
+                                                                        </div>
+                                                                        <button className="action-btn delete" onClick={() => handleDeleteClassifierRule(rule.id)}>
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                        <div className="detail-rules-footer">
+                                                            Eşleşme yoksa → <strong>{getTargetName(assignment.funnelId, assignment.stageId)}</strong>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </Fragment>
+                                        );
+                                    });
+
+                                    const selectedGroupFunnelId = groupAssignments[g.key]?.funnelId || '';
+                                    const selectedGroupFunnel = funnels.find(f => f.id === selectedGroupFunnelId);
+
+                                    return (
+                                        <div key={g.key} className="map-group">
+                                            <div className="map-group-header-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', background: g.borderColor + '08', borderLeft: `4px solid ${g.borderColor}` }}>
+                                                <span style={{ flex: 1, fontWeight: 600, fontSize: '14px' }}>{g.title}</span>
+                                                <select 
+                                                    value={groupAssignments[g.key]?.funnelId || ''} 
+                                                    onChange={e => handleGroupFunnelChange(g.key, e.target.value)}
+                                                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px' }}
+                                                >
+                                                    <option value="">Akış seçin</option>
+                                                    {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                                </select>
+                                                {selectedGroupFunnel?.stages?.length > 0 && (
+                                                    <select 
+                                                        value={groupAssignments[g.key]?.stageId || ''} 
+                                                        onChange={e => handleGroupStageChange(g.key, e.target.value)}
+                                                        style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '13px' }}
+                                                    >
+                                                        <option value="">Aşama seçin</option>
+                                                        {selectedGroupFunnel.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                    </select>
+                                                )}
+                                                <span style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: 500 }}>(miras)</span>
+                                            </div>
+                                            
+                                            {renderChannels(groupChannels)}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        {/* Entegrasyonlar */}
+                        <div style={{ marginTop: '32px' }}>
+                            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Unplug size={20} /> Entegrasyonlar
+                            </h2>
+                            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '16px' }}>Harici sistem bağlantıları</p>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                                {/* Disao CRM Card */}
+                                <div className="integration-card">
+                                    <div style={{ borderTop: '3px solid #8b5cf6', borderRadius: '12px', padding: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                                            <Zap size={24} color="#8b5cf6" />
+                                            <div>
+                                                <h3 style={{ fontWeight: 600, fontSize: '15px' }}>Disao CRM</h3>
+                                                <span style={{ fontSize: '12px', color: disaoConnection ? '#16a34a' : '#9ca3af' }}>
+                                                    {disaoConnection ? '● Bağlı' : '● Bağlı Değil'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {disaoConnection && <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>{disaoConnection.email || disaoConnection.username}</p>}
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            {disaoConnection ? (
+                                                <>
+                                                    <button onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }} style={settingsBtnStyle}>Ayarlar</button>
+                                                    <button onClick={handleDeleteDisaoCrm} style={disconnectBtnStyle}>Bağlantıyı Kes</button>
+                                                </>
+                                            ) : (
+                                                <button onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }} style={connectBtnStyle}>Bağlan</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* HBYS Card */}
+                                <div className="integration-card">
+                                    <div style={{ borderTop: '3px solid #7c3aed', borderRadius: '12px', padding: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                                            <Activity size={24} color="#7c3aed" />
+                                            <div>
+                                                <h3 style={{ fontWeight: 600, fontSize: '15px' }}>Sağlık Sistemi (HBYS)</h3>
+                                                <span style={{ fontSize: '12px', color: healthConnection ? '#16a34a' : '#9ca3af' }}>
+                                                    {healthConnection ? '● Bağlı' : '● Bağlı Değil'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {healthConnection && <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>{healthConnection.baseUrl}</p>}
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            {healthConnection ? (
+                                                <>
+                                                    <button onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }} style={settingsBtnStyle}>Ayarlar</button>
+                                                    {/* We assume there is some disconnect or just rely on the modal to disable it */}
+                                                </>
+                                            ) : (
+                                                <button onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }} style={connectBtnStyle}>Bağlan</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Telsam Card */}
+                                <div className="integration-card">
+                                    <div style={{ borderTop: '3px solid #0284c7', borderRadius: '12px', padding: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                                            <PhoneCall size={24} color="#0284c7" />
+                                            <div>
+                                                <h3 style={{ fontWeight: 600, fontSize: '15px' }}>Telsam Santral</h3>
+                                                <span style={{ fontSize: '12px', color: telsamConfig ? '#16a34a' : '#9ca3af' }}>
+                                                    {telsamConfig ? '● Bağlı' : '● Bağlı Değil'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {telsamConfig && <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>{telsamConfig.siteUrl}</p>}
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            {telsamConfig ? (
+                                                <>
+                                                    <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} style={settingsBtnStyle}>Ayarlar</button>
+                                                    <button onClick={handleDeleteTelsam} style={disconnectBtnStyle}>Bağlantıyı Kes</button>
+                                                </>
+                                            ) : (
+                                                <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} style={connectBtnStyle}>Bağlan</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Stats Bar */}
+                        <div className="map-stats" style={{ display: 'flex', gap: '24px', padding: '16px', background: '#f9fafb', borderRadius: '8px', marginTop: '32px' }}>
+                            <div><span style={{ fontWeight: 700 }}>{routingChannels.length}</span> Kanal</div>
+                            <div><span style={{ fontWeight: 700 }}>{funnels.length}</span> Akış</div>
+                            <div><span style={{ fontWeight: 700 }}>{classifierRules.length}</span> Kural</div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -1837,6 +2331,155 @@ const Channels = () => {
                     onClose={() => setShowDisaoModal(false)}
                     onSaved={() => loadAllChannels()}
                 />
+            )}
+            {/* Detail Rule Modal */}
+            {showDetailRuleModal && (
+                <div className="modal-overlay" onClick={() => setShowDetailRuleModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '560px' }}>
+                        <div className="modal-header">
+                            <h3>İçerik Kuralı Ekle — {detailRuleChannel?.name}</h3>
+                            <button className="close-btn" onClick={() => setShowDetailRuleModal(false)}><X size={18} /></button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>Kural Adı</label>
+                                <input className="form-control" value={detailRuleForm.name} onChange={e => setDetailRuleForm(f => ({ ...f, name: e.target.value }))} placeholder="Ör: Fiyat soruları" />
+                            </div>
+                            <div className="form-group">
+                                <label>Koşul Tipi</label>
+                                <div className="condition-tabs">
+                                    {['KEYWORD', 'TIME', 'AI'].map(t => (
+                                        <button key={t} className={`condition-tab ${detailRuleForm.conditionType === t ? 'active' : ''}`} onClick={() => setDetailRuleForm(f => ({ ...f, conditionType: t }))}>
+                                            {t === 'KEYWORD' ? '🔤 Kelime' : t === 'TIME' ? '⏰ Zaman' : '🧠 AI'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {detailRuleForm.conditionType === 'KEYWORD' && (
+                                <div className="form-group">
+                                    <label>Anahtar Kelimeler (virgülle ayırın)</label>
+                                    <input className="form-control" value={detailRuleForm.conditions.keywords} onChange={e => setDetailRuleForm(f => ({ ...f, conditions: { ...f.conditions, keywords: e.target.value } }))} placeholder="fiyat, peşinat, ödeme" />
+                                </div>
+                            )}
+                            {detailRuleForm.conditionType === 'TIME' && (
+                                <div className="form-group" style={{ display: 'flex', gap: '12px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label>Başlangıç</label>
+                                        <input type="time" className="form-control" value={detailRuleForm.conditions.timeStart} onChange={e => setDetailRuleForm(f => ({ ...f, conditions: { ...f.conditions, timeStart: e.target.value } }))} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label>Bitiş</label>
+                                        <input type="time" className="form-control" value={detailRuleForm.conditions.timeEnd} onChange={e => setDetailRuleForm(f => ({ ...f, conditions: { ...f.conditions, timeEnd: e.target.value } }))} />
+                                    </div>
+                                </div>
+                            )}
+                            {detailRuleForm.conditionType === 'AI' && (
+                                <div className="form-group">
+                                    <label>AI Açıklaması</label>
+                                    <textarea className="form-control" rows={3} value={detailRuleForm.conditions.aiDescription} onChange={e => setDetailRuleForm(f => ({ ...f, conditions: { ...f.conditions, aiDescription: e.target.value } }))} placeholder="Müşteri randevu talep ediyorsa..." />
+                                </div>
+                            )}
+                            <div className="form-group">
+                                <label>Hedef Akış</label>
+                                <select className="form-control" value={detailRuleForm.targetFunnelId} onChange={e => setDetailRuleForm(f => ({ ...f, targetFunnelId: e.target.value, targetStageId: '' }))}>
+                                    <option value="">Akış seçin</option>
+                                    {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                </select>
+                            </div>
+                            {detailRuleForm.targetFunnelId && (() => {
+                                const sf = funnels.find(f => f.id === detailRuleForm.targetFunnelId);
+                                return sf?.stages?.length > 0 ? (
+                                    <div className="form-group">
+                                        <label>Aşama</label>
+                                        <select className="form-control" value={detailRuleForm.targetStageId} onChange={e => setDetailRuleForm(f => ({ ...f, targetStageId: e.target.value }))}>
+                                            <option value="">İlk aşama</option>
+                                            {sf.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                    </div>
+                                ) : null;
+                            })()}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn-secondary" onClick={() => setShowDetailRuleModal(false)}>İptal</button>
+                            <button className="btn-primary" onClick={handleSaveDetailRule} disabled={!detailRuleForm.targetFunnelId}>Kaydet</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Main Rule Modal */}
+            {showRuleModal && (
+                <div className="modal-overlay" onClick={() => setShowRuleModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px' }}>
+                        <div className="modal-header">
+                            <h3>{editingRule ? 'Kuralı Düzenle' : 'Yeni Kural'}</h3>
+                            <button className="close-btn" onClick={() => setShowRuleModal(false)}><X size={18} /></button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>Kural Adı</label>
+                                <input className="form-control" value={ruleFormData.name} onChange={e => setRuleFormData(f => ({ ...f, name: e.target.value }))} placeholder="Ör: Fiyat soruları → Satış" />
+                            </div>
+                            <div className="form-group">
+                                <label>Koşul Tipi</label>
+                                <div className="condition-tabs">
+                                    {['KEYWORD', 'AI', 'CHANNEL', 'TIME', 'DEFAULT'].map(t => (
+                                        <button key={t} className={`condition-tab ${ruleFormData.conditionType === t ? 'active' : ''}`} onClick={() => setRuleFormData(f => ({ ...f, conditionType: t }))}>
+                                            {t === 'KEYWORD' ? '🔤 Kelime' : t === 'AI' ? '🧠 AI' : t === 'CHANNEL' ? '📡 Kanal' : t === 'TIME' ? '⏰ Zaman' : '🎯 Varsayılan'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {ruleFormData.conditionType === 'KEYWORD' && (
+                                <div className="form-group">
+                                    <label>Anahtar Kelimeler</label>
+                                    <input className="form-control" value={ruleFormData.conditions.keywords} onChange={e => setRuleFormData(f => ({ ...f, conditions: { ...f.conditions, keywords: e.target.value } }))} placeholder="fiyat, taksit, peşinat" />
+                                </div>
+                            )}
+                            {ruleFormData.conditionType === 'AI' && (
+                                <div className="form-group">
+                                    <label>AI Açıklaması</label>
+                                    <textarea className="form-control" rows={3} value={ruleFormData.conditions.aiDescription} onChange={e => setRuleFormData(f => ({ ...f, conditions: { ...f.conditions, aiDescription: e.target.value } }))} placeholder="Müşteri ne isterse bu kurala düşsün?" />
+                                </div>
+                            )}
+                            {ruleFormData.conditionType === 'TIME' && (
+                                <div className="form-group" style={{ display: 'flex', gap: '12px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label>Başlangıç</label>
+                                        <input type="time" className="form-control" value={ruleFormData.conditions.timeStart || ''} onChange={e => setRuleFormData(f => ({ ...f, conditions: { ...f.conditions, timeStart: e.target.value } }))} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label>Bitiş</label>
+                                        <input type="time" className="form-control" value={ruleFormData.conditions.timeEnd || ''} onChange={e => setRuleFormData(f => ({ ...f, conditions: { ...f.conditions, timeEnd: e.target.value } }))} />
+                                    </div>
+                                </div>
+                            )}
+                            <div className="form-group">
+                                <label>Hedef Akış</label>
+                                <select className="form-control" value={ruleFormData.targetFunnelId} onChange={e => setRuleFormData(f => ({ ...f, targetFunnelId: e.target.value, targetStageId: '' }))}>
+                                    <option value="">Akış seçin</option>
+                                    {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                </select>
+                            </div>
+                            {ruleFormData.targetFunnelId && (() => {
+                                const sf = funnels.find(f => f.id === ruleFormData.targetFunnelId);
+                                return sf?.stages?.length > 0 ? (
+                                    <div className="form-group">
+                                        <label>Aşama</label>
+                                        <select className="form-control" value={ruleFormData.targetStageId} onChange={e => setRuleFormData(f => ({ ...f, targetStageId: e.target.value }))}>
+                                            <option value="">İlk aşama</option>
+                                            {sf.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                    </div>
+                                ) : null;
+                            })()}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn-secondary" onClick={() => setShowRuleModal(false)}>İptal</button>
+                            <button className="btn-primary" onClick={handleSaveRule} disabled={!ruleFormData.targetFunnelId || !ruleFormData.name}>Kaydet</button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

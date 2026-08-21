@@ -1394,6 +1394,17 @@ async function checkOverdueAgentCalls() {
             const agentConfigs = wsConfig?.retellAutoCallTriggers?.agentConfigs || {};
             const agentCfg = agentConfigs[agentId];
 
+            // taskScope → eski flag'lere dönüştür (geriye uyumluluk)
+            if (agentCfg && agentCfg.taskScope && !('handlePool' in agentCfg)) {
+                const scopeMap = {
+                    'all':           { handlePool: true,  handleUnassigned: true,  handleTeamFallback: true },
+                    'team_all':      { handlePool: true,  handleUnassigned: false, handleTeamFallback: true },
+                    'team_pool':     { handlePool: true,  handleUnassigned: false, handleTeamFallback: false },
+                    'assigned_only': { handlePool: false, handleUnassigned: false, handleTeamFallback: false }
+                };
+                Object.assign(agentCfg, scopeMap[agentCfg.taskScope] || scopeMap['all']);
+            }
+
             if (agentCfg && activity._scenario !== 'DIRECT_AI') {
                 if (activity._scenario === 'POOL') {
                     // Havuzdaki/atanmamış sohbetler
@@ -1629,11 +1640,32 @@ export const processScheduledCalls = async () => {
                         continue;
                     }
 
-                    // Çalışma günü kontrolü
+                    // Çalışma günü ve saati kontrolü (yeni schedule yapısı + eski days/callStart/callEnd geriye uyumluluk)
                     const nowTRAgent = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
                     const currentDay = nowTRAgent.getDay();
-                    const agentDays = agentCfg.days || [0,1,2,3,4,5,6];
-                    if (!agentDays.includes(currentDay)) {
+                    
+                    let dayActive = true;
+                    let agentStart = '10:00';
+                    let agentEnd = '21:00';
+                    
+                    if (agentCfg.schedule && agentCfg.schedule[currentDay]) {
+                        // Yeni per-day schedule
+                        const daySchedule = agentCfg.schedule[currentDay];
+                        dayActive = daySchedule.active !== false;
+                        agentStart = daySchedule.start || '10:00';
+                        agentEnd = daySchedule.end || '18:00';
+                    } else if (agentCfg.schedule) {
+                        // schedule var ama bu gün tanımlı değil → kapalı
+                        dayActive = false;
+                    } else {
+                        // Eski format: days array + callStart/callEnd
+                        const agentDays = agentCfg.days || [0,1,2,3,4,5,6];
+                        dayActive = agentDays.includes(currentDay);
+                        agentStart = agentCfg.callStart || '10:00';
+                        agentEnd = agentCfg.callEnd || '21:00';
+                    }
+                    
+                    if (!dayActive) {
                         await prisma.scheduledCall.updateMany({
                             where: { id: sc.id, status: 'COMPLETED' },
                             data: { status: 'PENDING' }
@@ -1641,10 +1673,7 @@ export const processScheduledCalls = async () => {
                         console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} bugün çalışmıyor (gün: ${currentDay}) — call ${sc.id} PENDING bırakıldı`);
                         continue;
                     }
-
-                    // Çalışma saati kontrolü
-                    const agentStart = agentCfg.callStart || '10:00';
-                    const agentEnd = agentCfg.callEnd || '21:00';
+                    
                     const [startH, startM] = agentStart.split(':').map(Number);
                     const [endH, endM] = agentEnd.split(':').map(Number);
                     const currentMinutes = nowTRAgent.getHours() * 60 + nowTRAgent.getMinutes();

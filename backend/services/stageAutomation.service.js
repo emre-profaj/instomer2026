@@ -296,7 +296,7 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     status: 'PLANNED',
                     dueDate: new Date(Date.now() + 15 * 60 * 1000), // 15 dk sonra (hemen değil)
                     aiAgentId: null,
-                    fallbackToAi: false, // Otomatik AI arama KAPALI
+                    fallbackToAi: true, // Otomatik AI arama AÇIK
                     aiFallbackTriggered: false,
                 }
             });
@@ -469,7 +469,7 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                             source: 'AUTOMATION',
                             dueDate: new Date(Date.now() + 15 * 60 * 1000), // 15 dk sonra
                             aiAgentId: null,
-                            fallbackToAi: false, // Otomatik AI arama KAPALI
+                            fallbackToAi: true, // Otomatik AI arama AÇIK
                             aiFallbackTriggered: false,
                             retellExcluded: false,
                         }

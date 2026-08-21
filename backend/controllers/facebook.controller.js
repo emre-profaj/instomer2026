@@ -3615,13 +3615,19 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 // Lead form'dan gelen veri zaten yapılandırılmış — direkt kullan
                 // Konu alanını form fieldlarından çıkar
                 let leadTopic = null;
+                let leadPreferredCallTime = null;
                 for (const [key, value] of Object.entries(fieldData)) {
                     const lk = key.toLowerCase();
                     if ((lk.includes('konu') || lk.includes('mesaj') || lk.includes('hizmet') ||
                          lk.includes('service') || lk.includes('subject') || lk.includes('ilgi') ||
                          lk.includes('bolum') || lk.includes('bölüm')) && value) {
-                        leadTopic = value;
-                        break;
+                        if (!leadTopic) leadTopic = value;
+                    }
+                    // Tercih edilen arama zamanı: "Sizi Ne Zaman ArayaliM?", "Tercih Ettiğiniz Saat", "Aranma Saati" vb.
+                    if ((lk.includes('zaman') || lk.includes('saat') || lk.includes('arama') || 
+                         lk.includes('arayal') || lk.includes('time') || lk.includes('call') ||
+                         lk.includes('tercih')) && value && !leadPreferredCallTime) {
+                        leadPreferredCallTime = value;
                     }
                 }
 
@@ -3632,7 +3638,7 @@ async function handleLeadgenEvent(leadValue, entryId) {
                         name: leadName,
                         phone: leadPhone,
                         topic: leadTopic || formName || 'Facebook Lead Form',
-                        preferredCallTime: null,
+                        preferredCallTime: leadPreferredCallTime,
                         requestedAction: 'CALL',
                         requestedDate: null,
                         branchInfo: null

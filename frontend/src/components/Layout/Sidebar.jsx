@@ -61,8 +61,7 @@ const Sidebar = () => {
     ];
 
     const settingsSubItems = [
-        { path: '/channels', icon: Radio, label: 'Kanallar ve Entegrasyonlar' },
-        { path: '/classifier', icon: GitBranch, label: 'Sınıflandırıcı' },
+        { path: '/channels', icon: Radio, label: 'Kanallar ve Yönlendirme' },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
         { path: '/templates', icon: FileSignature, label: 'Şablonlar (Mesaj/E-posta)' },

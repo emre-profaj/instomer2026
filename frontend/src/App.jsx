@@ -16,7 +16,7 @@ import Templates from './pages/Settings/Templates';
 import Integrations from './pages/Settings/Integrations';
 import Comments from './pages/Comments/Comments';
 import Channels from './pages/Channels/Channels';
-import Classifier from './pages/Classifier/Classifier';
+// Classifier artık Channels içinde birleştirildi
 
 
 import Users from './pages/Users/Users';
@@ -106,7 +106,7 @@ function App() {
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
               <Route path="channels" element={<Channels />} />
-              <Route path="classifier" element={<Classifier />} />
+              <Route path="classifier" element={<Navigate to="/channels" replace />} />
 
 
               <Route path="teams" element={<Users />} />

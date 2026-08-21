@@ -12,16 +12,30 @@ const API_BASE = '/api';
 export function RetellAgentManager({ workspaceId, initialAgentId }) {
     const [agents, setAgents] = useState([]);
     const [wsSettings, setWsSettings] = useState(null);
+    const DEFAULT_SCHEDULE = {
+        1: { active: true, start: '10:00', end: '18:00' },
+        2: { active: true, start: '10:00', end: '18:00' },
+        3: { active: true, start: '10:00', end: '18:00' },
+        4: { active: true, start: '10:00', end: '18:00' },
+        5: { active: true, start: '10:00', end: '18:00' },
+        6: { active: true, start: '11:00', end: '16:00' },
+        0: { active: false, start: '10:00', end: '18:00' }
+    };
+    const DAY_NAMES = { 1: 'Pazartesi', 2: 'Salı', 3: 'Çarşamba', 4: 'Perşembe', 5: 'Cuma', 6: 'Cumartesi', 0: 'Pazar' };
+    const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+    const TASK_SCOPE_OPTIONS = [
+        { value: 'all', label: 'Tüm gecikmiş arama görevleri' },
+        { value: 'team_all', label: 'Kendi takımındaki tüm görevler' },
+        { value: 'team_pool', label: 'Sadece kendi takımındaki havuz görevleri' },
+        { value: 'assigned_only', label: 'Sadece kendine atananlar' }
+    ];
+    const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
     const [agentConfig, setAgentConfig] = useState({
-        businessHourStart: 10,
-        businessHourEnd: 21,
-        callDelayMinutes: 15,
-        fallbackToAi: true,
-        fallbackDelayMinutes: 3,
-        handlePool: false,
-        handleUnassigned: false,
-        handleTeamFallback: true,
-        maxOverdueDays: 3
+        schedule: { ...DEFAULT_SCHEDULE },
+        taskScope: 'all',
+        fallbackDelayMinutes: 0,
+        maxOverdueDays: 7,
+        retrySteps: [{ delay: 60 }, { delay: 240 }, { delay: 1440 }]
     });
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [agentDetail, setAgentDetail] = useState(null);
@@ -81,21 +95,36 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
         }
     }, [workspaceId]);
 
-    // Load agent config when agent or settings change
+    // Load agent config when agent or settings change — backward compatible
     useEffect(() => {
         if (selectedAgentId && wsSettings?.retellAutoCallTriggers?.agentConfigs) {
             const ac = wsSettings.retellAutoCallTriggers.agentConfigs[selectedAgentId];
             if (ac) {
+                // Schedule: yeni format varsa kullan, yoksa eskiden dönüştür
+                let schedule = ac.schedule;
+                if (!schedule) {
+                    const oldStart = `${(ac.businessHourStart ?? 10).toString().padStart(2, '0')}:00`;
+                    const oldEnd = `${(ac.businessHourEnd ?? 21).toString().padStart(2, '0')}:00`;
+                    const oldDays = ac.days || [0,1,2,3,4,5,6];
+                    schedule = {};
+                    DAY_ORDER.forEach(d => {
+                        schedule[d] = { active: oldDays.includes(d), start: ac.callStart || oldStart, end: ac.callEnd || oldEnd };
+                    });
+                }
+                // taskScope: yeni field varsa kullan, yoksa flag'lerden çıkar
+                let taskScope = ac.taskScope;
+                if (!taskScope) {
+                    if (ac.handlePool && ac.handleUnassigned && ac.handleTeamFallback) taskScope = 'all';
+                    else if (ac.handlePool && ac.handleTeamFallback) taskScope = 'team_all';
+                    else if (ac.handlePool) taskScope = 'team_pool';
+                    else taskScope = 'assigned_only';
+                }
                 setAgentConfig({
-                    businessHourStart: ac.businessHourStart ?? 10,
-                    businessHourEnd: ac.businessHourEnd ?? 21,
-                    callDelayMinutes: ac.callDelayMinutes ?? 15,
-                    fallbackToAi: ac.fallbackToAi ?? true,
-                    fallbackDelayMinutes: ac.fallbackDelayMinutes ?? 3,
-                    handlePool: ac.handlePool ?? false,
-                    handleUnassigned: ac.handleUnassigned ?? false,
-                    handleTeamFallback: ac.handleTeamFallback ?? true,
-                    maxOverdueDays: ac.maxOverdueDays ?? 3
+                    schedule: { ...DEFAULT_SCHEDULE, ...schedule },
+                    taskScope,
+                    fallbackDelayMinutes: ac.fallbackDelayMinutes ?? 0,
+                    maxOverdueDays: ac.maxOverdueDays ?? 7,
+                    retrySteps: ac.retrySteps || [{ delay: 60 }, { delay: 240 }, { delay: 1440 }]
                 });
             }
         }
@@ -223,18 +252,42 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
 
             await api.patch(`/retell/${workspaceId}/agents/${selectedAgentId}/prompt`, payload);
             
-            // Ayrıca Workspace Settings'e bu Agent'in konfigürasyonunu (arama gecikmesi vb.) kaydet
+            // Workspace Settings'e Agent konfigürasyonunu kaydet (yeni + geriye uyumlu field'lar)
             if (wsSettings) {
                 const triggers = wsSettings.retellAutoCallTriggers || {};
                 const agentConfigs = triggers.agentConfigs || {};
                 
-                agentConfigs[selectedAgentId] = agentConfig;
+                // taskScope → eski flag'lere dönüştür
+                const scopeToFlags = {
+                    'all':           { handlePool: true,  handleUnassigned: true,  handleTeamFallback: true },
+                    'team_all':      { handlePool: true,  handleUnassigned: false, handleTeamFallback: true },
+                    'team_pool':     { handlePool: true,  handleUnassigned: false, handleTeamFallback: false },
+                    'assigned_only': { handlePool: false, handleUnassigned: false, handleTeamFallback: false }
+                };
+                const flags = scopeToFlags[agentConfig.taskScope] || scopeToFlags['all'];
+                
+                // schedule → eski days/callStart/callEnd dönüştür
+                const days = Object.entries(agentConfig.schedule).filter(([,v]) => v.active).map(([k]) => Number(k));
+                const activeSchedules = Object.values(agentConfig.schedule).filter(v => v.active);
+                const callStart = activeSchedules.length > 0 ? activeSchedules.reduce((min, s) => s.start < min ? s.start : min, '23:59') : '10:00';
+                const callEnd = activeSchedules.length > 0 ? activeSchedules.reduce((max, s) => s.end > max ? s.end : max, '00:00') : '18:00';
+                
+                agentConfigs[selectedAgentId] = {
+                    ...agentConfig,
+                    ...flags,
+                    fallbackToAi: true,
+                    days,
+                    callStart,
+                    callEnd,
+                    businessHourStart: parseInt(callStart),
+                    businessHourEnd: parseInt(callEnd),
+                    active: days.length > 0
+                };
                 
                 await api.put(`/retell/${workspaceId}/settings`, {
                     retellAutoCallTriggers: { ...triggers, agentConfigs }
                 });
                 
-                // State'i güncelle
                 setWsSettings(prev => ({
                     ...prev,
                     retellAutoCallTriggers: { ...triggers, agentConfigs }
@@ -345,74 +398,193 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                         )}
                     </div>
 
-                    {/* ─── Arama Kuralları ─────────────────────── */}
+                    {/* ─── AI Arama Kuralları ─────────────────────── */}
                     <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px', marginTop: '16px', marginBottom: '16px' }}>
                         <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: '15px' }}>📞</span>
-                            Arama Talebi & Gecikme Ayarları
-                        </div>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>🕐 Çalışma saatleri</span>
-                            <select
-                                value={agentConfig.businessHourStart}
-                                onChange={e => setAgentConfig({ ...agentConfig, businessHourStart: parseInt(e.target.value) })}
-                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
-                            >
-                                {[...Array(24)].map((_, i) => <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>)}
-                            </select>
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <select
-                                value={agentConfig.businessHourEnd}
-                                onChange={e => setAgentConfig({ ...agentConfig, businessHourEnd: parseInt(e.target.value) })}
-                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
-                            >
-                                {[...Array(24)].map((_, i) => <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>)}
-                            </select>
+                            <span style={{ fontSize: '15px' }}>🤖</span>
+                            AI Arama Kuralları
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>⏱️ Arama gecikmesi</span>
+                        {/* ── 0. Çalışma Programı ────────────────── */}
+                        <div style={{ marginBottom: 18 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                📅 Çalışma Programı
+                            </div>
+                            <div style={{ border: '1px solid #f3f4f6', borderRadius: 8, overflow: 'hidden' }}>
+                                {DAY_ORDER.map((dayKey, idx) => {
+                                    const day = agentConfig.schedule?.[dayKey] || { active: false, start: '10:00', end: '18:00' };
+                                    return (
+                                        <div key={dayKey} style={{
+                                            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                                            background: idx % 2 === 0 ? '#fafbfc' : '#fff',
+                                            borderBottom: idx < 6 ? '1px solid #f3f4f6' : 'none',
+                                            opacity: day.active ? 1 : 0.5
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={day.active}
+                                                onChange={e => {
+                                                    const newSchedule = { ...agentConfig.schedule };
+                                                    newSchedule[dayKey] = { ...newSchedule[dayKey], active: e.target.checked };
+                                                    setAgentConfig({ ...agentConfig, schedule: newSchedule });
+                                                }}
+                                                style={{ width: 15, height: 15, accentColor: '#2563eb' }}
+                                            />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: 80 }}>
+                                                {DAY_NAMES[dayKey]}
+                                            </span>
+                                            {day.active ? (
+                                                <>
+                                                    <select
+                                                        value={day.start}
+                                                        onChange={e => {
+                                                            const newSchedule = { ...agentConfig.schedule };
+                                                            newSchedule[dayKey] = { ...newSchedule[dayKey], start: e.target.value };
+                                                            setAgentConfig({ ...agentConfig, schedule: newSchedule });
+                                                        }}
+                                                        style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: '0.8rem' }}
+                                                    >
+                                                        {HOUR_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+                                                    </select>
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>—</span>
+                                                    <select
+                                                        value={day.end}
+                                                        onChange={e => {
+                                                            const newSchedule = { ...agentConfig.schedule };
+                                                            newSchedule[dayKey] = { ...newSchedule[dayKey], end: e.target.value };
+                                                            setAgentConfig({ ...agentConfig, schedule: newSchedule });
+                                                        }}
+                                                        style={{ padding: '3px 6px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: '0.8rem' }}
+                                                    >
+                                                        {HOUR_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+                                                    </select>
+                                                </>
+                                            ) : (
+                                                <span style={{ fontSize: '0.78rem', color: '#9ca3af', fontStyle: 'italic' }}>Kapalı</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* ── 1. Görev Devralma Kapsamı ──────────── */}
+                        <div style={{ marginBottom: 18 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                🎯 Görev Devralma Kapsamı
+                            </div>
                             <select
-                                value={agentConfig.callDelayMinutes}
-                                onChange={e => setAgentConfig({ ...agentConfig, callDelayMinutes: parseInt(e.target.value) })}
-                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
+                                value={agentConfig.taskScope}
+                                onChange={e => setAgentConfig({ ...agentConfig, taskScope: e.target.value })}
+                                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.84rem', background: '#fff' }}
                             >
-                                <option value={0}>Hemen</option>
-                                <option value={5}>5 dakika</option>
-                                <option value={15}>15 dakika</option>
-                                <option value={30}>30 dakika</option>
+                                {TASK_SCOPE_OPTIONS.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
+                                {agentConfig.taskScope === 'all' && `Tüm workspace'teki gecikmiş arama görevlerini devralır`}
+                                {agentConfig.taskScope === 'team_all' && `Sadece atandığı takımdaki tüm arama görevlerini devralır`}
+                                {agentConfig.taskScope === 'team_pool' && `Sadece takımındaki sahipsiz havuz görevlerini devralır`}
+                                {agentConfig.taskScope === 'assigned_only' && `Yalnızca doğrudan kendisine atanmış görevleri yapar`}
+                            </div>
+                        </div>
+
+                        {/* ── 2. Gecikme Süresi ──────────────────── */}
+                        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>⏱️ Gecikme Süresi</span>
+                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>Görev geciktikten</span>
+                            <select
+                                value={agentConfig.fallbackDelayMinutes}
+                                onChange={e => setAgentConfig({ ...agentConfig, fallbackDelayMinutes: parseInt(e.target.value) })}
+                                style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.84rem', fontWeight: 600 }}
+                            >
+                                <option value={0}>hemen</option>
+                                <option value={1}>1 dk</option>
+                                <option value={3}>3 dk</option>
+                                <option value={5}>5 dk</option>
+                                <option value={10}>10 dk</option>
+                                <option value={15}>15 dk</option>
+                                <option value={30}>30 dk</option>
                                 <option value={60}>1 saat</option>
                             </select>
-                            <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>sonra planla</span>
+                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>sonra AI arasın</span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                            <input
-                                type="checkbox"
-                                checked={agentConfig.fallbackToAi}
-                                onChange={e => setAgentConfig({ ...agentConfig, fallbackToAi: e.target.checked })}
-                                style={{ width: '16px', height: '16px' }}
-                            />
-                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>🤖 Gecikmiş Aramalarda AI Devreye Girsin</span>
+                        {/* ── 3. Maksimum Yaş Sınırı ──────────────── */}
+                        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>📛 Yaş Sınırı</span>
+                            <select
+                                value={agentConfig.maxOverdueDays}
+                                onChange={e => setAgentConfig({ ...agentConfig, maxOverdueDays: parseInt(e.target.value) })}
+                                style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.84rem', fontWeight: 600 }}
+                            >
+                                <option value={1}>1 gün</option>
+                                <option value={3}>3 gün</option>
+                                <option value={7}>7 gün</option>
+                                <option value={14}>14 gün</option>
+                                <option value={21}>21 gün</option>
+                                <option value={30}>30 gün</option>
+                            </select>
+                            <span style={{ fontSize: '0.82rem', color: '#374151' }}>den eski görevleri aramasın</span>
                         </div>
 
-                        {agentConfig.fallbackToAi && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '26px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>⏳ AI bekleme süresi</span>
-                                <select
-                                    value={agentConfig.fallbackDelayMinutes}
-                                    onChange={e => setAgentConfig({ ...agentConfig, fallbackDelayMinutes: parseInt(e.target.value) })}
-                                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
-                                >
-                                    <option value={1}>1 dakika</option>
-                                    <option value={3}>3 dakika</option>
-                                    <option value={5}>5 dakika</option>
-                                    <option value={15}>15 dakika</option>
-                                </select>
-                                <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>sonra AI arasın</span>
+                        {/* ── 4. Tekrar Arama Kademesi ────────────── */}
+                        <div>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                🔄 Ulaşılamazsa Tekrar Arama
                             </div>
-                        )}
+                            {(agentConfig.retrySteps || []).map((step, idx) => (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: 24, fontWeight: 600 }}>{idx + 1}.</span>
+                                    <select
+                                        value={step.delay}
+                                        onChange={e => {
+                                            const newSteps = [...agentConfig.retrySteps];
+                                            newSteps[idx] = { delay: parseInt(e.target.value) };
+                                            setAgentConfig({ ...agentConfig, retrySteps: newSteps });
+                                        }}
+                                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.82rem' }}
+                                    >
+                                        <option value={5}>5 dk sonra</option>
+                                        <option value={10}>10 dk sonra</option>
+                                        <option value={15}>15 dk sonra</option>
+                                        <option value={30}>30 dk sonra</option>
+                                        <option value={60}>1 saat sonra</option>
+                                        <option value={120}>2 saat sonra</option>
+                                        <option value={240}>4 saat sonra</option>
+                                        <option value={480}>8 saat sonra</option>
+                                        <option value={1440}>1 gün sonra</option>
+                                        <option value={2880}>2 gün sonra</option>
+                                    </select>
+                                    {agentConfig.retrySteps.length > 1 && (
+                                        <button
+                                            onClick={() => {
+                                                const newSteps = agentConfig.retrySteps.filter((_, i) => i !== idx);
+                                                setAgentConfig({ ...agentConfig, retrySteps: newSteps });
+                                            }}
+                                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 6px' }}
+                                            title="Kaldır"
+                                        >✕</button>
+                                    )}
+                                </div>
+                            ))}
+                            {(agentConfig.retrySteps || []).length < 5 && (
+                                <button
+                                    onClick={() => {
+                                        const newSteps = [...(agentConfig.retrySteps || []), { delay: 1440 }];
+                                        setAgentConfig({ ...agentConfig, retrySteps: newSteps });
+                                    }}
+                                    style={{
+                                        background: 'none', border: '1px dashed #d1d5db', borderRadius: 6,
+                                        padding: '4px 12px', fontSize: '0.78rem', color: '#6b7280', cursor: 'pointer', marginTop: 2
+                                    }}
+                                >+ Kademe Ekle</button>
+                            )}
+                            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 6 }}>
+                                Tüm kademeler tükenirse arama iptal edilir
+                            </div>
+                        </div>
                     </div>
 
                     {/* Agent Adı */}

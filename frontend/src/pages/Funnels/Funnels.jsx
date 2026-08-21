@@ -3,11 +3,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
-import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Workflow } from 'lucide-react';
+import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import FunnelPipeline from '../../components/Funnels/FunnelPipeline';
-import FlowBuilder from '../../components/Funnels/FlowBuilder';
 import './Funnels.css';
 
 // Colors cycle automatically — no user selection needed
@@ -28,7 +27,7 @@ const Funnels = () => {
     const [funnels, setFunnels] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'flowbuilder'
+
     const [stageSaving, setStageSaving] = useState(false);
 
     // Teams and Members loaded for dropdowns
@@ -450,20 +449,6 @@ const Funnels = () => {
                     {t('funnels.management')}
                 </h2>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div className="funnel-view-toggle">
-                        <button
-                            className={`view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
-                            onClick={() => setViewMode('pipeline')}
-                        >
-                            <Kanban size={14} /> Pipeline
-                        </button>
-                        <button
-                            className={`view-toggle-btn ${viewMode === 'flowbuilder' ? 'active' : ''}`}
-                            onClick={() => setViewMode('flowbuilder')}
-                        >
-                            <Workflow size={14} /> Flow Builder
-                        </button>
-                    </div>
                     <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 16px', borderRadius: 8, fontSize: 14, fontWeight: 500 }}>
                         <Plus size={16} />
                         Yeni Akış
@@ -541,30 +526,6 @@ const Funnels = () => {
                     <Kanban size={40} />
                     <p>{t('funnels.empty')}</p>
                 </div>
-            ) : viewMode === 'flowbuilder' ? (
-                <FlowBuilder
-                    funnels={funnels}
-                    channelRoutings={allChannelRoutings}
-                    stageCounts={stageCounts}
-                    templates={templates}
-                    teams={teams}
-                    members={members}
-                    bots={bots}
-                    onStageUpdate={async (funnelId, stageId, updates) => {
-                        try {
-                            const res = await funnelAPI.updateStage(currentWorkspace.id, funnelId, stageId, updates);
-                            setFunnels(prev => prev.map(f => {
-                                if (f.id !== funnelId) return f;
-                                return { ...f, stages: f.stages.map(s => s.id === stageId ? res.data.stage : s) };
-                            }));
-                        } catch (err) {
-                            console.error('Flow builder stage update error:', err);
-                        }
-                    }}
-                    onStageSettingsClick={(stage, funnelId) => openStagePanel(stage, funnelId)}
-                    onFunnelSettingsClick={openFunnelPanel}
-                    onAddStageClick={(f) => { setAddStageFunnelId(f.id); setNewStageName(''); setNewStageColor(STAGE_COLORS[0]); }}
-                />
             ) : (
                 mainFunnel ? renderFunnelTree(mainFunnel) : funnels.filter(f => !f.parentId).map(f => renderFunnelTree(f))
             )}

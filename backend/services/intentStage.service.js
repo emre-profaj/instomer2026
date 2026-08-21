@@ -285,19 +285,48 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
       select: { assignedToId: true, assignedTeamId: true, caseId: true }
     });
 
+    // dueDate hesapla: preferredCallTime > requestedDate > 30 dk sonra
+    let computedDueDate = null;
+    const preferredTime = extractedData.preferredCallTime; // örn: "18.00-19.00", "14:00-16:00", "yarın öğleden sonra"
+    if (preferredTime) {
+      // Saat aralığı parse et: "18.00-19.00", "18:00-19:00", "18.00" gibi formatlar
+      const timeMatch = preferredTime.match(/(\d{1,2})[.:]\s?(\d{2})/);
+      if (timeMatch) {
+        const hour = parseInt(timeMatch[1], 10);
+        const minute = parseInt(timeMatch[2], 10);
+        const now = new Date();
+        computedDueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0);
+        // Eğer saat geçmişse yarına ayarla
+        if (computedDueDate <= now) {
+          computedDueDate.setDate(computedDueDate.getDate() + 1);
+        }
+        console.log(`📋 [IntentActivity] preferredCallTime "${preferredTime}" → dueDate: ${computedDueDate.toISOString()}`);
+      }
+    }
+    if (!computedDueDate && extractedData.requestedDate) {
+      computedDueDate = new Date(extractedData.requestedDate);
+      if (isNaN(computedDueDate.getTime())) computedDueDate = null;
+    }
+    // Hiçbiri yoksa 30 dk sonra
+    if (!computedDueDate) {
+      computedDueDate = new Date(Date.now() + 30 * 60 * 1000);
+    }
+
+    const timeInfo = preferredTime ? `Tercih edilen zaman: ${preferredTime}` : (extractedData.requestedDate || 'Belirtilmedi');
+
     const activity = await prisma.contactActivity.create({
       data: {
         workspaceId,
         contactId,
         type,
         title: action === 'CALL' ? 'Arama Planlandı (Otomatik)' : action === 'VISIT' ? 'Ziyaret Talebi (Otomatik)' : 'Görüşme Talebi (Otomatik)',
-        description: `AI niyet algılama: ${classification}\nKonu: ${extractedData.topic || '-'}\nTarih: ${extractedData.requestedDate || 'Belirtilmedi'}`,
+        description: `AI niyet algılama: ${classification}\nKonu: ${extractedData.topic || '-'}\n${timeInfo}`,
         status: 'PLANNED',
         source: 'AUTOMATION',
         assignedToId: conversation?.assignedToId || null,
         teamId: conversation?.assignedTeamId || null,
         ...(conversation?.caseId ? { caseId: conversation.caseId } : {}),
-        dueDate: extractedData.requestedDate ? new Date(extractedData.requestedDate) : null,
+        dueDate: computedDueDate,
       }
     });
 
