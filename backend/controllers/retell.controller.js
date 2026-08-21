@@ -2098,6 +2098,7 @@ export const getBulkCallBatch = async (req, res) => {
 // Make an outbound call
 export const makeCall = async (req, res) => {
     try {
+        console.log(`🚨 [DEBUG-MAKE-CALL] makeCall API CALLED for ${req.body.toNumber} by user ${req.user?.id} from IP ${req.ip} !! THIS MEANS AN HTTP REQUEST WAS MADE (Likely old frontend code)`);
         const { workspaceId } = req.params;
         const { toNumber, contactId, contactName, conversationId: sourceConversationId, agentId } = req.body;
         const userId = req.user.id;
