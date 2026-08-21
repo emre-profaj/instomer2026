@@ -5,7 +5,7 @@ import { Phone, Key, Bot, Save, Loader, CheckCircle, AlertCircle, RefreshCw, Clo
 import { RetellAgentManager, RetellKnowledgeBaseSync } from './RetellAgentManager';
 import { RetellKnowledgeBaseManager } from './RetellKnowledgeBaseManager';
 
-const RetellSettings = ({ onSave, hideApiSetup = false }) => {
+const RetellSettings = ({ onSave, hideApiSetup = false, initialAgentId = null }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
     const [activeTab, setActiveTab] = useState('general');
