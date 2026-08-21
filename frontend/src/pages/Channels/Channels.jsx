@@ -1786,7 +1786,7 @@ const Channels = () => {
                             <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
                                 Yapay zeka destekli sesli arama entegrasyonu. API anahtarınızı AI Call Dashboard'dan alın.
                             </p>
-                            <RetellSettings onSave={() => loadAllChannels()} />
+                            <RetellSettings onSave={() => loadAllChannels()} hideAgentManager={true} />
                         </div>
                     </div>
                 </div>

@@ -918,7 +918,7 @@ const Channels2 = () => {
 
             {/* Retell Modal */}
             {showRetellModal && (
-                <RetellSettings onClose={() => { setShowRetellModal(false); loadAllChannels(); }} />
+                <RetellSettings onClose={() => { setShowRetellModal(false); loadAllChannels(); }} hideAgentManager={true} />
             )}
 
             {/* Web Widget Modal */}

@@ -5,7 +5,7 @@ import { Phone, Key, Bot, Save, Loader, CheckCircle, AlertCircle, RefreshCw, Clo
 import { RetellAgentManager, RetellKnowledgeBaseSync } from './RetellAgentManager';
 import { RetellKnowledgeBaseManager } from './RetellKnowledgeBaseManager';
 
-const RetellSettings = ({ onSave, hideApiSetup = false, initialAgentId = null }) => {
+const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false, initialAgentId = null }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
     const [activeTab, setActiveTab] = useState('general');
@@ -308,7 +308,8 @@ const RetellSettings = ({ onSave, hideApiSetup = false, initialAgentId = null })
 
     return (
         <div className="settings-section">
-            {/* Tab Navigation */}
+            {/* Tab Navigation — sadece agent ayarları gösteriliyorsa tabları göster */}
+            {!hideAgentManager && (
             <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 }}>
                 {[
                     { id: 'general', label: '⚙️ Genel Ayarlar' },
@@ -328,15 +329,16 @@ const RetellSettings = ({ onSave, hideApiSetup = false, initialAgentId = null })
                     </button>
                 ))}
             </div>
+            )}
 
             {/* Knowledge Base Tab */}
-            {activeTab === 'kb' && (
+            {!hideAgentManager && activeTab === 'kb' && (
                 <RetellKnowledgeBaseManager workspaceId={workspaceId} />
             )}
 
             {/* General Tab */}
-            {activeTab === 'general' && <>
-            <RetellAgentManager workspaceId={workspaceId} initialAgentId={initialAgentId} />
+            {(hideAgentManager || activeTab === 'general') && <>
+            {!hideAgentManager && <RetellAgentManager workspaceId={workspaceId} initialAgentId={initialAgentId} />}
 
             {message && (
                 <div style={{
