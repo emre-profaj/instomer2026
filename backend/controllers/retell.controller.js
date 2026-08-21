@@ -2604,7 +2604,35 @@ async function handleCallStarted(call) {
                         data: { conversationId: recentConv.id }
                     });
                 } catch (_) {}
-                console.log(`📞 [Retell] ${isInboundCall ? '24H-MERGE' : 'DEDUP'}: Reusing conversation ${recentConv.id} (${recentConv.channel}) for ${call.call_id}`);
+
+                // ── Mevcut yazışmaya "Gelen Arama" mesajı düşür (giden aramadaki gibi) ──
+                const mergeMsg = await prisma.message.create({
+                    data: {
+                        content: `📲 Gelen Arama (devam ediyor)\n${fromNumber}`,
+                        conversationId: recentConv.id,
+                        isFromContact: true,
+                        messageType: 'CALL_TRANSCRIPT',
+                        status: 'SENT'
+                    }
+                });
+
+                // Conversation'ı güncelle: lastMessageAt + kapalıysa yeniden aç
+                await prisma.conversation.update({
+                    where: { id: recentConv.id },
+                    data: {
+                        lastMessageAt: new Date(),
+                        ...(recentConv.status === 'CLOSED' ? { status: 'OPEN' } : {})
+                    }
+                });
+
+                // Real-time: mesaj ve conversation güncelleme bildir
+                emitToWorkspace(workspaceId, 'new_message', {
+                    workspaceId,
+                    conversationId: recentConv.id,
+                    message: mergeMsg
+                });
+
+                console.log(`📞 [Retell] ${isInboundCall ? '24H-MERGE' : 'DEDUP'}: Reusing conversation ${recentConv.id} (${recentConv.channel}) for ${call.call_id}, message created`);
                 return;
             }
                 const assignedTeamId = await resolveAgentTeamId(workspaceId, call.agent_id);
