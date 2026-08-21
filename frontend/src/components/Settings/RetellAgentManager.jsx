@@ -601,6 +601,77 @@ export function RetellAgentManager({ workspaceId }) {
                         )}
                     </div>
 
+
+                    {/* ─── Arama Kuralları ─────────────────────── */}
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px', marginTop: '16px', marginBottom: '16px' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: '15px' }}>📞</span>
+                            Arama Talebi & Gecikme Ayarları
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>🕐 Çalışma saatleri</span>
+                            <select
+                                value={agentConfig.businessHourStart}
+                                onChange={e => setAgentConfig({ ...agentConfig, businessHourStart: parseInt(e.target.value) })}
+                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
+                            >
+                                {[...Array(24)].map((_, i) => <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>)}
+                            </select>
+                            <span style={{ color: '#9ca3af' }}>—</span>
+                            <select
+                                value={agentConfig.businessHourEnd}
+                                onChange={e => setAgentConfig({ ...agentConfig, businessHourEnd: parseInt(e.target.value) })}
+                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
+                            >
+                                {[...Array(24)].map((_, i) => <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>)}
+                            </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', minWidth: '110px' }}>⏱️ Arama gecikmesi</span>
+                            <select
+                                value={agentConfig.callDelayMinutes}
+                                onChange={e => setAgentConfig({ ...agentConfig, callDelayMinutes: parseInt(e.target.value) })}
+                                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
+                            >
+                                <option value={0}>Hemen</option>
+                                <option value={5}>5 dakika</option>
+                                <option value={15}>15 dakika</option>
+                                <option value={30}>30 dakika</option>
+                                <option value={60}>1 saat</option>
+                            </select>
+                            <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>sonra planla</span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                            <input
+                                type="checkbox"
+                                checked={agentConfig.fallbackToAi}
+                                onChange={e => setAgentConfig({ ...agentConfig, fallbackToAi: e.target.checked })}
+                                style={{ width: '16px', height: '16px' }}
+                            />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>🤖 Gecikmiş Aramalarda AI Devreye Girsin</span>
+                        </div>
+
+                        {agentConfig.fallbackToAi && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '26px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>⏳ AI bekleme süresi</span>
+                                <select
+                                    value={agentConfig.fallbackDelayMinutes}
+                                    onChange={e => setAgentConfig({ ...agentConfig, fallbackDelayMinutes: parseInt(e.target.value) })}
+                                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.85rem' }}
+                                >
+                                    <option value={1}>1 dakika</option>
+                                    <option value={3}>3 dakika</option>
+                                    <option value={5}>5 dakika</option>
+                                    <option value={15}>15 dakika</option>
+                                </select>
+                                <span style={{ fontSize: '0.78rem', color: '#6b7280' }}>sonra AI arasın</span>
+                            </div>
+                        )}
+                    </div>
+
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <button
                             onClick={handleSave}
