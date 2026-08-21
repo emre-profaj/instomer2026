@@ -294,9 +294,9 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     source: 'AUTOMATION',
                     retellExcluded: false,
                     status: 'PLANNED',
-                    dueDate: new Date(),
-                    aiAgentId: null, // İnsana önce şans ver
-                    fallbackToAi: true,
+                    dueDate: new Date(Date.now() + 15 * 60 * 1000), // 15 dk sonra (hemen değil)
+                    aiAgentId: null,
+                    fallbackToAi: false, // Otomatik AI arama KAPALI
                     aiFallbackTriggered: false,
                 }
             });
@@ -467,9 +467,9 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                             description: `Stage otomasyon: RETELL_CALL`,
                             status: 'PLANNED',
                             source: 'AUTOMATION',
-                            dueDate: new Date(),
+                            dueDate: new Date(Date.now() + 15 * 60 * 1000), // 15 dk sonra
                             aiAgentId: null,
-                            fallbackToAi: true,
+                            fallbackToAi: false, // Otomatik AI arama KAPALI
                             aiFallbackTriggered: false,
                             retellExcluded: false,
                         }
