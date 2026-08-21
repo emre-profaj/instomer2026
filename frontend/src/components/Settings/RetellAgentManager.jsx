@@ -500,13 +500,18 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                                 style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.84rem', fontWeight: 600 }}
                             >
                                 <option value={0}>hemen</option>
-                                <option value={1}>1 dk</option>
-                                <option value={3}>3 dk</option>
                                 <option value={5}>5 dk</option>
                                 <option value={10}>10 dk</option>
                                 <option value={15}>15 dk</option>
                                 <option value={30}>30 dk</option>
                                 <option value={60}>1 saat</option>
+                                <option value={120}>2 saat</option>
+                                <option value={240}>4 saat</option>
+                                <option value={480}>8 saat</option>
+                                <option value={720}>12 saat</option>
+                                <option value={1440}>1 gün</option>
+                                <option value={2880}>2 gün</option>
+                                <option value={4320}>3 gün</option>
                             </select>
                             <span style={{ fontSize: '0.82rem', color: '#374151' }}>gecikme ile</span>
                             <select
