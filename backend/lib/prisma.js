@@ -15,15 +15,22 @@ prisma.$connect()
         const { count: created } = await prisma.workspaceRule.createMany({ data: rules, skipDuplicates: true });
         if (created > 0) console.log(`✅ [Startup] ${created} eksik niyet algılama kuralı oluşturuldu (varsayılan: kapalı)`);
 
-        // ⚠️ Tek seferlik düzeltme: retellAutoCallEnabled yanlışlıkla açıldı, kapat
+        // ⚠️ Düzeltme: retellAutoCallEnabled yanlışlıkla açıldı, kapat
         // Bu değer triggerAutoCall'ı aktive eder (mesaj gelince anında Retell arar)
-        // SALES_PHONE_CALL kuralı artık aiFallbackEnabled kullanıyor
         const fixed = await prisma.$executeRaw`
             UPDATE "workspaces"
             SET "retellAutoCallEnabled" = false
             WHERE "retellAutoCallEnabled" = true
         `;
-        if (fixed > 0) console.log(`🔧 [Startup] ${fixed} workspace'te retellAutoCallEnabled kapatıldı (tek seferlik düzeltme)`);
+        if (fixed > 0) console.log(`🔧 [Startup] ${fixed} workspace'te retellAutoCallEnabled kapatıldı`);
+
+        // ⚠️ Eski PENDING ScheduledCall kayıtlarını temizle (restart sonrası eskiler çalışmasın)
+        const cleared = await prisma.$executeRaw`
+            UPDATE "scheduled_calls"
+            SET "status" = 'CANCELLED'
+            WHERE "status" = 'PENDING'
+        `;
+        if (cleared > 0) console.log(`🧹 [Startup] ${cleared} eski PENDING arama iptal edildi`);
     })
     .catch(err => console.error('❌ Prisma connection error:', err.message));
 

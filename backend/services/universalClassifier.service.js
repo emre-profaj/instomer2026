@@ -557,15 +557,8 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 console.log(`🏷️ [Classifier] Kişi OPPORTUNITY olarak işaretlendi`);
             } catch (_) {}
 
-            // Lead/Form → arama niyeti olarak işaretle
-            // createIntentActivity tek merkezden triggerAutoCall'ı çağıracak
-            if (!classificationResult.extractedData) {
-                classificationResult.extractedData = {};
-            }
-            if (!classificationResult.extractedData.requestedAction) {
-                classificationResult.extractedData.requestedAction = 'CALL';
-                console.log(`📞 [Classifier] Lead/Form → requestedAction: CALL olarak enjekte edildi`);
-            }
+            // NOT: requestedAction: CALL enjeksiyonu KALDIRILDI
+            // Arama planlaması artık executeSalesPhoneCallRule TEK MERKEZDEN yapılır
         }
 
         // --- Case'İ tip, ürün ve kategori ile güncelle ---
