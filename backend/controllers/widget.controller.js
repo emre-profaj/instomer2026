@@ -403,31 +403,18 @@ export const handleWidgetChat = async (req, res) => {
 
         // --- AUTOMATION RULES (Widget) ---
         try {
-            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning, executeAppointmentPlanning } = await import('./rules.controller.js');
+            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
             // Await phone capture so contact.phone is updated before auto call planning
             await executePhoneCaptureRule(workspaceId, conversation.id, message);
             executeHotKeywordRule(workspaceId, conversation.id, message).catch(e =>
                 console.error('❌ [RULE:HOT_KEYWORD] Widget async error:', e.message)
             );
+            // executeSalesPhoneCallRule tek başına yeterli — telefon + niyet algılama + planlı arama
+            // executeAutoCallPlanning KALDIRILDI: aynı kişi için çift aktivite oluşturuyordu
+            // executeAppointmentPlanning KALDIRILDI: intentStage.service.js zaten AI niyet algılama yapıyor
             executeSalesPhoneCallRule(workspaceId, conversation.id, message).catch(e =>
                 console.error('❌ [RULE:SALES_PHONE_CALL] Widget async error:', e.message)
             );
-            // Reload contact to get updated phone after capture
-            const updatedContact = await prisma.contact.findUnique({ where: { id: contact.id } });
-            if (updatedContact?.phone) {
-                await executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
-                    console.error('❌ [RULE:AUTO_CALL] Widget async error:', e.message)
-                );
-            }
-
-            // Randevu niyeti algılama — keyword ön filtre
-            const msgLower = message.toLowerCase();
-            const apptKeywords = ['randevu', 'görüşme', 'toplantı', 'ziyaret', 'gelmek istiyorum', 'ne zaman müsait', 'appointment', 'meeting'];
-            if (apptKeywords.some(kw => msgLower.includes(kw))) {
-                executeAppointmentPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
-                    console.error('❌ [RULE:APPOINTMENT] Widget async error:', e.message)
-                );
-            }
         } catch (ruleErr) {
             console.error('❌ [RULES] Widget error:', ruleErr.message);
         }

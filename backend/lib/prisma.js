@@ -69,51 +69,10 @@ prisma.$use(async (params, next) => {
     return result;
 });
 
-// ─── UNIVERSAL AUTO-CALL PLANNING ──────────────────────────────
-// Contact'a telefon numarası eklendiğinde (create veya update) otomatik arama planla.
-// Bu middleware SADECE lead form'dan gelen kişiler için arama planlar.
-// Manuel oluşturulan, toplu mesaj gönderilen vb. kişiler için arama PLANLANMAZ.
-prisma.$use(async (params, next) => {
-    const result = await next(params);
-
-    if (params.model !== 'Contact') return result;
-    if (params.action !== 'create' && params.action !== 'update') return result;
-
-    try {
-        const newPhone = result?.phone?.trim();
-        if (!newPhone) return result;
-
-        // UPDATE ise: eski telefon var mıydı kontrol et (sadece yeni eklenen numaralar için tetikle)
-        if (params.action === 'update') {
-            if (!params.args?.data?.phone) return result;
-        }
-
-        // SADECE lead form kaynaklı kişiler için otomatik arama planla
-        // Manuel, toplu mesaj, WhatsApp vb. kaynaklar için arama PLANLANMAZ
-        const LEAD_SOURCES = ['FACEBOOK_LEAD', 'LEAD', 'FORM', 'WEB_FORM'];
-        if (!LEAD_SOURCES.includes(result.source)) {
-            return result;
-        }
-
-        const contactId = result.id;
-        const workspaceId = result.workspaceId;
-        if (!contactId || !workspaceId) return result;
-
-        // Async fire-and-forget: arama planla (mevcut dedup kontrolleri fonksiyon içinde var)
-        setImmediate(async () => {
-            try {
-                const { executeAutoCallPlanning } = await import('../controllers/rules.controller.js');
-                const hookSource = 'LEAD_FORM';
-                await executeAutoCallPlanning(workspaceId, contactId, hookSource);
-            } catch (err) {
-                console.error('⚠️ [AutoCallHook] Error:', err.message);
-            }
-        });
-    } catch (err) {
-        console.error('⚠️ [AutoCallHook] Middleware error:', err.message);
-    }
-
-    return result;
-});
+// ─── AUTO-CALL PLANNING MIDDLEWARE KALDIRILDI ──────────────────
+// executeAutoCallPlanning Prisma hook'tan ÇAĞRILMAZ.
+// Arama planlaması artık TEK MERKEZDEN yapılır:
+// → executeSalesPhoneCallRule (mesaj handler'lardan çağrılır)
+// Eski middleware çift aktivite oluşturuyordu.
 
 export default prisma;
