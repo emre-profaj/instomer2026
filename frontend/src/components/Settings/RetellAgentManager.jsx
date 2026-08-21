@@ -210,7 +210,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                 
                 agentConfigs[selectedAgentId] = agentConfig;
                 
-                await api.post(`/retell/${workspaceId}/settings`, {
+                await api.put(`/retell/${workspaceId}/settings`, {
                     retellAutoCallTriggers: { ...triggers, agentConfigs }
                 });
                 
