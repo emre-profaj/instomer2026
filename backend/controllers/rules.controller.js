@@ -221,6 +221,29 @@ export const upsertRule = async (req, res) => {
                 config: safeParseJSON(rule.config, {})
             }
         });
+
+        // ── Auto-sync workspace AI settings when SALES_PHONE_CALL config changes ──
+        if (ruleType === 'SALES_PHONE_CALL' && config) {
+            try {
+                const wsUpdate = {};
+                if (config.aiFallbackEnabled) {
+                    wsUpdate.retellAutoCallEnabled = true;
+                    wsUpdate.aiFallbackEnabled = true;
+                    if (config.aiFallbackDelayMinutes) {
+                        wsUpdate.aiFallbackDelayMinutes = config.aiFallbackDelayMinutes;
+                    }
+                }
+                if (Object.keys(wsUpdate).length > 0) {
+                    await prisma.workspace.update({
+                        where: { id: workspaceId },
+                        data: wsUpdate
+                    });
+                    console.log(`🔄 [SALES_PHONE_CALL] Workspace AI settings synced:`, wsUpdate);
+                }
+            } catch (syncErr) {
+                console.error('Workspace AI sync error (non-blocking):', syncErr.message);
+            }
+        }
     } catch (error) {
         console.error('Upsert rule error:', error);
         res.status(500).json({ error: 'Kural kaydedilemedi' });
@@ -635,26 +658,28 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             dueDate = dt;
             console.log(`⏰ [RULE:SALES_PHONE_CALL] Customer-stated time: ${h}:${m}`);
         } else {
-            // Business hours check (10:00 - 21:00 Turkey time)
+            // Business hours check (configurable, default 10:00 - 21:00 Turkey time)
+            const businessStart = config.businessHourStart ?? 10;
+            const businessEnd = config.businessHourEnd ?? 21;
             const now = new Date();
             const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
             const hour = nowTR.getHours();
-            if (hour >= 10 && hour < 21) {
-                // Within business hours → 15 min from now (or dynamically from config if defined)
+            if (hour >= businessStart && hour < businessEnd) {
+                // Within business hours → delay from config (default 15 min)
                 const delayMin = config.callDelayMinutes || 15;
                 dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
             } else {
-                // Outside business hours → next day 10:15
+                // Outside business hours → next day at businessStart:15
                 dueDate = new Date(now);
                 dueDate.setDate(dueDate.getDate() + 1); // Her zaman yarın
-                dueDate.setUTCHours(10 - 3, 15, 0, 0); // 10:15 TR = 07:15 UTC
+                dueDate.setUTCHours(businessStart - 3, 15, 0, 0); // TR = UTC+3
             }
 
             // 🚨 Güvenlik: dueDate her zaman gelecekte olmalı
             if (dueDate <= now) {
                 dueDate = new Date(now);
                 dueDate.setDate(dueDate.getDate() + 1);
-                dueDate.setUTCHours(10 - 3, 15, 0, 0);
+                dueDate.setUTCHours(businessStart - 3, 15, 0, 0);
             }
         }
 
