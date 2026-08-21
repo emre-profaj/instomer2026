@@ -416,7 +416,8 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
             </div>
             )}
 
-            {/* Action Buttons */}
+            {/* Action Buttons — sadece API ayarları gösteriliyorsa */}
+            {!hideApiSetup && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
                 {/* Save Button */}
                 <button onClick={handleSave} disabled={saving}
@@ -431,6 +432,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                     {saving ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>
             </div>
+            )}
             </>}
         </div>
     );
