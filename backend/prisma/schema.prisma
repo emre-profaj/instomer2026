@@ -211,6 +211,7 @@ model KnowledgeBase {
   lastSyncedAt DateTime? // Son güncelleme zamanı
   filename     String?
   fileType     String?
+  retellKbId   String?   // Retell KB ID — each Instomer KB maps to its own Retell KB
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

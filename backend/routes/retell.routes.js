@@ -44,7 +44,8 @@ import {
     deleteRetellKnowledgeBase,
     addRetellKBSource,
     uploadRetellKBFile,
-    deleteRetellKBSource
+    deleteRetellKBSource,
+    listInstomerKnowledgeBases
 } from '../controllers/retell.controller.js';
 
 const router = express.Router();
@@ -105,6 +106,7 @@ router.get('/:workspaceId/voices/search', requireWorkspaceAccess, searchVoices);
 
 // Knowledge Base Sync (Instomer → Retell)
 router.get('/:workspaceId/knowledge-bases', requireWorkspaceAccess, listKnowledgeBases);
+router.get('/:workspaceId/knowledge-bases/instomer', requireWorkspaceAccess, listInstomerKnowledgeBases);
 router.post('/:workspaceId/knowledge-bases/sync', requireWorkspaceAccess, syncKnowledgeBase);
 router.patch('/:workspaceId/agents/:agentId/knowledge-bases', requireWorkspaceAccess, updateAgentKnowledgeBases);
 

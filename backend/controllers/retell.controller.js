@@ -4797,8 +4797,7 @@ export const syncKnowledgeBase = async (req, res) => {
             where: {
                 workspaceId,
                 ...(instomerKbIds.length > 0 ? { id: { in: instomerKbIds } } : {})
-            },
-            include: { entries: true }
+            }
         });
 
         if (kbEntries.length === 0) {
@@ -4807,11 +4806,7 @@ export const syncKnowledgeBase = async (req, res) => {
 
         // 2. Tüm içerikleri tek metin olarak birleştir
         const combinedText = kbEntries.map(kb => {
-            const content = (kb.entries || [])
-                .map(e => `${e.title || ''}\n${e.content || ''}`.trim())
-                .filter(Boolean)
-                .join('\n\n---\n\n');
-            return `# ${kb.title}\n\n${content}`;
+            return `# ${kb.title || 'Başlıksız'}\n\n${kb.content || ''}`;
         }).join('\n\n===\n\n');
 
         if (!combinedText.trim()) {
@@ -4911,7 +4906,24 @@ export const updateAgentKnowledgeBases = async (req, res) => {
     }
 };
 
-// ─── Voice Management ────────────────────────────────────────────────────────
+/**
+ * GET /:workspaceId/knowledge-bases/instomer
+ * Instomer KB'lerini retellKbId'leriyle listele (Agent Manager'da Instomer kaynaklı KB'leri göstermek için)
+ */
+export const listInstomerKnowledgeBases = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const entries = await prisma.knowledgeBase.findMany({
+            where: { workspaceId },
+            select: { id: true, title: true, sourceType: true, retellKbId: true, updatedAt: true },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json({ entries });
+    } catch (error) {
+        console.error('listInstomerKnowledgeBases error:', error.message);
+        res.status(500).json({ error: 'Bilgi bankası listesi alınamadı' });
+    }
+};
 
 /**
  * GET /:workspaceId/voices

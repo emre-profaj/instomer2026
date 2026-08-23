@@ -78,6 +78,13 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
     const [overdueTeamFilter, setOverdueTeamFilter] = useState('');
     const [teams, setTeams] = useState([]);
 
+    // Knowledge Base selection
+    const [allRetellKbs, setAllRetellKbs] = useState([]);
+    const [instomerKbs, setInstomerKbs] = useState([]);
+    const [selectedKbIds, setSelectedKbIds] = useState([]);
+    const [showKbPanel, setShowKbPanel] = useState(false);
+    const [kbsLoading, setKbsLoading] = useState(false);
+
     const isConvFlow = agentDetail?.response_engine?.type !== 'retell-llm';
 
     const LANGUAGE_OPTIONS = [
@@ -269,11 +276,37 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
             setAmbientSound(agent?.ambient_sound || '');
             setEndCallAfterSilenceMs(agent?.end_call_after_silence_ms || '');
             setBoostedKeywords((agent?.boosted_keywords || []).join(', '));
+            // KB selection — set from agent's current KB bindings
+            setSelectedKbIds(agent?.knowledge_base_ids || []);
+            // Fetch all available KBs
+            fetchKnowledgeBases();
         } catch (e) {
             setMessage({ type: 'error', text: 'Agent bilgisi alınamadı: ' + (e.response?.data?.error || e.message) });
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchKnowledgeBases = async () => {
+        setKbsLoading(true);
+        try {
+            const [retellRes, instomerRes] = await Promise.all([
+                api.get(`/retell/${workspaceId}/knowledge-bases/retell`).catch(() => ({ data: { knowledgeBases: [] } })),
+                api.get(`/retell/${workspaceId}/knowledge-bases/instomer`).catch(() => ({ data: { entries: [] } }))
+            ]);
+            setAllRetellKbs(retellRes.data.knowledgeBases || []);
+            setInstomerKbs(instomerRes.data.entries || []);
+        } catch (e) {
+            console.error('KB fetch error:', e);
+        } finally {
+            setKbsLoading(false);
+        }
+    };
+
+    const toggleKbSelection = (kbId) => {
+        setSelectedKbIds(prev =>
+            prev.includes(kbId) ? prev.filter(id => id !== kbId) : [...prev, kbId]
+        );
     };
 
     const handlePlayVoice = (voice) => {
@@ -335,6 +368,11 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
             payload.boostedKeywords = boostedKeywords ? boostedKeywords.split(',').map(k => k.trim()).filter(Boolean) : undefined;
 
             await api.patch(`/retell/${workspaceId}/agents/${selectedAgentId}/prompt`, payload);
+
+            // KB selection — update agent's knowledge base bindings
+            await api.patch(`/retell/${workspaceId}/agents/${selectedAgentId}/knowledge-bases`, {
+                knowledgeBaseIds: selectedKbIds
+            }).catch(e => console.warn('KB update error:', e.message));
             
             // Workspace Settings'e Agent konfigürasyonunu kaydet (yeni + geriye uyumlu field'lar)
             if (wsSettings) {
@@ -1157,7 +1195,103 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                     </div>
 
 
-                    
+                    {/* ─── Bilgi Bankası Seçimi ─────────────────────── */}
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+                        <button
+                            onClick={() => setShowKbPanel(!showKbPanel)}
+                            style={{
+                                width: '100%', padding: '12px 16px', background: showKbPanel ? '#f8f5ff' : '#f9fafb',
+                                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                                fontSize: '0.85rem', fontWeight: 600, color: '#374151', transition: 'background 0.15s'
+                            }}
+                        >
+                            <BookOpen size={15} style={{ color: '#8b5cf6' }} />
+                            Bilgi Bankası (KB)
+                            {selectedKbIds.length > 0 && (
+                                <span style={{
+                                    background: '#8b5cf6', color: '#fff', borderRadius: 10,
+                                    padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700
+                                }}>
+                                    {selectedKbIds.length}
+                                </span>
+                            )}
+                            {showKbPanel ? <ChevronDown size={15} style={{ marginLeft: 'auto' }} /> : <ChevronRight size={15} style={{ marginLeft: 'auto' }} />}
+                        </button>
+
+                        {showKbPanel && (
+                            <div style={{ padding: '16px', borderTop: '1px solid #e5e7eb' }}>
+                                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 12, lineHeight: 1.5 }}>
+                                    Bu agent'ın arama sırasında erişebileceği bilgi bankalarını seçin.
+                                    <span style={{ color: '#8b5cf6', fontWeight: 600 }}> Instomer</span> etiketli olanlar otomatik senkronize edilir.
+                                </div>
+
+                                {kbsLoading ? (
+                                    <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>
+                                        <Loader size={16} className="spin" /> Yükleniyor...
+                                    </div>
+                                ) : allRetellKbs.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: '0.82rem' }}>
+                                        Henüz Retell KB'si oluşturulmamış.
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {allRetellKbs.map(kb => {
+                                            const isSelected = selectedKbIds.includes(kb.knowledge_base_id);
+                                            // Check if this Retell KB was synced from Instomer
+                                            const instomerEntry = instomerKbs.find(ik => ik.retellKbId === kb.knowledge_base_id);
+                                            return (
+                                                <div
+                                                    key={kb.knowledge_base_id}
+                                                    onClick={() => toggleKbSelection(kb.knowledge_base_id)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 10,
+                                                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                                                        background: isSelected ? '#f5f3ff' : '#fff',
+                                                        border: `1px solid ${isSelected ? '#c4b5fd' : '#f3f4f6'}`,
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => {}}
+                                                        style={{ accentColor: '#8b5cf6', pointerEvents: 'none', flexShrink: 0 }}
+                                                    />
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {kb.knowledge_base_name || 'İsimsiz KB'}
+                                                            </span>
+                                                            {instomerEntry && (
+                                                                <span style={{
+                                                                    fontSize: '0.65rem', background: '#ede9fe', color: '#7c3aed',
+                                                                    padding: '1px 6px', borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    Instomer
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {instomerEntry && (
+                                                            <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 2 }}>
+                                                                {instomerEntry.sourceType === 'TEXT' ? '📝' : instomerEntry.sourceType === 'URL' ? '🔗' : instomerEntry.sourceType === 'FILE' ? '📄' : '📋'} {instomerEntry.title}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <span style={{ fontSize: '0.68rem', color: '#d1d5db', flexShrink: 0 }}>
+                                                        {kb.knowledge_base_id?.substring(0, 8)}…
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 10, fontStyle: 'italic' }}>
+                                    💡 Instomer'den eklediğiniz KB'ler otomatik olarak Retell'e senkronize edilir. Kaydet butonuna basarak agent'a bağlayın.
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <button

@@ -2,6 +2,85 @@ import prisma from '../lib/prisma.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import Retell from 'retell-sdk';
+
+/**
+ * Instomer KB girişini Retell'e otomatik senkronize et.
+ * Fire-and-forget — ana isteği bloklamaz.
+ * Her KB girişi kendi bağımsız Retell KB'sini alır.
+ */
+const autoSyncToRetell = async (workspaceId, kbEntry) => {
+    try {
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return; // Retell yapılandırılmamış
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        let retellKbId = kbEntry.retellKbId;
+
+        if (retellKbId) {
+            // Mevcut Retell KB'yi güncelle: kaynakları temizle ve yeniden ekle
+            try {
+                const existing = await client.knowledgeBase.retrieve(retellKbId);
+                for (const src of (existing.knowledge_base_sources || [])) {
+                    await client.knowledgeBase.deleteSource(retellKbId, src.source_id).catch(() => {});
+                }
+            } catch (e) {
+                console.warn(`⚠️ [AutoSync] Retell KB ${retellKbId} not found, creating new`);
+                retellKbId = null;
+            }
+        }
+
+        if (!retellKbId) {
+            // Yeni Retell KB oluştur
+            const newKb = await client.knowledgeBase.create({
+                knowledge_base_name: `📄 ${kbEntry.title}`.substring(0, 80)
+            });
+            retellKbId = newKb.knowledge_base_id;
+        }
+
+        // İçeriği ekle
+        await client.knowledgeBase.addSources(retellKbId, {
+            knowledge_base_texts: [{
+                title: kbEntry.title || 'Instomer KB',
+                text: kbEntry.content || ''
+            }]
+        });
+
+        // retellKbId'yi kaydet
+        await prisma.knowledgeBase.update({
+            where: { id: kbEntry.id },
+            data: { retellKbId }
+        });
+
+        console.log(`✅ [AutoSync] KB "${kbEntry.title}" → Retell KB ${retellKbId}`);
+    } catch (error) {
+        console.error(`❌ [AutoSync] KB sync failed for ${kbEntry.id}:`, error.message);
+    }
+};
+
+/**
+ * Instomer'den silinen KB'nin Retell karşılığını da sil.
+ */
+const autoDeleteFromRetell = async (workspaceId, retellKbId) => {
+    if (!retellKbId) return;
+    try {
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return;
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        await client.knowledgeBase.delete(retellKbId);
+        console.log(`🗑️ [AutoSync] Deleted Retell KB ${retellKbId}`);
+    } catch (error) {
+        console.warn(`⚠️ [AutoSync] Failed to delete Retell KB ${retellKbId}:`, error.message);
+    }
+};
+
 
 
 // Lazy load mammoth and pdf-parse to avoid startup issues
@@ -114,6 +193,9 @@ export const addTextEntry = async (req, res) => {
             }
         });
 
+        // Auto-sync to Retell (fire-and-forget)
+        autoSyncToRetell(workspaceId, entry).catch(e => console.warn('AutoSync error:', e.message));
+
         res.status(201).json({ entry });
     } catch (error) {
         console.error('Add text entry error:', error);
@@ -151,6 +233,9 @@ export const uploadFile = async (req, res) => {
             }
         });
 
+        // Auto-sync to Retell (fire-and-forget)
+        autoSyncToRetell(workspaceId, entry).catch(e => console.warn('AutoSync error:', e.message));
+
         // Optionally delete the file after extracting content
         // fs.unlinkSync(file.path);
 
@@ -181,6 +266,9 @@ export const updateEntry = async (req, res) => {
             }
         });
 
+        // Auto-sync to Retell (fire-and-forget)
+        autoSyncToRetell(workspaceId, entry).catch(e => console.warn('AutoSync error:', e.message));
+
         res.json({ entry });
     } catch (error) {
         console.error('Update entry error:', error);
@@ -202,6 +290,9 @@ export const deleteEntry = async (req, res) => {
         await prisma.knowledgeBase.delete({
             where: { id }
         });
+
+        // Auto-delete from Retell (fire-and-forget)
+        autoDeleteFromRetell(workspaceId, existing.retellKbId).catch(e => console.warn('AutoSync delete error:', e.message));
 
         res.json({ message: 'Bilgi silindi' });
     } catch (error) {
@@ -253,6 +344,9 @@ export const addUrlEntry = async (req, res) => {
                 lastSyncedAt: new Date()
             }
         });
+
+        // Auto-sync to Retell (fire-and-forget)
+        autoSyncToRetell(workspaceId, entry).catch(e => console.warn('AutoSync error:', e.message));
 
         res.status(201).json({ entry });
     } catch (error) {
