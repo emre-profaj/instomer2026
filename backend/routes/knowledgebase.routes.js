@@ -8,7 +8,8 @@ import {
     deleteEntry,
     upload,
     addUrlEntry,
-    syncEntryManually
+    syncEntryManually,
+    bulkSyncAllToRetell
 } from '../controllers/knowledgebase.controller.js';
 
 const router = express.Router();
@@ -35,6 +36,9 @@ router.post('/:workspaceId/:id/sync', requireWorkspaceAccess, syncEntryManually)
 
 // Delete entry
 router.delete('/:workspaceId/:id', requireWorkspaceAccess, deleteEntry);
+
+// Bulk sync all KBs to Retell (one-time)
+router.post('/:workspaceId/bulk-sync-retell', requireWorkspaceAccess, bulkSyncAllToRetell);
 
 export default router;
 

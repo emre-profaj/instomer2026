@@ -102,6 +102,31 @@ const autoDeleteFromRetell = async (workspaceId, retellKbId) => {
     }
 };
 
+/**
+ * POST /api/knowledge-base/:workspaceId/bulk-sync-retell
+ * Mevcut tüm Instomer KB'leri Retell'e toplu sync et (retellKbId olmayanlar için)
+ */
+export const bulkSyncAllToRetell = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const entries = await prisma.knowledgeBase.findMany({
+            where: { workspaceId, retellKbId: null }
+        });
+        if (entries.length === 0) {
+            return res.json({ success: true, message: 'Tüm KB\'ler zaten senkronize', synced: 0 });
+        }
+        // Fire-and-forget for each entry
+        let count = 0;
+        for (const entry of entries) {
+            await autoSyncToRetell(workspaceId, entry);
+            count++;
+        }
+        res.json({ success: true, message: `${count} KB Retell'e senkronize edildi`, synced: count });
+    } catch (error) {
+        console.error('bulkSyncAllToRetell error:', error.message);
+        res.status(500).json({ error: 'Toplu senkronizasyon başarısız' });
+    }
+};
 
 
 // Lazy load mammoth and pdf-parse to avoid startup issues

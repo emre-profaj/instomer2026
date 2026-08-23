@@ -536,7 +536,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                             </div>
                             <div style={{ border: '1px solid #f3f4f6', borderRadius: 8, overflow: 'hidden' }}>
                                 {DAY_ORDER.map((dayKey, idx) => {
-                                    const day = agentConfig.schedule?.[dayKey] || { active: false, start: '10:00', end: '18:00' };
+                                    const day = agentConfig.schedule?.[dayKey] || DEFAULT_SCHEDULE[dayKey];
                                     return (
                                         <div key={dayKey} style={{
                                             display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
@@ -1286,8 +1286,31 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                                     </div>
                                 )}
 
-                                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: 10, fontStyle: 'italic' }}>
-                                    💡 Instomer'den eklediğiniz KB'ler otomatik olarak Retell'e senkronize edilir. Kaydet butonuna basarak agent'a bağlayın.
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                setKbsLoading(true);
+                                                await api.post(`/knowledge-base/${workspaceId}/bulk-sync-retell`);
+                                                await fetchKnowledgeBases();
+                                                setMessage({ type: 'success', text: 'Tüm KB\'ler Retell\'e senkronize edildi' });
+                                            } catch (e) {
+                                                setMessage({ type: 'error', text: 'Senkronizasyon hatası: ' + (e.response?.data?.error || e.message) });
+                                            } finally {
+                                                setKbsLoading(false);
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '6px 14px', background: '#8b5cf6', color: '#fff',
+                                            border: 'none', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+                                        }}
+                                    >
+                                        <RefreshCw size={12} /> Tümünü Senkronize Et
+                                    </button>
+                                    <span style={{ fontSize: '0.68rem', color: '#9ca3af', fontStyle: 'italic' }}>
+                                        Instomer KB'leri Retell'e aktarır
+                                    </span>
                                 </div>
                             </div>
                         )}
