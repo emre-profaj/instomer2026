@@ -13,12 +13,13 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
     try {
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
-            select: { retellApiKey: true }
+            select: { retellApiKey: true, retellAgentId: true }
         });
         if (!workspace?.retellApiKey) return; // Retell yapılandırılmamış
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         let retellKbId = kbEntry.retellKbId;
+        let isNew = false;
 
         if (retellKbId) {
             // Mevcut Retell KB'yi güncelle: kaynakları temizle ve yeniden ekle
@@ -39,6 +40,7 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
                 knowledge_base_name: `📄 ${kbEntry.title}`.substring(0, 80)
             });
             retellKbId = newKb.knowledge_base_id;
+            isNew = true;
         }
 
         // İçeriği ekle
@@ -54,6 +56,22 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
             where: { id: kbEntry.id },
             data: { retellKbId }
         });
+
+        // Yeni KB oluşturulduysa → workspace'in default agent'ına otomatik bağla
+        if (isNew && workspace.retellAgentId) {
+            try {
+                const agent = await client.agent.retrieve(workspace.retellAgentId);
+                const currentKbIds = agent.knowledge_base_ids || [];
+                if (!currentKbIds.includes(retellKbId)) {
+                    await client.agent.update(workspace.retellAgentId, {
+                        knowledge_base_ids: [...currentKbIds, retellKbId]
+                    });
+                    console.log(`🔗 [AutoSync] Auto-bound KB ${retellKbId} to default agent ${workspace.retellAgentId}`);
+                }
+            } catch (agentErr) {
+                console.warn(`⚠️ [AutoSync] Could not auto-bind KB to default agent:`, agentErr.message);
+            }
+        }
 
         console.log(`✅ [AutoSync] KB "${kbEntry.title}" → Retell KB ${retellKbId}`);
     } catch (error) {
