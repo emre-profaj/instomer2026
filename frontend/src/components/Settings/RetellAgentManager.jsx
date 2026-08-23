@@ -69,10 +69,14 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
     const [boostedKeywords, setBoostedKeywords] = useState('');
 
     // Overdue calls push
-    const [overdueCount, setOverdueCount] = useState(null);
+    const [overdueList, setOverdueList] = useState([]);
     const [overdueLoading, setOverdueLoading] = useState(false);
     const [pushingCalls, setPushingCalls] = useState(false);
     const [pushResult, setPushResult] = useState(null);
+    const [selectedOverdueIds, setSelectedOverdueIds] = useState(new Set());
+    const [showOverduePanel, setShowOverduePanel] = useState(false);
+    const [overdueTeamFilter, setOverdueTeamFilter] = useState('');
+    const [teams, setTeams] = useState([]);
 
     const isConvFlow = agentDetail?.response_engine?.type !== 'retell-llm';
 
@@ -136,42 +140,73 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
         }
     }, [selectedAgentId, wsSettings]);
 
-    // Fetch overdue call count for this workspace
-    const fetchOverdueCount = useCallback(async () => {
+    // Fetch overdue call list for this workspace
+    const fetchOverdueList = useCallback(async () => {
         if (!workspaceId) return;
         setOverdueLoading(true);
         try {
-            const now = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-            const res = await api.get(`/activities/workspace/${workspaceId}/list`, {
-                params: { type: 'CALL', status: 'PLANNED', dateTo: now, limit: 1 }
-            });
-            // summary.planned gives count of PLANNED activities matching the date filter
-            setOverdueCount(res.data?.summary?.planned ?? res.data?.activities?.length ?? 0);
+            const now = new Date().toISOString().slice(0, 10);
+            const params = { type: 'CALL', status: 'PLANNED', dateTo: now, limit: 100 };
+            if (overdueTeamFilter) params.teamId = overdueTeamFilter;
+            const res = await api.get(`/activities/workspace/${workspaceId}/list`, { params });
+            const list = res.data?.activities || [];
+            setOverdueList(list);
+            setSelectedOverdueIds(new Set()); // reset selection
         } catch (e) {
-            console.error('Overdue count fetch error:', e);
-            setOverdueCount(null);
+            console.error('Overdue list fetch error:', e);
+            setOverdueList([]);
         } finally {
             setOverdueLoading(false);
         }
+    }, [workspaceId, overdueTeamFilter]);
+
+    // Fetch teams for filter
+    const fetchTeams = useCallback(async () => {
+        if (!workspaceId) return;
+        try {
+            const res = await api.get(`/teams/${workspaceId}`);
+            setTeams(res.data?.teams || res.data || []);
+        } catch (e) { console.error('Teams fetch error:', e); }
     }, [workspaceId]);
 
     useEffect(() => {
-        if (selectedAgentId) fetchOverdueCount();
-    }, [selectedAgentId, fetchOverdueCount]);
+        if (selectedAgentId) {
+            fetchOverdueList();
+            fetchTeams();
+        }
+    }, [selectedAgentId, fetchOverdueList, fetchTeams]);
+
+    const toggleOverdueSelect = (id) => {
+        setSelectedOverdueIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedOverdueIds.size === overdueList.length) {
+            setSelectedOverdueIds(new Set());
+        } else {
+            setSelectedOverdueIds(new Set(overdueList.map(a => a.id)));
+        }
+    };
 
     const handlePushCalls = async (mode = 'call') => {
-        if (!selectedAgentId) return;
-        if (!confirm(`Bu agent ile ${mode === 'call' ? 'hemen arama başlatılacak' : 'görevler atanacak'}. Devam?`)) return;
+        if (!selectedAgentId || selectedOverdueIds.size === 0) return;
+        const count = selectedOverdueIds.size;
+        if (!confirm(`${count} görev ${mode === 'call' ? 'hemen aranacak' : 'agent\'a atanacak'}. Devam?`)) return;
         setPushingCalls(true);
         setPushResult(null);
         try {
             const res = await retellAPI.pushCallTasks(workspaceId, {
                 agentId: selectedAgentId,
+                activityIds: [...selectedOverdueIds],
                 mode,
-                limit: 50
+                limit: count
             });
             setPushResult(res.data);
-            fetchOverdueCount(); // Refresh count
+            fetchOverdueList(); // Refresh list
         } catch (err) {
             setPushResult({ error: err.response?.data?.error || err.message });
         } finally {
@@ -637,92 +672,209 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                     </div>
 
                     {/* ─── Gecikmiş Aramaları Başlat ─────────────────────── */}
-                    <div style={{ border: '1px solid #fde68a', borderRadius: 10, padding: '16px', marginTop: '16px', marginBottom: '16px', background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#92400e', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <PhoneCall size={16} />
-                            Gecikmiş Aramaları Başlat
-                        </div>
-
-                        <div style={{ fontSize: '0.78rem', color: '#78350f', marginBottom: 12, lineHeight: 1.5 }}>
-                            Açık ve gecikmiş arama görevlerini bu AI agent ile toplu olarak aratabilirsiniz.
-                        </div>
-
-                        {/* Overdue count */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #fde68a' }}>
-                            <Clock size={16} style={{ color: '#d97706' }} />
-                            <span style={{ fontSize: '0.82rem', color: '#374151', flex: 1 }}>
-                                {overdueLoading ? (
-                                    <span style={{ color: '#9ca3af' }}><Loader size={12} className="spin" style={{ verticalAlign: 'middle', marginRight: 4 }} />Yükleniyor...</span>
-                                ) : overdueCount !== null ? (
-                                    <>Bekleyen arama görevi: <strong style={{ color: overdueCount > 0 ? '#dc2626' : '#059669', fontSize: '1rem' }}>{overdueCount}</strong></>
-                                ) : (
-                                    <span style={{ color: '#9ca3af' }}>Sayı alınamadı</span>
+                    <div style={{ border: '1px solid #fde68a', borderRadius: 10, marginTop: 16, marginBottom: 16, background: 'linear-gradient(135deg, #fffbeb, #fef3c7)', overflow: 'hidden' }}>
+                        {/* Header — click to expand */}
+                        <button
+                            onClick={() => setShowOverduePanel(p => !p)}
+                            style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left'
+                            }}
+                        >
+                            <PhoneCall size={16} style={{ color: '#92400e' }} />
+                            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#92400e', flex: 1 }}>
+                                Gecikmiş Aramalar
+                                {overdueList.length > 0 && (
+                                    <span style={{
+                                        marginLeft: 8, background: '#dc2626', color: '#fff', borderRadius: 10,
+                                        padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700
+                                    }}>
+                                        {overdueList.length}
+                                    </span>
                                 )}
                             </span>
-                            <button
-                                onClick={fetchOverdueCount}
-                                disabled={overdueLoading}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}
-                                title="Yenile"
-                            >
-                                <RefreshCw size={14} className={overdueLoading ? 'spin' : ''} />
-                            </button>
-                        </div>
+                            {showOverduePanel ? <ChevronDown size={16} style={{ color: '#92400e' }} /> : <ChevronRight size={16} style={{ color: '#92400e' }} />}
+                        </button>
 
-                        {/* Action buttons */}
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <button
-                                onClick={() => handlePushCalls('call')}
-                                disabled={pushingCalls || overdueCount === 0}
-                                style={{
-                                    background: pushingCalls ? '#d1d5db' : 'linear-gradient(135deg, #f59e0b, #d97706)',
-                                    border: 'none', color: '#fff', padding: '8px 16px', borderRadius: 8,
-                                    fontSize: '0.82rem', fontWeight: 700, cursor: pushingCalls || overdueCount === 0 ? 'not-allowed' : 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: 6, opacity: overdueCount === 0 ? 0.5 : 1
-                                }}
-                            >
-                                {pushingCalls ? <Loader size={14} className="spin" /> : <PhoneCall size={14} />}
-                                Hemen Ara
-                            </button>
-                            <button
-                                onClick={() => handlePushCalls('assign')}
-                                disabled={pushingCalls || overdueCount === 0}
-                                style={{
-                                    background: pushingCalls ? '#d1d5db' : '#fff',
-                                    border: '1px solid #d97706', color: '#92400e', padding: '8px 16px', borderRadius: 8,
-                                    fontSize: '0.82rem', fontWeight: 600, cursor: pushingCalls || overdueCount === 0 ? 'not-allowed' : 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: 6, opacity: overdueCount === 0 ? 0.5 : 1
-                                }}
-                            >
-                                {pushingCalls ? <Loader size={14} className="spin" /> : <Bot size={14} />}
-                                Agent'a Ata (Cron Arasın)
-                            </button>
-                        </div>
+                        {showOverduePanel && (
+                            <div style={{ padding: '0 16px 16px' }}>
+                                {/* Filters row */}
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                                    <select
+                                        value={overdueTeamFilter}
+                                        onChange={e => { setOverdueTeamFilter(e.target.value); }}
+                                        style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: '0.78rem', background: '#fff' }}
+                                    >
+                                        <option value="">Tüm Takımlar</option>
+                                        {teams.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={fetchOverdueList}
+                                        disabled={overdueLoading}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontSize: '0.78rem', cursor: 'pointer', color: '#374151' }}
+                                    >
+                                        <RefreshCw size={12} className={overdueLoading ? 'spin' : ''} />
+                                        Yenile
+                                    </button>
+                                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', marginLeft: 'auto' }}>
+                                        {selectedOverdueIds.size > 0 && `${selectedOverdueIds.size} seçili`}
+                                    </span>
+                                </div>
 
-                        {/* Result feedback */}
-                        {pushResult && (
-                            <div style={{
-                                marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: '0.78rem',
-                                background: pushResult.error ? '#fef2f2' : '#f0fdf4',
-                                border: `1px solid ${pushResult.error ? '#fecaca' : '#bbf7d0'}`,
-                                color: pushResult.error ? '#991b1b' : '#166534'
-                            }}>
-                                {pushResult.error ? (
-                                    <>❌ {pushResult.error}</>
+                                {/* List */}
+                                {overdueLoading ? (
+                                    <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>
+                                        <Loader size={16} className="spin" /> Yükleniyor...
+                                    </div>
+                                ) : overdueList.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: 20, color: '#059669', fontSize: '0.82rem' }}>
+                                        ✅ Gecikmiş arama görevi yok
+                                    </div>
                                 ) : (
                                     <>
-                                        ✅ {pushResult.message}
-                                        {pushResult.processed > 0 && <> — {pushResult.processed} arandı</>}
-                                        {pushResult.skipped > 0 && <>, {pushResult.skipped} atlandı</>}
-                                        {pushResult.assigned > 0 && <> — {pushResult.assigned} atandı</>}
+                                        {/* Select all header */}
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+                                            background: '#fff', borderRadius: '8px 8px 0 0', border: '1px solid #fde68a', borderBottom: 'none',
+                                            fontSize: '0.72rem', color: '#6b7280', fontWeight: 600
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedOverdueIds.size === overdueList.length && overdueList.length > 0}
+                                                onChange={toggleSelectAll}
+                                                style={{ accentColor: '#d97706' }}
+                                            />
+                                            <span style={{ flex: 2 }}>Kişi</span>
+                                            <span style={{ flex: 1 }}>Telefon</span>
+                                            <span style={{ flex: 1 }}>Vade</span>
+                                            <span style={{ flex: 1 }}>Takım</span>
+                                        </div>
+
+                                        {/* Scrollable list */}
+                                        <div style={{
+                                            maxHeight: 260, overflowY: 'auto', border: '1px solid #fde68a',
+                                            borderRadius: '0 0 8px 8px', background: '#fff'
+                                        }}>
+                                            {overdueList.map((act, idx) => {
+                                                const isSelected = selectedOverdueIds.has(act.id);
+                                                const dueDate = act.dueDate ? new Date(act.dueDate) : null;
+                                                const daysOverdue = dueDate ? Math.floor((Date.now() - dueDate.getTime()) / 86400000) : null;
+                                                return (
+                                                    <div
+                                                        key={act.id}
+                                                        onClick={() => toggleOverdueSelect(act.id)}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                            padding: '8px', cursor: 'pointer',
+                                                            background: isSelected ? '#fffbeb' : idx % 2 === 0 ? '#fff' : '#fafafa',
+                                                            borderBottom: idx < overdueList.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                                            transition: 'background 0.15s'
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => {}}
+                                                            style={{ accentColor: '#d97706', pointerEvents: 'none' }}
+                                                        />
+                                                        <span style={{ flex: 2, fontSize: '0.8rem', color: '#111827', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {act.contact?.name || 'İsimsiz'}
+                                                        </span>
+                                                        <span style={{ flex: 1, fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                                                            {act.contact?.phone || '—'}
+                                                        </span>
+                                                        <span style={{ flex: 1, fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                            {dueDate ? (
+                                                                <>
+                                                                    <span style={{ color: daysOverdue > 3 ? '#dc2626' : '#d97706' }}>
+                                                                        {dueDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}
+                                                                    </span>
+                                                                    {daysOverdue > 0 && (
+                                                                        <span style={{
+                                                                            fontSize: '0.65rem', background: daysOverdue > 3 ? '#fef2f2' : '#fffbeb',
+                                                                            color: daysOverdue > 3 ? '#dc2626' : '#d97706',
+                                                                            padding: '0 4px', borderRadius: 4
+                                                                        }}>
+                                                                            {daysOverdue}g
+                                                                        </span>
+                                                                    )}
+                                                                </>
+                                                            ) : '—'}
+                                                        </span>
+                                                        <span style={{ flex: 1, fontSize: '0.72rem', color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {act.team?.name || '—'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </>
                                 )}
+
+                                {/* Action buttons */}
+                                {overdueList.length > 0 && (
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                                        <button
+                                            onClick={() => handlePushCalls('call')}
+                                            disabled={pushingCalls || selectedOverdueIds.size === 0}
+                                            style={{
+                                                background: pushingCalls ? '#d1d5db' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                                border: 'none', color: '#fff', padding: '8px 16px', borderRadius: 8,
+                                                fontSize: '0.82rem', fontWeight: 700,
+                                                cursor: pushingCalls || selectedOverdueIds.size === 0 ? 'not-allowed' : 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                opacity: selectedOverdueIds.size === 0 ? 0.5 : 1
+                                            }}
+                                        >
+                                            {pushingCalls ? <Loader size={14} className="spin" /> : <PhoneCall size={14} />}
+                                            Seçilenleri Ara ({selectedOverdueIds.size})
+                                        </button>
+                                        <button
+                                            onClick={() => handlePushCalls('assign')}
+                                            disabled={pushingCalls || selectedOverdueIds.size === 0}
+                                            style={{
+                                                background: pushingCalls ? '#d1d5db' : '#fff',
+                                                border: '1px solid #d97706', color: '#92400e', padding: '8px 16px', borderRadius: 8,
+                                                fontSize: '0.82rem', fontWeight: 600,
+                                                cursor: pushingCalls || selectedOverdueIds.size === 0 ? 'not-allowed' : 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                opacity: selectedOverdueIds.size === 0 ? 0.5 : 1
+                                            }}
+                                        >
+                                            {pushingCalls ? <Loader size={14} className="spin" /> : <Bot size={14} />}
+                                            Agent'a Ata ({selectedOverdueIds.size})
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Result feedback */}
+                                {pushResult && (
+                                    <div style={{
+                                        marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: '0.78rem',
+                                        background: pushResult.error ? '#fef2f2' : '#f0fdf4',
+                                        border: `1px solid ${pushResult.error ? '#fecaca' : '#bbf7d0'}`,
+                                        color: pushResult.error ? '#991b1b' : '#166534'
+                                    }}>
+                                        {pushResult.error ? (
+                                            <>❌ {pushResult.error}</>
+                                        ) : (
+                                            <>
+                                                ✅ {pushResult.message}
+                                                {pushResult.processed > 0 && <> — {pushResult.processed} arandı</>}
+                                                {pushResult.skipped > 0 && <>, {pushResult.skipped} atlandı</>}
+                                                {pushResult.assigned > 0 && <> — {pushResult.assigned} atandı</>}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div style={{ fontSize: '0.7rem', color: '#b45309', marginTop: 8, fontStyle: 'italic' }}>
+                                    💡 "Seçilenleri Ara" anında arama başlatır. "Agent'a Ata" ise cron cycle'da otomatik aranır.
+                                </div>
                             </div>
                         )}
-
-                        <div style={{ fontSize: '0.7rem', color: '#b45309', marginTop: 8, fontStyle: 'italic' }}>
-                            💡 "Hemen Ara" anında arama başlatır. "Agent'a Ata" ise cron cycle'da (60sn) otomatik aranır.
-                        </div>
                     </div>
 
                     {/* Agent Adı */}
