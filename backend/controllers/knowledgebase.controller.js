@@ -57,19 +57,21 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
             data: { retellKbId }
         });
 
-        // Yeni KB oluşturulduysa → workspace'in default agent'ına otomatik bağla
-        if (isNew && workspace.retellAgentId) {
+        // Yeni KB oluşturulduysa → workspace'in TÜM agent'larına otomatik bağla
+        if (isNew) {
             try {
-                const agent = await client.agent.retrieve(workspace.retellAgentId);
-                const currentKbIds = agent.knowledge_base_ids || [];
-                if (!currentKbIds.includes(retellKbId)) {
-                    await client.agent.update(workspace.retellAgentId, {
-                        knowledge_base_ids: [...currentKbIds, retellKbId]
-                    });
-                    console.log(`🔗 [AutoSync] Auto-bound KB ${retellKbId} to default agent ${workspace.retellAgentId}`);
+                const allAgents = await client.agent.list();
+                for (const ag of (allAgents || [])) {
+                    const currentKbIds = ag.knowledge_base_ids || [];
+                    if (!currentKbIds.includes(retellKbId)) {
+                        await client.agent.update(ag.agent_id, {
+                            knowledge_base_ids: [...currentKbIds, retellKbId]
+                        }).catch(() => {});
+                    }
                 }
+                console.log(`🔗 [AutoSync] Auto-bound KB ${retellKbId} to all agents`);
             } catch (agentErr) {
-                console.warn(`⚠️ [AutoSync] Could not auto-bind KB to default agent:`, agentErr.message);
+                console.warn(`⚠️ [AutoSync] Could not auto-bind KB to agents:`, agentErr.message);
             }
         }
 

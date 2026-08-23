@@ -5068,6 +5068,23 @@ export const createAgent = async (req, res) => {
 
         const agent = await client.agent.create(agentData);
 
+        // Yeni agent'a workspace'in tüm mevcut KB'lerini otomatik bağla
+        try {
+            const existingKbs = await prisma.knowledgeBase.findMany({
+                where: { workspaceId, retellKbId: { not: null } },
+                select: { retellKbId: true }
+            });
+            const kbIds = existingKbs.map(kb => kb.retellKbId).filter(Boolean);
+            if (kbIds.length > 0) {
+                await client.agent.update(agent.agent_id, {
+                    knowledge_base_ids: kbIds
+                });
+                console.log(`🔗 [Agent] Auto-bound ${kbIds.length} KBs to new agent ${agent.agent_id}`);
+            }
+        } catch (kbErr) {
+            console.warn(`⚠️ [Agent] Could not auto-bind KBs to new agent:`, kbErr.message);
+        }
+
         console.log(`✅ [Agent] Created new agent: ${agent.agent_id} (${agentName})`);
 
         res.json({
