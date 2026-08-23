@@ -1602,13 +1602,26 @@ export const processScheduledCalls = async () => {
                             workspaceId: sc.workspaceId,
                             toNumber: sc.toNumber,
                             callSuccessful: true,
-                            duration: { gte: 30 } // 30 saniyeden uzun = gerçek konuşma
+                            duration: { gte: 15 } // 15 saniyeden uzun = gerçek konuşma (29sn gibi kısa görüşmeler de sayılsın)
                         }
                     });
                     if (successfulPastCall) {
                         await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Daha önce başarılı AI konuşması yapılmış' } });
                         console.log(`📅 [ScheduledCall] Cancelled for ${sc.toNumber} — başarılı geçmiş konuşma mevcut (${successfulPastCall.callId})`);
                         continue;
+                    }
+                    // Aynı numara şu anda başka bir scheduledCall tarafından aranıyor mu?
+                    const inProgressCall = await prisma.scheduledCall.findFirst({
+                        where: {
+                            toNumber: sc.toNumber,
+                            workspaceId: sc.workspaceId,
+                            status: 'COMPLETED', // COMPLETED = arama başlatıldı ("in progress")
+                            updatedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) } // son 10dk
+                        }
+                    });
+                    if (inProgressCall && inProgressCall.id !== sc.id) {
+                        console.log(`📅 [ScheduledCall] Skipping ${sc.toNumber} — başka bir arama zaten devam ediyor (sc: ${inProgressCall.id})`);
+                        continue; // Bu tur atla, PENDING kalır, sonraki cron döngüsünde tekrar kontrol edilir
                     }
                 }
 
@@ -3345,7 +3358,7 @@ async function handleCallEnded(call) {
                 }
             }
 
-            // Başarılı çağrı → Activity'yi tamamla (sadece failed retry mantığına girmediyse)
+            // Başarılı çağrı → Activity'yi tamamla + aynı numaraya tüm bekleyen aramaları iptal et
             if (!isFailedCall && callRecord.createdById && callRecord.createdById.startsWith('activity_')) {
                 const activityId = callRecord.createdById.replace('activity_', '');
                 try {
@@ -3363,6 +3376,53 @@ async function handleCallEnded(call) {
                     console.log(`✅ [Retell Webhook] Completed activity ${activityId} via call_ended`);
                 } catch (actErr) {
                     console.error(`❌ [Retell Webhook] Failed to update activity ${activityId} in call_ended:`, actErr.message);
+                }
+
+                // ─── BAŞARILI ARAMA SONRASI TÜM PENDING ARAMALARI İPTAL ET ────────
+                // Aynı numara + aynı workspace için bekleyen TÜM scheduledCall'ları iptal et
+                // Bu, farklı activity'lerden oluşan duplicate zincirlerini de temizler
+                try {
+                    const cancelledCalls = await prisma.scheduledCall.updateMany({
+                        where: {
+                            workspaceId: callRecord.workspaceId,
+                            toNumber: callRecord.toNumber,
+                            status: 'PENDING'
+                        },
+                        data: {
+                            status: 'CANCELLED',
+                            errorMessage: `Başarılı arama yapıldı (${durationText}) — kalan denemeler iptal edildi`
+                        }
+                    });
+                    if (cancelledCalls.count > 0) {
+                        console.log(`🧹 [Retell Webhook] ${cancelledCalls.count} bekleyen arama iptal edildi (${callRecord.toNumber} — başarılı konuşma sonrası)`);
+                    }
+                } catch (cancelErr) {
+                    console.error(`⚠️ [Retell Webhook] Pending çağrılar iptal edilemedi:`, cancelErr.message);
+                }
+
+                // Aynı kişi için diğer PLANNED CALL activity'lerini de tamamla
+                // (formWebhook + intentStage ikisi birden activity oluşturmuş olabilir)
+                if (callRecord.contactId) {
+                    try {
+                        const otherActivities = await prisma.contactActivity.updateMany({
+                            where: {
+                                contactId: callRecord.contactId,
+                                workspaceId: callRecord.workspaceId,
+                                type: 'CALL',
+                                status: 'PLANNED',
+                                id: { not: activityId }
+                            },
+                            data: {
+                                status: 'COMPLETED',
+                                isCompleted: true,
+                                completedAt: new Date(),
+                                result: `Başka bir AI aramasıyla tamamlandı (${durationText}).`
+                            }
+                        });
+                        if (otherActivities.count > 0) {
+                            console.log(`🧹 [Retell Webhook] ${otherActivities.count} duplicate CALL activity de tamamlandı (${callRecord.contactId})`);
+                        }
+                    } catch (_) {}
                 }
             }
 
