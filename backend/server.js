@@ -542,3 +542,30 @@ setTimeout(() => {
     }
   }, 5 * 60 * 1000); // 5 dakikada bir
 }, 80000);
+
+// KB → Retell otomatik startup sync: sunucu açılınca sync olmamış KB'leri Retell'e aktar
+import { bulkSyncAllToRetell as startupKbSync } from './controllers/knowledgebase.controller.js';
+setTimeout(async () => {
+  try {
+    const workspaces = await prisma.workspace.findMany({
+      where: { retellApiKey: { not: null } },
+      select: { id: true }
+    });
+    for (const ws of workspaces) {
+      const unsyncedCount = await prisma.knowledgeBase.count({
+        where: { workspaceId: ws.id, retellKbId: null }
+      });
+      if (unsyncedCount > 0) {
+        console.log(`📚 [KBSync] ${unsyncedCount} unsynced KB found for workspace ${ws.id}, syncing...`);
+        // Simulate req/res for the bulk sync handler
+        await startupKbSync(
+          { params: { workspaceId: ws.id } },
+          { json: (data) => console.log(`📚 [KBSync] Result:`, data) }
+        );
+      }
+    }
+    console.log('📚 [KBSync] Startup KB sync complete');
+  } catch (err) {
+    console.error('❌ [KBSync] Startup sync error:', err.message);
+  }
+}, 30000); // 30 saniye sonra çalıştır
