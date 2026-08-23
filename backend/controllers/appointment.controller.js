@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { isAgentRole, buildAgentAppointmentFilter } from '../utils/rbac.helper.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { executeRule } from '../services/ruleEngine.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -179,6 +180,11 @@ export const createAppointment = async (req, res) => {
             }
         });
 
+        // 🤖 Otomasyon Hook: Randevu oluşturuldu
+        if (appointment.contactId) {
+            executeRule(workspaceId, 'APPOINTMENT_PLANNED_NOTIFY', { contactId: appointment.contactId }).catch(e => console.error('[AutoHook] APPOINTMENT_PLANNED_NOTIFY error:', e.message));
+        }
+
         // Get agent details
         const agent = await prisma.user.findUnique({
             where: { id: assignedToId },
@@ -246,6 +252,11 @@ export const updateAppointment = async (req, res) => {
             where: { id },
             data: updateData
         });
+
+        // 🤖 Otomasyon Hook: Randevu güncellendi/iptal edildi
+        if (appointment.contactId && updateData.status === 'CANCELLED') {
+            executeRule(workspaceId, 'APPOINTMENT_CANCEL_NOTIFY', { contactId: appointment.contactId }).catch(e => console.error('[AutoHook] APPOINTMENT_CANCEL_NOTIFY error:', e.message));
+        }
 
         const agent = await prisma.user.findUnique({
             where: { id: appointment.assignedToId },

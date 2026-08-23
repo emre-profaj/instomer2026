@@ -814,7 +814,7 @@ export const updateActivity = async (req, res) => {
                     });
                     const agentCfgs = workspace?.retellAutoCallTriggers?.agentConfigs || {};
                     const agentCfg = agentCfgs[aiAgentId];
-                    const retrySteps = agentCfg?.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }];
+                    const retrySteps = agentCfg?.retrySteps || [{ delay: 60 }, { delay: 240 }, { delay: 1440 }];
 
                     await prisma.scheduledCall.create({
                         data: {
@@ -823,11 +823,20 @@ export const updateActivity = async (req, res) => {
                             contactName: existing.contact?.name || existing.contact?.fullName || 'Müşteri',
                             toNumber: contactPhone,
                             agentId: aiAgentId,
-                            scheduledAt: new Date(),
+                            scheduledAt: (() => {
+                                const trNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                                const h = trNow.getHours();
+                                if (h >= 10 && h < 21) return new Date();
+                                const next = new Date();
+                                if (h >= 21) next.setDate(next.getDate() + 1);
+                                next.setUTCHours(7, 15, 0, 0); // 10:15 TR
+                                console.log(`⏸️ [Activity] Bot atandı ama mesai dışı → ${next.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}'e ertelendi`);
+                                return next;
+                            })(),
                             status: 'PENDING',
                             createdById: `activity_${activityId}`,
                             maxAttempts: retrySteps.length + 1,
-                            retryDelayMin: retrySteps[0]?.delay || 10,
+                            retryDelayMin: retrySteps[0]?.delay || 60,
                             attemptNumber: 1
                         }
                     });

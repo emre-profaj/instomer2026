@@ -5,6 +5,7 @@ import { normalizePhone, normalizePhonesArray } from '../utils/phoneNormalizer.j
 import { mergeContacts } from '../services/contactMerge.service.js';
 import { ensureCaseForConversation } from './case.controller.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
+import { executeRule } from '../services/ruleEngine.service.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // ─── AI Topic Classification Cache ─────────────────────────────
@@ -2058,6 +2059,17 @@ export const updateContact = async (req, res) => {
             }
         }
 
+        // 🤖 Otomasyon Hook: Aşama değişikliği bildirimi
+        if (funnelStageId !== undefined && existing.funnelStageId !== funnelStageId) {
+            const stageWsId = workspaceId || existing.workspaceId;
+            if (stageWsId) {
+                executeRule(stageWsId, 'FUNNEL_STAGE_NOTIFY', {
+                    contactId: id,
+                    notificationMessage: `📊 Aşama değişikliği: ${existing.funnelStageId || 'Yok'} → ${funnelStageId || 'Yok'}`
+                }).catch(e => console.error('[AutoHook] FUNNEL_STAGE_NOTIFY error:', e.message));
+            }
+        }
+
         // 🔥 HAS_PHONE Flow Trigger: fire when phone is newly added
         const hadPhone = !!(existing.phone && existing.phone.trim());
         const nowHasPhone = !!(contact.phone && contact.phone.trim());
@@ -2271,6 +2283,25 @@ export const createContact = async (req, res) => {
             }
         }
         // --- AUTO CALL PLANNING END ---
+
+        // 🤖 Otomasyon Hook'ları — Yeni lead/kişi oluşturuldu
+        try {
+            // Talep alındı bildirimi
+            executeRule(workspaceId, 'REQUEST_RECEIVED_NOTIFY', { contactId: contact.id }).catch(e => console.error('[AutoHook] REQUEST_RECEIVED_NOTIFY error:', e.message));
+            // Hoşgeldin mesajı
+            executeRule(workspaceId, 'LEAD_WELCOME', { contactId: contact.id }).catch(e => console.error('[AutoHook] LEAD_WELCOME error:', e.message));
+            // Otomatik lead atama (round-robin)
+            executeRule(workspaceId, 'LEAD_AUTO_ASSIGN', { contactId: contact.id }).catch(e => console.error('[AutoHook] LEAD_AUTO_ASSIGN error:', e.message));
+            // Takıma yeni lead bildirimi
+            executeRule(workspaceId, 'NEW_LEAD_NOTIFY', {
+                contactId: contact.id,
+                notificationMessage: `🎯 Yeni lead: ${name} ${phone || ''}`
+            }).catch(e => console.error('[AutoHook] NEW_LEAD_NOTIFY error:', e.message));
+            // Lead puanlama başlat
+            executeRule(workspaceId, 'LEAD_SCORING', { contactId: contact.id }).catch(e => console.error('[AutoHook] LEAD_SCORING error:', e.message));
+        } catch (hookErr) {
+            console.error('[AutoHook] Contact creation hooks error:', hookErr.message);
+        }
 
         res.status(201).json({ contact });
 
@@ -5798,6 +5829,13 @@ export const getRequestReport = async (req, res) => {
         const totalWonAmount = agentTable.reduce((s, a) => s + a.wonAmount, 0);
         const withPhoneCount = [...new Set([...cases.map(c => c.contactId), ...deals.map(d => d.contactId)])].length;
 
+        // ── Talep Değerlendirme: Olumlu / Olumsuz / Devam Eden ──
+        const totalLostCount = cases.filter(c => c.status === 'LOST').length + deals.filter(d => d.status === 'LOST').length;
+        const totalActiveCount = cases.filter(c => c.status === 'ACTIVE' || c.status === 'PENDING' || c.status === 'IN_PROGRESS').length + deals.filter(d => d.status === 'OPEN' || d.status === 'DRAFT').length;
+        const totalClosedCount = cases.filter(c => c.status === 'CLOSED').length;
+        const conversionRate = totalCount > 0 ? Math.round((totalWonCount / totalCount) * 1000) / 10 : 0;
+        const lostRate = totalCount > 0 ? Math.round((totalLostCount / totalCount) * 1000) / 10 : 0;
+
         // Konu Bazlı (case + deal birleşik)
         const byTopic = {};
         // Case'lerden
@@ -5921,6 +5959,8 @@ export const getRequestReport = async (req, res) => {
             totalCount, totalCases, totalDeals,
             withPhoneCount,
             totalWonCount, totalWonAmount,
+            totalLostCount, totalActiveCount, totalClosedCount,
+            conversionRate, lostRate,
             totalCalls, totalMeetings, totalAppointments, totalProposals, totalOrders,
             agentTable,
             topicGroups,

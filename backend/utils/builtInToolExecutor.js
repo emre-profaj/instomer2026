@@ -542,7 +542,7 @@ export const executeBuiltInTool = async (functionName, args, context) => {
             try {
                 const conv = await prisma.conversation.findUnique({
                     where: { id: conversationId },
-                    include: { contact: true }
+                    include: { contact: true },
                 });
 
                 if (!conv?.contactId) {
@@ -562,7 +562,8 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                         title: `Randevu - ${conv.contact.firstName || 'Müşteri'}`,
                         description: notes || 'Bot tarafından oluşturuldu',
                         dueDate: appointmentDate,
-                        status: 'SCHEDULED'
+                        status: 'SCHEDULED',
+                        ...(conv.caseId ? { caseId: conv.caseId } : {})
                     }
                 });
 
@@ -622,7 +623,7 @@ export const executeBuiltInTool = async (functionName, args, context) => {
             try {
                 const conv = await prisma.conversation.findUnique({
                     where: { id: conversationId },
-                    select: { contactId: true }
+                    select: { contactId: true, caseId: true }
                 });
 
                 if (!conv?.contactId) {
@@ -636,7 +637,8 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                         type: 'NOTE',
                         title: title || 'Bot Notu',
                         description: note,
-                        status: 'COMPLETED'
+                        status: 'COMPLETED',
+                        ...(conv.caseId ? { caseId: conv.caseId } : {})
                     }
                 });
 

@@ -6,6 +6,7 @@ import { emitToWorkspace } from '../socket.js';
 import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
+import { executeRule } from '../services/ruleEngine.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -962,6 +963,17 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             return;
         }
 
+        // Contact'ın aktif case'ini bul → görev cascade ataması için
+        let autoCallCaseId = null;
+        try {
+            const activeCase = await prisma.case.findFirst({
+                where: { contactId, workspaceId, status: 'ACTIVE' },
+                orderBy: { updatedAt: 'desc' },
+                select: { id: true }
+            });
+            autoCallCaseId = activeCase?.id || null;
+        } catch (_) {}
+
         // ContactActivity oluştur — takım/kişiye görev olarak ata
         const activity = await prisma.contactActivity.create({
             data: {
@@ -986,7 +998,8 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                 aiAgentId: (!assignedToId || agentCfg?.immediateCall) ? ruleAgentId : null,
                 fallbackToAi: true,
                 fallbackDelayMinutes: fallbackDelayMinutes,
-                aiFallbackTriggered: false
+                aiFallbackTriggered: false,
+                ...(autoCallCaseId ? { caseId: autoCallCaseId } : {})
             }
         });
 
@@ -997,14 +1010,36 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
         const shouldCallImmediately = agentCfg?.immediateCall === true;
         const isWithinBusinessHours = (() => {
             const trNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const currentDay = trNow.getDay();
             const h = trNow.getHours();
+            const m = trNow.getMinutes();
+            const currentMins = h * 60 + m;
+
+            if (agentCfg?.schedule && agentCfg.schedule[currentDay]) {
+                const ds = agentCfg.schedule[currentDay];
+                if (ds.active === false) return false;
+                const [sH, sM] = (ds.start || '10:00').split(':').map(Number);
+                const [eH, eM] = (ds.end || '18:00').split(':').map(Number);
+                return currentMins >= sH * 60 + sM && currentMins < eH * 60 + eM;
+            } else if (agentCfg?.schedule) {
+                // schedule var ama bu gün tanımlı değil → kapalı
+                return false;
+            } else if (agentCfg?.days || agentCfg?.callStart || agentCfg?.callEnd) {
+                // Eski format
+                const agentDays = agentCfg.days || [0,1,2,3,4,5,6];
+                if (!agentDays.includes(currentDay)) return false;
+                const [sH, sM] = (agentCfg.callStart || '10:00').split(':').map(Number);
+                const [eH, eM] = (agentCfg.callEnd || '21:00').split(':').map(Number);
+                return currentMins >= sH * 60 + sM && currentMins < eH * 60 + eM;
+            }
+            // agentCfg yok → genel default
             return h >= 10 && h < 21;
         })();
 
         if (shouldCallImmediately && isWithinBusinessHours) {
             console.log(`🚀 [AutoCall] immediateCall=true → cron beklemeden direkt arama başlatılıyor!`);
             try {
-                const retrySteps = agentCfg?.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }];
+                const retrySteps = agentCfg?.retrySteps || [{ delay: 60 }, { delay: 240 }, { delay: 1440 }];
                 await prisma.scheduledCall.create({
                     data: {
                         workspaceId,
@@ -1017,7 +1052,7 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                         createdById: `activity_${activity.id}`,
                         dynamicVariables: dynamicVarsJson,
                         maxAttempts: retrySteps.length + 1,
-                        retryDelayMin: retrySteps[0]?.delay || 10,
+                        retryDelayMin: retrySteps[0]?.delay || 60,
                         attemptNumber: 1
                     }
                 });
@@ -1194,8 +1229,9 @@ async function checkOverdueAgentCalls() {
 
         if (workspaces.length === 0) return;
 
-        // ─── MESAI SAATİ KONTROLÜ (workspace bazlı, SALES_PHONE_CALL config'den) ──
-        // Her workspace için SALES_PHONE_CALL rule config'deki businessHourStart/End'i kullan
+        // ─── MESAI KONTROLÜ: Workspace seviyesinde yapılmaz. ──
+        // Ajan bazlı mesai kontrolü processScheduledCalls'da (scheduledCall işlenirken) yapılıyor.
+        // Burada tüm workspace'leri geçiriyoruz, çünkü her ajanın farklı çalışma saati olabilir.
         const workspaceIds = workspaces.map(w => w.id);
         const salesRules = await prisma.workspaceRule.findMany({
             where: { workspaceId: { in: workspaceIds }, ruleType: 'SALES_PHONE_CALL' }
@@ -1206,19 +1242,8 @@ async function checkOverdueAgentCalls() {
             catch { salesRuleMap[r.workspaceId] = {}; }
         });
 
-        // Filter workspaces to only those within business hours
-        const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-        const currentHour = nowTR.getHours();
-        const activeWorkspaces = workspaces.filter(w => {
-            const cfg = salesRuleMap[w.id] || {};
-            const start = cfg.businessHourStart ?? 9;
-            const end = cfg.businessHourEnd ?? 21;
-            return currentHour >= start && currentHour < end;
-        });
-
-        if (activeWorkspaces.length === 0) return;
-
-        const activeWorkspaceIds = activeWorkspaces.map(w => w.id);
+        const activeWorkspaces = workspaces;
+        const activeWorkspaceIds = workspaceIds;
 
         // Her workspace için max overdue tarihini hesapla (en eski tarihi kullan)
         const oldestMaxOverdueDays = Math.max(...activeWorkspaces.map(w => w.retellMaxOverdueDays ?? 3));
@@ -1449,9 +1474,9 @@ async function checkOverdueAgentCalls() {
 
             try {
                 // retrySteps'tan maxAttempts ve ilk gecikmeyi belirle
-                const retrySteps = agentCfg?.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }];
+                const retrySteps = agentCfg?.retrySteps || [{ delay: 60 }, { delay: 240 }, { delay: 1440 }];
                 const maxAttempts = retrySteps.length + 1; // 1 asıl + N retry
-                const firstRetryDelay = retrySteps[0]?.delay || 10;
+                const firstRetryDelay = retrySteps[0]?.delay || 60;
 
                 await prisma.scheduledCall.create({
                     data: {
@@ -1513,8 +1538,38 @@ export const processScheduledCalls = async () => {
                 // Auto-cancel if overdue > X hours (workspace parametrik)
                 // AMA: mesai dışı saatte planlanan aramalar muaf — gece gelen lead'ler sabah aranacak
                 const overdueMs = Date.now() - new Date(sc.scheduledAt).getTime();
-                const scheduledHour = new Date(new Date(sc.scheduledAt).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' })).getHours();
-                const wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
+                // Agent bazlı mesai saatlerini kontrol et (hardcoded 10-21 yerine)
+                const scheduledTR = new Date(new Date(sc.scheduledAt).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                const scheduledHour = scheduledTR.getHours();
+                const scheduledMinute = scheduledTR.getMinutes();
+                const scheduledDayOfWeek = scheduledTR.getDay();
+                let wasScheduledOutsideBusinessHours = false;
+                try {
+                    const wsSchedule = await prisma.workspace.findUnique({
+                        where: { id: sc.workspaceId },
+                        select: { retellAutoCallTriggers: true }
+                    });
+                    const schAgentConfigs = wsSchedule?.retellAutoCallTriggers?.agentConfigs || {};
+                    const schAgentCfg = sc.agentId ? schAgentConfigs[sc.agentId] : null;
+                    if (schAgentCfg?.schedule && schAgentCfg.schedule[scheduledDayOfWeek]) {
+                        const ds = schAgentCfg.schedule[scheduledDayOfWeek];
+                        if (ds.active === false) {
+                            wasScheduledOutsideBusinessHours = true;
+                        } else {
+                            const [sH, sM] = (ds.start || '10:00').split(':').map(Number);
+                            const [eH, eM] = (ds.end || '18:00').split(':').map(Number);
+                            const schMins = scheduledHour * 60 + scheduledMinute;
+                            wasScheduledOutsideBusinessHours = schMins < (sH * 60 + sM) || schMins >= (eH * 60 + eM);
+                        }
+                    } else if (schAgentCfg?.schedule) {
+                        wasScheduledOutsideBusinessHours = true; // Bu gün tanımsız
+                    } else {
+                        // Default fallback: 10:00-21:00
+                        wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
+                    }
+                } catch (_) {
+                    wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
+                }
 
                 // Agent config > Workspace default > hardcoded 2 saat
                 let timeoutHours = 2;
@@ -1611,6 +1666,83 @@ export const processScheduledCalls = async () => {
                     }
                 }
 
+                // ─── AGENT MESAİ KONTROLÜ (LOCK'TAN ÖNCE) ──────────────────────────
+                // Mesai dışındaki aramaları LOCK'lamadan önce kontrol et
+                // Bu sayede mesai dışında hiçbir arama COMPLETED'a geçmez
+                const wsPreCheck = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true, retellAutoCallTriggers: true } });
+                const preCheckAgentId = sc.agentId || wsPreCheck?.retellAgentId;
+                const preCheckConfigs = wsPreCheck?.retellAutoCallTriggers?.agentConfigs || {};
+                const preCheckCfg = preCheckConfigs[preCheckAgentId];
+                
+                if (preCheckCfg) {
+                    // Aktif/Pasif kontrolü
+                    if (preCheckCfg.active === false) {
+                        console.log(`⏸️ [ScheduledCall] Agent ${preCheckAgentId} pasif — call ${sc.id} PENDING kalacak`);
+                        continue;
+                    }
+
+                    // Çalışma günü ve saati kontrolü
+                    const nowTRPre = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                    const currentDayPre = nowTRPre.getDay();
+                    
+                    let dayActivePre = true;
+                    let agentStartPre = '10:00';
+                    let agentEndPre = '21:00';
+                    
+                    if (preCheckCfg.schedule && preCheckCfg.schedule[currentDayPre]) {
+                        const daySchedulePre = preCheckCfg.schedule[currentDayPre];
+                        dayActivePre = daySchedulePre.active !== false;
+                        agentStartPre = daySchedulePre.start || '10:00';
+                        agentEndPre = daySchedulePre.end || '18:00';
+                    } else if (preCheckCfg.schedule) {
+                        dayActivePre = false;
+                    } else {
+                        const agentDaysPre = preCheckCfg.days || [0,1,2,3,4,5,6];
+                        dayActivePre = agentDaysPre.includes(currentDayPre);
+                        agentStartPre = preCheckCfg.callStart || '10:00';
+                        agentEndPre = preCheckCfg.callEnd || '21:00';
+                    }
+                    
+                    if (!dayActivePre) {
+                        console.log(`⏸️ [ScheduledCall] Agent ${preCheckAgentId} bugün çalışmıyor (gün: ${currentDayPre}) — call ${sc.id} PENDING kalacak`);
+                        continue;
+                    }
+                    
+                    const [startHPre, startMPre] = agentStartPre.split(':').map(Number);
+                    const [endHPre, endMPre] = agentEndPre.split(':').map(Number);
+                    const currentMinutesPre = nowTRPre.getHours() * 60 + nowTRPre.getMinutes();
+                    const startMinutesPre = startHPre * 60 + startMPre;
+                    const endMinutesPre = endHPre * 60 + endMPre;
+                    
+                    if (currentMinutesPre < startMinutesPre || currentMinutesPre >= endMinutesPre) {
+                        console.log(`⏸️ [ScheduledCall] Agent ${preCheckAgentId} mesai dışı (${agentStartPre}-${agentEndPre}, şimdi: ${nowTRPre.getHours()}:${String(nowTRPre.getMinutes()).padStart(2,'0')}) — call ${sc.id} PENDING kalacak`);
+                        continue;
+                    }
+                } else {
+                    // Agent config yok — workspace default mesai kontrolü
+                    const nowTRFbPre = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                    const fbHourPre = nowTRFbPre.getHours();
+                    const fbMinPre = nowTRFbPre.getMinutes();
+                    let fbStartPre = 10, fbEndPre = 21;
+                    try {
+                        const salesRulePre = await prisma.workspaceRule.findUnique({
+                            where: { workspaceId_ruleType: { workspaceId: sc.workspaceId, ruleType: 'SALES_PHONE_CALL' } }
+                        });
+                        if (salesRulePre?.config) {
+                            const cfgPre = typeof salesRulePre.config === 'string' ? JSON.parse(salesRulePre.config) : salesRulePre.config;
+                            fbStartPre = cfgPre.businessHourStart ?? 10;
+                            fbEndPre = cfgPre.businessHourEnd ?? 21;
+                        }
+                    } catch (_) {}
+                    
+                    const curMinsPre = fbHourPre * 60 + fbMinPre;
+                    if (curMinsPre < fbStartPre * 60 || curMinsPre >= fbEndPre * 60) {
+                        console.log(`⏸️ [ScheduledCall] agentCfg bulunamadı, mesai dışı (${fbStartPre}:00-${fbEndPre}:00, şimdi: ${fbHourPre}:${String(fbMinPre).padStart(2,'0')}) — call ${sc.id} PENDING kalacak`);
+                        continue;
+                    }
+                }
+                // ─── MESAİ KONTROLÜ BİTTİ ───────────────────────────────────────
+
                 // 🔒 ATOMIC LOCK: Mark COMPLETED first using updateMany (returns count).
                 // If count=0, another runner already picked this up — skip to avoid duplicate calls.
                 const locked = await prisma.scheduledCall.updateMany({
@@ -1623,83 +1755,6 @@ export const processScheduledCalls = async () => {
                 }
                 const ws = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true, retellAutoCallTriggers: true } });
                 const effectiveAgentId = sc.agentId || ws?.retellAgentId;
-
-                // ─── AGENT CONFIG KONTROLÜ ───────────────────────────────────────
-                // Agent bazlı aktif/pasif, çalışma saatleri ve günleri kontrolü
-                const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
-                const agentCfg = agentConfigs[effectiveAgentId];
-                if (agentCfg) {
-                    // Aktif/Pasif kontrolü
-                    if (agentCfg.active === false) {
-                        // Agent pasif — PENDING bırak, sonra tekrar denensin
-                        await prisma.scheduledCall.updateMany({
-                            where: { id: sc.id, status: 'COMPLETED' },
-                            data: { status: 'PENDING' }
-                        });
-                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} pasif — call ${sc.id} PENDING bırakıldı`);
-                        continue;
-                    }
-
-                    // Çalışma günü ve saati kontrolü (yeni schedule yapısı + eski days/callStart/callEnd geriye uyumluluk)
-                    const nowTRAgent = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-                    const currentDay = nowTRAgent.getDay();
-                    
-                    let dayActive = true;
-                    let agentStart = '10:00';
-                    let agentEnd = '21:00';
-                    
-                    if (agentCfg.schedule && agentCfg.schedule[currentDay]) {
-                        // Yeni per-day schedule
-                        const daySchedule = agentCfg.schedule[currentDay];
-                        dayActive = daySchedule.active !== false;
-                        agentStart = daySchedule.start || '10:00';
-                        agentEnd = daySchedule.end || '18:00';
-                    } else if (agentCfg.schedule) {
-                        // schedule var ama bu gün tanımlı değil → kapalı
-                        dayActive = false;
-                    } else {
-                        // Eski format: days array + callStart/callEnd
-                        const agentDays = agentCfg.days || [0,1,2,3,4,5,6];
-                        dayActive = agentDays.includes(currentDay);
-                        agentStart = agentCfg.callStart || '10:00';
-                        agentEnd = agentCfg.callEnd || '21:00';
-                    }
-                    
-                    if (!dayActive) {
-                        await prisma.scheduledCall.updateMany({
-                            where: { id: sc.id, status: 'COMPLETED' },
-                            data: { status: 'PENDING' }
-                        });
-                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} bugün çalışmıyor (gün: ${currentDay}) — call ${sc.id} PENDING bırakıldı`);
-                        continue;
-                    }
-                    
-                    const [startH, startM] = agentStart.split(':').map(Number);
-                    const [endH, endM] = agentEnd.split(':').map(Number);
-                    const currentMinutes = nowTRAgent.getHours() * 60 + nowTRAgent.getMinutes();
-                    const startMinutes = startH * 60 + startM;
-                    const endMinutes = endH * 60 + endM;
-                    if (currentMinutes < startMinutes || currentMinutes >= endMinutes) {
-                        // Mesai dışı — aramayı bir sonraki mesai başlangıcına ertele
-                        // (böylece 2 saatlik timeout'a takılıp iptal olmaz)
-                        const nextStart = new Date(nowTRAgent);
-                        if (currentMinutes >= endMinutes) {
-                            // Bugün mesai bitti → yarın sabah
-                            nextStart.setDate(nextStart.getDate() + 1);
-                        }
-                        nextStart.setHours(startH, startM, 0, 0);
-                        
-                        await prisma.scheduledCall.updateMany({
-                            where: { id: sc.id, status: 'COMPLETED' },
-                            data: { 
-                                status: 'PENDING',
-                                scheduledAt: nextStart // Zamanlayıcıyı ilerlet → timeout resetlenir
-                            }
-                        });
-                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} mesai dışı (${agentStart}-${agentEnd}, şimdi: ${nowTRAgent.getHours()}:${String(nowTRAgent.getMinutes()).padStart(2,'0')}) — call ${sc.id} → ${nextStart.toISOString()} ertelendi`);
-                        continue;
-                    }
-                }
                 // ─────────────────────────────────────────────────────────────────
 
                 // Parse dynamic variables from DB if available
@@ -3128,6 +3183,20 @@ async function handleCallEnded(call) {
             const disconnectReason = call.disconnection_reason || '';
             const isFailedCall = failedReasons.some(r => disconnectReason.toLowerCase().includes(r)) || (duration !== null && duration < 10);
 
+            // 🤖 Otomasyon Hook'ları — Arama sonucu
+            try {
+              if (callRecord && callRecord.contactId) {
+                if (isFailedCall) {
+                  executeRule(callRecord.workspaceId, 'CALL_FAILED_NOTIFY', { contactId: callRecord.contactId }).catch(e => console.error('[AutoHook] CALL_FAILED_NOTIFY error:', e.message));
+                  executeRule(callRecord.workspaceId, 'MISSED_CALL_NOTIFY', { contactId: callRecord.contactId }).catch(e => console.error('[AutoHook] MISSED_CALL_NOTIFY error:', e.message));
+                } else {
+                  executeRule(callRecord.workspaceId, 'CALL_SUCCESS_NOTIFY', { contactId: callRecord.contactId }).catch(e => console.error('[AutoHook] CALL_SUCCESS_NOTIFY error:', e.message));
+                }
+              }
+            } catch (hookErr) {
+              console.error('[AutoHook] Retell call hooks error:', hookErr.message);
+            }
+
             if (isFailedCall && callRecord.createdById) {
                 // Bu çağrının ScheduledCall kaydını bul (retry bilgisi için)
                 const scheduledCall = await prisma.scheduledCall.findFirst({
@@ -3156,6 +3225,14 @@ async function handleCallEnded(call) {
                             console.log(`🔄 [Retry] Kademe ${currentAttempt}/${retrySteps.length}: ${retryDelay}dk sonra tekrar aranacak`);
                         }
                     } catch (_) {}
+
+                    // agentCfg bulunamadıysa makul default kullan (10dk değil)
+                    if (!retrySteps) {
+                        retrySteps = [{ delay: 60 }, { delay: 240 }, { delay: 1440 }];
+                        const stepIdx = Math.min(currentAttempt - 1, retrySteps.length - 1);
+                        retryDelay = retrySteps[stepIdx]?.delay || 60;
+                        console.log(`⚠️ [Retry] agentCfg bulunamadı — default kademe kullanılıyor: ${retryDelay}dk`);
+                    }
 
                     const nextAttemptAt = new Date(Date.now() + retryDelay * 60 * 1000);
                     const nextAttempt = scheduledCall.attemptNumber + 1;
@@ -3187,14 +3264,16 @@ async function handleCallEnded(call) {
                             let teamId = null;
                             let callTopic = null;
                             let aiAgentId = scheduledCall.agentId;
+                            let retryCaseId = null;
                             if (scheduledCall.createdById?.startsWith('activity_')) {
                                 const oldActivity = await prisma.contactActivity.findUnique({
                                     where: { id: scheduledCall.createdById.replace('activity_', '') },
-                                    select: { teamId: true, callTopic: true, aiAgentId: true }
+                                    select: { teamId: true, callTopic: true, aiAgentId: true, caseId: true }
                                 });
                                 if (oldActivity) {
                                     teamId = oldActivity.teamId;
                                     callTopic = oldActivity.callTopic;
+                                    retryCaseId = oldActivity.caseId;
                                     if (oldActivity.aiAgentId) aiAgentId = oldActivity.aiAgentId;
                                 }
                             }
@@ -3213,7 +3292,8 @@ async function handleCallEnded(call) {
                                     aiAgentId: aiAgentId,
                                     aiFallbackTriggered: true,
                                     teamId: teamId,
-                                    callTopic: callTopic
+                                    callTopic: callTopic,
+                                    ...(retryCaseId ? { caseId: retryCaseId } : {})
                                 }
                             });
                             newActivityId = newActivity.id;
@@ -3691,6 +3771,17 @@ async function handleCallAnalyzed(call) {
                         });
 
                         if (!existing) {
+                            // Case miras al
+                            let transcriptCaseId = null;
+                            try {
+                                const ac = await prisma.case.findFirst({
+                                    where: { contactId: callRecord.contactId, workspaceId: callRecord.workspaceId, status: 'ACTIVE' },
+                                    orderBy: { updatedAt: 'desc' },
+                                    select: { id: true }
+                                });
+                                transcriptCaseId = ac?.id || null;
+                            } catch (_) {}
+
                             const typeLabels = { CALL: 'Tekrar Arama', VISIT: 'Ziyaret', MEETING: 'Görüşme' };
                             await prisma.contactActivity.create({
                                 data: {
@@ -3702,7 +3793,8 @@ async function handleCallAnalyzed(call) {
                                     dueDate,
                                     contactId: callRecord.contactId,
                                     workspaceId: callRecord.workspaceId,
-                                    source: 'HUMAN_REQUESTED'
+                                    source: 'HUMAN_REQUESTED',
+                                    ...(transcriptCaseId ? { caseId: transcriptCaseId } : {})
                                 }
                             });
                             console.log(`✅ [Retell Transcript] Otomatik ${actType} aktivitesi oluşturuldu`);

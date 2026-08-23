@@ -1119,3 +1119,97 @@
 .ut-wh-toggle input:checked + .ut-wh-slider::before {
     transform: translateX(16px);
 }
+
+/* ── AI Call Agent Toggles ── */
+.ut-call-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+.ut-call-master-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 8px;
+    border-radius: 12px;
+    transition: all 0.2s;
+}
+
+.ut-call-master-toggle:hover {
+    background: #f3f4f6;
+}
+
+.ut-call-master-toggle.is-active {
+    color: #0d9488;
+}
+
+.ut-call-master-toggle.is-active:hover {
+    background: #f0fdfa;
+}
+
+/* Small inline toggle switch */
+.ut-agent-toggle {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.ut-agent-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.ut-agent-toggle-slider {
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    background: #d1d5db;
+    transition: background 0.25s;
+    cursor: pointer;
+}
+
+.ut-agent-toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.25s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+.ut-agent-toggle input:checked + .ut-agent-toggle-slider {
+    background: #0d9488;
+}
+
+.ut-agent-toggle input:checked + .ut-agent-toggle-slider::before {
+    transform: translateX(14px);
+}
+
+.ut-agent-toggle input:disabled + .ut-agent-toggle-slider {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Agent card inactive state */
+.ut-user-card.ut-agent-inactive {
+    opacity: 0.5;
+    filter: grayscale(0.3);
+}
+
+.ut-user-card.ut-agent-inactive:hover {
+    opacity: 0.7;
+}

@@ -4,6 +4,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
+import { executeRule } from '../services/ruleEngine.service.js';
 import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
 import { hasProfanity, censorProfanity } from '../utils/profanityFilter.js';
 
@@ -1987,6 +1988,26 @@ async function processWebhookAsync(body) {
                     }
                     // --- AUTOMATION RULES END ---
 
+                    // 🤖 Otomasyon Hook'ları — Mesaj bazlı kurallar (Facebook/Instagram)
+                    try {
+                        const ruleCtx = { contactId: contact.id, conversationId: conversation.id, message: message?.text };
+                        
+                        // Mesai dışı otomatik cevap
+                        executeRule(facebookPage.workspaceId, 'AFTER_HOURS_REPLY', ruleCtx).catch(e => console.error('[AutoHook] AFTER_HOURS_REPLY error:', e.message));
+                        
+                        // VIP müşteri uyarısı
+                        if (contact.category === 'VIP') {
+                            executeRule(facebookPage.workspaceId, 'VIP_CUSTOMER_ALERT', ruleCtx).catch(e => console.error('[AutoHook] VIP_CUSTOMER_ALERT error:', e.message));
+                        }
+                        
+                        // Şikayet eskalasyonu
+                        if (conversation.sentimentScore !== null && conversation.sentimentScore < 30) {
+                            executeRule(facebookPage.workspaceId, 'COMPLAINT_ESCALATION', ruleCtx).catch(e => console.error('[AutoHook] COMPLAINT_ESCALATION error:', e.message));
+                        }
+                    } catch (hookErr) {
+                        console.error('[AutoHook] Facebook message hooks error:', hookErr.message);
+                    }
+
                     // --- AI AUTO REPLY START ---
                     // ONLY for incoming messages (from contact)
                     if (!isOutgoingMessage) {
@@ -3544,6 +3565,42 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 });
 
                 if (!recentTask && contact?.id) {
+                    // Mesai saati kontrolü — gece gelen lead'ler sabah aranacak
+                    const nowTRLead = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                    const leadHour = nowTRLead.getHours();
+                    let leadDueDate;
+                    if (leadHour >= 10 && leadHour < 21) {
+                        leadDueDate = new Date(); // Mesai içinde → şimdi
+                    } else {
+                        // Mesai dışı → bugün/yarın 10:15 TR'ye ertele
+                        leadDueDate = new Date();
+                        if (leadHour >= 21) leadDueDate.setDate(leadDueDate.getDate() + 1);
+                        leadDueDate.setUTCHours(7, 15, 0, 0); // 10:15 TR = 07:15 UTC
+                        console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → arama ${leadDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}'e ertelendi`);
+                    }
+
+                    // Takım ataması: conversation veya funnel'dan miras al
+                    let leadTeamId = null;
+                    try {
+                        const leadConv = await prisma.conversation.findFirst({
+                            where: { contactId: contact.id, workspaceId: facebookPage.workspaceId },
+                            orderBy: { updatedAt: 'desc' },
+                            select: { assignedTeamId: true, caseId: true }
+                        });
+                        leadTeamId = leadConv?.assignedTeamId || null;
+                        // Case miras al — conversation veya aktif case'den
+                        if (!leadConv?.caseId) {
+                            const activeCase = await prisma.case.findFirst({
+                                where: { contactId: contact.id, workspaceId: facebookPage.workspaceId, status: 'ACTIVE' },
+                                orderBy: { updatedAt: 'desc' },
+                                select: { id: true }
+                            });
+                            var leadCaseId = activeCase?.id || null;
+                        } else {
+                            var leadCaseId = leadConv.caseId;
+                        }
+                    } catch (_) { var leadCaseId = null; }
+
                     await prisma.contactActivity.create({
                         data: {
                             workspaceId: facebookPage.workspaceId,
@@ -3553,14 +3610,16 @@ async function handleLeadgenEvent(leadValue, entryId) {
                             description: `Facebook Lead Ads.${preferredTimeStr ? `\nTercih edilen zaman: ${preferredTimeStr}` : ''}`,
                             status: 'PLANNED',
                             source: 'AUTOMATION',
-                            dueDate: new Date(),
+                            dueDate: leadDueDate,
+                            teamId: leadTeamId,
                             aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
                             fallbackToAi: true,
                             aiFallbackTriggered: false,
                             retellExcluded: false,
+                            ...(leadCaseId ? { caseId: leadCaseId } : {}),
                         }
                     });
-                    console.log(`📞 [LEADGEN] CALL görevi oluşturuldu → insana atandı, timeout sonrası robot: ${leadPhone}`);
+                    console.log(`📞 [LEADGEN] CALL görevi oluşturuldu → ${leadDueDate.toISOString()} (team: ${leadTeamId || 'YOK'}): ${leadPhone}`);
                 } else {
                     console.log(`📞 [LEADGEN] Son 24h'de zaten arama görevi var veya contact yok — skip`);
                 }

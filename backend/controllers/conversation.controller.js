@@ -1841,7 +1841,7 @@ export const addInternalNote = async (req, res) => {
         try {
             conversation = await prisma.conversation.findUnique({
                 where: { id: conversationId },
-                select: { contactId: true, workspaceId: true, teamIds: true }
+                select: { contactId: true, workspaceId: true, teamIds: true, caseId: true }
             });
         } catch (e) {}
 
@@ -1866,7 +1866,8 @@ export const addInternalNote = async (req, res) => {
                         completedAt: new Date(),
                         assignedToId: userId,
                         createdById: userId,
-                        ...(teamId && { teamId })
+                        ...(teamId && { teamId }),
+                        ...(conversation.caseId ? { caseId: conversation.caseId } : {})
                     }
                 });
                 console.log(`📞 [CallNote] Otomatik arama aktivitesi oluşturuldu - contact: ${conversation.contactId}`);
@@ -1920,7 +1921,8 @@ export const addInternalNote = async (req, res) => {
                         assignedToId: assignToUserId || null,
                         createdById: userId,
                         ...(assignToTeamId && { teamId: assignToTeamId }),
-                        source: 'AUTO'
+                        source: 'AUTO',
+                        ...(conversation.caseId ? { caseId: conversation.caseId } : {})
                     }
                 });
 

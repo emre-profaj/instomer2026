@@ -24,7 +24,10 @@ import {
     Shield,
     CheckCircle2,
     Bot,
-    Phone
+    Phone,
+    ToggleRight,
+    ToggleLeft,
+    Power
 } from 'lucide-react';
 import './Users.css';
 
@@ -336,6 +339,10 @@ const UsersTeams = () => {
     const [automationsList, setAutomationsList] = useState([]);
     const [expandedTeams, setExpandedTeams] = useState({});
 
+    // Retell auto-call settings
+    const [retellAutoCallEnabled, setRetellAutoCallEnabled] = useState(false);
+    const [retellAutoCallTriggers, setRetellAutoCallTriggers] = useState({});
+
     // Drag & drop — user onto team
     const dragUser = useRef(null);
     const dragBot = useRef(null);
@@ -351,7 +358,45 @@ const UsersTeams = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     const loadUsersAndTeams = () => {
-        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations();
+        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations(); loadRetellSettings();
+    };
+
+    const loadRetellSettings = async () => {
+        try {
+            const res = await retellAPI.getSettings(currentWorkspace.id);
+            setRetellAutoCallEnabled(res.data.retellAutoCallEnabled || false);
+            setRetellAutoCallTriggers(res.data.retellAutoCallTriggers || {});
+        } catch { }
+    };
+
+    const handleMasterToggle = async () => {
+        const newVal = !retellAutoCallEnabled;
+        setRetellAutoCallEnabled(newVal);
+        try {
+            await retellAPI.saveSettings(currentWorkspace.id, { retellAutoCallEnabled: newVal });
+        } catch {
+            setRetellAutoCallEnabled(!newVal); // rollback
+        }
+    };
+
+    const handleAgentActiveToggle = async (e, agentId) => {
+        e.stopPropagation(); // kartın onClick'ini engelle
+        const triggers = { ...retellAutoCallTriggers };
+        const configs = { ...(triggers.agentConfigs || {}) };
+        const cfg = { ...(configs[agentId] || {}) };
+        const newActive = cfg.active === false ? true : false; // undefined/true → false, false → true
+        cfg.active = newActive;
+        configs[agentId] = cfg;
+        triggers.agentConfigs = configs;
+        setRetellAutoCallTriggers(triggers);
+        try {
+            await retellAPI.saveSettings(currentWorkspace.id, { retellAutoCallTriggers: triggers });
+        } catch {
+            // rollback
+            cfg.active = !newActive;
+            configs[agentId] = cfg;
+            setRetellAutoCallTriggers({ ...triggers, agentConfigs: configs });
+        }
     };
 
     const loadAutomations = async () => {
@@ -917,12 +962,24 @@ const UsersTeams = () => {
 
                                 {/* ── AI Call Agents ── */}
                                 {retellAgents.length > 0 && (
-                                    <div className="ut-panel-section-label" style={{ color: '#0d9488', borderColor: '#ccfbf1' }}><Phone size={12} /> AI Call Agents</div>
+                                    <div className="ut-call-section-header">
+                                        <div className="ut-panel-section-label" style={{ color: '#0d9488', borderColor: '#ccfbf1', margin: 0 }}><Phone size={12} /> AI Call Agents</div>
+                                        <div
+                                            className={`ut-call-master-toggle ${retellAutoCallEnabled ? 'is-active' : ''}`}
+                                            onClick={handleMasterToggle}
+                                            title={retellAutoCallEnabled ? 'Otomatik arama açık — kapatmak için tıklayın' : 'Otomatik arama kapalı — açmak için tıklayın'}
+                                        >
+                                            {retellAutoCallEnabled ? <><ToggleRight size={14} /> Aktif</> : <><ToggleLeft size={14} /> Pasif</>}
+                                        </div>
+                                    </div>
                                 )}
-                                {retellAgents.map(agent => (
+                                {retellAgents.map(agent => {
+                                    const agentCfg = retellAutoCallTriggers?.agentConfigs?.[agent.agent_id] || {};
+                                    const isAgentActive = agentCfg.active !== false;
+                                    return (
                                     <div
                                         key={agent.agent_id}
-                                        className="ut-user-card ut-bot-card"
+                                        className={`ut-user-card ut-bot-card ${!isAgentActive || !retellAutoCallEnabled ? 'ut-agent-inactive' : ''}`}
                                         draggable
                                         onDragStart={e => handleRetellAgentDragStart(e, agent)}
                                         onClick={() => setShowRetellModal(agent.agent_id)}
@@ -939,11 +996,21 @@ const UsersTeams = () => {
                                             <span className="ut-user-name">{agent.agent_name || 'İsimsiz Agent'}</span>
                                             <span className="ut-user-email">Ses Arama Asistanı</span>
                                         </div>
-                                        <div className="ut-user-actions">
+                                        <div className="ut-user-actions" style={{ gap: '6px' }}>
+                                            <label className="ut-agent-toggle" title={isAgentActive ? 'Ajanı pasife al' : 'Ajanı aktif et'} onClick={e => e.stopPropagation()}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isAgentActive}
+                                                    onChange={e => handleAgentActiveToggle(e, agent.agent_id)}
+                                                    disabled={!retellAutoCallEnabled}
+                                                />
+                                                <span className="ut-agent-toggle-slider" />
+                                            </label>
                                             <span className="ut-role-badge" style={{ background: '#f0fdfa', color: '#0d9488' }}>Call Agent</span>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </>
                         )}
                     </div>

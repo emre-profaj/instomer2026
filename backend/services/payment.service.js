@@ -42,6 +42,17 @@ export async function createPaymentLink(workspaceId, { amount, description, cont
     
     if (!config) {
         // No payment integration — create manual payment record
+        // Case miras al
+        let paymentCaseId = null;
+        try {
+            const activeCase = await prisma.case.findFirst({
+                where: { contactId, workspaceId, status: 'ACTIVE' },
+                orderBy: { updatedAt: 'desc' },
+                select: { id: true }
+            });
+            paymentCaseId = activeCase?.id || null;
+        } catch (_) {}
+
         const payment = await prisma.contactActivity.create({
             data: {
                 contactId,
@@ -50,7 +61,8 @@ export async function createPaymentLink(workspaceId, { amount, description, cont
                 title: `Ödeme talebi: ${amount} TL`,
                 description: description || '',
                 status: 'PENDING',
-                metadata: JSON.stringify({ amount, orderId, manual: true })
+                metadata: JSON.stringify({ amount, orderId, manual: true }),
+                ...(paymentCaseId ? { caseId: paymentCaseId } : {})
             }
         });
         return { success: true, manual: true, paymentId: payment.id, message: 'Manuel ödeme talebi oluşturuldu.' };
@@ -130,6 +142,17 @@ async function createIyzicoPaymentLink(config, { amount, description, contactId,
         const result = await response.json();
         
         if (result.status === 'success' && result.paymentPageUrl) {
+            // Case miras al
+            let iyziCaseId = null;
+            try {
+                const ac = await prisma.case.findFirst({
+                    where: { contactId, workspaceId, status: 'ACTIVE' },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { id: true }
+                });
+                iyziCaseId = ac?.id || null;
+            } catch (_) {}
+
             // Store payment reference
             await prisma.contactActivity.create({
                 data: {
@@ -144,7 +167,8 @@ async function createIyzicoPaymentLink(config, { amount, description, contactId,
                         amount,
                         paymentPageUrl: result.paymentPageUrl
                     }),
-                    status: 'PENDING'
+                    status: 'PENDING',
+                    ...(iyziCaseId ? { caseId: iyziCaseId } : {})
                 }
             });
             

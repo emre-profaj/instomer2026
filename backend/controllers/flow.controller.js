@@ -660,6 +660,17 @@ async function executeAICall(workspaceId, step, context) {
         });
 
         if (!recentTask) {
+            // Case miras al → cascade atama için
+            let flowCaseId = null;
+            try {
+                const activeCase = await prisma.case.findFirst({
+                    where: { contactId, workspaceId, status: 'ACTIVE' },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { id: true }
+                });
+                flowCaseId = activeCase?.id || null;
+            } catch (_) {}
+
             await prisma.contactActivity.create({
                 data: {
                     workspaceId,
@@ -670,10 +681,11 @@ async function executeAICall(workspaceId, step, context) {
                     status: 'PLANNED',
                     source: 'AUTOMATION',
                     dueDate: new Date(),
-                    aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+                    aiAgentId: null,
                     fallbackToAi: true,
                     aiFallbackTriggered: false,
                     retellExcluded: false,
+                    ...(flowCaseId ? { caseId: flowCaseId } : {}),
                 }
             });
             console.log(`  ✅ [FLOW STEP] AI_CALL: Arama görevi oluşturuldu → cron arayacak: ${phone}`);
@@ -1073,6 +1085,17 @@ async function executeRetryCall(workspaceId, step, context) {
 
     console.log(`  🔁 [FLOW STEP] RETRY_CALL: Will retry up to ${maxRetries} times every ${waitAmount} ${waitUnit}`);
 
+    // Case miras al → cascade atama için (loop dışında bir kez resolve et)
+    let retryCaseId = null;
+    try {
+        const activeCase = await prisma.case.findFirst({
+            where: { contactId: context.contact?.id, workspaceId, status: 'ACTIVE' },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true }
+        });
+        retryCaseId = activeCase?.id || null;
+    } catch (_) {}
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             await prisma.contactActivity.create({
@@ -1085,10 +1108,11 @@ async function executeRetryCall(workspaceId, step, context) {
                     status: 'PLANNED',
                     source: 'AUTOMATION',
                     dueDate: new Date(),
-                    aiAgentId: null, // cron'dan alacak
+                    aiAgentId: null,
                     fallbackToAi: true,
                     aiFallbackTriggered: false,
                     retellExcluded: false,
+                    ...(retryCaseId ? { caseId: retryCaseId } : {}),
                 }
             });
             console.log(`  ✅ [FLOW STEP] RETRY_CALL: Attempt ${attempt}/${maxRetries} — arama görevi oluşturuldu`);

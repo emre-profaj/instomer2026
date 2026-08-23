@@ -146,6 +146,7 @@ model Workspace {
   topicCategories      TopicCategory[]
   classifierRules      ClassifierRule[]
   telsamConfig         TelsamConfig?
+  automationLogs       AutomationLog[]
 
   // Retell AI Voice
   retellApiKey          String?
@@ -404,6 +405,8 @@ model Contact {
   leadScore         Int                  @default(0)
   leadTemperature   String               @default("COLD") // COLD, COOL, WARM, HOT, FIRE
   attributions      ContactAttribution[]
+  automationLogs    AutomationLog[]      // Otomasyon çalışma logları
+  birthDate         DateTime?            // Doğum günü
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -2125,4 +2128,22 @@ model TelsamCallLog {
   @@index([workspaceId, callDate])
   @@index([contactId])
   @@map("telsam_call_logs")
+}
+
+// ─── Otomasyon Çalışma Logları ──────────────────────────────────────────
+model AutomationLog {
+  id          String   @id @default(uuid())
+  workspaceId String
+  ruleType    String   // BIRTHDAY_GREETING, DRIP_DAY_1, CALL_SUCCESS_NOTIFY vs
+  contactId   String
+  executedAt  DateTime @default(now())
+  result      String   @default("SUCCESS") // SUCCESS, FAILED, SKIPPED
+  metadata    String?  @db.Text // JSON — ek bilgiler
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, ruleType, contactId])
+  @@index([workspaceId, ruleType, executedAt])
+  @@map("automation_logs")
 }

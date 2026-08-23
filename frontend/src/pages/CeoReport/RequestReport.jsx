@@ -72,6 +72,8 @@ const RequestReport = () => {
         totalCount = 0, totalCases = 0, totalDeals = 0,
         withPhoneCount = 0,
         totalWonCount = 0, totalWonAmount = 0,
+        totalLostCount = 0, totalActiveCount = 0, totalClosedCount = 0,
+        conversionRate = 0, lostRate = 0,
         totalCalls = 0, totalMeetings = 0, totalAppointments = 0,
         totalProposals = 0, totalOrders = 0,
         agentTable = [], topicGroups = [], funnelGroups = [], sourceGroups = []
@@ -113,15 +115,15 @@ const RequestReport = () => {
             </div>
 
             {/* ═══ KPI KARTLARI ═══ */}
-            <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
                 <div style={{
-                    flex: '1 1 160px', minWidth: 160,
+                    flex: '1 1 140px', minWidth: 140,
                     background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    borderRadius: 16, padding: '20px 24px', color: '#fff',
+                    borderRadius: 16, padding: '18px 22px', color: '#fff',
                     boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
                     position: 'relative', overflow: 'hidden'
                 }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
                     <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Users size={14} /> Toplam Talep
                     </div>
@@ -130,34 +132,123 @@ const RequestReport = () => {
                 </div>
 
                 <div style={{
-                    flex: '1 1 160px', minWidth: 160,
+                    flex: '1 1 140px', minWidth: 140,
                     background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
-                    borderRadius: 16, padding: '20px 24px', color: '#fff',
+                    borderRadius: 16, padding: '18px 22px', color: '#fff',
                     boxShadow: '0 8px 32px rgba(16, 185, 129, 0.3)',
                     position: 'relative', overflow: 'hidden'
                 }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
                     <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <ShoppingCart size={14} /> Satış
+                        <ShoppingCart size={14} /> ✅ Olumlu
                     </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalWonCount} adet</div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, opacity: 0.9 }}>{formatCurrency(totalWonAmount)}</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalWonCount}</div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, opacity: 0.9 }}>{formatCurrency(totalWonAmount)} · %{conversionRate}</div>
                 </div>
 
                 <div style={{
-                    flex: '1 1 160px', minWidth: 160,
+                    flex: '1 1 140px', minWidth: 140,
+                    background: 'linear-gradient(135deg, #ef4444 0%, #f87171 100%)',
+                    borderRadius: 16, padding: '18px 22px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(239, 68, 68, 0.25)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        ❌ Olumsuz
+                    </div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalLostCount}</div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, opacity: 0.9 }}>%{lostRate}</div>
+                </div>
+
+                <div style={{
+                    flex: '1 1 140px', minWidth: 140,
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+                    borderRadius: 16, padding: '18px 22px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(245, 158, 11, 0.25)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        ⏳ Devam Eden
+                    </div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalActiveCount}</div>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.7 }}>{totalClosedCount} kapatıldı</div>
+                </div>
+
+                <div style={{
+                    flex: '1 1 140px', minWidth: 140,
                     background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                    borderRadius: 16, padding: '20px 24px', color: '#fff',
+                    borderRadius: 16, padding: '18px 22px', color: '#fff',
                     boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
                     position: 'relative', overflow: 'hidden'
                 }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
                     <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Phone size={14} /> Kişi
                     </div>
                     <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(withPhoneCount)}</div>
                 </div>
             </div>
+
+            {/* ═══ TALEP DEĞERLENDİRME ÇUBUĞU ═══ */}
+            {totalCount > 0 && (
+                <div style={{
+                    background: '#fff', borderRadius: 16, padding: '20px 24px', marginBottom: 24,
+                    border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)'
+                }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <TrendingUp size={16} style={{ color: '#6366f1' }} /> Talep Değerlendirme Özeti
+                    </div>
+                    {/* Progress Bar */}
+                    <div style={{ display: 'flex', height: 32, borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+                        {totalWonCount > 0 && (
+                            <div style={{
+                                width: `${(totalWonCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #10b981, #34d399)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
+                            }}>✅ {totalWonCount}</div>
+                        )}
+                        {totalLostCount > 0 && (
+                            <div style={{
+                                width: `${(totalLostCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #ef4444, #f87171)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
+                            }}>❌ {totalLostCount}</div>
+                        )}
+                        {totalActiveCount > 0 && (
+                            <div style={{
+                                width: `${(totalActiveCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
+                            }}>⏳ {totalActiveCount}</div>
+                        )}
+                        {totalClosedCount > 0 && (
+                            <div style={{
+                                width: `${(totalClosedCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #94a3b8, #cbd5e1)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
+                            }}>🔒 {totalClosedCount}</div>
+                        )}
+                    </div>
+                    {/* Legend */}
+                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                        {[
+                            { label: 'Olumlu (Satış)', count: totalWonCount, pct: conversionRate, color: '#10b981' },
+                            { label: 'Olumsuz', count: totalLostCount, pct: lostRate, color: '#ef4444' },
+                            { label: 'Devam Eden', count: totalActiveCount, pct: totalCount > 0 ? Math.round((totalActiveCount / totalCount) * 1000) / 10 : 0, color: '#f59e0b' },
+                            { label: 'Kapatıldı', count: totalClosedCount, pct: totalCount > 0 ? Math.round((totalClosedCount / totalCount) * 1000) / 10 : 0, color: '#94a3b8' },
+                        ].map(item => (
+                            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: 3, background: item.color }} />
+                                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151' }}>{item.label}</span>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: item.color }}>{item.count}</span>
+                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>(%{item.pct})</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* ═══ AKTİVİTE TABLOSU ═══ */}
             <div style={{

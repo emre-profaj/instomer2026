@@ -63,6 +63,17 @@ export async function processTimedActions() {
                 // Execute the action based on type
                 switch (config.actionType || config.actionConfig?.type) {
                     case 'CREATE_TASK': {
+                        // Case miras al
+                        let timedCaseId = null;
+                        try {
+                            const activeCase = await prisma.case.findFirst({
+                                where: { contactId, workspaceId, status: 'ACTIVE' },
+                                orderBy: { updatedAt: 'desc' },
+                                select: { id: true }
+                            });
+                            timedCaseId = activeCase?.id || null;
+                        } catch (_) {}
+
                         await prisma.contactActivity.create({
                             data: {
                                 contactId,
@@ -70,7 +81,8 @@ export async function processTimedActions() {
                                 type: 'TASK',
                                 title: config.actionConfig?.title || action.title || 'Zamanlı görev',
                                 description: `Otomatik oluşturuldu — ${config.stageId} aşamasından`,
-                                status: 'PENDING'
+                                status: 'PENDING',
+                                ...(timedCaseId ? { caseId: timedCaseId } : {})
                             }
                         });
                         break;

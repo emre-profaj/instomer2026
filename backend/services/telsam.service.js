@@ -179,13 +179,25 @@ export async function syncCDRRecords(workspaceId, dateFrom, dateTo) {
         
         // Optionally create contact activity
         if (contact) {
+            // Case miras al
+            let telsamCaseId = null;
+            try {
+                const activeCase = await prisma.case.findFirst({
+                    where: { contactId: contact.id, workspaceId, status: 'ACTIVE' },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { id: true }
+                });
+                telsamCaseId = activeCase?.id || null;
+            } catch (_) {}
+
             await prisma.contactActivity.create({
                 data: {
                     contactId: contact.id,
                     workspaceId,
                     type: 'TELSAM_CALL',
                     description: `${direction} call ${disposition} duration: ${duration}s`,
-                    metadata: { callLogId: callLog.id }
+                    metadata: { callLogId: callLog.id },
+                    ...(telsamCaseId ? { caseId: telsamCaseId } : {})
                 }
             });
         }

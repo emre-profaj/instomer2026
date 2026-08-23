@@ -68,6 +68,17 @@ export async function scheduleTimedActions(stageId, contactId, workspaceId) {
         const config = JSON.parse(stage.timedActions);
         const actions = config.actions || [];
 
+        // Case miras al → cascade atama için
+        let timedActionCaseId = null;
+        try {
+            const activeCase = await prisma.case.findFirst({
+                where: { contactId, workspaceId, status: 'ACTIVE' },
+                orderBy: { updatedAt: 'desc' },
+                select: { id: true }
+            });
+            timedActionCaseId = activeCase?.id || null;
+        } catch (_) {}
+
         for (const action of actions) {
             const delayMs = (action.delayDays || 0) * 24 * 60 * 60 * 1000
                           + (action.delayHours || 0) * 60 * 60 * 1000;
@@ -90,7 +101,8 @@ export async function scheduleTimedActions(stageId, contactId, workspaceId) {
                         actionConfig: action
                     }),
                     dueDate: scheduledAt,
-                    status: 'PENDING'
+                    status: 'PENDING',
+                    ...(timedActionCaseId ? { caseId: timedActionCaseId } : {})
                 }
             });
         }
@@ -197,6 +209,25 @@ async function cancelTimedActions(stageId, contactId, workspaceId) {
  * Execute a single action
  */
 export async function executeSingleAction(action, contactId, workspaceId) {
+    // Case miras al — tüm görev tiplerinde cascade atama çalışsın
+    let actionCaseId = null;
+    try {
+        const conv = await prisma.conversation.findFirst({
+            where: { contactId, workspaceId, status: { not: 'RESOLVED' } },
+            orderBy: { updatedAt: 'desc' },
+            select: { caseId: true }
+        });
+        actionCaseId = conv?.caseId || null;
+        if (!actionCaseId) {
+            const activeCase = await prisma.case.findFirst({
+                where: { contactId, workspaceId, status: 'ACTIVE' },
+                orderBy: { updatedAt: 'desc' },
+                select: { id: true }
+            });
+            actionCaseId = activeCase?.id || null;
+        }
+    } catch (_) {}
+
     switch (action.type) {
         case ACTION_TYPES.CREATE_TASK: {
             // Sorumluyu belirle — önce action config, yoksa güncel görüşmenin sorumlusu
@@ -222,7 +253,8 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     assignedToId: assigneeId,
                     sourceType: 'STAGE_ACTION',
                     status: 'PLANNED',
-                    dueDate: action.dueDays ? new Date(Date.now() + action.dueDays * 86400000) : null
+                    dueDate: action.dueDays ? new Date(Date.now() + action.dueDays * 86400000) : null,
+                    ...(actionCaseId ? { caseId: actionCaseId } : {})
                 }
             });
 
@@ -281,6 +313,24 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                 } catch (_) {}
             }
 
+                    // Fallback 3: Funnel stage veya funnel'dan team miras al
+                    if (!callTeamId && contactId) {
+                        try {
+                            const contactFunnel = await prisma.contact.findUnique({
+                                where: { id: contactId },
+                                select: { funnelStageId: true }
+                            });
+                            if (contactFunnel?.funnelStageId) {
+                                const stage = await prisma.funnelStage.findUnique({
+                                    where: { id: contactFunnel.funnelStageId },
+                                    select: { assignedTeamId: true, funnel: { select: { assignedTeamId: true } } }
+                                });
+                                callTeamId = stage?.assignedTeamId || stage?.funnel?.assignedTeamId || null;
+                                if (callTeamId) console.log(`[StageAutomation] CREATE_CALL_TASK: Team funnel/stage'den miras alındı: ${callTeamId}`);
+                            }
+                        } catch (_) {}
+                    }
+
             await prisma.contactActivity.create({
                 data: {
                     contactId,
@@ -294,7 +344,19 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     source: 'AUTOMATION',
                     retellExcluded: false,
                     status: 'PLANNED',
-                    dueDate: new Date(Date.now() + 15 * 60 * 1000), // 15 dk sonra (hemen değil)
+                    dueDate: (() => {
+                        const trNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                        const h = trNow.getHours();
+                        if (h >= 10 && h < 21) {
+                            return new Date(Date.now() + 15 * 60 * 1000); // Mesai içi → 15 dk sonra
+                        } else {
+                            const next = new Date();
+                            if (h >= 21) next.setDate(next.getDate() + 1);
+                            next.setUTCHours(7, 15, 0, 0); // 10:15 TR
+                            console.log(`⏸️ [StageAutomation] CREATE_CALL_TASK mesai dışı → ${next.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}'e ertelendi`);
+                            return next;
+                        }
+                    })(),
                     aiAgentId: null,
                     fallbackToAi: true, // Otomatik AI arama AÇIK
                     aiFallbackTriggered: false,
@@ -367,7 +429,8 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                     type: 'NOTE',
                     title: 'Otomatik mesaj planlandı',
                     description: action.message || '',
-                    status: 'PENDING'
+                    status: 'PENDING',
+                    ...(actionCaseId ? { caseId: actionCaseId } : {})
                 }
             });
             break;
@@ -467,11 +530,25 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                             description: `Stage otomasyon: RETELL_CALL`,
                             status: 'PLANNED',
                             source: 'AUTOMATION',
-                            dueDate: new Date(Date.now() + 15 * 60 * 1000), // 15 dk sonra
+                            dueDate: (() => {
+                                const trNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                                const h = trNow.getHours();
+                                if (h >= 10 && h < 21) {
+                                    return new Date(Date.now() + 15 * 60 * 1000); // Mesai içi → 15 dk sonra
+                                } else {
+                                    // Mesai dışı → ertesi gün 10:15 TR
+                                    const next = new Date();
+                                    if (h >= 21) next.setDate(next.getDate() + 1);
+                                    next.setUTCHours(7, 15, 0, 0);
+                                    console.log(`⏸️ [StageAutomation] RETELL_CALL mesai dışı → ${next.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}'e ertelendi`);
+                                    return next;
+                                }
+                            })(),
                             aiAgentId: null,
                             fallbackToAi: true, // Otomatik AI arama AÇIK
                             aiFallbackTriggered: false,
                             retellExcluded: false,
+                            ...(actionCaseId ? { caseId: actionCaseId } : {}),
                         }
                     });
                     console.log(`[StageAutomation] RETELL_CALL: Arama görevi oluşturuldu → ${contactRetell.phone}`);

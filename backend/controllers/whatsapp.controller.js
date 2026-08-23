@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { executeRule } from '../services/ruleEngine.service.js';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
@@ -1413,6 +1414,28 @@ export const webhookHandler = async (req, res) => {
                             }
                         } catch (ruleErr) {
                             console.error('❌ [RULES] Import error:', ruleErr.message);
+                        }
+
+                        // 🤖 Otomasyon Hook'ları — Mesaj bazlı kurallar
+                        try {
+                            const workspaceId = waNumber.workspaceId;
+                            const messageBody = msg_body;
+                            const ruleCtx = { contactId: contact.id, conversationId: conversation.id, message: messageBody };
+                            
+                            // Mesai dışı otomatik cevap
+                            executeRule(workspaceId, 'AFTER_HOURS_REPLY', ruleCtx).catch(e => console.error('[AutoHook] AFTER_HOURS_REPLY error:', e.message));
+                            
+                            // VIP müşteri uyarısı
+                            if (contact.category === 'VIP') {
+                                executeRule(workspaceId, 'VIP_CUSTOMER_ALERT', ruleCtx).catch(e => console.error('[AutoHook] VIP_CUSTOMER_ALERT error:', e.message));
+                            }
+                            
+                            // Şikayet eskalasyonu (sentiment negatif ise)
+                            if (conversation.sentimentScore !== null && conversation.sentimentScore < 30) {
+                                executeRule(workspaceId, 'COMPLAINT_ESCALATION', ruleCtx).catch(e => console.error('[AutoHook] COMPLAINT_ESCALATION error:', e.message));
+                            }
+                        } catch (hookErr) {
+                            console.error('[AutoHook] WhatsApp message hooks error:', hookErr.message);
                         }
                     }
                     // --- AUTOMATION RULES END ---

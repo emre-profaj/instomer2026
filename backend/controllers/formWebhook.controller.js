@@ -608,6 +608,17 @@ export const handleFormSubmission = async (req, res) => {
                 });
 
                 if (!recentTask) {
+                    // Case miras al
+                    let formCaseId = null;
+                    try {
+                        const activeCase = await prisma.case.findFirst({
+                            where: { contactId: contact.id, workspaceId: webhook.workspaceId, status: 'ACTIVE' },
+                            orderBy: { updatedAt: 'desc' },
+                            select: { id: true }
+                        });
+                        formCaseId = activeCase?.id || null;
+                    } catch (_) {}
+
                     await prisma.contactActivity.create({
                         data: {
                             workspaceId: webhook.workspaceId,
@@ -618,13 +629,14 @@ export const handleFormSubmission = async (req, res) => {
                             status: 'PLANNED',
                             source: 'AUTOMATION',
                             dueDate: new Date(),
-                            aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+                            aiAgentId: null,
                             fallbackToAi: true,
                             aiFallbackTriggered: false,
                             retellExcluded: false,
+                            ...(formCaseId ? { caseId: formCaseId } : {}),
                         }
                     });
-                    console.log(`📞 [FormWebhook] CALL görevi oluşturuldu → insana atandı, timeout sonrası robot: ${contactPhone}`);
+                    console.log(`📞 [FormWebhook] CALL görevi oluşturuldu (case: ${formCaseId || 'YOK'}): ${contactPhone}`);
                 } else {
                     console.log(`📞 [FormWebhook] Son 24h'de zaten arama görevi var — skip`);
                 }

@@ -528,3 +528,17 @@ setTimeout(() => {
 // setTimeout(() => {
 //   startSentimentAnalyzer();
 // }, 70000);
+
+// Automation Rules Cron: tüm zaman-bazlı otomasyon kurallarını işle (her 5 dk)
+import { runAutomationCron } from './services/automationCron.service.js';
+setTimeout(() => {
+  console.log('🤖 [AutomationCron] Starting automation rules processor (every 5 minutes)');
+  runAutomationCron();
+  setInterval(async () => {
+    try {
+      await runAutomationCron();
+    } catch (err) {
+      console.error('❌ [AutomationCron] Processor error:', err.message);
+    }
+  }, 5 * 60 * 1000); // 5 dakikada bir
+}, 80000);
