@@ -4546,59 +4546,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         </div>
                                         <div className="reminder-modal-footer">
                                             <button className="reminder-btn-cancel" onClick={() => { setShowActivityModal(false); setEditingActivityId(null); }}>İptal</button>
-                                            {/* Şimdi AI ile Ara butonu — yalnızca CALL düzenlemesinde ve telefon varsa */}
-                                            {editingActivityId && (activityForm.type === 'CALL' || activityForm.type === 'NOTE') && profile?.phone && (
-                                                <button
-                                                    className="reminder-btn-save"
-                                                    style={{
-                                                        background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
-                                                        border: 'none',
-                                                        color: '#fff',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: 6,
-                                                        fontSize: '0.82rem',
-                                                        fontWeight: 700,
-                                                        padding: '8px 16px',
-                                                        borderRadius: 8,
-                                                        cursor: activitySaving ? 'not-allowed' : 'pointer',
-                                                        opacity: activitySaving ? 0.6 : 1
-                                                    }}
-                                                    disabled={activitySaving}
-                                                    onClick={async () => {
-                                                        if (!confirm('🤖 AI ile hemen arama başlatılacak. Devam edilsin mi?')) return;
-                                                        setActivitySaving(true);
-                                                        try {
-                                                            // Önce atama bilgisini kaydet
-                                                            if (editingActivityId) {
-                                                                const rawId = editingActivityId.replace(/^act_/, '');
-                                                                await activityAPI.updateActivity(rawId, {
-                                                                    assignedToId: activityForm.assignedToId || null,
-                                                                    teamId: activityForm.teamId || null,
-                                                                    ...(activityForm.caseId ? { caseId: activityForm.caseId } : {})
-                                                                });
-                                                            }
-                                                            // Sonra AI arama başlat
-                                                            await retellAPI.makeCall(currentWorkspace.id, {
-                                                                toNumber: profile.phone,
-                                                                contactId: profile.id,
-                                                                contactName: profile.name || profile.firstName || 'Müşteri',
-                                                                conversationId: conversationId || null
-                                                            });
-                                                            setShowActivityModal(false);
-                                                            setEditingActivityId(null);
-                                                            fetchTimeline(profile.id);
-                                                            alert('✅ AI arama başlatıldı!');
-                                                        } catch (err) {
-                                                            alert(err.response?.data?.error || 'AI arama başlatılamadı.');
-                                                        } finally {
-                                                            setActivitySaving(false);
-                                                        }
-                                                    }}
-                                                >
-                                                    🤖 Şimdi AI ile Ara
-                                                </button>
-                                            )}
+                                            
                                             <button className="reminder-btn-save" onClick={handleSaveActivity} disabled={activitySaving}>
                                                 {activitySaving ? <Loader className="spin" size={16} /> : <Save size={16} />}
                                                 Kaydet

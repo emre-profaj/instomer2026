@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import api from '../../services/api';
+import api, { retellAPI } from '../../services/api';
 import {
     Bot, Save, Loader, RefreshCw, CheckCircle, AlertCircle,
     ChevronDown, ChevronRight, BookOpen, Zap, Settings, Link,
-    Play, Pause, Volume2
+    Play, Pause, Volume2, PhoneCall, Clock
 } from 'lucide-react';
 
 const API_BASE = '/api';
@@ -68,6 +68,12 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
     const [endCallAfterSilenceMs, setEndCallAfterSilenceMs] = useState('');
     const [boostedKeywords, setBoostedKeywords] = useState('');
 
+    // Overdue calls push
+    const [overdueCount, setOverdueCount] = useState(null);
+    const [overdueLoading, setOverdueLoading] = useState(false);
+    const [pushingCalls, setPushingCalls] = useState(false);
+    const [pushResult, setPushResult] = useState(null);
+
     const isConvFlow = agentDetail?.response_engine?.type !== 'retell-llm';
 
     const LANGUAGE_OPTIONS = [
@@ -129,6 +135,49 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
             }
         }
     }, [selectedAgentId, wsSettings]);
+
+    // Fetch overdue call count for this workspace
+    const fetchOverdueCount = useCallback(async () => {
+        if (!workspaceId) return;
+        setOverdueLoading(true);
+        try {
+            const now = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+            const res = await api.get(`/activities/workspace/${workspaceId}/list`, {
+                params: { type: 'CALL', status: 'PLANNED', dateTo: now, limit: 1 }
+            });
+            // summary.planned gives count of PLANNED activities matching the date filter
+            setOverdueCount(res.data?.summary?.planned ?? res.data?.activities?.length ?? 0);
+        } catch (e) {
+            console.error('Overdue count fetch error:', e);
+            setOverdueCount(null);
+        } finally {
+            setOverdueLoading(false);
+        }
+    }, [workspaceId]);
+
+    useEffect(() => {
+        if (selectedAgentId) fetchOverdueCount();
+    }, [selectedAgentId, fetchOverdueCount]);
+
+    const handlePushCalls = async (mode = 'call') => {
+        if (!selectedAgentId) return;
+        if (!confirm(`Bu agent ile ${mode === 'call' ? 'hemen arama başlatılacak' : 'görevler atanacak'}. Devam?`)) return;
+        setPushingCalls(true);
+        setPushResult(null);
+        try {
+            const res = await retellAPI.pushCallTasks(workspaceId, {
+                agentId: selectedAgentId,
+                mode,
+                limit: 50
+            });
+            setPushResult(res.data);
+            fetchOverdueCount(); // Refresh count
+        } catch (err) {
+            setPushResult({ error: err.response?.data?.error || err.message });
+        } finally {
+            setPushingCalls(false);
+        }
+    };
 
     const fetchAgents = async () => {
         try {
@@ -584,6 +633,95 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                             <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 6 }}>
                                 Tüm kademeler tükenirse arama iptal edilir
                             </div>
+                        </div>
+                    </div>
+
+                    {/* ─── Gecikmiş Aramaları Başlat ─────────────────────── */}
+                    <div style={{ border: '1px solid #fde68a', borderRadius: 10, padding: '16px', marginTop: '16px', marginBottom: '16px', background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#92400e', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <PhoneCall size={16} />
+                            Gecikmiş Aramaları Başlat
+                        </div>
+
+                        <div style={{ fontSize: '0.78rem', color: '#78350f', marginBottom: 12, lineHeight: 1.5 }}>
+                            Açık ve gecikmiş arama görevlerini bu AI agent ile toplu olarak aratabilirsiniz.
+                        </div>
+
+                        {/* Overdue count */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #fde68a' }}>
+                            <Clock size={16} style={{ color: '#d97706' }} />
+                            <span style={{ fontSize: '0.82rem', color: '#374151', flex: 1 }}>
+                                {overdueLoading ? (
+                                    <span style={{ color: '#9ca3af' }}><Loader size={12} className="spin" style={{ verticalAlign: 'middle', marginRight: 4 }} />Yükleniyor...</span>
+                                ) : overdueCount !== null ? (
+                                    <>Bekleyen arama görevi: <strong style={{ color: overdueCount > 0 ? '#dc2626' : '#059669', fontSize: '1rem' }}>{overdueCount}</strong></>
+                                ) : (
+                                    <span style={{ color: '#9ca3af' }}>Sayı alınamadı</span>
+                                )}
+                            </span>
+                            <button
+                                onClick={fetchOverdueCount}
+                                disabled={overdueLoading}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}
+                                title="Yenile"
+                            >
+                                <RefreshCw size={14} className={overdueLoading ? 'spin' : ''} />
+                            </button>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                                onClick={() => handlePushCalls('call')}
+                                disabled={pushingCalls || overdueCount === 0}
+                                style={{
+                                    background: pushingCalls ? '#d1d5db' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                    border: 'none', color: '#fff', padding: '8px 16px', borderRadius: 8,
+                                    fontSize: '0.82rem', fontWeight: 700, cursor: pushingCalls || overdueCount === 0 ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 6, opacity: overdueCount === 0 ? 0.5 : 1
+                                }}
+                            >
+                                {pushingCalls ? <Loader size={14} className="spin" /> : <PhoneCall size={14} />}
+                                Hemen Ara
+                            </button>
+                            <button
+                                onClick={() => handlePushCalls('assign')}
+                                disabled={pushingCalls || overdueCount === 0}
+                                style={{
+                                    background: pushingCalls ? '#d1d5db' : '#fff',
+                                    border: '1px solid #d97706', color: '#92400e', padding: '8px 16px', borderRadius: 8,
+                                    fontSize: '0.82rem', fontWeight: 600, cursor: pushingCalls || overdueCount === 0 ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 6, opacity: overdueCount === 0 ? 0.5 : 1
+                                }}
+                            >
+                                {pushingCalls ? <Loader size={14} className="spin" /> : <Bot size={14} />}
+                                Agent'a Ata (Cron Arasın)
+                            </button>
+                        </div>
+
+                        {/* Result feedback */}
+                        {pushResult && (
+                            <div style={{
+                                marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: '0.78rem',
+                                background: pushResult.error ? '#fef2f2' : '#f0fdf4',
+                                border: `1px solid ${pushResult.error ? '#fecaca' : '#bbf7d0'}`,
+                                color: pushResult.error ? '#991b1b' : '#166534'
+                            }}>
+                                {pushResult.error ? (
+                                    <>❌ {pushResult.error}</>
+                                ) : (
+                                    <>
+                                        ✅ {pushResult.message}
+                                        {pushResult.processed > 0 && <> — {pushResult.processed} arandı</>}
+                                        {pushResult.skipped > 0 && <>, {pushResult.skipped} atlandı</>}
+                                        {pushResult.assigned > 0 && <> — {pushResult.assigned} atandı</>}
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        <div style={{ fontSize: '0.7rem', color: '#b45309', marginTop: 8, fontStyle: 'italic' }}>
+                            💡 "Hemen Ara" anında arama başlatır. "Agent'a Ata" ise cron cycle'da (60sn) otomatik aranır.
                         </div>
                     </div>
 

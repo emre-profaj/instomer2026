@@ -680,7 +680,9 @@ export const retellAPI = {
     searchVoices: (workspaceId, params = {}) => {
         const query = new URLSearchParams(params).toString();
         return api.get(`/retell/${workspaceId}/voices/search${query ? `?${query}` : ''}`);
-    }
+    },
+    // Push overdue call tasks to AI agent
+    pushCallTasks: (workspaceId, data) => api.post(`/retell/${workspaceId}/push-calls`, data),
 };
 
 export const telsamAPI = {

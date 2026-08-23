@@ -1810,7 +1810,7 @@ export const processScheduledCalls = async () => {
 export const pushCallTasks = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { teamId, contactId, activityIds, dueBefore, dueAfter, mode = 'call', limit = 50 } = req.body || {};
+        const { teamId, contactId, activityIds, dueBefore, dueAfter, mode = 'call', limit = 50, agentId: requestAgentId } = req.body || {};
 
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
@@ -1857,7 +1857,7 @@ export const pushCallTasks = async (req, res) => {
                     await prisma.contactActivity.update({
                         where: { id: task.id },
                         data: {
-                            aiAgentId: workspace.retellAgentId,
+                            aiAgentId: requestAgentId || workspace.retellAgentId,
                             fallbackToAi: true,
                             aiFallbackTriggered: false, // Cron tekrar alsın
                             dueDate: task.dueDate || new Date()
@@ -1907,7 +1907,7 @@ export const pushCallTasks = async (req, res) => {
                     continue;
                 }
 
-                const effectiveAgentId = task.aiAgentId || workspace.retellAgentId;
+                const effectiveAgentId = requestAgentId || task.aiAgentId || workspace.retellAgentId;
 
                 const sc = await prisma.scheduledCall.create({
                     data: {
