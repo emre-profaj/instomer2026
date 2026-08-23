@@ -294,13 +294,26 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
       if (timeMatch) {
         const hour = parseInt(timeMatch[1], 10);
         const minute = parseInt(timeMatch[2], 10);
-        const now = new Date();
-        computedDueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0);
-        // Eğer saat geçmişse yarına ayarla
-        if (computedDueDate <= now) {
-          computedDueDate.setDate(computedDueDate.getDate() + 1);
+        // Türkiye saatini doğru hesapla (UTC+3)
+        const nowTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+        // Bugün Türkiye saatinde hedef saati oluştur
+        const targetTR = new Date(nowTR.getFullYear(), nowTR.getMonth(), nowTR.getDate(), hour, minute, 0);
+        // Eğer saat geçmişse yarına ayarla (Türkiye saatine göre)
+        if (targetTR <= nowTR) {
+          targetTR.setDate(targetTR.getDate() + 1);
         }
-        console.log(`📋 [IntentActivity] preferredCallTime "${preferredTime}" → dueDate: ${computedDueDate.toISOString()}`);
+        // Türkiye saatinden UTC'ye çevir (UTC = TR - 3 saat)
+        computedDueDate = new Date(targetTR.getTime() - 3 * 60 * 60 * 1000);
+        // NOT: toLocaleString ile oluşturulan Date nesnesi yerel timezone'a göre olduğundan
+        // offset'i tekrar hesaplamamız gerekiyor
+        // Daha güvenilir yöntem: doğrudan UTC olarak oluştur
+        const todayTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+        computedDueDate = new Date(Date.UTC(todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate(), hour - 3, minute, 0));
+        if (computedDueDate <= new Date()) {
+          // Saat geçmiş → yarına ertele
+          computedDueDate = new Date(Date.UTC(todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate() + 1, hour - 3, minute, 0));
+        }
+        console.log(`📋 [IntentActivity] preferredCallTime "${preferredTime}" → dueDate: ${computedDueDate.toISOString()} (TR: ${computedDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })})`);
       }
     }
     if (!computedDueDate && extractedData.requestedDate) {

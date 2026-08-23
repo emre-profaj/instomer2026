@@ -3579,6 +3579,36 @@ async function handleLeadgenEvent(leadValue, entryId) {
                         console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → arama ${leadDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}'e ertelendi`);
                     }
 
+                    // ─── MÜŞTERİ SAAT TERCİHİ → dueDate OVERRIDE ──────────────
+                    if (preferredTimeStr) {
+                        const ptLower = preferredTimeStr.toLowerCase();
+                        // Pattern: "18:00-19:00" veya "18.00-19.00"
+                        const rangeMatch = ptLower.match(/(\d{1,2})[.:]\s?(\d{2})\s*[-–]\s*(\d{1,2})[.:]\s?(\d{2})/);
+                        // Pattern: "18:00" veya "18.00" (tek saat)
+                        const singleMatch = !rangeMatch ? ptLower.match(/(\d{1,2})[.:]\s?(\d{2})/) : null;
+                        const timeMatch = rangeMatch || singleMatch;
+                        if (timeMatch) {
+                            const prefH = parseInt(timeMatch[1]);
+                            const prefM = parseInt(timeMatch[2]);
+                            if (prefH >= 6 && prefH <= 23) {
+                                // Türkiye saatini al ve UTC olarak hedef saati oluştur
+                                const todayTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                                leadDueDate = new Date(Date.UTC(
+                                    todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate(),
+                                    prefH - 3, prefM, 0
+                                ));
+                                // Saat geçmişse yarına ertele
+                                if (leadDueDate <= new Date()) {
+                                    leadDueDate = new Date(Date.UTC(
+                                        todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate() + 1,
+                                        prefH - 3, prefM, 0
+                                    ));
+                                }
+                                console.log(`📞 [LEADGEN] Müşteri saat tercihi: "${preferredTimeStr}" → dueDate: ${leadDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+                            }
+                        }
+                    }
+
                     // Takım ataması: conversation veya funnel'dan miras al
                     let leadTeamId = null;
                     try {

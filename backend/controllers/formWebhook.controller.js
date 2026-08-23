@@ -619,16 +619,84 @@ export const handleFormSubmission = async (req, res) => {
                         formCaseId = activeCase?.id || null;
                     } catch (_) {}
 
+                    // ─── MÜŞTERİ SAAT TERCİHİNİ PARSE ET ──────────────────────
+                    // Form verilerinden ve mesaj içeriğinden saat tercihini çıkar
+                    let callDueDate = new Date(); // default: şimdi
+                    let preferredTimeInfo = null;
+
+                    // 1. Önce form field'larından ara (unmapped fields dahil)
+                    const allFormValues = { ...normalizedData, ...(autoMapped.unmapped || {}) };
+                    for (const [fieldKey, fieldVal] of Object.entries(allFormValues)) {
+                        if (!fieldVal || typeof fieldVal !== 'string') continue;
+                        // Alan adı veya değeri saat aralığı içeriyor mu?
+                        const valLower = fieldVal.toLowerCase();
+                        // Pattern: "18:00-19:00" veya "18.00-19.00"
+                        const rangeMatch = valLower.match(/(\d{1,2})[.:]\s?(\d{2})\s*[-–]\s*(\d{1,2})[.:]\s?(\d{2})/);
+                        if (rangeMatch) {
+                            const startH = parseInt(rangeMatch[1]);
+                            const startM = parseInt(rangeMatch[2]);
+                            if (startH >= 6 && startH <= 23) {
+                                preferredTimeInfo = { hour: startH, minute: startM, source: `form field: ${fieldKey}` };
+                                break;
+                            }
+                        }
+                        // Pattern: "18:00" veya "18.00" (tek saat)
+                        const singleMatch = valLower.match(/^(\d{1,2})[.:]\s?(\d{2})$/);
+                        if (singleMatch) {
+                            const h = parseInt(singleMatch[1]);
+                            const m = parseInt(singleMatch[2]);
+                            if (h >= 6 && h <= 23) {
+                                preferredTimeInfo = { hour: h, minute: m, source: `form field: ${fieldKey}` };
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2. Bulunamadıysa mesaj içeriğinden ara
+                    if (!preferredTimeInfo && messageContent) {
+                        const msgLower = messageContent.toLowerCase();
+                        const msgRange = msgLower.match(/(\d{1,2})[.:]\s?(\d{2})\s*[-–]\s*(\d{1,2})[.:]\s?(\d{2})/);
+                        if (msgRange) {
+                            const startH = parseInt(msgRange[1]);
+                            const startM = parseInt(msgRange[2]);
+                            if (startH >= 6 && startH <= 23) {
+                                preferredTimeInfo = { hour: startH, minute: startM, source: 'message content' };
+                            }
+                        }
+                    }
+
+                    // Tercih bulunduysa → Türkiye saatine göre dueDate oluştur
+                    if (preferredTimeInfo) {
+                        const { hour, minute, source } = preferredTimeInfo;
+                        // Türkiye saatini al
+                        const todayTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                        // UTC olarak hedef saati oluştur (TR saat - 3 = UTC)
+                        callDueDate = new Date(Date.UTC(
+                            todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate(),
+                            hour - 3, minute, 0
+                        ));
+                        // Saat geçmişse yarına ertele
+                        if (callDueDate <= new Date()) {
+                            callDueDate = new Date(Date.UTC(
+                                todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate() + 1,
+                                hour - 3, minute, 0
+                            ));
+                        }
+                        console.log(`📞 [FormWebhook] Müşteri saat tercihi bulundu (${source}): ${hour}:${String(minute).padStart(2,'0')} TR → dueDate: ${callDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+                    }
+
                     await prisma.contactActivity.create({
                         data: {
                             workspaceId: webhook.workspaceId,
                             contactId: contact.id,
                             type: 'CALL',
                             title: `Arama Görevi (Form: ${name || 'Anonim'})`,
-                            description: `Form webhook üzerinden gelen lead.`,
+                            description: preferredTimeInfo
+                                ? `Form webhook üzerinden gelen lead.\nTercih edilen arama saati: ${preferredTimeInfo.hour}:${String(preferredTimeInfo.minute).padStart(2,'0')}`
+                                : `Form webhook üzerinden gelen lead.`,
                             status: 'PLANNED',
                             source: 'AUTOMATION',
-                            dueDate: new Date(),
+                            dueDate: callDueDate,
                             aiAgentId: null,
                             fallbackToAi: true,
                             aiFallbackTriggered: false,
@@ -636,7 +704,7 @@ export const handleFormSubmission = async (req, res) => {
                             ...(formCaseId ? { caseId: formCaseId } : {}),
                         }
                     });
-                    console.log(`📞 [FormWebhook] CALL görevi oluşturuldu (case: ${formCaseId || 'YOK'}): ${contactPhone}`);
+                    console.log(`📞 [FormWebhook] CALL görevi oluşturuldu (case: ${formCaseId || 'YOK'}): ${contactPhone} → dueDate: ${callDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
                 } else {
                     console.log(`📞 [FormWebhook] Son 24h'de zaten arama görevi var — skip`);
                 }
