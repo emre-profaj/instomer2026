@@ -3802,14 +3802,17 @@ async function handleCallAnalyzed(call) {
                     );
 
                     if (transcriptResult.requestedAction && transcriptResult.requestedAction !== 'null') {
-                        console.log(`🎯 [Retell Transcript] Action: ${transcriptResult.requestedAction}, Date: ${transcriptResult.requestedDate}`);
+                        console.log(`🎯 [Retell Transcript] Action: ${transcriptResult.requestedAction}, Date: ${transcriptResult.requestedDate}, HumanTransfer: ${transcriptResult.wantsHumanTransfer}`);
 
                         const contact = await prisma.contact.findUnique({
                             where: { id: callRecord.contactId },
                             select: { name: true }
                         });
 
-                        const actType = transcriptResult.requestedAction === 'VISIT' ? 'VISIT'
+                        const isHumanTransfer = transcriptResult.requestedAction === 'HUMAN_TRANSFER' || transcriptResult.wantsHumanTransfer === true;
+
+                        const actType = isHumanTransfer ? 'CALL'
+                            : transcriptResult.requestedAction === 'VISIT' ? 'VISIT'
                             : transcriptResult.requestedAction === 'MEETING' ? 'MEETING'
                             : 'CALL';
 
@@ -3842,22 +3845,105 @@ async function handleCallAnalyzed(call) {
                                 transcriptCaseId = ac?.id || null;
                             } catch (_) {}
 
+                            // ─── HUMAN_TRANSFER: Satış takımından birine ata ──────────────
+                            let assignedToId = null;
+                            let assignedTeamId = null;
+
+                            if (isHumanTransfer) {
+                                try {
+                                    // 1. Conversation'ın atandığı takımı bul
+                                    const conv = await prisma.conversation.findFirst({
+                                        where: { contactId: callRecord.contactId, workspaceId: callRecord.workspaceId },
+                                        orderBy: { lastMessageAt: 'desc' },
+                                        select: { assignedTeamId: true, assignedToId: true }
+                                    });
+
+                                    // 2. Takım varsa → takımdaki üyelerden birine ata
+                                    const teamId = conv?.assignedTeamId;
+                                    if (teamId) {
+                                        assignedTeamId = teamId;
+                                        const members = await prisma.teamMember.findMany({
+                                            where: { teamId },
+                                            select: { userId: true }
+                                        });
+                                        if (members.length > 0) {
+                                            // Round-robin: en az görevi olan üyeye ata
+                                            const memberIds = members.map(m => m.userId);
+                                            const taskCounts = await prisma.contactActivity.groupBy({
+                                                by: ['assignedToId'],
+                                                where: {
+                                                    assignedToId: { in: memberIds },
+                                                    status: 'PLANNED',
+                                                    workspaceId: callRecord.workspaceId
+                                                },
+                                                _count: true
+                                            });
+                                            const countMap = new Map(taskCounts.map(t => [t.assignedToId, t._count]));
+                                            // En az görevi olan üye
+                                            assignedToId = memberIds.reduce((best, id) =>
+                                                (countMap.get(id) || 0) < (countMap.get(best) || 0) ? id : best
+                                            , memberIds[0]);
+                                        }
+                                    }
+
+                                    // 3. Takım yoksa → workspace'teki herhangi bir takımın üyesini bul
+                                    if (!assignedToId) {
+                                        const firstTeam = await prisma.team.findFirst({
+                                            where: { workspaceId: callRecord.workspaceId },
+                                            include: { members: { select: { userId: true }, take: 5 } }
+                                        });
+                                        if (firstTeam?.members?.length > 0) {
+                                            assignedTeamId = firstTeam.id;
+                                            assignedToId = firstTeam.members[Math.floor(Math.random() * firstTeam.members.length)].userId;
+                                        }
+                                    }
+
+                                    console.log(`👤 [Retell Transcript] HUMAN_TRANSFER → assignedTo: ${assignedToId || 'YOK'}, team: ${assignedTeamId || 'YOK'}`);
+                                } catch (teamErr) {
+                                    console.error('⚠️ [Retell Transcript] Takım atama hatası:', teamErr.message);
+                                }
+                            }
+
                             const typeLabels = { CALL: 'Tekrar Arama', VISIT: 'Ziyaret', MEETING: 'Görüşme' };
+                            const title = isHumanTransfer
+                                ? `📞 Yönetici Araması: ${contact?.name || callRecord.toNumber}`
+                                : `${typeLabels[actType]}: ${contact?.name || callRecord.toNumber}`;
+
+                            const description = isHumanTransfer
+                                ? `Müşteri AI görüşmesinde gerçek bir kişiyle/yöneticiyle konuşmak istedi.\n"${transcriptResult.rawRequest || ''}"`
+                                : `AI görüşmesinden: "${transcriptResult.rawRequest || ''}"`;
+
                             await prisma.contactActivity.create({
                                 data: {
                                     type: actType,
                                     status: 'PLANNED',
-                                    priority: 'NORMAL',
-                                    title: `${typeLabels[actType]}: ${contact?.name || callRecord.toNumber}`,
-                                    description: `AI görüşmesinden: "${transcriptResult.rawRequest || ''}"`,
+                                    priority: isHumanTransfer ? 'HIGH' : 'NORMAL',
+                                    title,
+                                    description,
                                     dueDate,
                                     contactId: callRecord.contactId,
                                     workspaceId: callRecord.workspaceId,
-                                    source: 'HUMAN_REQUESTED',
-                                    ...(transcriptCaseId ? { caseId: transcriptCaseId } : {})
+                                    source: isHumanTransfer ? 'AI_CALL' : 'HUMAN_REQUESTED',
+                                    // HUMAN_TRANSFER → gerçek kişiye ata, AI aramasın
+                                    // CALL (sonra arayın) → AI tekrar arasın
+                                    ...(isHumanTransfer && assignedToId ? { assignedToId } : {}),
+                                    ...(assignedTeamId ? { teamId: assignedTeamId } : {}),
+                                    ...(isHumanTransfer ? {
+                                        retellExcluded: true,   // AI bu görevi almasın
+                                        fallbackToAi: false     // AI fallback kapalı
+                                    } : {
+                                        retellExcluded: false,   // AI arasın
+                                        fallbackToAi: true       // AI devralabilir
+                                    }),
+                                    ...(transcriptCaseId ? { caseId: transcriptCaseId } : {}),
                                 }
                             });
-                            console.log(`✅ [Retell Transcript] Otomatik ${actType} aktivitesi oluşturuldu`);
+
+                            if (isHumanTransfer) {
+                                console.log(`✅ [Retell Transcript] YÖNETİCİ ARAMA görevi oluşturuldu → ${assignedToId || 'atanmadı'}`);
+                            } else {
+                                console.log(`✅ [Retell Transcript] Otomatik ${actType} aktivitesi oluşturuldu`);
+                            }
 
                             // Rule engine tetikle — takım ataması ve bildirimler için
                             if (actType === 'MEETING' || actType === 'VISIT') {
@@ -3868,7 +3954,7 @@ async function handleCallAnalyzed(call) {
                                         dateTime: dueDate
                                     }).catch(e => console.error('⚠️ [Retell] Appointment planning error:', e.message));
                                 } catch(e) {}
-                            } else if (actType === 'CALL') {
+                            } else if (actType === 'CALL' && !isHumanTransfer) {
                                 try {
                                     const { executeAutoCallPlanning } = await import('./rules.controller.js');
                                     executeAutoCallPlanning(callRecord.workspaceId, callRecord.contactId, 'RETELL_CALL').catch(e =>

@@ -309,20 +309,20 @@ ${typeof transcript === 'string' ? transcript.substring(0, 3000) : JSON.stringif
 ${summary || 'Yok'}
 
 ### GÖREV ###
-Kişi tekrar aranmak, ziyaret edilmek veya görüşme planlamak istiyor mu?
+Kişi aşağıdakilerden birini istiyor mu?
 
-Örnek cümleler:
-- "Beni yarın arayın" → CALL, yarının tarihi
-- "2 hafta sonra tekrar arayın" → CALL, 14 gün sonra
-- "Ofise gelin göstereyim" → VISIT
-- "Cumartesi müsaitim" → MEETING, bu cumartesi
-- "Tekrar aramayın" → null (aksiyon yok)
+1. Tekrar aranmak (CALL) — "Beni yarın arayın", "Akşam tekrar arayın", "Sonra arar mısınız?"
+2. Ziyaret edilmek (VISIT) — "Ofise gelin", "Yerinde görelim"
+3. Görüşme planlamak (MEETING) — "Cumartesi görüşelim"
+4. Yönetici/gerçek kişiyle konuşmak (HUMAN_TRANSFER) — "Yöneticinizle konuşmak istiyorum", "Gerçek birini bağlayın", "Müdürünüzü bağlar mısınız?", "Robot değil insanla konuşmak istiyorum"
+5. Tekrar aramayın (null) — "İstemiyorum", "Tekrar aramayın"
 
 SADECE JSON döndür:
 {
-  "requestedAction": "CALL | VISIT | MEETING | null",
+  "requestedAction": "CALL | VISIT | MEETING | HUMAN_TRANSFER | null",
   "requestedDate": "ISO tarih string veya null",
-  "rawRequest": "kişinin ilgili cümlesi veya null"
+  "rawRequest": "kişinin ilgili cümlesi veya null",
+  "wantsHumanTransfer": true/false
 }`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
