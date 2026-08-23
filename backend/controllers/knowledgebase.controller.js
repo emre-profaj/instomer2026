@@ -2,7 +2,6 @@ import prisma from '../lib/prisma.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import Retell from 'retell-sdk';
 
 /**
  * Instomer KB girişini Retell'e otomatik senkronize et.
@@ -17,6 +16,7 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
         });
         if (!workspace?.retellApiKey) return; // Retell yapılandırılmamış
 
+        const { default: Retell } = await import('retell-sdk');
         const client = new Retell({ apiKey: workspace.retellApiKey });
         let retellKbId = kbEntry.retellKbId;
         let isNew = false;
@@ -93,6 +93,7 @@ const autoDeleteFromRetell = async (workspaceId, retellKbId) => {
         });
         if (!workspace?.retellApiKey) return;
 
+        const { default: Retell } = await import('retell-sdk');
         const client = new Retell({ apiKey: workspace.retellApiKey });
         await client.knowledgeBase.delete(retellKbId);
         console.log(`🗑️ [AutoSync] Deleted Retell KB ${retellKbId}`);
