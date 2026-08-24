@@ -188,10 +188,12 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
     });
 
     // Channel Enable states
-    const [whatsappEnabled, setWhatsappEnabled] = useState(bot.whatsappEnabled || false);
-    const [facebookEnabled, setFacebookEnabled] = useState(bot.facebookEnabled || false);
-    const [instagramEnabled, setInstagramEnabled] = useState(bot.instagramEnabled || false);
-    const [widgetEnabled, setWidgetEnabled] = useState(bot.widgetEnabled || false);
+    // Legacy support: if all are false in DB, we assume it's a legacy bot and render them as true by default
+    const hasAnyEnabled = bot.whatsappEnabled || bot.facebookEnabled || bot.instagramEnabled || bot.widgetEnabled;
+    const [whatsappEnabled, setWhatsappEnabled] = useState(hasAnyEnabled ? bot.whatsappEnabled : true);
+    const [facebookEnabled, setFacebookEnabled] = useState(hasAnyEnabled ? bot.facebookEnabled : true);
+    const [instagramEnabled, setInstagramEnabled] = useState(hasAnyEnabled ? bot.instagramEnabled : true);
+    const [widgetEnabled, setWidgetEnabled] = useState(hasAnyEnabled ? bot.widgetEnabled : true);
 
     // Auto-reply delay states
     const [autoReplyDelayEnabled, setAutoReplyDelayEnabled] = useState(bot.autoReplyDelayEnabled || false);
@@ -242,10 +244,11 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         } catch {
             setScheduleDays([]);
         }
-        setWhatsappEnabled(bot.whatsappEnabled || false);
-        setFacebookEnabled(bot.facebookEnabled || false);
-        setInstagramEnabled(bot.instagramEnabled || false);
-        setWidgetEnabled(bot.widgetEnabled || false);
+        const hasAny = bot.whatsappEnabled || bot.facebookEnabled || bot.instagramEnabled || bot.widgetEnabled;
+        setWhatsappEnabled(hasAny ? bot.whatsappEnabled : true);
+        setFacebookEnabled(hasAny ? bot.facebookEnabled : true);
+        setInstagramEnabled(hasAny ? bot.instagramEnabled : true);
+        setWidgetEnabled(hasAny ? bot.widgetEnabled : true);
         setAutoReplyDelayEnabled(bot.autoReplyDelayEnabled || false);
         setAutoReplyDelaySeconds(bot.autoReplyDelaySeconds || 30);
         setAutoReplyDelayMessage(bot.autoReplyDelayMessage || '');
@@ -468,7 +471,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                         <div style={{ marginTop: '15px', padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                             <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: '500', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 🤖 Çalışacağı Kanallar 
-                                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>(Aktif etmek için tıklayın, kapatılan kanallarda bot susar)</span>
+                                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>(Kapatmak istediğiniz kanalın üzerine tıklayın)</span>
                             </div>
                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                 <div 
