@@ -1517,7 +1517,36 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             } else if (channel?.toLowerCase() === 'email' && conversation?.emailChannel?.assignedBot) {
                 console.log(`✅ Using Email-Assigned Bot: ${conversation.emailChannel.assignedBot.name}`);
                 activeBot = conversation.emailChannel.assignedBot;
-            } else if (channel?.toLowerCase() === 'widget') {
+            }
+            
+            // ─── KANAL BAZLI BOT KISITLAMALARI (UI'daki Switchler) ───
+            if (activeBot) {
+                const channelLower = channel?.toLowerCase() || '';
+                
+                // For COMMENTS type, we always allow the bot since it's specifically assigned to the page's comments
+                if (type !== 'COMMENTS' && channelLower) {
+                    // Check if the bot has explicitly defined channel restrictions
+                    const hasAnyEnabled = activeBot.whatsappEnabled || activeBot.facebookEnabled || activeBot.instagramEnabled || activeBot.widgetEnabled;
+                    
+                    // If NO channels are explicitly enabled, we assume it's a legacy bot and allow all.
+                    // If AT LEAST ONE channel is enabled, we strictly enforce the flags.
+                    if (hasAnyEnabled) {
+                        let isChannelAllowed = true;
+                        if (channelLower === 'whatsapp' && !activeBot.whatsappEnabled) isChannelAllowed = false;
+                        else if (channelLower === 'facebook' && !activeBot.facebookEnabled) isChannelAllowed = false;
+                        else if (channelLower === 'instagram' && !activeBot.instagramEnabled) isChannelAllowed = false;
+                        else if (channelLower === 'widget' && !activeBot.widgetEnabled) isChannelAllowed = false;
+                        
+                        if (!isChannelAllowed) {
+                            console.log(`🚫 Bot ${activeBot.name} is DISABLED for channel ${channelLower}. Skipping AI reply.`);
+                            if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
+                            return null;
+                        }
+                    }
+                }
+            }
+            
+            if (channel?.toLowerCase() === 'widget' && !activeBot) {
                 // For Widget, check if there's a WebWidget with assigned bot
                 const webWidget = await prisma.webWidget.findFirst({
                     where: {

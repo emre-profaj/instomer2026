@@ -187,6 +187,12 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         }
     });
 
+    // Channel Enable states
+    const [whatsappEnabled, setWhatsappEnabled] = useState(bot.whatsappEnabled || false);
+    const [facebookEnabled, setFacebookEnabled] = useState(bot.facebookEnabled || false);
+    const [instagramEnabled, setInstagramEnabled] = useState(bot.instagramEnabled || false);
+    const [widgetEnabled, setWidgetEnabled] = useState(bot.widgetEnabled || false);
+
     // Auto-reply delay states
     const [autoReplyDelayEnabled, setAutoReplyDelayEnabled] = useState(bot.autoReplyDelayEnabled || false);
     const [autoReplyDelaySeconds, setAutoReplyDelaySeconds] = useState(bot.autoReplyDelaySeconds || 30);
@@ -236,6 +242,10 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         } catch {
             setScheduleDays([]);
         }
+        setWhatsappEnabled(bot.whatsappEnabled || false);
+        setFacebookEnabled(bot.facebookEnabled || false);
+        setInstagramEnabled(bot.instagramEnabled || false);
+        setWidgetEnabled(bot.widgetEnabled || false);
         setAutoReplyDelayEnabled(bot.autoReplyDelayEnabled || false);
         setAutoReplyDelaySeconds(bot.autoReplyDelaySeconds || 30);
         setAutoReplyDelayMessage(bot.autoReplyDelayMessage || '');
@@ -305,6 +315,10 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 name: name,
                 role: role,
                 prompt: prompt,
+                whatsappEnabled: whatsappEnabled,
+                facebookEnabled: facebookEnabled,
+                instagramEnabled: instagramEnabled,
+                widgetEnabled: widgetEnabled,
                 // Scheduler
                 schedulerEnabled,
                 scheduleStartTime: schedulerEnabled ? scheduleStartTime : null,
@@ -450,6 +464,31 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                         ))}
 
                         {/* Hiç atama yoksa */}
+                        {/* Toggle settings for channels */}
+                        <div style={{ marginTop: '15px', padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ marginBottom: '10px', fontSize: '13px', fontWeight: '500', color: '#475569' }}>
+                                🤖 Çalışacağı Kanallar (Kapatılan kanallarda bot cevap vermez)
+                            </div>
+                            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={whatsappEnabled} onChange={(e) => setWhatsappEnabled(e.target.checked)} />
+                                    📱 WhatsApp
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={facebookEnabled} onChange={(e) => setFacebookEnabled(e.target.checked)} />
+                                    💬 Facebook
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={instagramEnabled} onChange={(e) => setInstagramEnabled(e.target.checked)} />
+                                    📸 Instagram
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={widgetEnabled} onChange={(e) => setWidgetEnabled(e.target.checked)} />
+                                    🌐 Canlı Destek
+                                </label>
+                            </div>
+                        </div>
+
                         {(!bot.assignments.routedChannels?.facebook?.length &&
                             !bot.assignments.routedChannels?.instagram?.length &&
                             !bot.assignments.routedChannels?.whatsapp?.length &&
