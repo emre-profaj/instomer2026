@@ -1378,6 +1378,17 @@ async function checkOverdueAgentCalls() {
             const phone = activity.contact?.phone?.trim();
             if (!phone || scheduledActivityIds.has(activity.id)) continue;
 
+            // Check Marketing Consent for aiCall
+            if (activity.contact?.consentChannels) {
+                try {
+                    const consent = JSON.parse(activity.contact.consentChannels);
+                    if (consent.aiCall === false) {
+                        console.log(`⏭️ [CallRouter] Contact ${activity.contact.id} opted out of aiCall, skipping activity ${activity.id}`);
+                        continue;
+                    }
+                } catch (e) {}
+            }
+
             // Determine which AI agent to use
             let agentId = activity.aiAgentId; // Direct assignment takes priority
 
@@ -1418,6 +1429,11 @@ async function checkOverdueAgentCalls() {
             const wsConfig = activeWorkspaces.find(w => w.id === activity.workspaceId);
             const agentConfigs = wsConfig?.retellAutoCallTriggers?.agentConfigs || {};
             const agentCfg = agentConfigs[agentId];
+
+            // ─── AGENT AKTİF KONTROLÜ ────────────────────────────────────────
+            if (agentCfg && agentCfg.active === false) {
+                continue; // Pasif agent, atla
+            }
 
             // taskScope → eski flag'lere dönüştür (geriye uyumluluk)
             if (agentCfg && agentCfg.taskScope && !('handlePool' in agentCfg)) {
@@ -3251,72 +3267,22 @@ async function handleCallEnded(call) {
                     const nextAttempt = scheduledCall.attemptNumber + 1;
                     const retryDelayLabel = retryDelay >= 1440 ? `${Math.round(retryDelay / 1440)} gün` : retryDelay >= 60 ? `${Math.round(retryDelay / 60)} saat` : `${retryDelay} dk`;
 
-                    // 1. ESKİ GÖREVİ KAPAT — "Aradı, ulaşamadı" notu ile
+                    // 1. GÖREVİ AÇIK BIRAK — Sadece notu güncelle, kapatma
                     if (scheduledCall.createdById?.startsWith('activity_')) {
                         const activityId = scheduledCall.createdById.replace('activity_', '');
                         try {
                             await prisma.contactActivity.update({
                                 where: { id: activityId },
                                 data: {
-                                    status: 'COMPLETED',
-                                    isCompleted: true,
-                                    completedAt: new Date(),
-                                    result: `📞 Aradı, ulaşamadı. (Sebep: ${disconnectReason || 'Bilinmiyor'}) — Deneme ${currentAttempt}/${scheduledCall.maxAttempts}`,
-                                    source: 'AI_CALL'
+                                    result: `📞 Deneme ${currentAttempt}/${scheduledCall.maxAttempts}: Ulaşılamadı (${disconnectReason || 'Bilinmiyor'}). ${retryDelayLabel} sonra tekrar aranacak.`,
+                                    dueDate: nextAttemptAt
                                 }
                             });
-                            console.log(`✅ [Retry] Eski görev kapatıldı: ${activityId} — "Aradı, ulaşamadı"`);
+                            console.log(`📋 [Retry] Görev açık bırakıldı, not güncellendi: ${activityId} — Deneme ${currentAttempt}/${scheduledCall.maxAttempts}`);
                         } catch (_) {}
                     }
 
-                    // 2. YENİ GÖREV AÇ — sonraki kademe zamanına planla
-                    let newActivityId = null;
-                    if (scheduledCall.contactId) {
-                        try {
-                            // Eski activity'den teamId ve diğer bilgileri al
-                            let teamId = null;
-                            let callTopic = null;
-                            let aiAgentId = scheduledCall.agentId;
-                            let retryCaseId = null;
-                            if (scheduledCall.createdById?.startsWith('activity_')) {
-                                const oldActivity = await prisma.contactActivity.findUnique({
-                                    where: { id: scheduledCall.createdById.replace('activity_', '') },
-                                    select: { teamId: true, callTopic: true, aiAgentId: true, caseId: true }
-                                });
-                                if (oldActivity) {
-                                    teamId = oldActivity.teamId;
-                                    callTopic = oldActivity.callTopic;
-                                    retryCaseId = oldActivity.caseId;
-                                    if (oldActivity.aiAgentId) aiAgentId = oldActivity.aiAgentId;
-                                }
-                            }
-
-                            const newActivity = await prisma.contactActivity.create({
-                                data: {
-                                    contactId: scheduledCall.contactId,
-                                    workspaceId: scheduledCall.workspaceId,
-                                    type: 'CALL',
-                                    title: `🔄 Tekrar Arama (${nextAttempt}/${scheduledCall.maxAttempts})`,
-                                    description: `Önceki arama başarısız oldu (${disconnectReason || 'Bilinmiyor'}). ${retryDelayLabel} sonra tekrar aranacak.`,
-                                    dueDate: nextAttemptAt,
-                                    status: 'PLANNED',
-                                    source: 'AI_CALL',
-                                    priority: 'HIGH',
-                                    aiAgentId: aiAgentId,
-                                    aiFallbackTriggered: true,
-                                    teamId: teamId,
-                                    callTopic: callTopic,
-                                    ...(retryCaseId ? { caseId: retryCaseId } : {})
-                                }
-                            });
-                            newActivityId = newActivity.id;
-                            console.log(`📋 [Retry] Yeni görev açıldı: ${newActivity.id} — ${nextAttemptAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
-                        } catch (err) {
-                            console.error(`❌ [Retry] Yeni görev oluşturulamadı:`, err.message);
-                        }
-                    }
-
-                    // 3. YENİ ScheduledCall oluştur
+                    // 2. YENİ ScheduledCall oluştur (aynı activity üzerinden)
                     await prisma.scheduledCall.create({
                         data: {
                             workspaceId: scheduledCall.workspaceId,
@@ -3326,7 +3292,7 @@ async function handleCallEnded(call) {
                             agentId: scheduledCall.agentId,
                             scheduledAt: nextAttemptAt,
                             status: 'PENDING',
-                            createdById: newActivityId ? `activity_${newActivityId}` : scheduledCall.createdById,
+                            createdById: scheduledCall.createdById,
                             dynamicVariables: scheduledCall.dynamicVariables,
                             attemptNumber: nextAttempt,
                             maxAttempts: scheduledCall.maxAttempts,
@@ -3338,7 +3304,7 @@ async function handleCallEnded(call) {
                     console.log(`🔄 [Retry] Deneme ${nextAttempt}/${scheduledCall.maxAttempts} planlandı: ${nextAttemptAt.toLocaleString('tr-TR')} (+${retryDelayLabel}) | Numara: ${scheduledCall.toNumber}`);
 
                 } else if (scheduledCall && scheduledCall.attemptNumber >= scheduledCall.maxAttempts) {
-                    // Tüm denemeler tükendi — son görevi kapat
+                    // Tüm denemeler tükendi — görevi ULAŞILAMADI olarak kapat
                     console.log(`❌ [Retry] Tüm denemeler tükendi (${scheduledCall.attemptNumber}/${scheduledCall.maxAttempts}) | Numara: ${scheduledCall.toNumber}`);
                     if (scheduledCall.createdById?.startsWith('activity_')) {
                         const activityId = scheduledCall.createdById.replace('activity_', '');
@@ -3349,7 +3315,7 @@ async function handleCallEnded(call) {
                                     status: 'CANCELLED',
                                     isCompleted: true,
                                     completedAt: new Date(),
-                                    result: `❌ ${scheduledCall.maxAttempts} denemede de ulaşılamadı. Son sebep: ${disconnectReason || 'Bilinmiyor'}`,
+                                    result: `❌ ${scheduledCall.maxAttempts} kere arandı, ulaşılamadı. Son sebep: ${disconnectReason || 'Bilinmiyor'}`,
                                     source: 'AI_CALL'
                                 }
                             });
@@ -4804,52 +4770,53 @@ export const syncKnowledgeBase = async (req, res) => {
             return res.status(400).json({ error: 'Seçili bilgi bankası bulunamadı veya içerik yok' });
         }
 
-        // 2. Tüm içerikleri tek metin olarak birleştir
-        const combinedText = kbEntries.map(kb => {
-            return `# ${kb.title || 'Başlıksız'}\n\n${kb.content || ''}`;
-        }).join('\n\n===\n\n');
+        // 2. Her bilgiyi ayrı ayrı kaynak olarak hazırla
+        const textsToAdd = kbEntries.map(kb => ({
+            title: kb.title || 'Başlıksız',
+            text: kb.content || ''
+        })).filter(t => t.text.trim());
 
-        if (!combinedText.trim()) {
+        if (textsToAdd.length === 0) {
             return res.status(400).json({ error: 'Bilgi bankasında içerik bulunamadı' });
         }
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         let retellKbId = workspace.retellKnowledgeBaseId;
-        let isNew = false;
 
+        // Eski KB'yi tamamen sil (varsa)
         if (retellKbId) {
-            // Mevcut KB'yi güncelle: önce kaynakları sil, sonra yeni ekle
             try {
-                const existingKb = await client.knowledgeBase.retrieve(retellKbId);
-                const sources = existingKb.knowledge_base_sources || [];
-                for (const src of sources) {
-                    await client.knowledgeBase.deleteSource(retellKbId, src.source_id).catch(() => {});
-                }
-                console.log(`🔄 [RetellKB] Cleared ${sources.length} old sources from KB ${retellKbId}`);
+                await client.knowledgeBase.delete(retellKbId);
+                console.log(`🗑️ [RetellKB] Deleted old KB ${retellKbId}`);
             } catch (e) {
-                // KB silinmiş olabilir, yeniden oluştur
-                console.warn(`⚠️ [RetellKB] Existing KB not found, creating new: ${e.message}`);
-                retellKbId = null;
+                console.warn(`⚠️ [RetellKB] Old KB delete failed (may not exist): ${e.message}`);
             }
         }
 
-        if (!retellKbId) {
-            // İlk sync: yeni KB oluştur
-            const newKb = await client.knowledgeBase.create({
-                knowledge_base_name: `Instomer KB — ${workspaceId.substring(0, 8)}`
-            });
-            retellKbId = newKb.knowledge_base_id;
-            isNew = true;
-            console.log(`✅ [RetellKB] Created new KB: ${retellKbId}`);
-        }
-
-        // 3. Birleştirilmiş içeriği KB'ye ekle
-        await client.knowledgeBase.addSources(retellKbId, {
-            knowledge_base_texts: [{
-                title: 'Instomer Bilgi Bankası',
-                text: combinedText
-            }]
+        // Yeni KB oluştur
+        const newKb = await client.knowledgeBase.create({
+            knowledge_base_name: `Instomer KB — ${workspaceId.substring(0, 8)}`
         });
+        retellKbId = newKb.knowledge_base_id;
+        console.log(`✅ [RetellKB] Created new KB: ${retellKbId}`);
+
+        // Her bilgiyi ayrı ayrı kaynak olarak ekle (addRetellKBSource ile aynı pattern)
+        const axios = (await import('axios')).default;
+        for (const item of textsToAdd) {
+            const form = new FormData();
+            form.append('knowledge_base_texts', JSON.stringify([{ title: item.title, text: item.text }]));
+            await axios.post(
+                `https://api.retellai.com/add-knowledge-base-sources/${retellKbId}`,
+                form,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${workspace.retellApiKey}`,
+                        ...form.getHeaders?.() || {}
+                    }
+                }
+            );
+            console.log(`✅ [RetellKB] Added source: "${item.title}" to KB ${retellKbId}`);
+        }
 
         // 4. KB id'sini workspace'e kaydet
         await prisma.workspace.update({
@@ -4857,21 +4824,29 @@ export const syncKnowledgeBase = async (req, res) => {
             data: { retellKnowledgeBaseId: retellKbId }
         });
 
-        // 5. Agent'a bu KB'yi bağla
+        // 5. Agent'a bu KB'yi bağla (mevcut KB'leri koruyarak)
         if (effectiveAgentId) {
-            await client.agent.update(effectiveAgentId, {
-                knowledge_base_ids: [retellKbId]
-            });
-            console.log(`✅ [RetellKB] KB ${retellKbId} linked to agent ${effectiveAgentId}`);
+            try {
+                const agent = await client.agent.retrieve(effectiveAgentId);
+                const existingKbIds = agent.knowledge_base_ids || [];
+                const updatedKbIds = [...new Set([...existingKbIds, retellKbId])];
+                await client.agent.update(effectiveAgentId, {
+                    knowledge_base_ids: updatedKbIds
+                });
+                console.log(`✅ [RetellKB] KB ${retellKbId} linked to agent ${effectiveAgentId} (total: ${updatedKbIds.length})`);
+            } catch (agentErr) {
+                console.warn(`⚠️ [RetellKB] Agent link failed: ${agentErr.message}`);
+            }
         }
 
         res.json({
             success: true,
             knowledgeBaseId: retellKbId,
-            isNew,
+            isNew: true,
+            sourceCount: textsToAdd.length,
             kbCount: kbEntries.length,
             agentLinked: !!effectiveAgentId,
-            message: `${kbEntries.length} bilgi bankası Retell'e sync edildi${effectiveAgentId ? ' ve agent\'a bağlandı' : ''}`
+            message: `${textsToAdd.length} bilgi ayrı ayrı Retell'e sync edildi${effectiveAgentId ? ' ve agent\'a bağlandı' : ''}`
         });
     } catch (error) {
         console.error('❌ [RetellKB] syncKnowledgeBase error:', error.message);

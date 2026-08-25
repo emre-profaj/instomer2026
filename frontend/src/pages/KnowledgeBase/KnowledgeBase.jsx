@@ -496,15 +496,6 @@ const KnowledgeBase = () => {
                     <h1>Knowledge Base</h1>
                     <p className="text-muted">{t('knowledgeBase.description')}</p>
                 </div>
-                <button
-                    className="btn btn-retell-sync"
-                    onClick={handleRetellSync}
-                    disabled={syncingRetell || knowledgeEntries.length === 0}
-                    title="Bilgi bankasını AI sesli asistana senkronize et"
-                >
-                    {syncingRetell ? <RefreshCw size={16} className="spinning" /> : <Phone size={16} />}
-                    {syncingRetell ? 'Gönderiliyor...' : 'Sesli Asistana Sync Et'}
-                </button>
             </div>
 
             {/* Tabs */}
@@ -1109,6 +1100,31 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
             {/* List Tab */}
             {activeTab === 'list' && (
                 <>
+                    {/* Sync header bar */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '16px',
+                        padding: '12px 16px',
+                        background: '#f8fafc',
+                        borderRadius: '10px',
+                        border: '1px solid #e2e8f0'
+                    }}>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
+                            📚 Toplam {knowledgeEntries.length} bilgi kaydı
+                        </div>
+                        <button
+                            className="btn btn-retell-sync"
+                            onClick={handleRetellSync}
+                            disabled={syncingRetell || knowledgeEntries.length === 0}
+                            title="Bilgi bankasını AI sesli asistana senkronize et"
+                            style={{ margin: 0 }}
+                        >
+                            {syncingRetell ? <RefreshCw size={16} className="spinning" /> : <Phone size={16} />}
+                            {syncingRetell ? 'Gönderiliyor...' : 'Sesli Asistana Sync Et'}
+                        </button>
+                    </div>
                     {kbLoading ? (
                         <div className="loading">Loading...</div>
                     ) : knowledgeEntries.length === 0 ? (
