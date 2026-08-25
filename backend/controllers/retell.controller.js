@@ -4747,6 +4747,7 @@ export const listKnowledgeBases = async (req, res) => {
  */
 export const syncKnowledgeBase = async (req, res) => {
     try {
+        console.log('🔥 [RetellKB] === NEW SYNC CODE v2 RUNNING ===');
         const { workspaceId } = req.params;
         const { agentId, instomerKbIds = [] } = req.body;
 
@@ -4849,8 +4850,11 @@ export const syncKnowledgeBase = async (req, res) => {
             message: `${textsToAdd.length} bilgi ayrı ayrı Retell'e sync edildi${effectiveAgentId ? ' ve agent\'a bağlandı' : ''}`
         });
     } catch (error) {
-        console.error('❌ [RetellKB] syncKnowledgeBase error:', error.message);
-        res.status(500).json({ error: error.message || 'KB sync başarısız' });
+        const respData = error.response?.data;
+        const errMsg = respData?.message || respData?.error || error.message || 'KB sync başarısız';
+        console.error('❌ [RetellKB] syncKnowledgeBase error:', errMsg);
+        console.error('❌ [RetellKB] Full error:', JSON.stringify({ message: error.message, status: error.response?.status, data: respData }));
+        res.status(error.response?.status || 500).json({ error: errMsg });
     }
 };
 
