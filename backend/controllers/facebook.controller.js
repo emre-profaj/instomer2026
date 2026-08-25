@@ -2201,6 +2201,7 @@ export const getContactProfile = async (req, res) => {
         }
 
         const localData = {
+            ...conversation.contact,
             id: conversation.contact.id,
             facebookId: conversation.contact.facebookId,
             phone: conversation.contact.phone || null,
@@ -2214,6 +2215,15 @@ export const getContactProfile = async (req, res) => {
             isBlocked: conversation.contact.isBlocked || false,
             blockedAt: conversation.contact.blockedAt || null,
             blockedReason: conversation.contact.blockedReason || null,
+            marketingOptOut: conversation.contact.marketingOptOut || false,
+            marketingOptOutAt: conversation.contact.marketingOptOutAt || null,
+            consentChannels: conversation.contact.consentChannels || '{"messaging":true,"call":true,"aiCall":true}',
+            phones: conversation.contact.phones || '[]',
+            emails: conversation.contact.emails || '[]',
+            country: conversation.contact.country || null,
+            city: conversation.contact.city || null,
+            language: conversation.contact.language || null,
+            company: conversation.contact.company || null,
             // Notes
             notes: conversation.contact.notes || null,
             // AI Analysis (persisted)
@@ -3521,19 +3531,9 @@ async function handleLeadgenEvent(leadValue, entryId) {
         }
         // --- AUTOMATION TRIGGER END ---
 
-        // --- FLOW ENGINE TRIGGER ---
-        try {
-            const { executeFlowsByTrigger } = await import('./flow.controller.js');
-            executeFlowsByTrigger(facebookPage.workspaceId, 'NEW_FORM', {
-                contact, lead: savedLead, conversation,
-                formData: { name: leadName, email: leadEmail, phone: leadPhone }
-            });
-        } catch (flowErr) {
-            console.error('⚠️ [LEADGEN] Flow engine error:', flowErr.message);
-        }
-        // --- FLOW ENGINE TRIGGER END ---
 
-        // --- ARAMA GÖREVİ OLUŞTUR (görev tabanlı) ---
+        // --- ARAMA GÖREVİ OLUŞTUR (görev tabanlı) — Flow Engine'den ÖNCE çalışmalı ---
+        // Böylece müşterinin tercih ettiği saat korunur, Flow'un AI_CALL'ı dedup ile skip olur
         if (leadPhone) {
             try {
                 // Tercih edilen arama zamanını form verilerinden çıkar
@@ -3572,32 +3572,27 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     if (leadHour >= 10 && leadHour < 21) {
                         leadDueDate = new Date(); // Mesai içinde → şimdi
                     } else {
-                        // Mesai dışı → bugün/yarın 10:15 TR'ye ertele
                         leadDueDate = new Date();
                         if (leadHour >= 21) leadDueDate.setDate(leadDueDate.getDate() + 1);
-                        leadDueDate.setUTCHours(7, 15, 0, 0); // 10:15 TR = 07:15 UTC
-                        console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → arama ${leadDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}'e ertelendi`);
+                        leadDueDate.setUTCHours(7, 15, 0, 0);
+                        console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → arama ertelendi`);
                     }
 
                     // ─── MÜŞTERİ SAAT TERCİHİ → dueDate OVERRIDE ──────────────
                     if (preferredTimeStr) {
                         const ptLower = preferredTimeStr.toLowerCase();
-                        // Pattern: "18:00-19:00" veya "18.00-19.00"
                         const rangeMatch = ptLower.match(/(\d{1,2})[.:]\s?(\d{2})\s*[-–]\s*(\d{1,2})[.:]\s?(\d{2})/);
-                        // Pattern: "18:00" veya "18.00" (tek saat)
                         const singleMatch = !rangeMatch ? ptLower.match(/(\d{1,2})[.:]\s?(\d{2})/) : null;
                         const timeMatch = rangeMatch || singleMatch;
                         if (timeMatch) {
                             const prefH = parseInt(timeMatch[1]);
                             const prefM = parseInt(timeMatch[2]);
                             if (prefH >= 6 && prefH <= 23) {
-                                // Türkiye saatini al ve UTC olarak hedef saati oluştur
                                 const todayTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
                                 leadDueDate = new Date(Date.UTC(
                                     todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate(),
                                     prefH - 3, prefM, 0
                                 ));
-                                // Saat geçmişse yarına ertele
                                 if (leadDueDate <= new Date()) {
                                     leadDueDate = new Date(Date.UTC(
                                         todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate() + 1,
@@ -3609,7 +3604,6 @@ async function handleLeadgenEvent(leadValue, entryId) {
                         }
                     }
 
-                    // Takım ataması: conversation veya funnel'dan miras al
                     let leadTeamId = null;
                     try {
                         const leadConv = await prisma.conversation.findFirst({
@@ -3618,7 +3612,6 @@ async function handleLeadgenEvent(leadValue, entryId) {
                             select: { assignedTeamId: true, caseId: true }
                         });
                         leadTeamId = leadConv?.assignedTeamId || null;
-                        // Case miras al — conversation veya aktif case'den
                         if (!leadConv?.caseId) {
                             const activeCase = await prisma.case.findFirst({
                                 where: { contactId: contact.id, workspaceId: facebookPage.workspaceId, status: 'ACTIVE' },
@@ -3642,7 +3635,7 @@ async function handleLeadgenEvent(leadValue, entryId) {
                             source: 'AUTOMATION',
                             dueDate: leadDueDate,
                             teamId: leadTeamId,
-                            aiAgentId: null, // İnsana önce şans ver, timeout sonrası robot
+                            aiAgentId: null,
                             fallbackToAi: true,
                             aiFallbackTriggered: false,
                             retellExcluded: false,
@@ -3657,6 +3650,19 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 console.error('⚠️ [LEADGEN] CALL görev oluşturma hatası:', callTaskErr.message);
             }
         }
+        // --- ARAMA GÖREVİ END ---
+
+        // --- FLOW ENGINE TRIGGER (arama görevinden SONRA — AI_CALL dedup ile skip olur) ---
+        try {
+            const { executeFlowsByTrigger } = await import('./flow.controller.js');
+            executeFlowsByTrigger(facebookPage.workspaceId, 'NEW_FORM', {
+                contact, lead: savedLead, conversation,
+                formData: { name: leadName, email: leadEmail, phone: leadPhone }
+            });
+        } catch (flowErr) {
+            console.error('⚠️ [LEADGEN] Flow engine error:', flowErr.message);
+        }
+        // --- FLOW ENGINE TRIGGER END ---
 
         // --- AUTO TOPIC GENERATION (Lead Form: dogrudan form alanlarından üret) ---
         if (conversation?.id) {
