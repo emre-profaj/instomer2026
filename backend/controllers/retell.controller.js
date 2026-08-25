@@ -4800,12 +4800,16 @@ export const syncKnowledgeBase = async (req, res) => {
             }
         }
 
-        // 4. Yeni KB oluştur
-        console.log('🆕 [RetellKB] Step 4: Creating new KB...');
+        // 4+5. KB oluştur VE kaynakları birlikte ekle (Retell boş KB oluşturmaya izin vermiyor)
+        console.log(`🆕 [RetellKB] Step 4+5: Creating KB with ${textsToAdd.length} sources...`);
+        const form = new FormData();
+        form.append('knowledge_base_name', 'Instomer KB');
+        form.append('knowledge_base_texts', JSON.stringify(textsToAdd));
+
         const createRes = await fetch('https://api.retellai.com/create-knowledge-base', {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ knowledge_base_name: `Instomer KB` })
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            body: form
         });
         if (!createRes.ok) {
             const errText = await createRes.text();
@@ -4813,22 +4817,7 @@ export const syncKnowledgeBase = async (req, res) => {
         }
         const newKb = await createRes.json();
         retellKbId = newKb.knowledge_base_id;
-        console.log(`✅ [RetellKB] Step 4 done: KB ${retellKbId}`);
-
-        // 5. Kaynakları ekle — fetch + FormData
-        console.log(`📤 [RetellKB] Step 5: Adding ${textsToAdd.length} sources...`);
-        const form = new FormData();
-        form.append('knowledge_base_texts', JSON.stringify(textsToAdd));
-        const addRes = await fetch(`https://api.retellai.com/add-knowledge-base-sources/${retellKbId}`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${apiKey}` },
-            body: form
-        });
-        if (!addRes.ok) {
-            const errText = await addRes.text();
-            throw new Error(`Add sources failed: ${addRes.status} ${errText}`);
-        }
-        console.log(`✅ [RetellKB] Step 5 done: ${textsToAdd.length} sources added`);
+        console.log(`✅ [RetellKB] Created KB ${retellKbId} with ${textsToAdd.length} sources`);
 
         // 6. KB id'sini workspace'e kaydet
         await prisma.workspace.update({
