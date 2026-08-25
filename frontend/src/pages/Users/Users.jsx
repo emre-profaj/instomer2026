@@ -964,13 +964,6 @@ const UsersTeams = () => {
                                 {retellAgents.length > 0 && (
                                     <div className="ut-call-section-header">
                                         <div className="ut-panel-section-label" style={{ color: '#0d9488', borderColor: '#ccfbf1', margin: 0 }}><Phone size={12} /> AI Call Agents</div>
-                                        <div
-                                            className={`ut-call-master-toggle ${retellAutoCallEnabled ? 'is-active' : ''}`}
-                                            onClick={handleMasterToggle}
-                                            title={retellAutoCallEnabled ? 'Otomatik arama açık — kapatmak için tıklayın' : 'Otomatik arama kapalı — açmak için tıklayın'}
-                                        >
-                                            {retellAutoCallEnabled ? <><ToggleRight size={14} /> Aktif</> : <><ToggleLeft size={14} /> Pasif</>}
-                                        </div>
                                     </div>
                                 )}
                                 {retellAgents.map(agent => {
@@ -979,7 +972,7 @@ const UsersTeams = () => {
                                     return (
                                     <div
                                         key={agent.agent_id}
-                                        className={`ut-user-card ut-bot-card ${!isAgentActive || !retellAutoCallEnabled ? 'ut-agent-inactive' : ''}`}
+                                        className={`ut-user-card ut-bot-card ${!isAgentActive ? 'ut-agent-inactive' : ''}`}
                                         draggable
                                         onDragStart={e => handleRetellAgentDragStart(e, agent)}
                                         onClick={() => setShowRetellModal(agent.agent_id)}
@@ -1002,7 +995,6 @@ const UsersTeams = () => {
                                                     type="checkbox"
                                                     checked={isAgentActive}
                                                     onChange={e => handleAgentActiveToggle(e, agent.agent_id)}
-                                                    disabled={!retellAutoCallEnabled}
                                                 />
                                                 <span className="ut-agent-toggle-slider" />
                                             </label>

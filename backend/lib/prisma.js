@@ -25,14 +25,8 @@ prisma.$connect()
         `;
         if (migrated > 0) console.log(`🔄 [Startup] ${migrated} eski kapalı kural aktifleştirildi (tek seferlik)`);
 
-        // ⚠️ Düzeltme: retellAutoCallEnabled yanlışlıkla açıldı, kapat
-        // Bu değer triggerAutoCall'ı aktive eder (mesaj gelince anında Retell arar)
-        const fixed = await prisma.$executeRaw`
-            UPDATE "workspaces"
-            SET "retellAutoCallEnabled" = false
-            WHERE "retellAutoCallEnabled" = true
-        `;
-        if (fixed > 0) console.log(`🔧 [Startup] ${fixed} workspace'te retellAutoCallEnabled kapatıldı`);
+
+
 
         // ⚠️ Eski PENDING ScheduledCall kayıtlarını temizle (restart sonrası eskiler çalışmasın)
         const cleared = await prisma.$executeRaw`
