@@ -4747,7 +4747,7 @@ export const listKnowledgeBases = async (req, res) => {
  */
 export const syncKnowledgeBase = async (req, res) => {
     try {
-        console.log('🔥 [RetellKB] === NEW SYNC CODE v2 RUNNING ===');
+        console.log('🔥 [RetellKB] === SYNC v3 START ===');
         const { workspaceId } = req.params;
         const { agentId, instomerKbIds = [] } = req.body;
 
@@ -4758,6 +4758,7 @@ export const syncKnowledgeBase = async (req, res) => {
         if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const effectiveAgentId = agentId || workspace.retellAgentId;
+        const apiKey = workspace.retellApiKey;
 
         // 1. Instomer KB içeriklerini çek
         const kbEntries = await prisma.knowledgeBase.findMany({
@@ -4766,95 +4767,99 @@ export const syncKnowledgeBase = async (req, res) => {
                 ...(instomerKbIds.length > 0 ? { id: { in: instomerKbIds } } : {})
             }
         });
+        console.log(`📋 [RetellKB] Found ${kbEntries.length} KB entries`);
 
         if (kbEntries.length === 0) {
             return res.status(400).json({ error: 'Seçili bilgi bankası bulunamadı veya içerik yok' });
         }
 
-        // 2. Her bilgiyi ayrı ayrı kaynak olarak hazırla
+        // 2. Her bilgiyi ayrı kaynak olarak hazırla
         const textsToAdd = kbEntries.map(kb => ({
             title: kb.title || 'Başlıksız',
             text: kb.content || ''
         })).filter(t => t.text.trim());
+        console.log(`📋 [RetellKB] textsToAdd: ${textsToAdd.length} items`);
 
         if (textsToAdd.length === 0) {
             return res.status(400).json({ error: 'Bilgi bankasında içerik bulunamadı' });
         }
 
-        const client = new Retell({ apiKey: workspace.retellApiKey });
         let retellKbId = workspace.retellKnowledgeBaseId;
 
-        // Eski KB'yi tamamen sil (varsa)
+        // 3. Eski KB'yi sil (varsa)
         if (retellKbId) {
             try {
-                await client.knowledgeBase.delete(retellKbId);
-                console.log(`🗑️ [RetellKB] Deleted old KB ${retellKbId}`);
+                console.log(`🗑️ [RetellKB] Step 3: Deleting old KB ${retellKbId}`);
+                const delRes = await fetch(`https://api.retellai.com/delete-knowledge-base/${retellKbId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${apiKey}` }
+                });
+                console.log(`🗑️ [RetellKB] Delete status: ${delRes.status}`);
             } catch (e) {
-                console.warn(`⚠️ [RetellKB] Old KB delete failed (may not exist): ${e.message}`);
+                console.warn(`⚠️ [RetellKB] Delete failed: ${e.message}`);
             }
         }
 
-        // Yeni KB oluştur
-        const newKb = await client.knowledgeBase.create({
-            knowledge_base_name: `Instomer KB — ${workspaceId.substring(0, 8)}`
+        // 4. Yeni KB oluştur
+        console.log('🆕 [RetellKB] Step 4: Creating new KB...');
+        const createRes = await fetch('https://api.retellai.com/create-knowledge-base', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ knowledge_base_name: `Instomer KB` })
         });
-        retellKbId = newKb.knowledge_base_id;
-        console.log(`✅ [RetellKB] Created new KB: ${retellKbId}`);
-
-        // Her bilgiyi ayrı ayrı kaynak olarak ekle (addRetellKBSource ile aynı pattern)
-        const axios = (await import('axios')).default;
-        for (const item of textsToAdd) {
-            const form = new FormData();
-            form.append('knowledge_base_texts', JSON.stringify([{ title: item.title, text: item.text }]));
-            await axios.post(
-                `https://api.retellai.com/add-knowledge-base-sources/${retellKbId}`,
-                form,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${workspace.retellApiKey}`,
-                        ...form.getHeaders?.() || {}
-                    }
-                }
-            );
-            console.log(`✅ [RetellKB] Added source: "${item.title}" to KB ${retellKbId}`);
+        if (!createRes.ok) {
+            const errText = await createRes.text();
+            throw new Error(`KB create failed: ${createRes.status} ${errText}`);
         }
+        const newKb = await createRes.json();
+        retellKbId = newKb.knowledge_base_id;
+        console.log(`✅ [RetellKB] Step 4 done: KB ${retellKbId}`);
 
-        // 4. KB id'sini workspace'e kaydet
+        // 5. Kaynakları ekle — fetch + FormData
+        console.log(`📤 [RetellKB] Step 5: Adding ${textsToAdd.length} sources...`);
+        const form = new FormData();
+        form.append('knowledge_base_texts', JSON.stringify(textsToAdd));
+        const addRes = await fetch(`https://api.retellai.com/add-knowledge-base-sources/${retellKbId}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            body: form
+        });
+        if (!addRes.ok) {
+            const errText = await addRes.text();
+            throw new Error(`Add sources failed: ${addRes.status} ${errText}`);
+        }
+        console.log(`✅ [RetellKB] Step 5 done: ${textsToAdd.length} sources added`);
+
+        // 6. KB id'sini workspace'e kaydet
         await prisma.workspace.update({
             where: { id: workspaceId },
             data: { retellKnowledgeBaseId: retellKbId }
         });
 
-        // 5. Agent'a bu KB'yi bağla (mevcut KB'leri koruyarak)
+        // 7. Agent'a bağla
         if (effectiveAgentId) {
             try {
+                const client = new Retell({ apiKey });
                 const agent = await client.agent.retrieve(effectiveAgentId);
                 const existingKbIds = agent.knowledge_base_ids || [];
                 const updatedKbIds = [...new Set([...existingKbIds, retellKbId])];
-                await client.agent.update(effectiveAgentId, {
-                    knowledge_base_ids: updatedKbIds
-                });
-                console.log(`✅ [RetellKB] KB ${retellKbId} linked to agent ${effectiveAgentId} (total: ${updatedKbIds.length})`);
+                await client.agent.update(effectiveAgentId, { knowledge_base_ids: updatedKbIds });
+                console.log(`✅ [RetellKB] KB linked to agent`);
             } catch (agentErr) {
                 console.warn(`⚠️ [RetellKB] Agent link failed: ${agentErr.message}`);
             }
         }
 
+        console.log('🔥 [RetellKB] === SYNC v3 COMPLETE ===');
         res.json({
             success: true,
             knowledgeBaseId: retellKbId,
-            isNew: true,
             sourceCount: textsToAdd.length,
-            kbCount: kbEntries.length,
-            agentLinked: !!effectiveAgentId,
-            message: `${textsToAdd.length} bilgi ayrı ayrı Retell'e sync edildi${effectiveAgentId ? ' ve agent\'a bağlandı' : ''}`
+            message: `${textsToAdd.length} bilgi ayrı ayrı Retell'e sync edildi`
         });
     } catch (error) {
-        const respData = error.response?.data;
-        const errMsg = respData?.message || respData?.error || error.message || 'KB sync başarısız';
-        console.error('❌ [RetellKB] syncKnowledgeBase error:', errMsg);
-        console.error('❌ [RetellKB] Full error:', JSON.stringify({ message: error.message, status: error.response?.status, data: respData }));
-        res.status(error.response?.status || 500).json({ error: errMsg });
+        console.error('❌ [RetellKB] syncKnowledgeBase error:', error.message);
+        res.status(500).json({ error: error.message || 'KB sync başarısız' });
     }
 };
 
