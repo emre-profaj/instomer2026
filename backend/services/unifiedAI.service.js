@@ -12,7 +12,7 @@
 import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const MODEL_NAME = 'gemini-2.5-flash';
+const MODEL_NAME = 'gemini-3.5-flash';
 
 /**
  * Birleşik AI çağrısı — hem sınıflandırma hem yanıt tek çağrıda.

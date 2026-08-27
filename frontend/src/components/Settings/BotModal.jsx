@@ -187,13 +187,55 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         }
     });
 
-    // Channel Enable states
-    // Legacy support: if all are false in DB, we assume it's a legacy bot and render them as true by default
-    const hasAnyEnabled = bot.whatsappEnabled || bot.facebookEnabled || bot.instagramEnabled || bot.widgetEnabled;
-    const [whatsappEnabled, setWhatsappEnabled] = useState(hasAnyEnabled ? bot.whatsappEnabled : true);
-    const [facebookEnabled, setFacebookEnabled] = useState(hasAnyEnabled ? bot.facebookEnabled : true);
-    const [instagramEnabled, setInstagramEnabled] = useState(hasAnyEnabled ? bot.instagramEnabled : true);
-    const [widgetEnabled, setWidgetEnabled] = useState(hasAnyEnabled ? bot.widgetEnabled : true);
+    // Channel assignment states (checkbox UI)
+    const [workspaceChannels, setWorkspaceChannels] = useState([]);
+    const [channelsLoading, setChannelsLoading] = useState(false);
+    const [channelSaving, setChannelSaving] = useState(false);
+
+    // Load workspace channels on mount
+    useEffect(() => {
+        const loadChannels = async () => {
+            try {
+                setChannelsLoading(true);
+                console.log('[BotModal] Loading channels for workspaceId:', workspaceId);
+                const res = await aiAPI.getChannels(workspaceId);
+                console.log('[BotModal] Channels response:', res.data);
+                setWorkspaceChannels(res.data.channels || []);
+            } catch (err) {
+                console.error('Failed to load channels:', err);
+            } finally {
+                setChannelsLoading(false);
+            }
+        };
+        if (workspaceId) loadChannels();
+    }, [workspaceId]);
+
+    // Toggle channel assignment
+    const handleChannelToggle = async (channel, isCurrentlyAssigned) => {
+        try {
+            setChannelSaving(true);
+            await aiAPI.updateBotChannels(workspaceId, bot.id, [
+                { channelId: channel.id, channelType: channel.type, assign: !isCurrentlyAssigned }
+            ]);
+            // Update local state
+            setWorkspaceChannels(prev => prev.map(ch =>
+                (ch.id === channel.id && ch.type === channel.type)
+                    ? { ...ch, assignedBotId: isCurrentlyAssigned ? null : bot.id }
+                    : ch
+            ));
+        } catch (err) {
+            console.error('Channel toggle error:', err);
+            alert('Kanal atama başarısız.');
+        } finally {
+            setChannelSaving(false);
+        }
+    };
+
+    // Legacy channel flags (kept for save compatibility)
+    const whatsappEnabled = true;
+    const facebookEnabled = true;
+    const instagramEnabled = true;
+    const widgetEnabled = true;
 
     // Auto-reply delay states
     const [autoReplyDelayEnabled, setAutoReplyDelayEnabled] = useState(bot.autoReplyDelayEnabled || false);
@@ -244,11 +286,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         } catch {
             setScheduleDays([]);
         }
-        const hasAny = bot.whatsappEnabled || bot.facebookEnabled || bot.instagramEnabled || bot.widgetEnabled;
-        setWhatsappEnabled(hasAny ? bot.whatsappEnabled : true);
-        setFacebookEnabled(hasAny ? bot.facebookEnabled : true);
-        setInstagramEnabled(hasAny ? bot.instagramEnabled : true);
-        setWidgetEnabled(hasAny ? bot.widgetEnabled : true);
+        // Channel assignments are now loaded via API (checkbox UI), no need to set toggle states
         setAutoReplyDelayEnabled(bot.autoReplyDelayEnabled || false);
         setAutoReplyDelaySeconds(bot.autoReplyDelaySeconds || 30);
         setAutoReplyDelayMessage(bot.autoReplyDelayMessage || '');
@@ -433,93 +471,72 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 </div>
             </div>
 
-            {/* Bot Assignment Info - Tüm atamalar */}
-            {bot.assignments && (
-                <div className="bot-assignments-section">
-                    <label className="form-label" style={{ marginBottom: '10px' }}>📍 Atanan Channels</label>
-                    <div className="assignments-list">
-                        {/* DM Kanalları - Yönlendirme sayfasından */}
-                        {bot.assignments.routedChannels?.facebook?.length > 0 && bot.assignments.routedChannels.facebook.map(a => (
-                            <span key={a.id} className="assignment-badge facebook">💬 {a.name} {a.team && `→ ${a.team}`}</span>
-                        ))}
-                        {bot.assignments.routedChannels?.instagram?.length > 0 && bot.assignments.routedChannels.instagram.map(a => (
-                            <span key={a.id} className="assignment-badge instagram">📸 {a.name} {a.team && `→ ${a.team}`}</span>
-                        ))}
-                        {bot.assignments.routedChannels?.whatsapp?.length > 0 && bot.assignments.routedChannels.whatsapp.map(a => (
-                            <span key={a.id} className="assignment-badge whatsapp">📱 {a.name} {a.team && `→ ${a.team}`}</span>
-                        ))}
-                        {bot.assignments.routedChannels?.email?.length > 0 && bot.assignments.routedChannels.email.map(a => (
-                            <span key={a.id} className="assignment-badge email">📧 {a.name} {a.team && `→ ${a.team}`}</span>
-                        ))}
-                        {bot.assignments.routedChannels?.webWidget?.length > 0 && bot.assignments.routedChannels.webWidget.map(a => (
-                            <span key={a.id} className="assignment-badge widget">🌐 {a.name} {a.team && `→ ${a.team}`}</span>
-                        ))}
-                        {bot.assignments.routedChannels?.form?.length > 0 && bot.assignments.routedChannels.form.map(a => (
-                            <span key={a.id} className="assignment-badge form">📝 {a.name} {a.team && `→ ${a.team}`}</span>
-                        ))}
-
-                        {/* Yorum Kanalları - Kanallar sayfasından */}
-                        {bot.assignments.facebookComments?.length > 0 && bot.assignments.facebookComments.map(a => (
-                            <span key={a.id} className="assignment-badge facebook-comment">💭 FB Yorum: {a.name}</span>
-                        ))}
-                        {bot.assignments.instagramComments?.length > 0 && bot.assignments.instagramComments.map(a => (
-                            <span key={a.id} className="assignment-badge instagram-comment">💭 IG Yorum: {a.name}</span>
-                        ))}
-
-                        {/* Hiç atama yoksa */}
-                        {/* Toggle settings for channels */}
-                        <div style={{ marginTop: '15px', padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                            <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: '500', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                🤖 Çalışacağı Kanallar 
-                                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>(Kapatmak istediğiniz kanalın üzerine tıklayın)</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                <div 
-                                    className={`assignment-badge ${whatsappEnabled ? 'whatsapp' : 'empty'}`} 
-                                    style={{ cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none', opacity: whatsappEnabled ? 1 : 0.6 }}
-                                    onClick={() => setWhatsappEnabled(!whatsappEnabled)}
-                                >
-                                    📱 WhatsApp
-                                </div>
-                                <div 
-                                    className={`assignment-badge ${facebookEnabled ? 'facebook' : 'empty'}`} 
-                                    style={{ cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none', opacity: facebookEnabled ? 1 : 0.6 }}
-                                    onClick={() => setFacebookEnabled(!facebookEnabled)}
-                                >
-                                    💬 Facebook
-                                </div>
-                                <div 
-                                    className={`assignment-badge ${instagramEnabled ? 'instagram' : 'empty'}`} 
-                                    style={{ cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none', opacity: instagramEnabled ? 1 : 0.6 }}
-                                    onClick={() => setInstagramEnabled(!instagramEnabled)}
-                                >
-                                    📸 Instagram
-                                </div>
-                                <div 
-                                    className={`assignment-badge ${widgetEnabled ? 'widget' : 'empty'}`} 
-                                    style={{ cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none', opacity: widgetEnabled ? 1 : 0.6 }}
-                                    onClick={() => setWidgetEnabled(!widgetEnabled)}
-                                >
-                                    🌐 Canlı Destek
-                                </div>
-                            </div>
-                        </div>
-
-                        {(!bot.assignments.routedChannels?.facebook?.length &&
-                            !bot.assignments.routedChannels?.instagram?.length &&
-                            !bot.assignments.routedChannels?.whatsapp?.length &&
-                            !bot.assignments.routedChannels?.email?.length &&
-                            !bot.assignments.routedChannels?.webWidget?.length &&
-                            !bot.assignments.routedChannels?.form?.length &&
-                            !bot.assignments.facebookComments?.length &&
-                            !bot.assignments.instagramComments?.length) && (
-                                <span className="assignment-badge info">
-                                    💡 {bot.botType === 'CHATS' ? 'Kanallar → Yönlendirme' : 'Kanallar'} sayfasından atama yapın
-                                </span>
-                            )}
-                    </div>
+            {/* Bağlı Kanallar — Checkbox ile bot atama */}
+            <div style={{ marginTop: '15px', padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: '500', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📡 Bağlı Kanallar
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>(Seçtiğiniz kanallarda bu bot çalışır)</span>
                 </div>
-            )}
+                {channelsLoading ? (
+                    <div style={{ padding: '10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        <Loader size={14} className="spin" style={{ marginRight: '6px' }} /> Kanallar yükleniyor...
+                    </div>
+                ) : workspaceChannels.length === 0 ? (
+                    <div style={{ padding: '10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        Henüz bağlı kanal yok. Kanallar sayfasından WhatsApp, Facebook veya Instagram bağlayın.
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {workspaceChannels.map(ch => {
+                            const isAssigned = ch.assignedBotId === bot.id;
+                            const assignedToOther = ch.assignedBotId && ch.assignedBotId !== bot.id;
+                            const colorMap = {
+                                'WHATSAPP': '#25D366',
+                                'FACEBOOK': '#1877F2',
+                                'INSTAGRAM': '#E4405F',
+                                'EMAIL': '#6366f1',
+                                'WEB_WIDGET': '#0ea5e9'
+                            };
+                            const color = colorMap[ch.type] || '#64748b';
+                            return (
+                                <label
+                                    key={`${ch.type}-${ch.id}`}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '8px 12px',
+                                        borderRadius: '8px',
+                                        cursor: channelSaving ? 'wait' : 'pointer',
+                                        background: isAssigned ? `${color}10` : '#fff',
+                                        border: `1px solid ${isAssigned ? color : '#e2e8f0'}`,
+                                        transition: 'all 0.2s',
+                                        opacity: assignedToOther ? 0.5 : 1
+                                    }}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isAssigned}
+                                        disabled={channelSaving}
+                                        onChange={() => handleChannelToggle(ch, isAssigned)}
+                                        style={{ width: '16px', height: '16px', accentColor: color, cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontSize: '16px' }}>{ch.icon}</span>
+                                    <span style={{ fontSize: '13px', fontWeight: isAssigned ? '600' : '400', color: isAssigned ? '#1e293b' : '#64748b', flex: 1 }}>
+                                        {ch.name}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '400' }}>
+                                        {ch.type === 'WHATSAPP' ? 'WhatsApp' : ch.type === 'FACEBOOK' ? 'Facebook' : ch.type === 'INSTAGRAM' ? 'Instagram' : ch.type === 'EMAIL' ? 'E-posta' : 'Canlı Destek'}
+                                    </span>
+                                    {assignedToOther && (
+                                        <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: '500' }}>Başka bota atanmış</span>
+                                    )}
+                                </label>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
 
             <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="form-label">{t('assistants.systemPrompt')}</label>

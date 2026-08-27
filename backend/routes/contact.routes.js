@@ -1,5 +1,5 @@
 import express from 'express';
-import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary, getTopicContacts, getAnalysisReport, getSalesReport, getRequestReport, recalculateContactScore, recalculateAllScores, getContactAttributions, getAttributionReport } from '../controllers/contact.controller.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary, getTopicContacts, getAnalysisReport, getSalesReport, getRequestReport, getCallDemandReport, recalculateContactScore, recalculateAllScores, getContactAttributions, getAttributionReport } from '../controllers/contact.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -31,6 +31,9 @@ router.get('/:workspaceId/sales-report', requireWorkspaceAccess, getSalesReport)
 
 // Request report (topic × funnel grouped)
 router.get('/:workspaceId/request-report', requireWorkspaceAccess, getRequestReport);
+
+// Call & Demand Report (Dışa Aktar 2)
+router.get('/:workspaceId/call-demand-report', requireWorkspaceAccess, getCallDemandReport);
 
 // List contacts in workspace
 router.get('/:workspaceId', requireWorkspaceAccess, getContacts);

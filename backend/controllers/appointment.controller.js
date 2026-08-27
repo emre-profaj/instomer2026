@@ -270,7 +270,7 @@ export const updateAppointment = async (req, res) => {
     }
 };
 
-// Delete appointment
+// Delete appointment (soft delete — status: CANCELLED)
 export const deleteAppointment = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
@@ -281,9 +281,13 @@ export const deleteAppointment = async (req, res) => {
             return res.status(404).json({ error: 'Randevu bulunamadı' });
         }
 
-        await prisma.appointment.delete({ where: { id } });
+        // Soft delete — veri kaybını önlemek için status güncellenir, kayıt silinmez
+        await prisma.appointment.update({
+            where: { id },
+            data: { status: 'CANCELLED', updatedAt: new Date() }
+        });
 
-        res.json({ success: true, message: 'Randevu silindi' });
+        res.json({ success: true, message: 'Randevu iptal edildi' });
     } catch (error) {
         console.error('Delete appointment error:', error);
         res.status(500).json({ error: 'Randevu silinirken hata oluştu' });

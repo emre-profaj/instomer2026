@@ -2718,3 +2718,30 @@
     background: #eff6ff;
     border-color: #93c5fd;
 }
+.customers-footer-actions .export-report2-btn {
+    background: #0284c7 !important;
+    color: #ffffff !important;
+    border-color: #0284c7 !important;
+}
+.customers-footer-actions .export-report2-btn:hover {
+    background: #0369a1 !important;
+    border-color: #0369a1 !important;
+    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+}
+
+/* Report 2 Modal Custom Styles */
+.report2-modal {
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+.report2-modal table tbody tr:last-child {
+    border-bottom: none;
+}
+.report2-metric-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.report2-metric-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}

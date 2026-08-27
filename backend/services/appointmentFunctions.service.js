@@ -649,8 +649,9 @@ export async function listAppointments(workspaceId, params = {}) {
 /**
  * checkAndSendReminders
  * Her gün çalıştırılacak — yarınki randevular için WhatsApp hatırlatma gönderir
+ * @param {string} [workspaceId] - Belirli bir workspace için çalıştır (opsiyonel, verilmezse tüm workspace'leri işler)
  */
-export async function checkAndSendReminders() {
+export async function checkAndSendReminders(workspaceId = null) {
     try {
         // Calculate "now" and "tomorrow" in Turkey timezone (UTC+3)
         const TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // Turkey is UTC+3
@@ -661,15 +662,22 @@ export async function checkAndSendReminders() {
         const tomorrow = new Date(Date.UTC(tomorrowTR.getUTCFullYear(), tomorrowTR.getUTCMonth(), tomorrowTR.getUTCDate()) - TZ_OFFSET_MS);
         const tomorrowEnd = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000 - 1);
 
+        const whereClause = {
+            status: 'SCHEDULED',
+            reminderSent: false,
+            startTime: { gte: tomorrow, lte: tomorrowEnd }
+        };
+
+        // Workspace filtresi — belirli workspace verilmişse sadece onu işle
+        if (workspaceId) {
+            whereClause.workspaceId = workspaceId;
+        }
+
         const appointments = await prisma.appointment.findMany({
-            where: {
-                status: 'SCHEDULED',
-                reminderSent: false,
-                startTime: { gte: tomorrow, lte: tomorrowEnd }
-            }
+            where: whereClause
         });
 
-        console.log(`🔔 [Reminder] ${appointments.length} randevu için hatırlatma gönderilecek`);
+        console.log(`🔔 [Reminder] ${appointments.length} randevu için hatırlatma gönderilecek${workspaceId ? ` (workspace: ${workspaceId.slice(0, 8)}...)` : ' (tüm workspace\'ler)'}`);
 
         for (const appt of appointments) {
             try {
@@ -708,7 +716,7 @@ export async function checkAndSendReminders() {
                     data: { reminderSent: true }
                 });
 
-                console.log(`✅ [Reminder] Hatırlatma gönderildi: ${appt.id} → ${appt.contactName}`);
+                console.log(`✅ [Reminder] Hatırlatma gönderildi: ${appt.id} → ${appt.contactName} (ws: ${appt.workspaceId?.slice(0, 8)})`);
             } catch (innerErr) {
                 console.error(`❌ [Reminder] Hatırlatma hatası (${appt.id}):`, innerErr.message);
             }

@@ -3,7 +3,7 @@ import api, { retellAPI } from '../../services/api';
 import {
     Bot, Save, Loader, RefreshCw, CheckCircle, AlertCircle,
     ChevronDown, ChevronRight, BookOpen, Zap, Settings, Link,
-    Play, Pause, Volume2, PhoneCall, Clock
+    Play, Pause, Volume2, PhoneCall, Clock, Edit2, Trash2
 } from 'lucide-react';
 
 const API_BASE = '/api';
@@ -55,6 +55,8 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
     const [voicesLoading, setVoicesLoading] = useState(false);
     const [playingVoiceId, setPlayingVoiceId] = useState(null);
     const audioRef = useRef(null);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [isAgentActive, setIsAgentActive] = useState(true);
 
     // Language selection
     const [language, setLanguage] = useState('tr-TR');
@@ -143,6 +145,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                     maxOverdueDays: ac.maxOverdueDays ?? 7,
                     retrySteps: ac.retrySteps || [{ delay: 60 }, { delay: 240 }, { delay: 1440 }]
                 });
+                setIsAgentActive(ac.active !== false); // varsayılan: true
             }
         }
     }, [selectedAgentId, wsSettings]);
@@ -346,6 +349,31 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
         return { turkish, english, other };
     };
 
+    const handleToggleActive = async () => {
+        const newActive = !isAgentActive;
+        setIsAgentActive(newActive);
+        try {
+            if (wsSettings) {
+                const triggers = wsSettings.retellAutoCallTriggers || {};
+                const agentConfigs = triggers.agentConfigs || {};
+                agentConfigs[selectedAgentId] = {
+                    ...(agentConfigs[selectedAgentId] || {}),
+                    active: newActive
+                };
+                await api.put(`/retell/${workspaceId}/settings`, {
+                    retellAutoCallTriggers: { ...triggers, agentConfigs }
+                });
+                setWsSettings(prev => ({
+                    ...prev,
+                    retellAutoCallTriggers: { ...triggers, agentConfigs }
+                }));
+            }
+        } catch (e) {
+            setIsAgentActive(!newActive); // geri al
+            console.error('Toggle active error:', e);
+        }
+    };
+
     const handleSave = async () => {
         if (!selectedAgentId) return;
         setSaving(true);
@@ -490,36 +518,84 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
             {agentDetail && !loading && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-                    {/* Agent meta bilgisi */}
-                    <div style={{ background: '#f8faff', border: '1px solid #e0e7ff', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <div>
-                            <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Agent ID</div>
-                            <code style={{ fontSize: '0.8rem', color: '#374151' }}>{agentDetail.agent_id}</code>
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tip</div>
-                            <span style={{
-                                fontSize: '0.78rem', fontWeight: 600, padding: '2px 8px', borderRadius: 6,
-                                background: isConvFlow ? '#fef9c3' : '#ecfdf5',
-                                color: isConvFlow ? '#854d0e' : '#065f46'
-                            }}>
-                                {isConvFlow ? 'Conversation Flow' : 'AI LLM'}
-                            </span>
-                        </div>
-                        {agentDetail.voice_id && (
-                            <div>
-                                <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ses</div>
-                                <span style={{ fontSize: '0.82rem', color: '#374151' }}>{agentDetail.voice_id}</span>
+                    {/* BotModal tarzı header */}
+                    <div className="bot-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f8faff', border: '1px solid #e0e7ff', borderRadius: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                                <PhoneCall size={20} />
                             </div>
-                        )}
-                        {agentDetail.knowledge_base_ids?.length > 0 && (
                             <div>
-                                <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bağlı KB</div>
-                                <span style={{ fontSize: '0.78rem', background: '#ede9fe', color: '#5b21b6', padding: '2px 8px', borderRadius: 6 }}>
-                                    {agentDetail.knowledge_base_ids.length} adet
+                                {isEditingName ? (
+                                    <input
+                                        type="text"
+                                        value={agentName}
+                                        onChange={e => setAgentName(e.target.value)}
+                                        placeholder="Agent İsmi"
+                                        autoFocus
+                                        style={{ padding: '3px 8px', fontSize: '14px', fontWeight: 600, border: '1px solid #d1d5db', borderRadius: 6, width: '200px' }}
+                                    />
+                                ) : (
+                                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#1f2937' }}>{agentName || agentDetail.agent_id}</h4>
+                                )}
+                                <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                                    <span style={{
+                                        fontSize: '0.72rem', fontWeight: 600, padding: '1px 7px', borderRadius: 5,
+                                        background: isConvFlow ? '#fef9c3' : '#ecfdf5',
+                                        color: isConvFlow ? '#854d0e' : '#065f46'
+                                    }}>
+                                        {isConvFlow ? 'Conversation Flow' : 'AI LLM'}
+                                    </span>
+                                    {agentDetail.voice_id && (
+                                        <span style={{ fontSize: '0.72rem', color: '#6b7280', background: '#f3f4f6', padding: '1px 7px', borderRadius: 5 }}>
+                                            🔊 {agentDetail.voice_id}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 4 }}>
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: isAgentActive ? '#10b981' : '#94a3b8' }}>
+                                    {isAgentActive ? 'Aktif' : 'Pasif'}
                                 </span>
+                                <label className="toggle-switch" title={isAgentActive ? "Pasife Al" : "Aktifleştir"}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isAgentActive}
+                                        onChange={handleToggleActive}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
                             </div>
-                        )}
+                            <button
+                                onClick={() => {
+                                    if (isEditingName) handleSave();
+                                    setIsEditingName(!isEditingName);
+                                }}
+                                title={isEditingName ? "Kaydet" : "İsmi Düzenle"}
+                                style={{ padding: 6, borderRadius: 6, border: '1px solid #d1d5db', background: isEditingName ? '#6366f1' : '#fff', color: isEditingName ? '#fff' : '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                            >
+                                {isEditingName ? <Save size={15} /> : <Edit2 size={15} />}
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!window.confirm(`"${agentName || agentDetail.agent_id}" agent'ını silmek istediğinize emin misiniz?`)) return;
+                                    try {
+                                        await api.delete(`/retell/${workspaceId}/agents/${selectedAgentId}`);
+                                        setAgentDetail(null);
+                                        setSelectedAgentId('');
+                                        fetchAgents();
+                                        setMessage({ type: 'success', text: 'Agent silindi.' });
+                                    } catch (e) {
+                                        setMessage({ type: 'error', text: 'Silme hatası: ' + (e.response?.data?.error || e.message) });
+                                    }
+                                }}
+                                title="Agent'ı Sil"
+                                style={{ padding: 6, borderRadius: 6, border: '1px solid #fecaca', background: '#fff', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                            >
+                                <Trash2 size={15} />
+                            </button>
+                        </div>
                     </div>
 
                     {/* ─── AI Arama Kuralları ─────────────────────── */}

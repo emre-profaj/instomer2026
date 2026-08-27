@@ -109,7 +109,8 @@ const Templates = () => {
         setLoading(true);
         try {
             const res = await automationAPI.getTemplates(workspaceId);
-            setWaTemplates(res.data || []);
+            const data = res.data ?? res;
+            setWaTemplates(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching WA templates:', err);
         } finally {

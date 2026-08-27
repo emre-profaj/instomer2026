@@ -308,7 +308,7 @@ export const executePhoneCaptureRule = async (workspaceId, conversationId, messa
         if (tags.includes('Sıcak Fırsat')) return;
 
         // Add tag + update category
-        tags.push('Fırsat');
+        if (!tags.includes('Fırsat')) tags.push('Fırsat');
 
         const updateData = {
             tags: JSON.stringify(tags),
@@ -529,6 +529,19 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         });
         if (!conversation || !conversation.contact) return;
 
+        // 3b. Check Marketing Consent for CALL
+        if (conversation.contact.consentChannels) {
+            try {
+                const consent = JSON.parse(conversation.contact.consentChannels);
+                if (consent.call === false) {
+                    console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Contact ${conversation.contact.id} has opted out of CALL marketing/tasks. Skipping call scheduling.`);
+                    return;
+                }
+            } catch (e) {
+                // Ignore parse errors, default is true
+            }
+        }
+
         // 4. Detect call intent in recent conversation messages (last 10)
         //    OR if contact is already an OPPORTUNITY → phone number alone is enough
         const isOpportunity = ['OPPORTUNITY', 'HOT_OPPORTUNITY'].includes(conversation.contact.status);
@@ -620,20 +633,51 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             console.error('Error fetching agent specific config:', e);
         }
 
-        // 10. Detect customer-stated time (HH:MM or HH.MM format)
-        const timeRegex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/;
+        // 10. Detect customer-stated time — önce saat aralığı (18:00-19:00), sonra tek saat (18:00)
         const allMessageContent = recentMessages.map(m => m.content || '').join(' ') + ' ' + messageContent;
-        const timeMatch = allMessageContent.match(timeRegex);
+        // Facebook Lead Ads'den gelen alt çizgili formatı normalize et: "18:00_-_19:00" → "18:00 - 19:00"
+        const normalizedContent = allMessageContent.replace(/_/g, ' ');
 
         let dueDate;
-        if (timeMatch) {
-            const [, h, m] = timeMatch;
-            const dt = new Date();
-            dt.setHours(parseInt(h), parseInt(m), 0, 0);
-            if (dt < new Date()) dt.setDate(dt.getDate() + 1); // tomorrow if past
-            dueDate = dt;
-            console.log(`⏰ [RULE:SALES_PHONE_CALL] Customer-stated time: ${h}:${m}`);
-        } else {
+        // 10a. Saat aralığı: "18:00-19:00", "18:00 - 19:00", "18.00-19.00"
+        const rangeRegex = /(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})/;
+        const rangeMatch = normalizedContent.match(rangeRegex);
+        if (rangeMatch) {
+            const [, sH, sM] = rangeMatch.map((v, i) => i === 0 ? v : parseInt(v));
+            if (sH >= 6 && sH <= 23) {
+                const nowTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                const nowMinutes = nowTR.getHours() * 60 + nowTR.getMinutes();
+                const windowStartMin = sH * 60 + sM;
+                if (nowMinutes < windowStartMin) {
+                    // Pencere başlamadı → bugün o saate planla
+                    dueDate = new Date();
+                    dueDate.setUTCHours(sH - 3, sM, 0, 0); // TR = UTC+3
+                } else {
+                    // Pencere geçti → yarın o saate planla
+                    dueDate = new Date();
+                    dueDate.setDate(dueDate.getDate() + 1);
+                    dueDate.setUTCHours(sH - 3, sM, 0, 0);
+                }
+                console.log(`⏰ [RULE:SALES_PHONE_CALL] Saat aralığı algılandı: ${rangeMatch[0]} → ${dueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+            }
+        }
+
+        // 10b. Tek saat: "18:00", "15.30" (aralık bulunamadıysa)
+        if (!dueDate) {
+            const timeRegex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/;
+            const timeMatch = normalizedContent.match(timeRegex);
+            if (timeMatch) {
+                const [, h, m] = timeMatch;
+                const dt = new Date();
+                dt.setHours(parseInt(h), parseInt(m), 0, 0);
+                if (dt < new Date()) dt.setDate(dt.getDate() + 1); // tomorrow if past
+                dueDate = dt;
+                console.log(`⏰ [RULE:SALES_PHONE_CALL] Customer-stated time: ${h}:${m}`);
+            }
+        }
+
+        // 10c. Ne aralık ne tek saat bulunamadıysa → default business hours
+        if (!dueDate) {
             // Business hours check (Agent config > Rule config > defaults)
             const businessStart = agentConfigOverrides.businessHourStart ?? config.businessHourStart ?? 10;
             const businessEnd = agentConfigOverrides.businessHourEnd ?? config.businessHourEnd ?? 21;
@@ -664,6 +708,70 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         const contact = conversation.contact;
         const inheritedAssigneeId = conversation.assignedToId || null;
         const inheritedCaseId = conversation.caseId || null;
+
+        // ─── GUARD: Zaten PLANNED veya aktif bir arama görevi varsa tekrar oluşturma ──
+        const existingPlannedCall = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId: contact.id,
+                type: 'CALL',
+                status: 'PLANNED'
+            }
+        });
+        if (existingPlannedCall) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Contact ${contact.id} already has a PLANNED call (${existingPlannedCall.id}), skipping`);
+            return;
+        }
+
+        // ─── GUARD: Aktif retry zinciri varsa (PENDING ScheduledCall) tekrar oluşturma ──
+        if (contact.phone) {
+            const pendingRetry = await prisma.scheduledCall.findFirst({
+                where: {
+                    workspaceId,
+                    toNumber: contact.phone.trim(),
+                    status: 'PENDING'
+                }
+            });
+            if (pendingRetry) {
+                console.log(`🔄 [RULE:SALES_PHONE_CALL] Contact ${contact.id} has a pending scheduled call (${pendingRetry.id}), skipping`);
+                return;
+            }
+        }
+
+        // ─── GUARD: Dinamik cooldown — retrySteps toplam süresine göre ──
+        let cooldownMinutes = 240; // varsayılan 4 saat
+        try {
+            const wsCooldown = await prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { retellAutoCallTriggers: true }
+            });
+            const agentConfigs = wsCooldown?.retellAutoCallTriggers?.agentConfigs || {};
+            const allCooldowns = Object.values(agentConfigs)
+                .filter(cfg => cfg?.retrySteps?.length > 0)
+                .map(cfg => cfg.retrySteps.reduce((sum, step) => sum + (step.delay || 60), 0));
+            if (allCooldowns.length > 0) {
+                cooldownMinutes = Math.max(...allCooldowns);
+            }
+        } catch (_) {}
+
+        const cooldownAgo = new Date(Date.now() - cooldownMinutes * 60 * 1000);
+        const recentRetellCall = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId: contact.id,
+                type: 'CALL',
+                source: { in: ['RETELL', 'AI_CALL'] },
+                status: { in: ['COMPLETED', 'CANCELLED'] },
+                completedAt: { gte: cooldownAgo }
+            }
+        });
+        if (recentRetellCall) {
+            const cooldownLabel = cooldownMinutes >= 1440 ? `${Math.round(cooldownMinutes / 1440)} gün`
+                : cooldownMinutes >= 60 ? `${Math.round(cooldownMinutes / 60)} saat`
+                : `${cooldownMinutes} dk`;
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Contact ${contact.id} was called within last ${cooldownLabel} (retrySteps cooldown), skipping`);
+            return;
+        }
 
         // ─── Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla ──
         const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -770,6 +878,19 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         });
         if (!contact || !contact.phone || !contact.phone.trim()) return;
 
+        // 2a. Check Marketing Consent for aiCall (auto call is AI)
+        if (contact.consentChannels) {
+            try {
+                const consent = JSON.parse(contact.consentChannels);
+                if (consent.aiCall === false) {
+                    console.log(`ℹ️ [RULE:AUTO_CALL] Contact ${contact.id} has opted out of AI CALL marketing/tasks. Skipping auto call.`);
+                    return;
+                }
+            } catch (e) {
+                // Ignore
+            }
+        }
+
         // 2b. CRITICAL: Skip ONLY if last message is an outgoing TEMPLATE (bulk send protection)
         // Normal bot replies, agent messages etc. should NOT block auto-call
         const latestMsg = await prisma.message.findFirst({
@@ -827,8 +948,38 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             return;
         }
 
-        // 3c. Genel cooldown: Son 4 saat içinde Retell araması yapıldıysa tekrar aramayı engelle
-        const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+        // 3c. Aktif retry zinciri kontrolü: Devam eden retry varsa yeni arama oluşturma
+        const pendingRetryCall = await prisma.scheduledCall.findFirst({
+            where: {
+                workspaceId,
+                toNumber: contact.phone.trim(),
+                status: 'PENDING',
+                parentCallId: { not: null }
+            }
+        });
+        if (pendingRetryCall) {
+            console.log(`🔄 [RULE:AUTO_CALL] Contact ${contactId} has an active retry chain (sc: ${pendingRetryCall.id}), skipping auto-call`);
+            return;
+        }
+
+        // 3d. Dinamik cooldown: Agent kartındaki retrySteps toplam süresine göre cooldown uygula
+        let cooldownMinutes = 240; // varsayılan 4 saat (retrySteps yoksa fallback)
+        try {
+            const wsCooldown = await prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { retellAutoCallTriggers: true }
+            });
+            const agentConfigs = wsCooldown?.retellAutoCallTriggers?.agentConfigs || {};
+            // Tüm agent'ların retrySteps toplam sürelerinden en büyüğünü al
+            const allCooldowns = Object.values(agentConfigs)
+                .filter(cfg => cfg?.retrySteps?.length > 0)
+                .map(cfg => cfg.retrySteps.reduce((sum, step) => sum + (step.delay || 60), 0));
+            if (allCooldowns.length > 0) {
+                cooldownMinutes = Math.max(...allCooldowns);
+            }
+        } catch (_) {}
+
+        const cooldownAgo = new Date(Date.now() - cooldownMinutes * 60 * 1000);
         const recentRetellCall = await prisma.contactActivity.findFirst({
             where: {
                 workspaceId,
@@ -836,11 +987,14 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 type: 'CALL',
                 source: 'RETELL',
                 status: 'COMPLETED',
-                completedAt: { gte: fourHoursAgo }
+                completedAt: { gte: cooldownAgo }
             }
         });
         if (recentRetellCall) {
-            console.log(`ℹ️ [RULE:AUTO_CALL] Contact ${contactId} was called by Retell within last 4 hours, skipping auto-call`);
+            const cooldownLabel = cooldownMinutes >= 1440 ? `${Math.round(cooldownMinutes / 1440)} gün`
+                : cooldownMinutes >= 60 ? `${Math.round(cooldownMinutes / 60)} saat`
+                : `${cooldownMinutes} dk`;
+            console.log(`ℹ️ [RULE:AUTO_CALL] Contact ${contactId} was called by Retell within last ${cooldownLabel} (retrySteps cooldown), skipping auto-call`);
             return;
         }
 

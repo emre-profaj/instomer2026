@@ -279,7 +279,9 @@ export const handleWidgetChat = async (req, res) => {
                     workspaceId,
                     conversation.id,
                     'WEB_WIDGET',
-                    true
+                    true,
+                    null,
+                    { messageText: message }
                 );
                 if (routingResult?.teamId) {
                     console.log(`📍 [Widget] Routed to team ${routingResult.teamId}`);
@@ -564,7 +566,9 @@ export const handlePrechat = async (req, res) => {
                     workspaceId,
                     conversation.id,
                     'WEB_WIDGET',
-                    true
+                    true,
+                    null,
+                    { messageText: subject || name || '' }
                 );
                 if (routingResult?.teamId) {
                     console.log(`📍 [Widget Prechat] Routed to team ${routingResult.teamId}`);

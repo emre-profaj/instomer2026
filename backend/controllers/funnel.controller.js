@@ -566,6 +566,25 @@ export const createFunnel = async (req, res) => {
             { name: 'Kapandı',  color: '#10b981', order: 2 }
         ];
 
+        // Sınıflandırma kriterlerini ve kategori eşleştirmelerini JSON olarak hazırla
+        let finalClassCriteria = null;
+        if (classificationCriteria) {
+            if (typeof classificationCriteria === 'string') {
+                try {
+                    const parsed = JSON.parse(classificationCriteria);
+                    if (typeof parsed === 'object' && parsed !== null) {
+                        finalClassCriteria = JSON.stringify(parsed);
+                    } else {
+                        finalClassCriteria = JSON.stringify({ aiDescription: classificationCriteria });
+                    }
+                } catch {
+                    finalClassCriteria = JSON.stringify({ aiDescription: classificationCriteria });
+                }
+            } else if (typeof classificationCriteria === 'object') {
+                finalClassCriteria = JSON.stringify(classificationCriteria);
+            }
+        }
+
         let funnel;
         try {
             funnel = await prisma.funnel.create({
@@ -577,7 +596,7 @@ export const createFunnel = async (req, res) => {
                     order: nextOrder,
                     assignedUserId: assignedUserId || null,
                     assignedTeamId: assignedTeamId || null,
-                    classificationCriteria: classificationCriteria || null,
+                    classificationCriteria: finalClassCriteria,
                     parentId: parentId || null,
                     funnelType: parentId ? 'SUB' : 'SUB',
                     stages: { create: stages }
@@ -594,7 +613,7 @@ export const createFunnel = async (req, res) => {
                     order: nextOrder,
                     assignedUserId: assignedUserId || null,
                     assignedTeamId: assignedTeamId || null,
-                    classificationCriteria: classificationCriteria || null,
+                    classificationCriteria: finalClassCriteria,
                     parentId: parentId || null,
                     funnelType: parentId ? 'SUB' : 'SUB'
                 }
@@ -616,14 +635,47 @@ export const updateFunnel = async (req, res) => {
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
 
-        // categoryIds geliyorsa classificationCriteria JSON'ına ekle
-        let finalClassCriteria = classificationCriteria;
-        if (categoryIds !== undefined) {
-            const existingCriteria = existing.classificationCriteria
-                ? JSON.parse(existing.classificationCriteria)
-                : {};
-            existingCriteria.categoryIds = categoryIds; // ["cat_id_1", "cat_id_2"]
-            finalClassCriteria = JSON.stringify(existingCriteria);
+        // categoryIds ve classificationCriteria birleştirme
+        let finalClassCriteria = undefined;
+        if (classificationCriteria !== undefined || categoryIds !== undefined) {
+            let criteriaObj = {};
+            if (existing.classificationCriteria) {
+                try {
+                    const parsed = JSON.parse(existing.classificationCriteria);
+                    if (typeof parsed === 'object' && parsed !== null) {
+                        criteriaObj = parsed;
+                    } else {
+                        criteriaObj.aiDescription = existing.classificationCriteria;
+                    }
+                } catch {
+                    criteriaObj.aiDescription = existing.classificationCriteria;
+                }
+            }
+
+            if (classificationCriteria !== undefined) {
+                if (typeof classificationCriteria === 'string') {
+                    try {
+                        const parsed = JSON.parse(classificationCriteria);
+                        if (typeof parsed === 'object' && parsed !== null) {
+                            criteriaObj = { ...criteriaObj, ...parsed };
+                        } else {
+                            criteriaObj.aiDescription = classificationCriteria;
+                        }
+                    } catch {
+                        criteriaObj.aiDescription = classificationCriteria;
+                    }
+                } else if (typeof classificationCriteria === 'object' && classificationCriteria !== null) {
+                    criteriaObj = { ...criteriaObj, ...classificationCriteria };
+                } else if (classificationCriteria === null) {
+                    criteriaObj.aiDescription = '';
+                }
+            }
+
+            if (categoryIds !== undefined) {
+                criteriaObj.categoryIds = Array.isArray(categoryIds) ? categoryIds : [];
+            }
+
+            finalClassCriteria = JSON.stringify(criteriaObj);
         }
 
         const updateData = {

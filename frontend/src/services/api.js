@@ -371,6 +371,10 @@ export const aiAPI = {
     updateBot: (workspaceId, botId, data) => api.put(`/ai/${workspaceId}/bots/${botId}`, data),
     toggleStatus: (workspaceId, botId, isActive) => api.patch(`/ai/${workspaceId}/bots/${botId}/status`, { isActive }),
 
+    // Channel assignment
+    getChannels: (workspaceId) => api.get(`/ai/${workspaceId}/channels`),
+    updateBotChannels: (workspaceId, botId, assignments) => api.post(`/ai/${workspaceId}/bots/${botId}/channels`, { assignments }),
+
     // Documents
     getDocuments: (workspaceId, botId) => api.get(`/ai/${workspaceId}/bots/${botId}/documents`),
     uploadDocument: (workspaceId, botId, formData) => api.post(`/ai/${workspaceId}/bots/${botId}/documents`, formData, {
@@ -450,6 +454,7 @@ export const contactAPI = {
     getAnalysis: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/analysis`, { params }),
     getSalesReport: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/sales-report`, { params }),
     getRequestReport: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/request-report`, { params }),
+    getCallDemandReport: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/call-demand-report`, { params }),
     block: (workspaceId, id, reason) => api.post(`/contacts/${workspaceId}/${id}/block`, { reason }),
     unblock: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/unblock`),
     archive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/archive`),

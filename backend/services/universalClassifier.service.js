@@ -73,30 +73,37 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
                 customFunnelContext += `\nAkış: "${f.name}" (ID: ${f.id}) | Aşamalar: [${stageNames}]`;
                 if (f.classificationCriteria) {
                     try {
-                        const criteria = JSON.parse(f.classificationCriteria);
-                        if (criteria.keywords) customFunnelContext += `\n  Anahtar kelimeler: ${criteria.keywords}`;
-                        if (criteria.aiDescription) customFunnelContext += `\n  Açıklama: ${criteria.aiDescription}`;
-                        // Sorumlu kategoriler — kategori isimlerini ve keywordlerini ekle
-                        if (criteria.categoryIds && criteria.categoryIds.length > 0) {
-                            const catNames = [];
-                            const catKeywords = [];
-                            for (const catId of criteria.categoryIds) {
-                                const cat = categoryMap.get(catId);
-                                if (cat) {
-                                    catNames.push(cat.name);
-                                    if (cat.keywords) {
-                                        try {
-                                            const kws = JSON.parse(cat.keywords);
-                                            catKeywords.push(...kws);
-                                        } catch {}
+                        const criteria = typeof f.classificationCriteria === 'string'
+                            ? JSON.parse(f.classificationCriteria)
+                            : f.classificationCriteria;
+                        if (typeof criteria === 'string') {
+                            customFunnelContext += `\n  Giriş kriterleri: ${criteria}`;
+                        } else if (criteria && typeof criteria === 'object') {
+                            if (criteria.aiDescription) customFunnelContext += `\n  Giriş kriterleri: ${criteria.aiDescription}`;
+                            else if (criteria.description) customFunnelContext += `\n  Giriş kriterleri: ${criteria.description}`;
+                            if (criteria.keywords) customFunnelContext += `\n  Anahtar kelimeler: ${criteria.keywords}`;
+                            // Sorumlu kategoriler — kategori isimlerini ve keywordlerini ekle
+                            if (criteria.categoryIds && criteria.categoryIds.length > 0) {
+                                const catNames = [];
+                                const catKeywords = [];
+                                for (const catId of criteria.categoryIds) {
+                                    const cat = categoryMap.get(catId);
+                                    if (cat) {
+                                        catNames.push(cat.name);
+                                        if (cat.keywords) {
+                                            try {
+                                                const kws = JSON.parse(cat.keywords);
+                                                catKeywords.push(...kws);
+                                            } catch {}
+                                        }
                                     }
                                 }
-                            }
-                            if (catNames.length > 0) {
-                                customFunnelContext += `\n  Sorumlu kategoriler: ${catNames.join(', ')}`;
-                            }
-                            if (catKeywords.length > 0) {
-                                customFunnelContext += `\n  Kategori anahtar kelimeleri: ${catKeywords.slice(0, 30).join(', ')}`;
+                                if (catNames.length > 0) {
+                                    customFunnelContext += `\n  Sorumlu kategoriler: ${catNames.join(', ')}`;
+                                }
+                                if (catKeywords.length > 0) {
+                                    customFunnelContext += `\n  Kategori anahtar kelimeleri: ${catKeywords.slice(0, 30).join(', ')}`;
+                                }
                             }
                         }
                     } catch (e) {
@@ -213,7 +220,7 @@ SADECE JSON döndür, başka bir şey yazma:
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             generationConfig: { responseMimeType: 'application/json' }
         });
 
@@ -327,7 +334,7 @@ SADECE JSON döndür:
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             generationConfig: { responseMimeType: 'application/json' }
         });
 
@@ -394,29 +401,15 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // --- GUARD: Zaten atanmış konuşmaların akışını/takımını DEĞİŞTİRME ---
+        // --- GUARD: Manuel kilit kontrolü ---
         let skipFunnelAssignment = false;
-        // Eğer konuşma zaten bir akışta (Genel hariç) VE birine atanmışsa,
-        // sadece contact data güncellendi, akış/takım ataması yapma.
-        const existingConv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { funnelType: true, assignedToId: true, assignedTeamId: true }
+        const contactRecord = await prisma.contact.findUnique({
+            where: { id: contactId },
+            select: { stageManuallySet: true }
         });
-        if (existingConv?.funnelType && (existingConv?.assignedToId || existingConv?.assignedTeamId)) {
-            // "Genel" akışı mı kontrol et — Genel'deyse yeniden yönlendirilebilir
-            let isGenel = false;
-            try {
-                const currentFunnel = await prisma.funnel.findUnique({
-                    where: { id: existingConv.funnelType },
-                    select: { name: true }
-                });
-                isGenel = currentFunnel && /^genel/i.test(currentFunnel.name);
-            } catch (_) {}
-
-            if (!isGenel) {
-                console.log(`🛡️ [Classifier] Konuşma zaten akışta ve atanmış — akış/takım değişikliği yapılmıyor, aktivite kontrolü devam edecek`);
-                skipFunnelAssignment = true;
-            }
+        if (contactRecord?.stageManuallySet) {
+            console.log(`🛡️ [Classifier] Contact aşaması manuel olarak kilitlenmiş — akış/takım değişikliği yapılmıyor`);
+            skipFunnelAssignment = true;
         }
 
         // --- Akış atama (skipFunnelAssignment false ise) ---
@@ -485,17 +478,11 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             const currentFunnelId = conversation?.funnelType;
             let shouldAssign = !currentFunnelId; // Henüz akışı yoksa ata
 
-            // "Genel" akışındaysa → yeni akışa taşı
+            // Farklı bir akış eşleştiyse ve manuel kilit yoksa → yeni akışa taşı
             if (currentFunnelId && currentFunnelId !== targetFunnelId) {
-                try {
-                    const currentFunnel = await prisma.funnel.findUnique({
-                        where: { id: currentFunnelId },
-                        select: { name: true }
-                    });
-                    if (currentFunnel && currentFunnel.name.toLowerCase().includes('genel')) {
-                        shouldAssign = true;
-                    }
-                } catch (_) {}
+                if (!contactRecord?.stageManuallySet) {
+                    shouldAssign = true;
+                }
             }
 
             if (shouldAssign && targetStageId) {

@@ -443,7 +443,15 @@ export const bulkSendTemplate = async (req, res) => {
         if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
 
         // Build contact query
-        let contactWhere = { workspaceId, isDeleted: false, isBlocked: false, marketingOptOut: false, phone: { not: null } };
+        // Build contact query
+        let contactWhere = { 
+            workspaceId, 
+            isDeleted: false, 
+            isBlocked: false, 
+            marketingOptOut: false, 
+            phone: { not: null },
+            NOT: { consentChannels: { contains: '"messaging":false' } }
+        };
 
         if (selectAll) {
             // Filter-based: fetch all matching contacts (no pagination)
@@ -479,12 +487,48 @@ export const bulkSendTemplate = async (req, res) => {
             select: { id: true, name: true, fullName: true, phone: true }
         });
 
+        // ── DEDUP: Aynı kişiye aynı şablonu 24 saat içinde tekrar gönderme ──
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentlySent = await prisma.message.findMany({
+            where: {
+                content: { startsWith: `[Şablon: ${template.name}]` },
+                messageType: 'TEMPLATE',
+                isFromContact: false,
+                createdAt: { gte: twentyFourHoursAgo },
+                conversation: { workspaceId }
+            },
+            select: { conversation: { select: { contactId: true } } }
+        });
+        const recentContactIds = new Set(recentlySent.map(m => m.conversation?.contactId).filter(Boolean));
+        
+        // Telefon numarasına göre de dedup (aynı numara farklı contact kayıtları)
+        const seenPhones = new Set();
+        const dedupedContacts = contacts.filter(c => {
+            if (recentContactIds.has(c.id)) {
+                console.log(`⏭️ [BulkSend] Skipping ${c.id} — template "${template.name}" already sent in last 24h`);
+                return false;
+            }
+            const phone = c.phone?.replace(/[\s\+\-\(\)]/g, '');
+            if (seenPhones.has(phone)) {
+                console.log(`⏭️ [BulkSend] Skipping duplicate phone ${phone}`);
+                return false;
+            }
+            seenPhones.add(phone);
+            return true;
+        });
+
+        const skippedCount = contacts.length - dedupedContacts.length;
+        if (skippedCount > 0) {
+            console.log(`📋 [BulkSend] ${skippedCount} contact(s) skipped (already sent or duplicate)`);
+        }
+
         // Create job tracker entry
         const jobId = randomUUID();
         bulkSendJobs.set(jobId, {
             sent: 0,
             failed: 0,
-            total: contacts.length,
+            skipped: skippedCount,
+            total: dedupedContacts.length,
             done: false,
             templateName: template.name,
             lastError: null,
@@ -496,9 +540,12 @@ export const bulkSendTemplate = async (req, res) => {
         res.json({
             success: true,
             jobId,
-            queued: contacts.length,
+            queued: dedupedContacts.length,
+            skipped: skippedCount,
             templateName: template.name,
-            message: `${contacts.length} kişiye "${template.name}" şablonu gönderiliyor...`
+            message: skippedCount > 0
+                ? `${dedupedContacts.length} kişiye "${template.name}" şablonu gönderiliyor... (${skippedCount} kişi atlandı — 24 saat içinde zaten gönderilmiş)`
+                : `${dedupedContacts.length} kişiye "${template.name}" şablonu gönderiliyor...`
         });
 
         // Background send with 1.5s delay between messages (WhatsApp rate limit)
@@ -535,8 +582,8 @@ export const bulkSendTemplate = async (req, res) => {
                 }
             }
 
-            for (let i = 0; i < contacts.length; i++) {
-                const contact = contacts[i];
+            for (let i = 0; i < dedupedContacts.length; i++) {
+                const contact = dedupedContacts[i];
                 try {
                     // Clean phone — same as automation controller
                     let phone = contact.phone.replace(/[\s\+\-\(\)]/g, '');
@@ -702,7 +749,7 @@ export const bulkSendTemplate = async (req, res) => {
                     sent++;
                     // Update job progress
                     if (job) { job.sent = sent; job.failed = failed; }
-                    console.log(`📤 [BulkSend] ${sent}/${contacts.length} sent to ${phone}`);
+                    console.log(`📤 [BulkSend] ${sent}/${dedupedContacts.length} sent to ${phone}`);
                 } catch (err) {
                     failed++;
                     // Extract detailed error info from WhatsApp API response
@@ -743,7 +790,7 @@ export const bulkSendTemplate = async (req, res) => {
                 } // end catch(err)
 
                 // Rate limit delay (skip after last contact)
-                if (i < contacts.length - 1) {
+                if (i < dedupedContacts.length - 1) {
                     await new Promise(r => setTimeout(r, 1500));
                 }
             }

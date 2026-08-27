@@ -84,18 +84,16 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
 
     // Atamaları (Assignments) belirle — Prisma alan adlarına uygun
     const assignments = {};
-    if (newStage?.assignedTeamId) {
-      assignments.assignedTeamId = newStage.assignedTeamId;
-      assignments.teamIds = JSON.stringify([newStage.assignedTeamId]);
+    const targetTeamId = newStage?.assignedTeamId || funnel?.assignedTeamId || null;
+    const targetUserId = newStage?.assignedUserId || funnel?.assignedUserId || null;
+
+    if (targetTeamId) {
+      assignments.assignedTeamId = targetTeamId;
+      assignments.teamIds = JSON.stringify([targetTeamId]);
     }
-    if (newStage?.assignedUserId) assignments.assignedToId = newStage.assignedUserId;
-    
-    // Eğer aşamada atama yoksa, funnel seviyesine (miras) bak
-    if (!assignments.assignedTeamId && funnel?.assignedTeamId) {
-      assignments.assignedTeamId = funnel.assignedTeamId;
-      assignments.teamIds = JSON.stringify([funnel.assignedTeamId]);
+    if (targetUserId) {
+      assignments.assignedToId = targetUserId;
     }
-    if (!assignments.assignedToId && funnel?.assignedUserId) assignments.assignedToId = funnel.assignedUserId;
 
     // 5. Veritabanı CASCADE Güncellemeleri
     await prisma.$transaction(async (tx) => {
@@ -111,9 +109,13 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
         funnelStageId: stageId,
       };
 
-      // Atama bilgisi varsa ekle (yoksa mevcut atamaları koru)
-      if (Object.keys(assignments).length > 0) {
-        Object.assign(conversationUpdateData, assignments);
+      // Atama bilgisi varsa ekle
+      if (assignments.assignedTeamId !== undefined) {
+        conversationUpdateData.assignedTeamId = assignments.assignedTeamId;
+        conversationUpdateData.teamIds = assignments.teamIds;
+      }
+      if (assignments.assignedToId !== undefined) {
+        conversationUpdateData.assignedToId = assignments.assignedToId;
       }
 
       await tx.conversation.updateMany({
@@ -126,18 +128,37 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
       });
 
       // Aktif vakaları (Case) güncelle
+      const caseUpdateData = {
+        funnelType: funnelId,
+        funnelStageId: stageId
+      };
+      if (assignments.assignedTeamId !== undefined) {
+        caseUpdateData.assignedTeamId = assignments.assignedTeamId;
+      }
+      if (assignments.assignedToId !== undefined) {
+        caseUpdateData.assignedToId = assignments.assignedToId;
+      }
+
       await tx.case.updateMany({
         where: {
           contactId,
           workspaceId,
           status: { notIn: ['CLOSED', 'CANCELLED'] }
         },
-        data: {
-          funnelType: funnelId,
-          funnelStageId: stageId
-        }
+        data: caseUpdateData
       });
     });
+
+    // 5b. Eğer yeni bir takım atandıysa ve belirli bir kullanıcı seçilmediyse -> takım dağıtımını çalıştır
+    let finalAssignedUserId = targetUserId || null;
+    if (targetTeamId && !targetUserId && conversationId) {
+      try {
+        const { assignToTeamMember } = await import('./teamAssignment.service.js');
+        finalAssignedUserId = await assignToTeamMember(targetTeamId, conversationId, { force: true });
+      } catch (assignErr) {
+        console.error('⚠️ [changeFunnelStage] Team member assignment error:', assignErr.message);
+      }
+    }
 
     // 6. Eski aşamadan çıkış (Exit Actions)
     if (oldStageId && oldStageId !== stageId) {
@@ -166,8 +187,26 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
         conversationId,
         funnelType: funnelId,
         funnelStageId: stageId,
+        assignedTeamId: targetTeamId,
+        assignedToId: finalAssignedUserId,
         source
       });
+
+      if (conversationId) {
+        let assignedUserName = null;
+        if (finalAssignedUserId) {
+          const u = await prisma.user.findUnique({ where: { id: finalAssignedUserId }, select: { name: true } });
+          assignedUserName = u?.name || null;
+        }
+        emitToWorkspace(workspaceId, 'conversation_assigned', {
+          conversationId,
+          assignedToId: finalAssignedUserId,
+          assignedToName: assignedUserName,
+          teamIds: targetTeamId ? JSON.stringify([targetTeamId]) : null,
+          funnelType: funnelId,
+          funnelStageId: stageId
+        });
+      }
     } catch (err) {
       console.error('WebSocket emit error:', err);
     }

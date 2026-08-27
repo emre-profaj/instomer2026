@@ -89,9 +89,8 @@ async function getTeamAgentIdForContactOrConversation(workspaceId, contactId, co
 
 
 
-// In-memory lock to prevent duplicate concurrent calls for the same number
-// Key: "workspaceId:normalizedPhone" — held for 30s then auto-released
-const autoCallLocks = new Set();
+
+
 
 // Get Retell settings for a workspace
 export const getSettings = async (req, res) => {
@@ -254,6 +253,50 @@ export function detectCallRequestInMessage(text) {
     const trNow = getTurkeyNow();
     let scheduledAt = null;
 
+    // === STEP 0: Detect day offset from relative/named day expressions ===
+    // "yarın", "öbür gün", "2 gün sonra", "pazartesi", "salı" etc.
+    // This dayOffset is passed to createTRDate when a time is also found.
+    let explicitDayOffset = null; // null = let time-only logic decide; number = override
+
+    const TR_DAY_NAMES = {
+        'pazartesi': 1, 'salı': 2, 'sali': 2,
+        'çarşamba': 3, 'carsamba': 3, 'çarsamba': 3,
+        'perşembe': 4, 'persembe': 4,
+        'cuma': 5,
+        'cumartesi': 6,
+        'pazar': 0
+    };
+
+    if (/\byarın\b|\byarin\b/.test(t)) {
+        explicitDayOffset = 1;
+        console.log(`📅 [detectCall] Relative day: "yarın" → dayOffset=1`);
+    } else if (/\böbür\s*gün\b|\bobur\s*gun\b/.test(t)) {
+        explicitDayOffset = 2;
+        console.log(`📅 [detectCall] Relative day: "öbür gün" → dayOffset=2`);
+    } else if (/\bbugün\b|\bbugun\b/.test(t)) {
+        explicitDayOffset = 0;
+        console.log(`📅 [detectCall] Relative day: "bugün" → dayOffset=0`);
+    } else {
+        // Check for named day (e.g. "pazartesi saat 15:00'te ara")
+        for (const [dayName, targetDay] of Object.entries(TR_DAY_NAMES)) {
+            if (t.includes(dayName)) {
+                const todayDay = new Date(Date.now() + 3 * 60 * 60 * 1000).getUTCDay(); // TR weekday
+                let diff = targetDay - todayDay;
+                if (diff <= 0) diff += 7; // always in the future
+                explicitDayOffset = diff;
+                console.log(`📅 [detectCall] Named day: "${dayName}" → dayOffset=${diff}`);
+                break;
+            }
+        }
+    }
+
+    // Check for "X gün sonra" (e.g. "3 gün sonra ara")
+    const daysLaterMatch = t.match(/(\d+)\s*gün\s+sonra/);
+    if (daysLaterMatch) {
+        explicitDayOffset = parseInt(daysLaterMatch[1]);
+        console.log(`📅 [detectCall] Relative day: "${daysLaterMatch[0]}" → dayOffset=${explicitDayOffset}`);
+    }
+
     // === CHECK FOR SPECIFIC TIME (requires "saat" prefix) ===
     // Matches: "saat 15:00", "saat 15:30'da", "saat 15:00'te"
     const timeMatch = t.match(/saat\s+(\d{1,2}):(\d{2})(?:\s*(?:de|da|te|ta|'de|'da|'te|'ta))?/);
@@ -261,9 +304,15 @@ export function detectCallRequestInMessage(text) {
         const h = parseInt(timeMatch[1]);
         const m = parseInt(timeMatch[2]);
         if (h >= 6 && h <= 23 && m >= 0 && m <= 59) {
-            // Schedule at this time today (Turkey), or tomorrow if already passed
-            const dayOffset = (h * 60 + m <= trNow.totalMinutes) ? 1 : 0;
+            // If explicit day given, use it; otherwise fall back to today/tomorrow based on time
+            let dayOffset;
+            if (explicitDayOffset !== null) {
+                dayOffset = explicitDayOffset;
+            } else {
+                dayOffset = (h * 60 + m <= trNow.totalMinutes) ? 1 : 0;
+            }
             scheduledAt = createTRDate(new Date(), h, m, dayOffset);
+            console.log(`📅 [detectCall] Time+day resolved: saat ${h}:${String(m).padStart(2,'0')} dayOffset=${dayOffset} → ${scheduledAt.toISOString()}`);
         }
     }
 
@@ -273,8 +322,14 @@ export function detectCallRequestInMessage(text) {
         if (hourOnly) {
             const h = parseInt(hourOnly[1]);
             if (h >= 6 && h <= 23) {
-                const dayOffset = (h * 60 <= trNow.totalMinutes) ? 1 : 0;
+                let dayOffset;
+                if (explicitDayOffset !== null) {
+                    dayOffset = explicitDayOffset;
+                } else {
+                    dayOffset = (h * 60 <= trNow.totalMinutes) ? 1 : 0;
+                }
                 scheduledAt = createTRDate(new Date(), h, 0, dayOffset);
+                console.log(`📅 [detectCall] Hour-only+day resolved: saat ${h}:00 dayOffset=${dayOffset} → ${scheduledAt.toISOString()}`);
             }
         }
     }
@@ -457,19 +512,28 @@ function calculateScheduledAt(preferredWindow, schedule, baseDate = new Date()) 
  *   without risking false positives from date strings inside system-generated message content.
  */
 export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date(), explicitPreferredWindow = null, extraDynamicVariables = null) => {
-    // ─── CONCURRENCY LOCK ───────────────────────────────────────────────────────
+    // ─── CONCURRENCY LOCK (DB-level) ──────────────────────────────────────────
     // Prevent race condition: multiple triggers firing in parallel for the same
     // phone create multiple ScheduledCall rows because they all pass the PENDING
-    // check simultaneously. Only the first caller gets through.
+    // check simultaneously. Uses DB-level check instead of in-memory Set so it
+    // works correctly across multiple Node.js instances.
     const rawPhone = phoneNumber ? String(phoneNumber).replace(/\s/g, '') : '';
-    const lockKey = `${workspaceId}:${rawPhone}`;
-    if (autoCallLocks.has(lockKey)) {
-        console.log(`🔒 [AutoCall] Lock active for ${lockKey} (trigger: ${triggerSource}) — skipping duplicate`);
-        return;
+    try {
+        const recentDuplicate = await prisma.scheduledCall.findFirst({
+            where: {
+                workspaceId,
+                toNumber: { contains: rawPhone.slice(-10) },
+                status: 'PENDING',
+                createdAt: { gte: new Date(Date.now() - 60_000) } // Son 60 saniye içinde
+            }
+        });
+        if (recentDuplicate) {
+            console.log(`🔒 [AutoCall] DB lock: recent PENDING call exists for ${rawPhone} (trigger: ${triggerSource}) — skipping duplicate`);
+            return;
+        }
+    } catch (lockErr) {
+        console.warn('⚠️ [AutoCall] DB lock check failed (non-critical):', lockErr.message);
     }
-    autoCallLocks.add(lockKey);
-    // Auto-release lock after 30 s so future legitimate retries can proceed
-    setTimeout(() => autoCallLocks.delete(lockKey), 30_000);
     // ────────────────────────────────────────────────────────────────────────────
 
     try {
@@ -1212,8 +1276,8 @@ async function checkOverdueAgentCalls() {
         const workspaces = await prisma.workspace.findMany({
             where: {
                 retellApiKey: { not: null },
-                retellAgentId: { not: null },
-                retellFromNumber: { not: null }
+                retellAgentId: { not: null, notIn: [''] },
+                retellFromNumber: { not: null, notIn: [''] }
             },
             select: {
                 id: true,
@@ -1325,11 +1389,11 @@ async function checkOverdueAgentCalls() {
                 type: 'CALL',
                 status: 'PLANNED',
                 dueDate: { lte: now, gte: maxOverdueCutoff },
-                assignedToId: null,
-                aiAgentId: null,
+                OR: [{ assignedToId: null }, { assignedToId: '' }],
                 aiFallbackTriggered: false,
                 retellExcluded: { not: true },
-                contact: { phone: { not: null } }
+                contact: { phone: { not: null } },
+                AND: [{ OR: [{ aiAgentId: null }, { aiAgentId: '' }] }]
             },
             include: { contact: true }
         }) : [];
@@ -1343,7 +1407,7 @@ async function checkOverdueAgentCalls() {
                 type: 'CALL',
                 status: 'PLANNED',
                 aiFallbackTriggered: false,
-                aiAgentId: null,
+                OR: [{ aiAgentId: null }, { aiAgentId: '' }],
                 dueDate: { not: null },
                 retellExcluded: { not: true },
                 contact: { phone: { not: null } }
@@ -1366,8 +1430,12 @@ async function checkOverdueAgentCalls() {
         console.log(`   Direct AI: ${directAiActivities.length}, Pool: ${poolActivities.length}, Human timeout: ${humanTimeoutActivities.length}`);
 
         // Find existing scheduled calls to avoid duplicates
+        // Only count PENDING and COMPLETED — CANCELLED/FAILED should be retried
         const existingScheduledCalls = await prisma.scheduledCall.findMany({
-            where: { createdById: { startsWith: 'activity_' } },
+            where: { 
+                createdById: { startsWith: 'activity_' },
+                status: { in: ['PENDING', 'COMPLETED'] }
+            },
             select: { createdById: true }
         });
         const scheduledActivityIds = new Set(
@@ -1401,10 +1469,23 @@ async function checkOverdueAgentCalls() {
                 // Workspace default
                 const wsConfig = activeWorkspaces.find(w => w.id === activity.workspaceId);
                 agentId = wsConfig?.retellAgentId || null;
+                
+                // Also try agentConfigs — if there's a single active agent, use it
+                if (!agentId && wsConfig?.retellAutoCallTriggers) {
+                    const triggers = typeof wsConfig.retellAutoCallTriggers === 'string' 
+                        ? JSON.parse(wsConfig.retellAutoCallTriggers) 
+                        : wsConfig.retellAutoCallTriggers;
+                    const configs = triggers?.agentConfigs || {};
+                    const activeAgents = Object.entries(configs).filter(([_, cfg]) => cfg.active !== false);
+                    if (activeAgents.length > 0) {
+                        agentId = activeAgents[0][0]; // İlk aktif agent'ı kullan
+                        console.log(`🔍 [CallRouter] No retellAgentId on workspace, using first active agent from agentConfigs: ${agentId}`);
+                    }
+                }
             }
 
             if (!agentId) {
-                console.log(`⏭️ [CallRouter] No AI agent found for activity ${activity.id}, skipping`);
+                console.log(`⏭️ [CallRouter] No AI agent found for activity ${activity.id} (workspaceId: ${activity.workspaceId}, aiAgentId: ${activity.aiAgentId}), skipping`);
                 continue;
             }
 

@@ -1,5 +1,5 @@
 .sidebar {
-    width: 265px;
+    width: 280px;
     /* Slightly wider to match image proportions */
     height: 100vh;
     background-color: #ffffff;
@@ -84,7 +84,7 @@
 }
 
 .business-name {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     color: #111827;
     margin: 0;
@@ -298,7 +298,8 @@
     position: absolute;
     top: calc(100% + 8px);
     left: 16px;
-    right: 16px;
+    right: -20px;
+    min-width: 260px;
     background: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 12px;
@@ -426,7 +427,7 @@
 }
 
 .item-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: #374151;
     white-space: nowrap;

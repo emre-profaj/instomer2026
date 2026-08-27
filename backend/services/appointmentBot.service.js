@@ -784,18 +784,45 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
 
 
         // Eksik bilgileri conversation/contact'tan tamamla
-        if ((!patient_name || !patient_phone) && conversationId) {
+        let contactId = null;
+        if (conversationId) {
             try {
                 const convData = await prisma.conversation.findUnique({
                     where: { id: conversationId },
                     select: {
-                        contact: { select: { name: true, phone: true } }
+                        contactId: true,
+                        contact: { select: { id: true, name: true, phone: true } }
                     }
                 });
+                if (convData?.contact?.id) {
+                    contactId = convData.contact.id;
+                }
                 if (!patient_name) patient_name = convData?.contact?.name || 'Müşteri';
                 if (!patient_phone) patient_phone = convData?.contact?.phone || '';
             } catch (e) {
                 console.warn('⚠️ [AppointmentBot] Contact lookup failed:', e.message);
+            }
+        }
+
+        // contactId hâlâ bulunamadıysa telefon numarasıyla ara
+        if (!contactId && patient_phone) {
+            try {
+                const normalizedPhone = patient_phone.replace(/\D/g, '');
+                const existingContact = await prisma.contact.findFirst({
+                    where: {
+                        workspaceId,
+                        OR: [
+                            { phone: { contains: normalizedPhone.slice(-10) } },
+                            { phone: normalizedPhone }
+                        ]
+                    },
+                    select: { id: true }
+                });
+                if (existingContact) {
+                    contactId = existingContact.id;
+                }
+            } catch (e) {
+                console.warn('⚠️ [AppointmentBot] Phone-based contact lookup failed:', e.message);
             }
         }
 
@@ -842,6 +869,7 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                 description:   procedure || `${branch || 'Randevu'} randevusu`,
                 startTime,
                 endTime,
+                contactId:     contactId || null,
                 contactName:   patient_name  || '',
                 contactPhone:  patient_phone || '',
                 branch:        branch        || '',

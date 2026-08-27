@@ -44,6 +44,42 @@ export async function processTimedActions() {
                     continue;
                 }
                 
+                if (config.automationType === 'AUTOMATION_REMINDER') {
+                    // automationExecutor.js tarafından zamanlanan hatırlatma mesajı
+                    try {
+                        if (config.conversationId) {
+                            await prisma.message.create({
+                                data: {
+                                    conversationId: config.conversationId,
+                                    content: config.message || 'Hatırlatma',
+                                    messageType: 'TEXT',
+                                    isFromContact: false,
+                                    status: 'SENT'
+                                }
+                            });
+                            await prisma.conversation.update({
+                                where: { id: config.conversationId },
+                                data: { lastMessageAt: new Date() }
+                            });
+                            try {
+                                const { emitToWorkspace } = await import('../socket.js');
+                                emitToWorkspace(config.workspaceId || action.workspaceId, 'new_message', { conversationId: config.conversationId });
+                            } catch (_) {}
+                        }
+                        console.log(`🔔 [TimedActionProcessor] AUTOMATION_REMINDER delivered: ${action.id}`);
+                    } catch (reminderErr) {
+                        console.error(`❌ [TimedActionProcessor] AUTOMATION_REMINDER failed:`, reminderErr.message);
+                    }
+                    
+                    // Mark as completed
+                    await prisma.contactActivity.update({
+                        where: { id: action.id },
+                        data: { status: 'COMPLETED' }
+                    });
+                    processed++;
+                    continue;
+                }
+
                 if (config.automationType !== 'STAGE_TIMED_ACTION') continue;
                 
                 // Check if contact is still in the same stage

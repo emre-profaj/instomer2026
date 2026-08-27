@@ -134,7 +134,7 @@ export async function processIncoming(normalizedMsg) {
 
     // ── 5. Kanal yönlendirme ──────────────────────────────
     const channelForRouting = mapChannelForRouting(channelType);
-    await applyChannelRouting(workspaceId, conversation.id, channelForRouting, isNewConversation);
+    await applyChannelRouting(workspaceId, conversation.id, channelForRouting, isNewConversation, null, { messageText });
 
     // Konuşmayı yeniden oku
     conversation = await prisma.conversation.findUnique({ where: { id: conversation.id } });
@@ -361,10 +361,8 @@ async function processPostSave(workspaceId, conversation, contact, messageText, 
       );
 
       if (classifierResult && classifierResult.classification !== 'GENEL') {
-        // Niyet → aşama geçişi
-        const { applyIntentStageTransition, createIntentActivity } = await import('../services/intentStage.service.js');
-        await applyIntentStageTransition(workspaceId, conversation.id, contact.id, classifierResult);
-        await createIntentActivity(workspaceId, contact.id, classifierResult, conversation.id);
+        const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
+        await executeClassificationActions(workspaceId, conversation.id, contact.id, classifierResult);
       }
     }
   } catch (intentErr) {
@@ -439,9 +437,8 @@ export async function runChannelPostProcessing(workspaceId, conversationId, cont
         );
 
         if (classifierResult && classifierResult.classification !== 'GENEL') {
-          const { applyIntentStageTransition, createIntentActivity } = await import('../services/intentStage.service.js');
-          await applyIntentStageTransition(workspaceId, conversationId, contactId, classifierResult);
-          await createIntentActivity(workspaceId, contactId, classifierResult, conversationId);
+          const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
+          await executeClassificationActions(workspaceId, conversationId, contactId, classifierResult);
         }
       }
     } catch (intentErr) {

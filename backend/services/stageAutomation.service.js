@@ -441,7 +441,14 @@ export async function executeSingleAction(action, contactId, workspaceId) {
             // That function is NOT exported, so replicate the logic:
             const contact = await prisma.contact.findUnique({ where: { id: contactId } });
             // Opt-out kontrolü — pazarlama mesajı almak istemeyen kişiye şablon gönderme
-            if (contact?.marketingOptOut) {
+            let optedOut = contact?.marketingOptOut;
+            if (contact?.consentChannels) {
+                try {
+                    const consent = JSON.parse(contact.consentChannels);
+                    if (consent.messaging === false) optedOut = true;
+                } catch(e){}
+            }
+            if (optedOut) {
                 console.log(`🚫 [StageAutomation] Opt-out kişiye WA şablon gönderilmedi: ${contact.phone}`);
                 break;
             }

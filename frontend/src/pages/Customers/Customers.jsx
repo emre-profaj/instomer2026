@@ -213,6 +213,17 @@ const Customers = () => {
     const [exporting, setExporting] = useState(false);
     const [exportingLeads, setExportingLeads] = useState(false);
 
+    // Dışa Aktar 2 (Arama & Talep Görüşme Raporu) state
+    const [showReport2Modal, setShowReport2Modal] = useState(false);
+    const [report2Data, setReport2Data] = useState([]);
+    const [report2Stats, setReport2Stats] = useState({ total: 0, reachedCount: 0, unreachedCount: 0, agentCount: 0 });
+    const [report2Loading, setReport2Loading] = useState(false);
+    const [report2Exporting, setReport2Exporting] = useState(false);
+    const [report2StartDate, setReport2StartDate] = useState('');
+    const [report2EndDate, setReport2EndDate] = useState('');
+    const [report2DatePreset, setReport2DatePreset] = useState('ALL');
+    const [report2Search, setReport2Search] = useState('');
+
     // Bulk WhatsApp Template state
     const [showBulkWA, setShowBulkWA] = useState(false);
     const [waTemplates, setWaTemplates] = useState([]);
@@ -787,6 +798,167 @@ const Customers = () => {
             alert('Lead dışa aktarma hatası: ' + (error.response?.data?.error || error.message));
         } finally {
             setExportingLeads(false);
+        }
+    };
+
+    // ─── Dışa Aktar 2 (Arama & Talep Görüşme Raporu) Handlers ─────────────────
+    const loadReport2Data = async (startDate = '', endDate = '') => {
+        if (!currentWorkspace?.id) return;
+        setReport2Loading(true);
+        try {
+            const params = {};
+            if (startDate) params.startDate = startDate;
+            if (endDate) params.endDate = endDate;
+            const res = await contactAPI.getCallDemandReport(currentWorkspace.id, params);
+            setReport2Data(res.data.report || []);
+            setReport2Stats(res.data.stats || { total: 0, reachedCount: 0, unreachedCount: 0, agentCount: 0 });
+        } catch (error) {
+            console.error('Error loading call demand report:', error);
+            alert('Rapor yüklenirken hata oluştu: ' + (error.response?.data?.error || error.message));
+        } finally {
+            setReport2Loading(false);
+        }
+    };
+
+    const handleOpenReport2Modal = () => {
+        setShowReport2Modal(true);
+        setReport2Search('');
+        setReport2DatePreset('ALL');
+        setReport2StartDate('');
+        setReport2EndDate('');
+        loadReport2Data('', '');
+    };
+
+    const handleReport2DatePreset = (preset) => {
+        setReport2DatePreset(preset);
+        const now = new Date();
+        let start = '';
+        let end = '';
+
+        const formatDateStr = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        if (preset === 'TODAY') {
+            start = formatDateStr(now);
+            end = formatDateStr(now);
+        } else if (preset === 'WEEK') {
+            const dayOfWeek = now.getDay() || 7;
+            const monday = new Date(now);
+            monday.setDate(now.getDate() - dayOfWeek + 1);
+            start = formatDateStr(monday);
+            end = formatDateStr(now);
+        } else if (preset === 'MONTH') {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            start = formatDateStr(firstDay);
+            end = formatDateStr(now);
+        } else if (preset === 'LAST_30') {
+            const d30 = new Date(now);
+            d30.setDate(now.getDate() - 30);
+            start = formatDateStr(d30);
+            end = formatDateStr(now);
+        }
+
+        setReport2StartDate(start);
+        setReport2EndDate(end);
+        loadReport2Data(start, end);
+    };
+
+    const getFilteredReport2Data = () => {
+        if (!report2Search.trim()) return report2Data;
+        const q = report2Search.toLowerCase().trim();
+        return report2Data.filter(item => (
+            (item.agentName && item.agentName.toLowerCase().includes(q)) ||
+            (item.customerName && item.customerName.toLowerCase().includes(q)) ||
+            (item.phone && item.phone.toLowerCase().includes(q)) ||
+            (item.email && item.email.toLowerCase().includes(q)) ||
+            (item.company && item.company.toLowerCase().includes(q)) ||
+            (item.caseTitle && item.caseTitle.toLowerCase().includes(q)) ||
+            (item.caseNumber && item.caseNumber.toLowerCase().includes(q)) ||
+            (item.stageName && item.stageName.toLowerCase().includes(q)) ||
+            (item.callStatus && item.callStatus.toLowerCase().includes(q)) ||
+            (item.callNote && item.callNote.toLowerCase().includes(q))
+        ));
+    };
+
+    const handleExportReport2Excel = () => {
+        try {
+            setReport2Exporting(true);
+            const rowsToExport = getFilteredReport2Data();
+            if (rowsToExport.length === 0) {
+                alert('Dışa aktarılacak görüşme kaydı bulunamadı.');
+                setReport2Exporting(false);
+                return;
+            }
+
+            const headers = [
+                'Görüşen / Temsilci',
+                'Takım',
+                'Müşteri Adı',
+                'Telefon',
+                'E-posta',
+                'Şirket',
+                'Kaynak',
+                'Talep No',
+                'Talep / Konu',
+                'Aşama / Durum',
+                'Görüşme Türü',
+                'Tarih & Saat',
+                'Görüşme Durumu',
+                'Duygu / Hissiyat',
+                'Arama / Görüşme Notu'
+            ];
+
+            const rows = rowsToExport.map(r => [
+                r.agentName || '',
+                r.teamName || '',
+                r.customerName || '',
+                r.phone || '',
+                r.email || '',
+                r.company || '',
+                r.source || '',
+                r.caseNumber || '',
+                r.caseTitle || '',
+                r.stageName || '',
+                r.activityType || '',
+                r.formattedDate || '',
+                r.callStatus || '',
+                r.sentiment || '',
+                r.callNote || ''
+            ]);
+
+            const wsData = [headers, ...rows];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [
+                { wch: 22 }, // Görüşen / Temsilci
+                { wch: 16 }, // Takım
+                { wch: 24 }, // Müşteri Adı
+                { wch: 18 }, // Telefon
+                { wch: 26 }, // E-posta
+                { wch: 20 }, // Şirket
+                { wch: 14 }, // Kaynak
+                { wch: 16 }, // Talep No
+                { wch: 26 }, // Talep / Konu
+                { wch: 18 }, // Aşama / Durum
+                { wch: 20 }, // Görüşme Türü
+                { wch: 20 }, // Tarih & Saat
+                { wch: 22 }, // Görüşme Durumu
+                { wch: 16 }, // Duygu
+                { wch: 55 }  // Arama Notu
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Görüşme ve Arama Raporu');
+            const dateSuffix = report2StartDate && report2EndDate ? `_${report2StartDate}_${report2EndDate}` : `_${new Date().toISOString().slice(0, 10)}`;
+            XLSX.writeFile(wb, `arama_talep_raporu${dateSuffix}.xlsx`);
+        } catch (error) {
+            console.error('Report 2 export error:', error);
+            alert('Rapor dışa aktarılırken bir hata oluştu: ' + error.message);
+        } finally {
+            setReport2Exporting(false);
         }
     };
 
@@ -2897,6 +3069,17 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                             >
                                 <Download size={14} /> Dışa Aktar
                             </button>
+                            {currentWorkspace?.id === '4a7e92e8-6e4c-4a48-b0a8-ffe0eb61bf33' && (
+                                <button
+                                    className="export-csv-btn export-report2-btn"
+                                    onClick={handleOpenReport2Modal}
+                                    disabled={report2Loading}
+                                    title="Arama & Talep Görüşme Raporu (Dışa Aktar 2)"
+                                    style={{ background: '#0284c7', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    {report2Loading ? <Loader size={14} className="spin" /> : <FileText size={14} />} Dışa Aktar 2
+                                </button>
+                            )}
                             {currentWorkspace?.id === 'dbdb6e87-9769-4975-ad57-a984a1e8b995' && (
                                 <button
                                     className="export-csv-btn"
@@ -3399,6 +3582,312 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                         loadContacts();
                     }}
                 />
+
+                {/* Dışa Aktar 2 — Arama & Talep Görüşme Raporu Modalı */}
+                {showReport2Modal && (
+                    <div className="modal-overlay" onClick={() => setShowReport2Modal(false)}>
+                        <div className="modal-content report2-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1180px', width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                            {/* Modal Header */}
+                            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                                        <FileText size={20} style={{ color: '#0284c7' }} />
+                                        Arama & Talep Görüşme Raporu (Dışa Aktar 2)
+                                    </h2>
+                                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                                        Kim hangi talep ile görüştü, görüşme sonuçları ve arama notları
+                                    </p>
+                                </div>
+                                <button className="modal-close" onClick={() => setShowReport2Modal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            {/* Summary Metric Badges */}
+                            <div className="report2-metrics-bar" style={{ padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                <div className="report2-metric-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <PhoneCall size={16} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Toplam Kayıt</div>
+                                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>{report2Stats.total || 0}</div>
+                                    </div>
+                                </div>
+
+                                <div className="report2-metric-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <CheckCircle2 size={16} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Ulaşılan / Başarılı</div>
+                                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#16a34a' }}>{report2Stats.reachedCount || 0}</div>
+                                    </div>
+                                </div>
+
+                                <div className="report2-metric-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <PhoneOff size={16} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Ulaşılamayan</div>
+                                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#dc2626' }}>{report2Stats.unreachedCount || 0}</div>
+                                    </div>
+                                </div>
+
+                                <div className="report2-metric-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Users size={16} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Görüşen Temsilci</div>
+                                        <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>{report2Stats.agentCount || 0}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Filter Bar */}
+                            <div className="report2-filter-bar" style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                                {/* Date Presets */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    {[
+                                        { id: 'ALL', label: 'Tümü' },
+                                        { id: 'TODAY', label: 'Bugün' },
+                                        { id: 'WEEK', label: 'Bu Hafta' },
+                                        { id: 'MONTH', label: 'Bu Ay' },
+                                        { id: 'LAST_30', label: 'Son 30 Gün' }
+                                    ].map(preset => (
+                                        <button
+                                            key={preset.id}
+                                            onClick={() => handleReport2DatePreset(preset.id)}
+                                            style={{
+                                                padding: '5px 12px',
+                                                borderRadius: '20px',
+                                                fontSize: '12px',
+                                                border: '1px solid',
+                                                borderColor: report2DatePreset === preset.id ? '#0284c7' : '#cbd5e1',
+                                                background: report2DatePreset === preset.id ? '#e0f2fe' : '#ffffff',
+                                                color: report2DatePreset === preset.id ? '#0284c7' : '#475569',
+                                                fontWeight: report2DatePreset === preset.id ? 700 : 500,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {preset.label}
+                                        </button>
+                                    ))}
+
+                                    {/* Custom Date Range */}
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+                                        <input
+                                            type="date"
+                                            value={report2StartDate}
+                                            onChange={e => { setReport2StartDate(e.target.value); setReport2DatePreset('CUSTOM'); }}
+                                            style={{ padding: '4px 8px', fontSize: '11px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                                        />
+                                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>-</span>
+                                        <input
+                                            type="date"
+                                            value={report2EndDate}
+                                            onChange={e => { setReport2EndDate(e.target.value); setReport2DatePreset('CUSTOM'); }}
+                                            style={{ padding: '4px 8px', fontSize: '11px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                                        />
+                                        <button
+                                            onClick={() => loadReport2Data(report2StartDate, report2EndDate)}
+                                            style={{
+                                                padding: '4px 10px',
+                                                fontSize: '11px',
+                                                fontWeight: 600,
+                                                background: '#f1f5f9',
+                                                border: '1px solid #cbd5e1',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Filtrele
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Search in Report */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ position: 'relative', minWidth: '240px' }}>
+                                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                                        <input
+                                            type="text"
+                                            placeholder="Temsilci, müşteri, talep, not ara..."
+                                            value={report2Search}
+                                            onChange={e => setReport2Search(e.target.value)}
+                                            style={{ width: '100%', padding: '6px 10px 6px 30px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', outline: 'none' }}
+                                        />
+                                    </div>
+
+                                    {/* Direct Download Excel */}
+                                    <button
+                                        onClick={handleExportReport2Excel}
+                                        disabled={report2Exporting || getFilteredReport2Data().length === 0}
+                                        style={{
+                                            padding: '6px 14px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: '#16a34a',
+                                            color: '#ffffff',
+                                            fontSize: '12px',
+                                            fontWeight: 600,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            cursor: 'pointer'
+                                        }}
+                                        title="Excel Dosyası Olarak İndir"
+                                    >
+                                        {report2Exporting ? <Loader size={14} className="spin" /> : <Download size={14} />}
+                                        Excel İndir ({getFilteredReport2Data().length})
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Table / List Container */}
+                            <div style={{ flex: 1, overflowY: 'auto', maxHeight: '55vh', padding: '0' }}>
+                                {report2Loading ? (
+                                    <div style={{ padding: '60px 0', textAlign: 'center', color: '#64748b' }}>
+                                        <Loader size={28} className="spin" style={{ margin: '0 auto 12px', color: '#0284c7' }} />
+                                        <p style={{ fontSize: '14px', margin: 0 }}>Görüşme ve talep raporu hazırlanıyor...</p>
+                                    </div>
+                                ) : getFilteredReport2Data().length === 0 ? (
+                                    <div style={{ padding: '60px 0', textAlign: 'center', color: '#64748b' }}>
+                                        <CircleOff size={36} style={{ margin: '0 auto 10px', color: '#94a3b8' }} />
+                                        <p style={{ fontSize: '14px', fontWeight: 600, margin: 0 }}>Görüşme kaydı bulunamadı</p>
+                                        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>Seçili tarih aralığı veya filtreye uygun arama/görüşme kaydı yok.</p>
+                                    </div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                        <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 10, borderBottom: '1px solid #cbd5e1' }}>
+                                            <tr>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>TEMSİLCİ / GÖRÜŞEN</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>MÜŞTERİ</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>TELEFON</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>TALEP / KONU</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>AŞAMA</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>TÜR</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>TARİH & SAAT</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px' }}>DURUM</th>
+                                                <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11px', minWidth: '220px' }}>ARAMA NOTU</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {getFilteredReport2Data().map((row, idx) => (
+                                                <tr
+                                                    key={row.id || idx}
+                                                    style={{
+                                                        borderBottom: '1px solid #f1f5f9',
+                                                        background: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                                                        transition: 'background 0.1s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#ffffff' : '#fafafa'}
+                                                >
+                                                    {/* Representative */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                                                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{row.agentName}</div>
+                                                        {row.teamName && row.teamName !== '---' && (
+                                                            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>🏢 {row.teamName}</div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Customer */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                                                        <div style={{ fontWeight: 600, color: '#0284c7' }}>{row.customerName}</div>
+                                                        {row.company && row.company !== '---' && (
+                                                            <div style={{ fontSize: '10px', color: '#6366f1', marginTop: '2px' }}>🏢 {row.company}</div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Phone */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top', color: '#334155', fontFamily: 'monospace', fontSize: '11px' }}>
+                                                        {row.phone}
+                                                    </td>
+
+                                                    {/* Demand / Case */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                                                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', background: '#f5f3ff', color: '#7c3aed', fontWeight: 600, fontSize: '11px' }}>
+                                                            {row.caseTitle}
+                                                        </span>
+                                                        {row.caseNumber && row.caseNumber !== '---' && (
+                                                            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>{row.caseNumber}</div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Stage */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                                                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '12px', background: `${row.stageColor || '#64748b'}15`, color: row.stageColor || '#64748b', fontWeight: 600, fontSize: '11px' }}>
+                                                            {row.stageName}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Activity Type */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top', color: '#475569', fontSize: '11px' }}>
+                                                        {row.activityType}
+                                                    </td>
+
+                                                    {/* Date & Time */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top', color: '#334155', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                                                        {row.formattedDate}
+                                                    </td>
+
+                                                    {/* Call Status / Outcome */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                                                        <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: '4px', background: `${row.statusBadgeColor}15`, color: row.statusBadgeColor, fontWeight: 600, fontSize: '11px' }}>
+                                                            {row.callStatus}
+                                                        </span>
+                                                        {row.sentiment && row.sentiment !== '---' && (
+                                                            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{row.sentiment}</div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Call Note */}
+                                                    <td style={{ padding: '10px 14px', verticalAlign: 'top' }}>
+                                                        {row.callNote ? (
+                                                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 10px', color: '#1e293b', lineHeight: 1.4, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                                                {row.callNote}
+                                                            </div>
+                                                        ) : (
+                                                            <span style={{ color: '#cbd5e1' }}>Not yok</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+                                <div style={{ fontSize: '12px', color: '#64748b' }}>
+                                    Toplam <strong>{getFilteredReport2Data().length}</strong> görüşme kaydı listelendi.
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        className="btn-secondary"
+                                        onClick={() => setShowReport2Modal(false)}
+                                        style={{ padding: '6px 14px', fontSize: '12px' }}
+                                    >
+                                        Kapat
+                                    </button>
+                                    <button
+                                        className="btn-primary"
+                                        onClick={handleExportReport2Excel}
+                                        disabled={report2Exporting || getFilteredReport2Data().length === 0}
+                                        style={{ padding: '6px 16px', fontSize: '12px', background: '#16a34a', color: '#ffffff', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                                    >
+                                        {report2Exporting ? <Loader size={14} className="spin" /> : <Download size={14} />}
+                                        Excel Olarak İndir (.xlsx)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Export Modal */}
                 {showExportModal && (

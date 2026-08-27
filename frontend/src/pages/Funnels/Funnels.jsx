@@ -323,17 +323,28 @@ const Funnels = () => {
     };
 
     const openFunnelPanel = (funnel) => {
+        let aiDescription = '';
+        let catIds = [];
+        if (funnel.classificationCriteria) {
+            try {
+                const parsed = JSON.parse(funnel.classificationCriteria);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    aiDescription = parsed.aiDescription || parsed.description || parsed.keywords || '';
+                    catIds = Array.isArray(parsed.categoryIds) ? parsed.categoryIds : [];
+                } else {
+                    aiDescription = String(funnel.classificationCriteria);
+                }
+            } catch {
+                aiDescription = String(funnel.classificationCriteria);
+            }
+        }
+
         setFunnelPanel({
             ...funnel,
             assignedTeamId: funnel.assignedTeamId || '',
             assignedUserId: funnel.assignedUserId || '',
-            classificationCriteria: funnel.classificationCriteria || '',
-            categoryIds: (() => {
-                try {
-                    const c = funnel.classificationCriteria ? JSON.parse(funnel.classificationCriteria) : {};
-                    return c.categoryIds || [];
-                } catch { return []; }
-            })(),
+            classificationCriteria: aiDescription,
+            categoryIds: catIds,
             color: funnel.color || nextColor(),
             icon: funnel.icon || '📁',
             parentId: funnel.parentId || '',

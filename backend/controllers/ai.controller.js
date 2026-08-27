@@ -411,15 +411,15 @@ ${systemPrompt}`;
         let result;
         try {
             // First try user requested model
-            result = await tryGenerate("gemini-2.5-flash");
+            result = await tryGenerate("gemini-3.5-flash");
         } catch (primaryError) {
-            console.warn(`⚠️ Primary model (gemini-2.5-flash) failed: ${primaryError.message}`);
+            console.warn(`⚠️ Primary model (gemini-3.5-flash) failed: ${primaryError.message}`);
 
             // If quota/not found/etc, try fallback
             if (primaryError.message.includes('404') || primaryError.message.includes('429') || primaryError.message.includes('503')) {
-                console.log('🔄 Switching to fallback model: gemini-2.5-flash');
+                console.log('🔄 Switching to fallback model: gemini-3.5-flash');
                 try {
-                    result = await tryGenerate("gemini-2.5-flash");
+                    result = await tryGenerate("gemini-3.5-flash");
                 } catch (fallbackError) {
                     throw new Error(`Both primary and fallback models failed. Last error: ${fallbackError.message}`);
                 }
@@ -495,7 +495,7 @@ ${chatLogForTopic.substring(0, 3000)}
 
 Konu başlığı:`;
 
-            const topicModel = new GoogleGenerativeAI(aiApiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const topicModel = new GoogleGenerativeAI(aiApiKey).getGenerativeModel({ model: 'gemini-3.5-flash' });
             const topicResult = await topicModel.generateContent(topicPrompt);
             topic = topicResult.response.text()
                 .trim()
@@ -530,10 +530,10 @@ ${chatLog}
         };
 
         try {
-            result = await trySummarize("gemini-2.5-flash");
+            result = await trySummarize("gemini-3.5-flash");
         } catch (e) {
             console.warn('Fallback to 1.5 for summary');
-            result = await trySummarize("gemini-2.5-flash");
+            result = await trySummarize("gemini-3.5-flash");
         }
 
         const summary = result.response.text();
@@ -606,7 +606,7 @@ export const translateText = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const result = await model.generateContent(
             `Translate the following text to ${targetLang}. Output ONLY the translation, nothing else. No quotes, no explanation.\n\n${text}`
@@ -719,10 +719,10 @@ SADECE JSON formatında yanıt ver, başka açıklama ekleme:
         };
 
         try {
-            result = await tryGenerate("gemini-2.5-flash");
+            result = await tryGenerate("gemini-3.5-flash");
         } catch (e) {
-            console.warn('Fallback to gemini-2.5-flash for suggestions');
-            result = await tryGenerate("gemini-2.5-flash");
+            console.warn('Fallback to gemini-3.5-flash for suggestions');
+            result = await tryGenerate("gemini-3.5-flash");
         }
 
         const responseText = result.response.text();
@@ -838,12 +838,12 @@ JSON:`;
         let extractedData;
         try {
             // Try 1.5 flash latest which is more standard now
-            extractedData = await tryExtract("gemini-2.5-flash");
+            extractedData = await tryExtract("gemini-3.5-flash");
             console.log('✅ [AI Extract] Extracted info:', JSON.stringify(extractedData));
         } catch (firstError) {
-            console.warn(`⚠️ [AI Extract] gemini-2.5-flash failed: ${firstError.message}`);
+            console.warn(`⚠️ [AI Extract] gemini-3.5-flash failed: ${firstError.message}`);
             try {
-                extractedData = await tryExtract("gemini-2.5-flash");
+                extractedData = await tryExtract("gemini-3.5-flash");
                 console.log('✅ [AI Extract] Fallback extracted info:', JSON.stringify(extractedData));
             } catch (secondError) {
                 console.error(`❌ [AI Extract] All attempts failed.`);
@@ -996,11 +996,11 @@ Eğer hiçbir alan tespit edilemiyorsa:
 
         let result;
         try {
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
             result = await model.generateContent(analysisPrompt);
         } catch (err) {
             try {
-                const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+                const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
                 result = await model.generateContent(analysisPrompt);
             } catch (err2) {
                 console.error('❌ [Routing] AI extraction failed:', err2);
@@ -1551,13 +1551,76 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 const webWidget = await prisma.webWidget.findFirst({
                     where: {
                         workspaceId,
-                        isActive: true // Only get active widgets
+                        isActive: true
                     },
                     include: { assignedBot: { include: { documents: true } } }
                 });
                 if (webWidget?.assignedBot) {
                     activeBot = webWidget.assignedBot;
                     console.log(`✅ Using Widget-Assigned Bot: ${activeBot.name}`);
+                }
+            }
+
+            // ─── WORKSPACE FALLBACK: Bot modalındaki "Çalışacağı Kanallar" toggle'ları ───
+            // Spesifik atama bulunamadıysa (kanal, takım, konuşma) → o kanalı
+            // etkinleştirmiş herhangi bir aktif bot'u workspace genelinde ara.
+            // Bu sayede kullanıcı bot modalından WhatsApp/Facebook/Instagram toggle'larını
+            // açtığında bot o kanalda otomatik devreye girer.
+            if (!activeBot && type === 'CHATS') {
+                try {
+                    const channelLower = channel?.toLowerCase() || '';
+                    const channelFlagMap = {
+                        'whatsapp':  { whatsappEnabled: true },
+                        'facebook':  { facebookEnabled: true },
+                        'instagram': { instagramEnabled: true },
+                        'widget':    { widgetEnabled: true }
+                    };
+                    const channelFilter = channelFlagMap[channelLower];
+                    if (channelFilter) {
+                        // 1. Önce: O kanalı açıkça etkinleştirmiş bot
+                        let fallbackBot = await prisma.aIBot.findFirst({
+                            where: {
+                                workspaceId,
+                                isActive: true,
+                                botType: 'CHATS',
+                                ...channelFilter
+                            },
+                            include: { documents: { where: { isActive: true } } },
+                            orderBy: { createdAt: 'asc' }
+                        });
+
+                        // 2. Bulunamazsa: Hiçbir kanal ayarlanmamış (hepsi false = legacy/yeni bot)
+                        // Frontend'de UI'da hepsi true gösterilir ama DB'ye henüz kaydedilmemiştir.
+                        if (!fallbackBot) {
+                            fallbackBot = await prisma.aIBot.findFirst({
+                                where: {
+                                    workspaceId,
+                                    isActive: true,
+                                    botType: 'CHATS',
+                                    whatsappEnabled: false,
+                                    facebookEnabled: false,
+                                    instagramEnabled: false,
+                                    widgetEnabled: false
+                                },
+                                include: { documents: { where: { isActive: true } } },
+                                orderBy: { createdAt: 'asc' }
+                            });
+                            if (fallbackBot) {
+                                console.log(`✅ [Fallback] Legacy/unconfigured bot "${fallbackBot.name}" selected for channel ${channelLower} — treating as all-channels`);
+                            }
+                        }
+
+                        if (fallbackBot) {
+                            activeBot = fallbackBot;
+                            if (!activeBot.whatsappEnabled && !activeBot.facebookEnabled && !activeBot.instagramEnabled && !activeBot.widgetEnabled) {
+                                // Legacy bot — skip channel restriction check below
+                                activeBot._legacyAllChannels = true;
+                            }
+                            console.log(`✅ [Fallback] Workspace bot "${fallbackBot.name}" selected for channel ${channelLower}`);
+                        }
+                    }
+                } catch (fallbackErr) {
+                    console.warn('⚠️ Workspace bot fallback error:', fallbackErr.message);
                 }
             }
         }
@@ -2548,9 +2611,9 @@ ${systemPrompt}${appointmentContextPrompt}`;
 
         let result;
         try {
-            result = await tryGenerate("gemini-2.5-flash");
+            result = await tryGenerate("gemini-3.5-flash");
         } catch (e) {
-            console.warn(`⚠️ [AI] Primary model (gemini-2.5-flash) failed for workspace ${workspaceId}: ${e.message}`);
+            console.warn(`⚠️ [AI] Primary model (gemini-3.5-flash) failed for workspace ${workspaceId}: ${e.message}`);
 
             // 429 Rate Limit → 3 saniye bekle + farklı modelle dene
             if (e.message.includes('429') || e.message.includes('Resource exhausted')) {
@@ -2559,8 +2622,8 @@ ${systemPrompt}${appointmentContextPrompt}`;
             }
 
             try {
-                console.log('🔄 [AI] Falling back to gemini-2.5-flash...');
-                result = await tryGenerate("gemini-2.5-flash");
+                console.log('🔄 [AI] Falling back to gemini-3.5-flash...');
+                result = await tryGenerate("gemini-3.5-flash");
             } catch (fallbackError) {
                 console.error(`❌ [AI] Both models failed for workspace ${workspaceId}. Primary: ${e.message}, Fallback: ${fallbackError.message}`);
                 if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
@@ -2578,7 +2641,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 // Retry once if response is completely empty (Gemini sometimes freezes)
                 try {
                     console.log(`🔄 [AI] Retrying with same message due to empty response...`);
-                    result = await tryGenerate("gemini-2.5-flash");
+                    result = await tryGenerate("gemini-3.5-flash");
                     responseText = result.response.text();
                     console.log(`✅ [AI] Retry Response Text length: ${responseText.length}`);
                 } catch (retryErr) {
@@ -3196,10 +3259,10 @@ export const createBot = async (req, res) => {
                 prompt,
                 workspaceId,
                 botType: botType || 'CHATS',
-                whatsappEnabled: !!whatsappEnabled,
-                facebookEnabled: !!facebookEnabled,
-                instagramEnabled: !!instagramEnabled,
-                widgetEnabled: !!widgetEnabled,
+                whatsappEnabled: whatsappEnabled !== undefined ? !!whatsappEnabled : true,
+                facebookEnabled: facebookEnabled !== undefined ? !!facebookEnabled : true,
+                instagramEnabled: instagramEnabled !== undefined ? !!instagramEnabled : true,
+                widgetEnabled: widgetEnabled !== undefined ? !!widgetEnabled : true,
                 // Scheduler
                 schedulerEnabled: !!schedulerEnabled,
                 scheduleStartTime: scheduleStartTime || null,
@@ -3640,14 +3703,14 @@ JSON:`;
 
         let extracted;
         try {
-            extracted = await tryModel("gemini-2.5-flash");
+            extracted = await tryModel("gemini-3.5-flash");
         } catch (err) {
-            console.warn(`⚠️ [AI Auto-Extract] gemini-2.5-flash failed, trying fallback: ${err.message}`);
+            console.warn(`⚠️ [AI Auto-Extract] gemini-3.5-flash failed, trying fallback: ${err.message}`);
             if (err.message.includes('429') || err.message.includes('Resource exhausted')) {
                 await new Promise(r => setTimeout(r, 2000));
             }
             try {
-                extracted = await tryModel("gemini-2.5-flash");
+                extracted = await tryModel("gemini-3.5-flash");
             } catch (err2) {
                 console.error(`❌ [AI Auto-Extract] All models failed for workspace ${workspaceId}: ${err2.message}`);
                 return null;
@@ -3945,7 +4008,7 @@ ${chatLog.substring(0, 3000)}
 Konu başlığı:`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
         const result = await model.generateContent(prompt);
         const topic = result.response.text()
             .trim()
@@ -4094,7 +4157,7 @@ ${chatLog.substring(0, 5000)}`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
         // Daha hızlı maliyet-etkin model kullanılabilir (1.5-flash vb)
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
         const result = await model.generateContent(prompt);
         let text = result.response.text().trim();
 
@@ -4178,7 +4241,7 @@ SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             generationConfig: { responseMimeType: 'application/json' }
         });
         const result = await model.generateContent(prompt);
@@ -4193,5 +4256,156 @@ SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
     } catch (error) {
         console.error('❌ [AI Import] Column detection error:', error.message);
         res.status(500).json({ error: 'Sütun algılama başarısız', details: error.message });
+    }
+};
+
+// Get all connected channels in a workspace (for bot assignment UI)
+export const getWorkspaceChannels = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        
+        console.log(`📡 [getWorkspaceChannels] workspaceId: ${workspaceId}`);
+        
+        // Facebook pages (for FB Messenger DM)
+        const facebookPages = await prisma.facebookPage.findMany({
+            where: { workspaceId },
+            select: { id: true, pageName: true, assignedBotId: true, instagramBusinessId: true, instagramUsername: true, instagramBotId: true }
+        });
+        console.log(`   └─ Facebook pages found: ${facebookPages.length}`, facebookPages.map(p => p.pageName));
+        
+        // WhatsApp numbers
+        const whatsappNumbers = await prisma.whatsappPhoneNumber.findMany({
+            where: { workspaceId },
+            select: { id: true, displayPhoneNumber: true, name: true, assignedBotId: true }
+        });
+        
+        // Email channels
+        const emailChannels = await prisma.emailChannel.findMany({
+            where: { workspaceId, isActive: true },
+            select: { id: true, email: true, provider: true, assignedBotId: true }
+        });
+        
+        // Web widgets
+        const webWidgets = await prisma.webWidget.findMany({
+            where: { workspaceId, isActive: true },
+            select: { id: true, name: true, title: true, assignedBotId: true }
+        });
+        
+        // Build unified channel list
+        const channels = [];
+        
+        facebookPages.forEach(p => {
+            channels.push({
+                id: p.id,
+                type: 'FACEBOOK',
+                name: p.pageName,
+                assignedBotId: p.assignedBotId,
+                icon: '💬',
+                field: 'assignedBotId'
+            });
+            if (p.instagramBusinessId && p.instagramUsername) {
+                channels.push({
+                    id: p.id,
+                    type: 'INSTAGRAM',
+                    name: `@${p.instagramUsername}`,
+                    assignedBotId: p.instagramBotId,
+                    icon: '📸',
+                    field: 'instagramBotId'
+                });
+            }
+        });
+        
+        whatsappNumbers.forEach(w => {
+            channels.push({
+                id: w.id,
+                type: 'WHATSAPP',
+                name: w.name || w.displayPhoneNumber,
+                assignedBotId: w.assignedBotId,
+                icon: '📱',
+                field: 'assignedBotId'
+            });
+        });
+        
+        emailChannels.forEach(e => {
+            channels.push({
+                id: e.id,
+                type: 'EMAIL',
+                name: e.email,
+                assignedBotId: e.assignedBotId,
+                icon: '📧',
+                field: 'assignedBotId'
+            });
+        });
+        
+        webWidgets.forEach(w => {
+            channels.push({
+                id: w.id,
+                type: 'WEB_WIDGET',
+                name: w.name || w.title || 'Web Widget',
+                assignedBotId: w.assignedBotId,
+                icon: '🌐',
+                field: 'assignedBotId'
+            });
+        });
+        
+        res.json({ channels });
+    } catch (error) {
+        console.error('Get workspace channels error:', error);
+        res.status(500).json({ error: 'Failed to get channels' });
+    }
+};
+
+// Assign/unassign a bot to specific channels
+export const updateBotChannels = async (req, res) => {
+    try {
+        const { workspaceId, botId } = req.params;
+        const { assignments } = req.body;
+        // assignments = [{ channelId, channelType, assign }]
+        // assign: true = assign this bot, false = unassign
+        
+        const bot = await prisma.aIBot.findFirst({ where: { id: botId, workspaceId } });
+        if (!bot) return res.status(404).json({ error: 'Bot not found' });
+        
+        for (const a of assignments) {
+            const botIdValue = a.assign ? botId : null;
+            
+            switch (a.channelType) {
+                case 'FACEBOOK':
+                    await prisma.facebookPage.update({
+                        where: { id: a.channelId },
+                        data: { assignedBotId: botIdValue }
+                    });
+                    break;
+                case 'INSTAGRAM':
+                    await prisma.facebookPage.update({
+                        where: { id: a.channelId },
+                        data: { instagramBotId: botIdValue }
+                    });
+                    break;
+                case 'WHATSAPP':
+                    await prisma.whatsappPhoneNumber.update({
+                        where: { id: a.channelId },
+                        data: { assignedBotId: botIdValue }
+                    });
+                    break;
+                case 'EMAIL':
+                    await prisma.emailChannel.update({
+                        where: { id: a.channelId },
+                        data: { assignedBotId: botIdValue }
+                    });
+                    break;
+                case 'WEB_WIDGET':
+                    await prisma.webWidget.update({
+                        where: { id: a.channelId },
+                        data: { assignedBotId: botIdValue }
+                    });
+                    break;
+            }
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Update bot channels error:', error);
+        res.status(500).json({ error: 'Failed to update channels' });
     }
 };

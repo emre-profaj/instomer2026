@@ -4,15 +4,17 @@ import { cascadeAssignment } from './cascadeAssignment.service.js';
 /**
  * Dağıtım metoduna göre uygun üyeyi seç ve ata
  */
-async function distributeByMethod(team, conversationId, method) {
-    // 🛡️ GUARD: Konuşma zaten birine atanmışsa dağıtım yapma
-    const existingConv = await prisma.conversation.findUnique({
-        where: { id: conversationId },
-        select: { assignedToId: true }
-    });
-    if (existingConv?.assignedToId) {
-        console.log(`🛡️ [Distribute] Konuşma zaten ${existingConv.assignedToId}'ye atanmış — dağıtım yapılmıyor`);
-        return existingConv.assignedToId; // Mevcut atamayı koru
+async function distributeByMethod(team, conversationId, method, force = false) {
+    if (!force) {
+        // 🛡️ GUARD: Konuşma zaten birine atanmışsa dağıtım yapma
+        const existingConv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { assignedToId: true }
+        });
+        if (existingConv?.assignedToId) {
+            console.log(`🛡️ [Distribute] Konuşma zaten ${existingConv.assignedToId}'ye atanmış — dağıtım yapılmıyor`);
+            return existingConv.assignedToId; // Mevcut atamayı koru
+        }
     }
 
     const humanMembers = team.members.filter(m => m.userId && m.user);
@@ -56,12 +58,13 @@ async function distributeByMethod(team, conversationId, method) {
     if (assignedUserId) {
         await prisma.conversation.update({
             where: { id: conversationId },
-            data: { assignedToId: assignedUserId, assignedTeamId: team.id }
+            data: { assignedToId: assignedUserId, assignedTeamId: team.id, teamIds: JSON.stringify([team.id]) }
         });
         // 🔄 Case ve kardeş konuşmalara yansıt
         await cascadeAssignment(conversationId, team.workspaceId, {
             assignedToId: assignedUserId,
             assignedTeamId: team.id,
+            teamIds: JSON.stringify([team.id]),
             source: 'TeamDistribution'
         });
     }
@@ -71,18 +74,9 @@ async function distributeByMethod(team, conversationId, method) {
 /**
  * Takım atama kuralına göre konuşmayı bir ekip üyesine atar
  */
-export async function assignToTeamMember(teamId, conversationId) {
+export async function assignToTeamMember(teamId, conversationId, options = {}) {
+    const force = typeof options === 'boolean' ? options : !!options?.force;
     try {
-        // 🛡️ GUARD: Konuşma zaten birine atanmışsa atamayı değiştirme
-        const existingConv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { assignedToId: true }
-        });
-        if (existingConv?.assignedToId) {
-            console.log(`🛡️ [TeamAssign] Konuşma zaten ${existingConv.assignedToId}'ye atanmış — atama korunuyor`);
-            return existingConv.assignedToId;
-        }
-
         const team = await prisma.team.findUnique({
             where: { id: teamId },
             include: {
@@ -93,8 +87,34 @@ export async function assignToTeamMember(teamId, conversationId) {
             }
         });
 
-        if (!team || !team.members || team.members.length === 0) {
-            console.log(`📋 [TeamAssign] Takım ${team?.name || teamId} — üye yok, havuzda`);
+        if (!team) return null;
+
+        if (!force) {
+            const existingConv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { assignedToId: true, assignedTeamId: true }
+            });
+            if (existingConv?.assignedToId) {
+                const isMember = team.members?.some(m => m.userId === existingConv.assignedToId);
+                if (isMember && existingConv.assignedTeamId === teamId) {
+                    console.log(`🛡️ [TeamAssign] Konuşma zaten takım üyesi ${existingConv.assignedToId}'ye atanmış — atama korunuyor`);
+                    return existingConv.assignedToId;
+                }
+            }
+        }
+
+        if (!team.members || team.members.length === 0) {
+            console.log(`📋 [TeamAssign] Takım ${team.name || teamId} — üye yok, havuzda`);
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { assignedTeamId: teamId, teamIds: JSON.stringify([teamId]), assignedToId: null }
+            });
+            await cascadeAssignment(conversationId, team.workspaceId, {
+                assignedTeamId: teamId,
+                assignedToId: null,
+                teamIds: JSON.stringify([teamId]),
+                source: 'TeamEmptyPool'
+            });
             return null;
         }
 
@@ -106,11 +126,13 @@ export async function assignToTeamMember(teamId, conversationId) {
                 console.log(`📂 [TeamAssign] "${team.name}" → HAVUZDA BEKLET`);
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: { assignedTeamId: teamId }
+                    data: { assignedTeamId: teamId, teamIds: JSON.stringify([teamId]), assignedToId: null }
                 });
                 // 🔄 Case'e takım atamasını yansıt
                 await cascadeAssignment(conversationId, team.workspaceId, {
                     assignedTeamId: teamId,
+                    assignedToId: null,
+                    teamIds: JSON.stringify([teamId]),
                     source: 'TeamPool'
                 });
                 return null;
@@ -119,17 +141,19 @@ export async function assignToTeamMember(teamId, conversationId) {
             case 'DISTRIBUTE': {
                 // Hemen dağıt
                 console.log(`🔄 [TeamAssign] "${team.name}" → HEMEN DAĞIT`);
-                const result = await distributeByMethod(team, conversationId, team.distributionMethod);
+                const result = await distributeByMethod(team, conversationId, team.distributionMethod, force);
                 if (!result) {
                     // Dağıtılamadıysa (online yoksa vs) havuzda tut
                     await prisma.conversation.update({
                         where: { id: conversationId },
-                        data: { assignedTeamId: teamId }
+                        data: { assignedTeamId: teamId, teamIds: JSON.stringify([teamId]), assignedToId: null }
                     });
                     // 🔄 Case'e takım atamasını yansıt
                     await cascadeAssignment(conversationId, team.workspaceId, {
                         assignedTeamId: teamId,
-                        source: 'TeamDistributeFallback'
+                        assignedToId: null,
+                        teamIds: JSON.stringify([teamId]),
+                        source: 'TeamPoolFallback'
                     });
                 }
                 return result;

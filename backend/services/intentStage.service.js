@@ -114,9 +114,14 @@ export async function applyIntentStageTransition(workspaceId, conversationId, co
       targetStage = findStageByKeywords(stages, classKeywords);
     }
 
+    // 2.5. Farklı bir akışa taşınıyorsa ve aşama bulunamadıysa ilk aşamayı kullan
+    if (!targetStage && targetFunnelId !== conversation.funnelType) {
+      targetStage = stages[0];
+    }
+
     // 3. Eşleşme yoksa veya zaten o aşamadaysa → geç
     if (!targetStage) return null;
-    if (targetStage.id === conversation.funnelStageId) return null;
+    if (targetStage.id === conversation.funnelStageId && targetFunnelId === conversation.funnelType) return null;
 
     // 3.5. Giriş kurallarını kontrol et (entryRules)
     if (targetStage.entryRules) {
@@ -127,9 +132,9 @@ export async function applyIntentStageTransition(workspaceId, conversationId, co
       }
     }
 
-    // Mevcut aşamadan geri gitmeyi engelle (order bazlı)
+    // Mevcut aşamadan geri gitmeyi engelle (SADECE AYNI AKIŞ İÇİNDEYKEN)
     const currentStage = stages.find(s => s.id === conversation.funnelStageId);
-    if (currentStage && targetStage.order <= currentStage.order) {
+    if (targetFunnelId === conversation.funnelType && currentStage && targetStage.order <= currentStage.order) {
       console.log(`🧠 [IntentStage] Would go backwards (${currentStage.name} → ${targetStage.name}), skipping`);
       return null;
     }

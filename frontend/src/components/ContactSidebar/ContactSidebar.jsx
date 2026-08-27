@@ -324,7 +324,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         currency: 'TRY',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
         notes: '',
-        caseId: ''
+        caseId: '',
+        protocolNo: '',
+        assignedToId: ''
     });
     const [orderSubmitting, setOrderSubmitting] = useState(false);
 
@@ -747,7 +749,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     };
 
     const openOrderFormHandler = () => {
-        setOrderFormData(p => ({ ...p, caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '') }));
+        setOrderFormData(p => ({ 
+            ...p, 
+            caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : ''),
+            assignedToId: user?.id || ''
+        }));
         setShowOrderForm(true);
     };
 
@@ -4673,6 +4679,79 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </div>
                             )}
 
+                            {/* Pazarlama İzinleri Row */}
+                            {(() => {
+                                let consents = { messaging: true, call: true, aiCall: true };
+                                try {
+                                    if (profile?.consentChannels) {
+                                        consents = typeof profile.consentChannels === 'string'
+                                            ? JSON.parse(profile.consentChannels)
+                                            : profile.consentChannels;
+                                    }
+                                } catch {}
+
+                                const handleConsentToggle = async (key) => {
+                                    const newConsents = { ...consents, [key]: !consents[key] };
+                                    const allOff = !newConsents.messaging && !newConsents.call && !newConsents.aiCall;
+                                    const consentsStr = JSON.stringify(newConsents);
+                                    setProfile(prev => ({ 
+                                        ...prev, 
+                                        consentChannels: consentsStr,
+                                        marketingOptOut: allOff 
+                                    }));
+                                    await handleUpdateProfile({ 
+                                        consentChannels: consentsStr,
+                                        marketingOptOut: allOff,
+                                        marketingOptOutAt: allOff ? new Date().toISOString() : null
+                                    });
+                                };
+
+                                return (
+                                    <div style={{ margin: '8px 0', padding: '12px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                            <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                                                🛡️ Pazarlama İzinleri
+                                            </div>
+                                            {(!consents.messaging && !consents.call && !consents.aiCall) && (
+                                                <span style={{ fontSize: '10px', background: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Tümü Kapalı</span>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Messaging Toggle */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#334155' }}>
+                                                    <MessageSquare size={14} color="#64748b" /> Mesajlaşma (SMS, WP)
+                                                </div>
+                                                <label className="sidebar-switch" style={{ width: '32px', height: '18px' }}>
+                                                    <input type="checkbox" checked={consents.messaging !== false} onChange={() => handleConsentToggle('messaging')} />
+                                                    <span className="sidebar-slider round"></span>
+                                                </label>
+                                            </div>
+                                            {/* Call Toggle */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#334155' }}>
+                                                    <Phone size={14} color="#64748b" /> Arama (İnsan)
+                                                </div>
+                                                <label className="sidebar-switch" style={{ width: '32px', height: '18px' }}>
+                                                    <input type="checkbox" checked={consents.call !== false} onChange={() => handleConsentToggle('call')} />
+                                                    <span className="sidebar-slider round"></span>
+                                                </label>
+                                            </div>
+                                            {/* AI Call Toggle */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#334155' }}>
+                                                    <Brain size={14} color="#64748b" /> AI Sesli Arama
+                                                </div>
+                                                <label className="sidebar-switch" style={{ width: '32px', height: '18px' }}>
+                                                    <input type="checkbox" checked={consents.aiCall !== false} onChange={() => handleConsentToggle('aiCall')} />
+                                                    <span className="sidebar-slider round"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* Active Deals Section */}
                             <div style={{
                                 background: '#f8fafc',
@@ -5089,139 +5168,226 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             )}
             {/* Inline Order Form Modal */}
             {showOrderForm && (
-                <div className="chat-popup-overlay" onClick={() => setShowOrderForm(false)} style={{ zIndex: 10000 }}>
-                    <div className="chat-popup-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '94vw', maxHeight: '88vh' }}>
-                        <div className="chat-popup-header" style={{ borderBottom: '2px solid #fef2f2' }}>
-                            <div className="chat-popup-header-left">
-                                <div className="chat-popup-avatar" style={{ background: '#fef2f2', width: 48, height: 48 }}>
-                                    <TrendingUp size={22} style={{ color: '#ef4444' }} />
-                                </div>
-                                <div className="chat-popup-header-info">
-                                    <h3 className="chat-popup-contact-name" style={{ fontSize: '17px' }}>Yeni Sipariş Oluştur</h3>
-                                    <span className="chat-popup-channel-badge" style={{ color: '#ef4444' }}>{profile?.name || 'Müşteri'} için</span>
-                                </div>
-                            </div>
-                            <div className="chat-popup-header-actions">
-                                <button className="chat-popup-icon-btn chat-popup-close-btn" onClick={() => setShowOrderForm(false)}><X size={18} /></button>
-                            </div>
+                <div className="modal-overlay" onClick={() => setShowOrderForm(false)} style={{ zIndex: 10000 }}>
+                    <div className="modal-content deal-form" onClick={e => e.stopPropagation()} style={{ maxWidth: 680, maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div className="modal-header">
+                            <h2>Yeni Sipariş Oluştur</h2>
+                            <button className="btn-icon" onClick={() => setShowOrderForm(false)}><X size={20} /></button>
                         </div>
-                        <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
-                            <form onSubmit={async (e) => {
-                                e.preventDefault();
-                                if (!orderFormData.caseId) {
-                                    return alert('Lütfen bu işlem için bir Case seçiniz (Zorunlu).');
+
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (orderSubmitting) return;
+                            setOrderSubmitting(true);
+                            try {
+                                const productsWithTotal = orderFormData.products.map(p => ({
+                                    ...p,
+                                    total: (p.discountedPrice || p.unitPrice) * p.quantity
+                                }));
+                                const subtotal = productsWithTotal.reduce((sum, p) => sum + p.total, 0);
+                                const totalTax = orderFormData.products.reduce((sum, p) => sum + ((p.discountedPrice || p.unitPrice) * p.quantity * (p.tax1Rate || 0) / 100), 0);
+
+                                await dealAPI.create(currentWorkspace.id, {
+                                    contactId: profile?.id,
+                                    title: orderFormData.title,
+                                    description: orderFormData.description,
+                                    currency: orderFormData.currency,
+                                    amount: subtotal,
+                                    vatRate: subtotal > 0 ? (totalTax / subtotal * 100) : 0,
+                                    products: productsWithTotal,
+                                    notes: orderFormData.notes,
+                                    stage: 'ORDER',
+                                    assignedToId: orderFormData.assignedToId || user?.id || null,
+                                    caseId: orderFormData.caseId || null,
+                                    protocolNo: orderFormData.protocolNo || null
+                                });
+                                setShowOrderForm(false);
+                                setOrderFormData({ title: '', description: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '', caseId: '', protocolNo: '', assignedToId: '' });
+                                if (profile?.id && currentWorkspace?.id) {
+                                    const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
+                                    setDeals(r.data.deals || []);
                                 }
-                                if (orderSubmitting) return;
-                                setOrderSubmitting(true);
-                                try {
-                                    const totalAmount = orderFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0);
-                                    await dealAPI.create(currentWorkspace.id, {
-                                        contactId: profile?.id,
-                                        title: orderFormData.title,
-                                        description: orderFormData.description,
-                                        currency: orderFormData.currency,
-                                        amount: totalAmount,
-                                        products: orderFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
-                                        notes: orderFormData.notes,
-                                        stage: 'ORDER',
-                                        assignedToId: user?.id || null,
-                                        caseId: orderFormData.caseId
-                                    });
-                                    setShowOrderForm(false);
-                                    setOrderFormData({ title: '', description: '', amount: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '', caseId: '' });
-                                    // Refresh deals
-                                    if (profile?.id && currentWorkspace?.id) {
-                                        const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
-                                        setDeals(r.data.deals || []);
-                                    }
-                                } catch (err) {
-                                    console.error('Order create error:', err);
-                                    alert('Sipariş oluşturulamadı: ' + (err?.response?.data?.error || err?.message));
-                                } finally {
-                                    setOrderSubmitting(false);
-                                }
-                            }}>
-                                <div style={{ marginBottom: 16 }}>
-                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>İlgili Case *</label>
-                                    <select
-                                        value={orderFormData.caseId}
-                                        onChange={e => setOrderFormData(prev => ({ ...prev, caseId: e.target.value }))}
-                                        style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !orderFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
-                                    >
-                                        <option value="">📁 Lütfen bir Case seçiniz...</option>
+                            } catch (err) {
+                                console.error('Order create error:', err);
+                                alert('Sipariş oluşturulamadı: ' + (err?.response?.data?.error || err?.message));
+                            } finally {
+                                setOrderSubmitting(false);
+                            }
+                        }}>
+                            {/* Müşteri - pre-filled */}
+                            <div className="form-group">
+                                <label>Müşteri *</label>
+                                <input type="text" value={profile?.name || profile?.fullName || '—'} disabled
+                                    style={{ background: '#f8fafc', color: '#64748b' }} />
+                            </div>
+
+                            {/* İlgili Case */}
+                            {allCases?.length > 0 && (
+                                <div className="form-group">
+                                    <label>İlgili Case</label>
+                                    <select value={orderFormData.caseId}
+                                        onChange={e => setOrderFormData(prev => ({ ...prev, caseId: e.target.value }))}>
+                                        <option value="">Case seçiniz (opsiyonel)</option>
                                         {allCases.map(c => (
                                             <option key={c.id} value={c.id}>
                                                 {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
                                             </option>
                                         ))}
                                     </select>
-                                    {!orderFormData.caseId && <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>Bu işlem için Case seçimi zorunludur. (Açık bir case yoksa önce 'Yeni Case' oluşturun.)</div>}
                                 </div>
-                                <div style={{ marginBottom: 16 }}>
-                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Sipariş Başlığı *</label>
-                                    <input type="text" required value={orderFormData.title} onChange={e => setOrderFormData(p => ({ ...p, title: e.target.value }))}
-                                        placeholder="Örn: Aylık Hizmet Paketi" style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
-                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                                </div>
-                                <div style={{ marginBottom: 16 }}>
-                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Para Birimi</label>
-                                    <select value={orderFormData.currency} onChange={e => setOrderFormData(p => ({ ...p, currency: e.target.value }))}
-                                        style={{ padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none' }}>
+                            )}
+
+                            {/* Sipariş Başlığı */}
+                            <div className="form-group">
+                                <label>Sipariş Başlığı *</label>
+                                <input type="text" required value={orderFormData.title}
+                                    onChange={e => setOrderFormData(p => ({ ...p, title: e.target.value }))}
+                                    placeholder="Örn: Aylık Hizmet Paketi" />
+                            </div>
+
+                            {/* Protokol No */}
+                            <div className="form-group">
+                                <label>Protokol No</label>
+                                <input type="text" value={orderFormData.protocolNo}
+                                    onChange={e => setOrderFormData(p => ({ ...p, protocolNo: e.target.value }))}
+                                    placeholder="Örn: 320775" />
+                            </div>
+
+                            {/* Para Birimi */}
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Para Birimi</label>
+                                    <select value={orderFormData.currency}
+                                        onChange={e => setOrderFormData(p => ({ ...p, currency: e.target.value }))}>
                                         <option value="TRY">₺ TRY</option>
                                         <option value="USD">$ USD</option>
                                         <option value="EUR">€ EUR</option>
                                         <option value="GBP">£ GBP</option>
                                     </select>
                                 </div>
-                                <div style={{ marginBottom: 16 }}>
-                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>Ürünler / Hizmetler</label>
-                                    {orderFormData.products.map((product, idx) => (
-                                        <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                                            <input type="text" placeholder="Ürün adı" value={product.name}
-                                                onChange={e => { const p = [...orderFormData.products]; p[idx].name = e.target.value; setOrderFormData(prev => ({ ...prev, products: p })); }}
-                                                style={{ flex: 2, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
-                                            <input type="number" placeholder="Adet" min="1" value={product.quantity}
-                                                onChange={e => { const p = [...orderFormData.products]; p[idx].quantity = parseInt(e.target.value) || 1; setOrderFormData(prev => ({ ...prev, products: p })); }}
-                                                style={{ width: 70, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'center' }} />
-                                            <input type="number" placeholder="Birim Fiyat" min="0" value={product.unitPrice}
-                                                onChange={e => { const p = [...orderFormData.products]; p[idx].unitPrice = parseFloat(e.target.value) || 0; setOrderFormData(prev => ({ ...prev, products: p })); }}
-                                                style={{ width: 110, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'right' }} />
-                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ef4444', minWidth: 70, textAlign: 'right' }}>
-                                                {(orderFormData.currency === 'TRY' ? '₺' : orderFormData.currency === 'USD' ? '$' : orderFormData.currency === 'EUR' ? '€' : '£')}{(product.quantity * product.unitPrice).toLocaleString('tr-TR')}
-                                            </span>
-                                            {orderFormData.products.length > 1 && (
-                                                <button type="button" onClick={() => { const p = orderFormData.products.filter((_, i) => i !== idx); setOrderFormData(prev => ({ ...prev, products: p })); }}
-                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
+                            </div>
+
+                            {/* Ürünler / Hizmetler */}
+                            <div className="form-group products-section">
+                                <label>Ürünler / Hizmetler</label>
+                                {orderFormData.products.map((product, idx) => {
+                                    const currSymbol = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }[orderFormData.currency] || '₺';
+                                    const formatAmt = (amt) => `${currSymbol}${(amt || 0).toLocaleString('tr-TR')}`;
+                                    return (
+                                        <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', marginBottom: '10px', background: '#fafbfc' }}>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: product.description || product.tax1Rate ? '8px' : 0 }}>
+                                                <div style={{ position: 'relative', flex: 2 }}>
+                                                    <input type="text" placeholder="Ürün adı yazın veya seçin" value={product.name}
+                                                        onChange={e => {
+                                                            const newProducts = [...orderFormData.products];
+                                                            newProducts[idx].name = e.target.value;
+                                                            const catalogMatch = catalogProducts.find(cp => cp.name === e.target.value);
+                                                            if (catalogMatch) {
+                                                                const priceKey = orderFormData.currency === 'USD' ? 'priceUSD' : orderFormData.currency === 'EUR' ? 'priceEUR' : orderFormData.currency === 'GBP' ? 'priceGBP' : 'price';
+                                                                newProducts[idx].unitPrice = catalogMatch[priceKey] || catalogMatch.price || 0;
+                                                                if (catalogMatch.description) newProducts[idx].description = catalogMatch.description;
+                                                                if (catalogMatch.discountedPrice) newProducts[idx].discountedPrice = catalogMatch.discountedPrice;
+                                                                if (catalogMatch.tax1Type) newProducts[idx].tax1Type = catalogMatch.tax1Type;
+                                                                newProducts[idx].tax1Rate = catalogMatch.tax1Rate || 0;
+                                                            }
+                                                            setOrderFormData(prev => ({ ...prev, products: newProducts }));
+                                                        }}
+                                                        list={`sidebar-order-product-${idx}`}
+                                                        style={{ width: '100%' }} />
+                                                    <datalist id={`sidebar-order-product-${idx}`}>
+                                                        {catalogProducts.filter(cp => cp.name.toLowerCase().includes((product.name || '').toLowerCase())).map(cp => (
+                                                            <option key={cp.id} value={cp.name} label={`${cp.name} - ₺${cp.price}`} />
+                                                        ))}
+                                                    </datalist>
+                                                </div>
+                                                <input type="number" placeholder="Adet" min="1" value={product.quantity}
+                                                    onChange={e => {
+                                                        const p = [...orderFormData.products]; p[idx].quantity = parseInt(e.target.value) || 1;
+                                                        setOrderFormData(prev => ({ ...prev, products: p }));
+                                                    }}
+                                                    style={{ width: 70, textAlign: 'center' }} />
+                                                <input type="number" placeholder="Birim Fiyat" min="0" value={product.unitPrice}
+                                                    onChange={e => {
+                                                        const p = [...orderFormData.products]; p[idx].unitPrice = parseFloat(e.target.value) || 0;
+                                                        setOrderFormData(prev => ({ ...prev, products: p }));
+                                                    }}
+                                                    style={{ width: 100, textAlign: 'right' }} />
+                                                <span style={{ minWidth: 70, textAlign: 'right', fontWeight: 700, color: '#059669', fontSize: '0.88rem' }}>
+                                                    {formatAmt(product.quantity * product.unitPrice)}
+                                                </span>
+                                                {orderFormData.products.length > 1 && (
+                                                    <button type="button" className="btn-icon-sm" onClick={() => {
+                                                        setOrderFormData(prev => ({ ...prev, products: prev.products.filter((_, i) => i !== idx) }));
+                                                    }}><X size={16} /></button>
+                                                )}
+                                            </div>
+                                            {(product.description || product.discountedPrice || product.tax1Rate > 0) && (
+                                                <div style={{ background: '#f1f5f9', borderRadius: '8px', padding: '10px 12px', fontSize: '0.78rem', color: '#475569' }}>
+                                                    {product.description && (
+                                                        <div style={{ marginBottom: '4px' }}><span style={{ fontWeight: 600, color: '#334155' }}>Açıklama:</span> {product.description}</div>
+                                                    )}
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '4px' }}>
+                                                        {product.discountedPrice > 0 && (
+                                                            <div>
+                                                                <span style={{ fontWeight: 600, color: '#334155' }}>İndirimli:</span>{' '}
+                                                                <span style={{ color: '#dc2626', fontWeight: 700, textDecoration: 'line-through', marginRight: '4px' }}>{formatAmt(product.unitPrice)}</span>
+                                                                <span style={{ color: '#16a34a', fontWeight: 700 }}>{formatAmt(product.discountedPrice)}</span>
+                                                            </div>
+                                                        )}
+                                                        {product.tax1Rate > 0 && (
+                                                            <div>
+                                                                <span style={{ fontWeight: 600, color: '#334155' }}>KDV:</span>{' '}
+                                                                <span style={{ fontWeight: 700, color: '#6366f1' }}>%{product.tax1Rate}</span>
+                                                                <span style={{ marginLeft: '6px', fontWeight: 600, color: '#334155' }}>
+                                                                    ({formatAmt((product.discountedPrice || product.unitPrice) * product.quantity * product.tax1Rate / 100)})
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
-                                    ))}
-                                    <button type="button" onClick={() => setOrderFormData(prev => ({ ...prev, products: [...prev.products, { name: '', quantity: 1, unitPrice: 0 }] }))}
-                                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fef2f2', border: '1px dashed #fca5a5', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#ef4444', cursor: 'pointer', marginTop: 6, fontWeight: 500 }}>
-                                        <Plus size={13} /> Ürün Ekle
-                                    </button>
-                                    <div style={{ textAlign: 'right', fontSize: '0.92rem', fontWeight: 700, color: '#dc2626', marginTop: 10, padding: '8px 0', borderTop: '1px solid #fef2f2' }}>
-                                        Toplam: {(orderFormData.currency === 'TRY' ? '₺' : orderFormData.currency === 'USD' ? '$' : orderFormData.currency === 'EUR' ? '€' : '£')}
-                                        {orderFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0).toLocaleString('tr-TR')}
-                                    </div>
+                                    );
+                                })}
+                                <button type="button" className="btn-secondary btn-sm"
+                                    onClick={() => setOrderFormData(prev => ({ ...prev, products: [...prev.products, { name: '', quantity: 1, unitPrice: 0 }] }))}>
+                                    <Plus size={16} /> Ürün Ekle
+                                </button>
+                                <div className="products-total" style={{ marginTop: '8px' }}>
+                                    {(() => {
+                                        const currSymbol = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' }[orderFormData.currency] || '₺';
+                                        const formatAmt = (amt) => `${currSymbol}${(amt || 0).toLocaleString('tr-TR')}`;
+                                        const subtotal = orderFormData.products.reduce((sum, p) => sum + ((p.discountedPrice || p.unitPrice) * p.quantity), 0);
+                                        const totalTax = orderFormData.products.reduce((sum, p) => sum + ((p.discountedPrice || p.unitPrice) * p.quantity * (p.tax1Rate || 0) / 100), 0);
+                                        const grandTotal = subtotal + totalTax;
+                                        return (
+                                            <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
+                                                <div style={{ color: '#64748b' }}>Ara Toplam: {formatAmt(subtotal)}</div>
+                                                {totalTax > 0 && <div style={{ color: '#6366f1' }}>KDV: {formatAmt(totalTax)}</div>}
+                                                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b', marginTop: '2px' }}>
+                                                    Genel Toplam: {formatAmt(grandTotal)}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
-                                <div style={{ marginBottom: 20 }}>
-                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Notlar</label>
-                                    <textarea value={orderFormData.notes} onChange={e => setOrderFormData(p => ({ ...p, notes: e.target.value }))}
-                                        placeholder="Ek notlar..." rows={3} style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
-                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
-                                    <button type="button" onClick={() => setShowOrderForm(false)}
-                                        style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>İptal</button>
-                                    <button type="submit" disabled={orderSubmitting}
-                                        style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: orderSubmitting ? '#fca5a5' : '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: orderSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)' }}>
-                                        {orderSubmitting ? 'Oluşturuluyor...' : 'Sipariş Oluştur'}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
+                            </div>
+
+                            {/* Notlar */}
+                            <div className="form-group">
+                                <label>Notlar</label>
+                                <textarea value={orderFormData.notes}
+                                    onChange={e => setOrderFormData(p => ({ ...p, notes: e.target.value }))}
+                                    placeholder="Ek notlar..." rows={2} />
+                            </div>
+
+                            <div className="form-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setShowOrderForm(false)}>İptal</button>
+                                <button type="submit" className="btn-primary" disabled={orderSubmitting}>
+                                    {orderSubmitting ? 'Oluşturuluyor...' : 'Sipariş Oluştur'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

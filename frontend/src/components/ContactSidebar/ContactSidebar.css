@@ -3590,3 +3590,59 @@
     font-size: 11px;
     text-align: center;
 }
+
+/* Toggle Switch Styles for Contact Sidebar */
+.sidebar-switch {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+}
+
+.sidebar-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sidebar-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e1;
+  transition: .2s;
+}
+
+.sidebar-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .2s;
+}
+
+input:checked + .sidebar-slider {
+  background-color: #4f46e5;
+}
+
+input:focus + .sidebar-slider {
+  box-shadow: 0 0 1px #4f46e5;
+}
+
+input:checked + .sidebar-slider:before {
+  transform: translateX(14px);
+}
+
+.sidebar-slider.round {
+  border-radius: 20px;
+}
+
+.sidebar-slider.round:before {
+  border-radius: 50%;
+}

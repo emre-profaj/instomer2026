@@ -274,34 +274,60 @@ async function handleChangeFlow(automation, context) {
 // ─── SEND_REMINDER ───────────────────────────────────────────────
 async function handleSendReminder(automation, context) {
     const { workspaceId, contactId, conversationId } = context;
-    const delayMs = (automation.reminderDelayMin || 60) * 60 * 1000;
+    const delayMin = automation.reminderDelayMin || 60;
     const message = automation.reminderMessage || 'Hatırlatma: Sizinle iletişime geçmek istiyoruz.';
 
-    // Schedule the reminder using setTimeout (for production, use a job queue)
-    setTimeout(async () => {
-        try {
-            if (conversationId) {
-                await prisma.message.create({
-                    data: {
-                        conversationId,
-                        content: message,
-                        messageType: 'TEXT',
-                        isFromContact: false,
-                        status: 'SENT'
-                    }
-                });
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { lastMessageAt: new Date() }
-                });
-                emitToWorkspace(workspaceId, 'new_message', { conversationId });
-            }
-            console.log(`🔔 [AutomationExecutor] SEND_REMINDER: Delivered after ${automation.reminderDelayMin} min`);
-        } catch (err) {
-            console.error(`❌ [AutomationExecutor] SEND_REMINDER failed:`, err.message);
-        }
-    }, delayMs);
+    // DB-level scheduled reminder — sunucu restart olsa bile kaybolmaz
+    // timedActionProcessor cron tarafından dueDate geldiğinde işlenir
+    const dueDate = new Date(Date.now() + delayMin * 60 * 1000);
 
-    console.log(`🔔 [AutomationExecutor] SEND_REMINDER: Scheduled in ${automation.reminderDelayMin || 60} minutes`);
-    return { success: true, action: 'SEND_REMINDER', scheduledIn: `${automation.reminderDelayMin || 60} min` };
+    try {
+        await prisma.contactActivity.create({
+            data: {
+                workspaceId,
+                contactId: contactId || null,
+                conversationId: conversationId || null,
+                type: 'REMINDER',
+                status: 'PENDING',
+                dueDate,
+                title: `Otomatik Hatırlatma (${delayMin} dk)`,
+                description: JSON.stringify({
+                    automationType: 'AUTOMATION_REMINDER',
+                    message,
+                    conversationId,
+                    workspaceId,
+                    scheduledAt: dueDate.toISOString()
+                })
+            }
+        });
+
+        console.log(`🔔 [AutomationExecutor] SEND_REMINDER: DB'ye kaydedildi — ${delayMin} dk sonra (${dueDate.toISOString()}) işlenecek`);
+    } catch (dbErr) {
+        // DB'ye yazılamazsa fallback olarak setTimeout kullan
+        console.warn(`⚠️ [AutomationExecutor] SEND_REMINDER DB kaydı başarısız, fallback setTimeout:`, dbErr.message);
+        setTimeout(async () => {
+            try {
+                if (conversationId) {
+                    await prisma.message.create({
+                        data: {
+                            conversationId,
+                            content: message,
+                            messageType: 'TEXT',
+                            isFromContact: false,
+                            status: 'SENT'
+                        }
+                    });
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { lastMessageAt: new Date() }
+                    });
+                    emitToWorkspace(workspaceId, 'new_message', { conversationId });
+                }
+            } catch (err) {
+                console.error(`❌ [AutomationExecutor] SEND_REMINDER fallback failed:`, err.message);
+            }
+        }, delayMin * 60 * 1000);
+    }
+
+    return { success: true, action: 'SEND_REMINDER', scheduledIn: `${delayMin} min`, dueDate: dueDate.toISOString() };
 }

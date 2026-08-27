@@ -638,6 +638,15 @@ export const sendMessage = async (req, res) => {
             return res.status(404).json({ error: 'Conversation not found' });
         }
 
+        if (!isInternal && conversation.contact?.consentChannels) {
+            try {
+                const consent = JSON.parse(conversation.contact.consentChannels);
+                if (consent.messaging === false) {
+                    return res.status(403).json({ error: 'Bu müşteriye pazarlama/mesajlaşma izni kapalı olduğu için mesaj gönderilemez.' });
+                }
+            } catch (e) {}
+        }
+
         // Check for duplicate message within last 5 seconds (same content, same sender)
         const fiveSecondsAgo = new Date(Date.now() - 5000);
         const duplicateMessage = await prisma.message.findFirst({

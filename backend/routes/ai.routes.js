@@ -20,6 +20,8 @@ router.get('/:workspaceId/bots', authenticateJWT, requireWorkspaceAccess, aiCont
 router.delete('/:workspaceId/bots/:botId', authenticateJWT, requireWorkspaceAccess, aiController.deleteBot);
 router.put('/:workspaceId/bots/:botId', authenticateJWT, requireWorkspaceAccess, aiController.updateBot);
 router.patch('/:workspaceId/bots/:botId/status', authenticateJWT, requireWorkspaceAccess, aiController.toggleBotStatus);
+router.get('/:workspaceId/channels', authenticateJWT, requireWorkspaceAccess, aiController.getWorkspaceChannels);
+router.post('/:workspaceId/bots/:botId/channels', authenticateJWT, requireWorkspaceAccess, aiController.updateBotChannels);
 
 // Documents
 router.post('/:workspaceId/bots/:botId/documents', authenticateJWT, requireWorkspaceAccess, aiController.uploadBotDocument);

@@ -1659,12 +1659,9 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
             });
 
             // Find connected email channel for this workspace
-            const emailChannel = await prisma.emailChannel.findFirst({
-                where: { workspaceId }
-            });
-
-            // Priority: 1) Connected email channel, 2) Workspace owner
-            const targetEmail = emailChannel?.email || workspace?.members?.[0]?.user?.email;
+            // NOT: Email kanalına göndermek YANLIŞ — IMAP geri çekip CRM'de sahte konuşma oluşturur
+            // Lead bildirimlerini workspace owner'ın kişisel e-postasına gönder
+            const targetEmail = workspace?.members?.[0]?.user?.email;
             const ownerName = workspace?.members?.[0]?.user?.name || 'Değerli Kullanıcı';
 
             if (targetEmail) {
@@ -1704,7 +1701,7 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                 `;
 
                 await sendSystemEmail(targetEmail, emailSubject, emailBody);
-                console.log(`📧 [AUTOMATION] Lead notification sent to ${emailChannel ? 'connected channel' : 'workspace owner'}: ${targetEmail}`);
+                console.log(`📧 [AUTOMATION] Lead notification sent to workspace owner: ${targetEmail}`);
             }
         } catch (notifyError) {
             console.error('⚠️ [AUTOMATION] Owner notification email error:', notifyError.message);

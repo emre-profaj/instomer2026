@@ -123,6 +123,23 @@ export const createActivity = async (req, res) => {
                     console.error('Activity completion socket error:', err);
                 }
 
+                // 🔔 CALL AUTOMATION: Arama tamamlandıysa başarılı/başarısız otomasyonunu tetikle
+                if (existingPlannedCall.type === 'CALL' && existingPlannedCall.contactId) {
+                    try {
+                        const { executeRetellAutomation } = await import('./automation.controller.js');
+                        const callRecord = {
+                            callId: `activity_${existingPlannedCall.id}`,
+                            contactId: existingPlannedCall.contactId || contactId,
+                            callSuccessful: req.body.callSuccessful === true || req.body.callSuccessful === 'true',
+                            workspaceId
+                        };
+                        await executeRetellAutomation(workspaceId, callRecord);
+                        console.log(`🔔 [CallNote] Call automation triggered (${req.body.callSuccessful ? 'SUCCESS' : 'FAIL'}) for completed planned call`);
+                    } catch (autoErr) {
+                        console.error('⚠️ [CallNote] Call automation error:', autoErr.message);
+                    }
+                }
+
                 return res.status(201).json({
                     data: updatedActivity,
                     completedPlannedCall: existingPlannedCall.id
@@ -203,6 +220,23 @@ export const createActivity = async (req, res) => {
                 }
             } catch (err) {
                 console.error('Activity completion socket error:', err);
+            }
+
+            // 🔔 CALL AUTOMATION: Yeni CALL+COMPLETED oluşturulduğunda otomasyonu tetikle
+            if (type === 'CALL' && contactId) {
+                try {
+                    const { executeRetellAutomation } = await import('./automation.controller.js');
+                    const callRecord = {
+                        callId: `activity_${newActivity.id}`,
+                        contactId,
+                        callSuccessful: req.body.callSuccessful === true || req.body.callSuccessful === 'true',
+                        workspaceId
+                    };
+                    await executeRetellAutomation(workspaceId, callRecord);
+                    console.log(`🔔 [CreateActivity] Call automation triggered (${req.body.callSuccessful ? 'SUCCESS' : 'FAIL'}) for new call activity`);
+                } catch (autoErr) {
+                    console.error('⚠️ [CreateActivity] Call automation error:', autoErr.message);
+                }
             }
         }
 
@@ -939,6 +973,24 @@ export const completeActivity = async (req, res) => {
                 console.error('⚠️ [CompleteActivity] Entry rules hatası:', err.message)
             );
         }
+
+        // 🔔 CALL AUTOMATION: Arama tamamlandıysa başarılı/başarısız otomasyonunu tetikle
+        // Hem AI hem insan aramaları için çalışır
+        if (existing.type === 'CALL' && existing.contactId) {
+            try {
+                const { executeRetellAutomation } = await import('./automation.controller.js');
+                const callRecord = {
+                    callId: `activity_${activityId}`,
+                    contactId: existing.contactId,
+                    callSuccessful: callSuccessful === true || callSuccessful === 'true',
+                    workspaceId: existing.workspaceId
+                };
+                await executeRetellAutomation(existing.workspaceId, callRecord);
+                console.log(`🔔 [CompleteActivity] Call automation triggered (${callSuccessful ? 'SUCCESS' : 'FAIL'}) for activity ${activityId}`);
+            } catch (autoErr) {
+                console.error('⚠️ [CompleteActivity] Call automation error:', autoErr.message);
+            }
+        }
     } catch (error) {
         console.error('Complete Activity Error:', error);
         res.status(500).json({ error: 'Aktivite tamamlanırken bir hata oluştu.' });
@@ -1261,7 +1313,7 @@ export const translateText = async (req, res) => {
         if (!apiKey) return res.status(400).json({ error: 'AI API Key yapılandırılmamış' });
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const prompt = `Aşağıdaki metni Türkçeye çevir. Sadece çeviriyi yaz, başka hiçbir açıklama ekleme.
 

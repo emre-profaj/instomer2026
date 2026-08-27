@@ -1283,7 +1283,7 @@ export const chat = async (req, res) => {
         // ─── TRANSLATE MODE: simple Gemini call, no tools ───
         if (translateMode) {
             const genAI = new GoogleGenerativeAI(aiApiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
             const result = await model.generateContent(
                 `Translate the following text to Turkish. Output ONLY the Turkish translation, nothing else.\n\n${message}`
             );
@@ -1295,7 +1295,7 @@ export const chat = async (req, res) => {
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.5-flash',
             tools: [{ functionDeclarations }]
         });
 
@@ -1400,7 +1400,7 @@ export const translate = async (req, res) => {
         if (!aiApiKey) return res.status(400).json({ error: 'AI API Key not configured' });
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const result = await model.generateContent(
             `Translate the following text to ${targetLang}. Output ONLY the translation, nothing else. No quotes, no explanation.\n\n${text}`

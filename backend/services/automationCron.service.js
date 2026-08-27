@@ -246,7 +246,8 @@ async function processDripCampaigns(workspaceId, activeRules, activeDrips, now) 
                 createdAt: { gte: dayStart, lt: dayEnd },
                 isBlocked: false,
                 isDeleted: false,
-                marketingOptOut: false
+                marketingOptOut: false,
+                NOT: { consentChannels: { contains: '"messaging":false' } }
             },
             select: { id: true },
             take: 500 // Batch limiti
@@ -278,6 +279,7 @@ async function processBirthdayGreetings(workspaceId, config, now) {
         AND "isDeleted" = false 
         AND "isBlocked" = false
         AND "marketingOptOut" = false
+        AND ("consentChannels" IS NULL OR NOT "consentChannels" LIKE '%"messaging":false%')
         LIMIT 500
     `;
 

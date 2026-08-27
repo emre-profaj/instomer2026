@@ -186,7 +186,7 @@ async function _doClassifyTopics(workspaceId, uniqueNorms, cacheKey, phase1Mappi
     if (!aiApiKey) return phase1Mapping;
 
     const genAI = new GoogleGenerativeAI(aiApiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
     // If still too many, batch — send max 200 at a time
     const BATCH_SIZE = 200;
@@ -1834,7 +1834,7 @@ export const getContactById = async (req, res) => {
 export const updateContact = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city } = req.body;
+        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city, marketingOptOut, marketingOptOutAt, consentChannels } = req.body;
 
         // Verify contact belongs to this workspace (either directly or via conversation)
         const existing = await prisma.contact.findFirst({
@@ -1876,6 +1876,11 @@ export const updateContact = async (req, res) => {
         if (city !== undefined) updateData.city = city;
         if (tags !== undefined) {
             updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
+        }
+        if (marketingOptOut !== undefined) updateData.marketingOptOut = marketingOptOut;
+        if (marketingOptOutAt !== undefined) updateData.marketingOptOutAt = marketingOptOutAt;
+        if (consentChannels !== undefined) {
+            updateData.consentChannels = typeof consentChannels === 'string' ? consentChannels : JSON.stringify(consentChannels);
         }
 
         // Handle phones and emails arrays
@@ -4827,7 +4832,7 @@ export const getAiAnalyticsSummary = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const prompt = `Sen kıdemli bir iş analisti ve Instomer CRM sisteminin CEO raporlama asistanısın.
 Aşağıda şirketin belirli bir döneme (${dateFilter || 'seçilen dönem'}) ait performans verileri yer almaktadır:
@@ -6074,3 +6079,368 @@ export const getAttributionReport = async (req, res) => {
         res.status(500).json({ error: 'Rapor oluşturulamadı' });
     }
 };
+
+// ── Call & Demand Report (Dışa Aktar 2 — Kim hangi talep ile görüştü + Arama Notu) ──
+export const getCallDemandReport = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate, search, limit = 5000 } = req.query;
+
+        // 1. Funnel Stages Lookup
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: { stages: { select: { id: true, name: true, color: true }, orderBy: { order: 'asc' } } }
+        });
+        const stageLookup = {};
+        for (const f of allFunnels) {
+            for (const s of f.stages) {
+                stageLookup[s.id] = { name: s.name, color: s.color, funnelName: f.name, funnelId: f.id };
+            }
+        }
+
+        // 2. Activity Date Filter
+        const actDateFilter = (startDate || endDate) ? {
+            OR: [
+                {
+                    completedAt: {
+                        ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                        ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
+                    }
+                },
+                {
+                    dueDate: {
+                        ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                        ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
+                    }
+                },
+                {
+                    createdAt: {
+                        ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                        ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
+                    }
+                }
+            ]
+        } : {};
+
+        // Fetch ContactActivities
+        const activities = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId,
+                ...actDateFilter
+            },
+            include: {
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        fullName: true,
+                        phone: true,
+                        email: true,
+                        company: true,
+                        source: true,
+                        funnelStageId: true,
+                        status: true,
+                        notes: true,
+                        cases: {
+                            where: { workspaceId },
+                            select: {
+                                id: true,
+                                caseNumber: true,
+                                title: true,
+                                status: true,
+                                funnelStageId: true,
+                                caseType: { select: { name: true } },
+                                category: { select: { name: true } },
+                                assignedTo: { select: { id: true, name: true } }
+                            },
+                            orderBy: { updatedAt: 'desc' },
+                            take: 3
+                        },
+                        conversations: {
+                            where: { workspaceId },
+                            select: {
+                                id: true,
+                                channel: true,
+                                aiTopic: true,
+                                topicCategory: { select: { name: true } },
+                                assignedTo: { select: { name: true } }
+                            },
+                            orderBy: { lastMessageAt: 'desc' },
+                            take: 1
+                        }
+                    }
+                },
+                case: {
+                    select: {
+                        id: true,
+                        caseNumber: true,
+                        title: true,
+                        status: true,
+                        funnelStageId: true,
+                        caseType: { select: { name: true } },
+                        category: { select: { name: true } },
+                        assignedTo: { select: { id: true, name: true } }
+                    }
+                },
+                assignee: { select: { id: true, name: true, email: true } },
+                creator: { select: { id: true, name: true, email: true } },
+                team: { select: { id: true, name: true } }
+            },
+            orderBy: [
+                { completedAt: 'desc' },
+                { dueDate: 'desc' },
+                { createdAt: 'desc' }
+            ],
+            take: parseInt(limit) || 5000
+        });
+
+        // 3. Fetch Retell Calls
+        const retellDateFilter = (startDate || endDate) ? {
+            createdAt: {
+                ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
+            }
+        } : {};
+
+        const retellCalls = await prisma.retellCall.findMany({
+            where: {
+                workspaceId,
+                ...retellDateFilter
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 1000
+        });
+
+        const retellContactIds = retellCalls.map(c => c.contactId).filter(Boolean);
+        const retellContacts = retellContactIds.length > 0 ? await prisma.contact.findMany({
+            where: { id: { in: retellContactIds } },
+            select: {
+                id: true, name: true, fullName: true, phone: true, email: true, company: true, source: true, funnelStageId: true, status: true,
+                cases: {
+                    where: { workspaceId },
+                    select: { id: true, caseNumber: true, title: true, status: true, funnelStageId: true },
+                    take: 1
+                }
+            }
+        }) : [];
+        const retellContactMap = new Map(retellContacts.map(c => [c.id, c]));
+
+        // 4. Transform into unified rows
+        const rows = [];
+        const typeLabels = {
+            CALL: '📞 Telefon Araması',
+            MEETING: '🤝 Görüşme / Toplantı',
+            NOTE: '📝 Görüşme Notu',
+            TASK: '📋 Görev',
+            VISIT: '📍 Ziyaret',
+            REMINDER: '⏰ Hatırlatıcı'
+        };
+
+        for (const act of activities) {
+            const contact = act.contact;
+            const linkedCase = act.case || contact?.cases?.[0] || null;
+            const activeConv = contact?.conversations?.[0] || null;
+
+            // Representative / Görüşen
+            let agentName = act.assignee?.name || act.creator?.name || '';
+            if (!agentName) {
+                if (act.source === 'AI_CALL' || act.source === 'RETELL' || act.assignedByType === 'AI') {
+                    agentName = '🤖 AI Bot';
+                } else if (linkedCase?.assignedTo?.name) {
+                    agentName = linkedCase.assignedTo.name;
+                } else if (activeConv?.assignedTo?.name) {
+                    agentName = activeConv.assignedTo.name;
+                } else {
+                    agentName = '---';
+                }
+            }
+
+            // Customer info
+            const customerName = contact?.fullName || contact?.name || 'İsimsiz';
+            const phone = contact?.phone || '---';
+            const email = contact?.email || '---';
+            const company = contact?.company || '---';
+            const source = contact?.source || activeConv?.channel || 'MANUAL';
+
+            // Demand / Talep info
+            const caseNumber = linkedCase?.caseNumber || (linkedCase?.id ? `CSE-${linkedCase.id.slice(0, 6)}` : '---');
+            const caseTitle = linkedCase?.title || linkedCase?.caseType?.name || linkedCase?.category?.name || act.callTopic || activeConv?.topicCategory?.name || activeConv?.aiTopic || 'Genel Talep';
+
+            // Stage info
+            const stageId = linkedCase?.funnelStageId || contact?.funnelStageId;
+            const stageInfo = stageId ? stageLookup[stageId] : null;
+            const stageName = stageInfo?.name || linkedCase?.status || contact?.status || 'Yeni';
+            const stageColor = stageInfo?.color || '#64748b';
+
+            // Activity Type
+            const activityType = typeLabels[act.type] || act.type || 'Aktivite';
+
+            // Date
+            const callDate = act.completedAt || act.dueDate || act.createdAt;
+            const formattedDate = callDate ? new Date(callDate).toLocaleDateString('tr-TR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            }) : '---';
+
+            // Call Status / Outcome
+            let callStatus = '---';
+            let statusBadgeColor = '#64748b';
+            if (act.callSuccessful === true) {
+                callStatus = '✅ Ulaşıldı (Başarılı)';
+                statusBadgeColor = '#16a34a';
+            } else if (act.callSuccessful === false) {
+                callStatus = '📵 Ulaşılamadı';
+                statusBadgeColor = '#dc2626';
+            } else if (act.status === 'COMPLETED') {
+                callStatus = '✅ Tamamlandı';
+                statusBadgeColor = '#16a34a';
+            } else if (act.status === 'PLANNED') {
+                callStatus = '⏳ Planlandı / Bekliyor';
+                statusBadgeColor = '#f59e0b';
+            } else if (act.status === 'CANCELLED') {
+                callStatus = '❌ İptal Edildi';
+                statusBadgeColor = '#94a3b8';
+            } else {
+                callStatus = act.status;
+            }
+
+            // Sentiment
+            const sentimentMap = { Positive: '😊 Pozitif', Negative: '🙁 Negatif', Neutral: '😐 Nötr' };
+            const sentiment = act.callSentiment ? (sentimentMap[act.callSentiment] || act.callSentiment) : '---';
+
+            // Call Note / Outcome
+            const callNote = act.result || act.description || act.title || '';
+
+            rows.push({
+                id: act.id,
+                contactId: contact?.id || null,
+                agentName,
+                teamName: act.team?.name || '---',
+                customerName,
+                phone,
+                email,
+                company,
+                source,
+                caseNumber,
+                caseTitle,
+                stageName,
+                stageColor,
+                activityType,
+                callDate,
+                formattedDate,
+                callStatus,
+                statusBadgeColor,
+                callSuccessful: act.callSuccessful,
+                sentiment,
+                callNote
+            });
+        }
+
+        // Add Retell AI Voice Calls
+        for (const rc of retellCalls) {
+            const contact = rc.contactId ? retellContactMap.get(rc.contactId) : null;
+            const linkedCase = contact?.cases?.[0] || null;
+
+            const agentName = '🤖 Retell AI';
+            const customerName = contact?.fullName || contact?.name || rc.toNumber || 'İsimsiz';
+            const phone = rc.toNumber || contact?.phone || '---';
+            const email = contact?.email || '---';
+            const company = contact?.company || '---';
+            const source = 'AI_CALL';
+
+            const caseNumber = linkedCase?.caseNumber || '---';
+            const caseTitle = linkedCase?.title || 'AI Sesli Görüşme';
+            const stageId = linkedCase?.funnelStageId || contact?.funnelStageId;
+            const stageInfo = stageId ? stageLookup[stageId] : null;
+            const stageName = stageInfo?.name || '---';
+            const stageColor = stageInfo?.color || '#64748b';
+
+            const activityType = '🤖 AI Sesli Arama';
+            const callDate = rc.startedAt || rc.createdAt;
+            const formattedDate = callDate ? new Date(callDate).toLocaleDateString('tr-TR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            }) : '---';
+
+            let callStatus = '---';
+            let statusBadgeColor = '#64748b';
+            if (rc.callSuccessful === true) {
+                callStatus = '✅ Ulaşıldı (Başarılı)';
+                statusBadgeColor = '#16a34a';
+            } else if (rc.status === 'not_connected') {
+                callStatus = '📵 Ulaşılamadı';
+                statusBadgeColor = '#dc2626';
+            } else {
+                callStatus = rc.status || 'Tamamlandı';
+            }
+
+            const sentimentMap = { Positive: '😊 Pozitif', Negative: '🙁 Negatif', Neutral: '😐 Nötr' };
+            const sentiment = rc.sentiment ? (sentimentMap[rc.sentiment] || rc.sentiment) : '---';
+            const durationStr = rc.duration ? ` [${rc.duration} sn]` : '';
+            const callNote = (rc.summary ? rc.summary : (rc.transcript ? rc.transcript.slice(0, 300) : '')) + durationStr;
+
+            rows.push({
+                id: rc.id,
+                contactId: contact?.id || null,
+                agentName,
+                teamName: 'AI Voice',
+                customerName,
+                phone,
+                email,
+                company,
+                source,
+                caseNumber,
+                caseTitle,
+                stageName,
+                stageColor,
+                activityType,
+                callDate,
+                formattedDate,
+                callStatus,
+                statusBadgeColor,
+                callSuccessful: rc.callSuccessful,
+                sentiment,
+                callNote
+            });
+        }
+
+        // Sort rows by callDate descending
+        rows.sort((a, b) => new Date(b.callDate || 0) - new Date(a.callDate || 0));
+
+        // Search filtering if requested in query
+        let filteredRows = rows;
+        if (search) {
+            const s = search.toLowerCase();
+            filteredRows = rows.filter(r =>
+                (r.agentName && r.agentName.toLowerCase().includes(s)) ||
+                (r.customerName && r.customerName.toLowerCase().includes(s)) ||
+                (r.phone && r.phone.toLowerCase().includes(s)) ||
+                (r.caseTitle && r.caseTitle.toLowerCase().includes(s)) ||
+                (r.caseNumber && r.caseNumber.toLowerCase().includes(s)) ||
+                (r.callNote && r.callNote.toLowerCase().includes(s))
+            );
+        }
+
+        // Summary stats
+        const total = filteredRows.length;
+        const reachedCount = filteredRows.filter(r => r.callSuccessful === true || r.callStatus.includes('Ulaşıldı') || r.callStatus.includes('Tamamlandı')).length;
+        const unreachedCount = filteredRows.filter(r => r.callSuccessful === false || r.callStatus.includes('Ulaşılamadı')).length;
+        const agentCount = new Set(filteredRows.map(r => r.agentName).filter(Boolean)).size;
+
+        res.json({
+            success: true,
+            total,
+            stats: {
+                total,
+                reachedCount,
+                unreachedCount,
+                agentCount
+            },
+            report: filteredRows
+        });
+    } catch (error) {
+        console.error('Call demand report error:', error);
+        res.status(500).json({ error: 'Rapor oluşturulamadı: ' + error.message });
+    }
+};
+

@@ -386,6 +386,7 @@ model Contact {
   blockedReason     String?
   marketingOptOut   Boolean              @default(false) // Pazarlama mesajlarını istemiyorum
   marketingOptOutAt DateTime? // Opt-out tarihi
+  consentChannels   String               @default("{\"messaging\":true,\"call\":true,\"aiCall\":true}")
   isArchived        Boolean              @default(false)
   archivedAt        DateTime?
   isDeleted         Boolean              @default(false)

@@ -97,7 +97,7 @@ router.post(
     requireWorkspaceAccess,
     async (req, res) => {
         try {
-            const result = await checkAndSendReminders();
+            const result = await checkAndSendReminders(req.params.workspaceId);
             res.json(result);
         } catch (error) {
             res.status(500).json({ error: error.message });

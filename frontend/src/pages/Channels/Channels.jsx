@@ -87,6 +87,15 @@ const Channels = () => {
     const [newSiteUrl, setNewSiteUrl] = useState('');
     const [copiedUrl, setCopiedUrl] = useState(null);
 
+    // Facebook/Instagram kanal ayarları modal
+    const [showPageSettingsModal, setShowPageSettingsModal] = useState(null);
+    const [pageHealth, setPageHealth] = useState(null);
+    const [pageHealthLoading, setPageHealthLoading] = useState(false);
+    const [pageSyncing, setPageSyncing] = useState(false);
+    const [pageSyncPeriod, setPageSyncPeriod] = useState(1);
+    const [pageSyncResult, setPageSyncResult] = useState(null);
+    const [pageResubscribing, setPageResubscribing] = useState(false);
+
     // Email provider modal states
     const [showEmailModal, setShowEmailModal] = useState(false);
     const [emailProvider, setEmailProvider] = useState(''); // 'gmail' or 'imap'
@@ -1050,9 +1059,10 @@ const Channels = () => {
 
     const handleChannelSettings = (channel) => {
         if (channel.type === 'facebook' || channel.type === 'instagram') {
-            // No direct sync modal in this simple refactor, just alert or we could find the full channel object and handle sync
-            // For now, this is a placeholder or you can implement a custom modal
-            alert('Kanal ayarları: Chat Sync vb.');
+            setShowPageSettingsModal(channel);
+            setPageHealth(null);
+            setPageSyncResult(null);
+            return;
         } else if (channel.type === 'webform') {
             const webhook = formWebhooks.find(f => f.id === channel.rawId);
             if (webhook) handleToggleFormWebhook(webhook);
@@ -1330,8 +1340,20 @@ const Channels = () => {
         }
     });
 
+    // Email Kanalları
+    (emailChannels || []).forEach(ch => {
+        routingChannels.push({
+            id: `email-${ch.id}`, rawId: ch.id, type: 'email',
+            name: ch.email,
+            groupLabel: ch.provider || 'E-posta',
+            group: 'email',
+            icon: Mail, color: '#EA4335'
+        });
+    });
+
     const groupDefs = [
         { key: 'chat', title: '💬 Chat Kanalları', borderColor: '#3b82f6' },
+        { key: 'email', title: '📧 E-posta Kanalları', borderColor: '#EA4335' },
         { key: 'webforms', title: '📋 Web Formları', borderColor: '#8b5cf6' },
         { key: 'fbforms', title: '📋 Facebook Lead Formları', borderColor: '#FF6B35' },
         { key: 'aicall', title: '📞 AI Arama', borderColor: '#0d9488' },
@@ -2477,6 +2499,142 @@ const Channels = () => {
                         <div className="modal-footer">
                             <button className="btn-secondary" onClick={() => setShowRuleModal(false)}>İptal</button>
                             <button className="btn-primary" onClick={handleSaveRule} disabled={!ruleFormData.targetFunnelId || !ruleFormData.name}>Kaydet</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Facebook/Instagram Kanal Ayarları Modalı ─── */}
+            {showPageSettingsModal && (
+                <div className="modal-overlay" onClick={() => setShowPageSettingsModal(null)}>
+                    <div className="modal" style={{ width: '500px', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {showPageSettingsModal.type === 'facebook' ? <Facebook size={18} /> : <Instagram size={18} />}
+                                {showPageSettingsModal.name}
+                            </h3>
+                            <button className="modal-close" onClick={() => setShowPageSettingsModal(null)}><X size={18} /></button>
+                        </div>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                            {/* Webhook Sağlık Kontrolü */}
+                            <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Activity size={15} /> Webhook Durumu
+                                </div>
+                                {pageHealth ? (
+                                    <div style={{ padding: '8px 12px', borderRadius: 8, background: pageHealth.healthy ? '#ecfdf5' : '#fef2f2', color: pageHealth.healthy ? '#065f46' : '#991b1b', fontSize: '0.82rem' }}>
+                                        {pageHealth.healthy ? (
+                                            <><CheckCircle size={14} style={{ marginRight: 6 }} />Webhook bağlantısı aktif</>
+                                        ) : (
+                                            <><AlertCircle size={14} style={{ marginRight: 6 }} />{pageHealth.error || 'Webhook bağlantısı kopuk'}</>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <button
+                                            className="btn-secondary"
+                                            disabled={pageHealthLoading}
+                                            onClick={async () => {
+                                                setPageHealthLoading(true);
+                                                try {
+                                                    const res = await facebookAPI.checkPageHealth(showPageSettingsModal.rawId);
+                                                    setPageHealth(res.data);
+                                                } catch (e) {
+                                                    setPageHealth({ healthy: false, error: e.response?.data?.error || e.message });
+                                                } finally {
+                                                    setPageHealthLoading(false);
+                                                }
+                                            }}
+                                            style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                                        >
+                                            {pageHealthLoading ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
+                                            {' '}Kontrol Et
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Webhook Yeniden Abone */}
+                            <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <RefreshCcw size={15} /> Webhook Yeniden Bağla
+                                </div>
+                                <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 10px' }}>
+                                    Mesajlar gelmiyorsa webhook'u yeniden bağlayabilirsiniz.
+                                </p>
+                                <button
+                                    className="btn-secondary"
+                                    disabled={pageResubscribing}
+                                    onClick={async () => {
+                                        setPageResubscribing(true);
+                                        try {
+                                            await facebookAPI.resubscribeWebhook(showPageSettingsModal.rawId);
+                                            alert('✅ Webhook başarıyla yeniden bağlandı!');
+                                        } catch (e) {
+                                            alert('❌ Hata: ' + (e.response?.data?.error || e.message));
+                                        } finally {
+                                            setPageResubscribing(false);
+                                        }
+                                    }}
+                                    style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                                >
+                                    {pageResubscribing ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
+                                    {' '}Yeniden Bağla
+                                </button>
+                            </div>
+
+                            {/* Geçmiş Senkronizasyon */}
+                            <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14 }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <History size={15} /> Geçmiş Konuşmaları Aktar
+                                </div>
+                                <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 10px' }}>
+                                    Bağlanmadan önceki mesajları içe aktarabilirsiniz.
+                                </p>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                    <select
+                                        value={pageSyncPeriod}
+                                        onChange={e => setPageSyncPeriod(Number(e.target.value))}
+                                        style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.82rem' }}
+                                    >
+                                        {SYNC_PERIOD_OPTIONS.filter(o => o.value > 0).map(o => (
+                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        className="btn-primary"
+                                        disabled={pageSyncing}
+                                        onClick={async () => {
+                                            setPageSyncing(true);
+                                            setPageSyncResult(null);
+                                            try {
+                                                const res = await facebookAPI.syncHistoricalConversations(currentWorkspace.id, {
+                                                    pageId: showPageSettingsModal.rawId,
+                                                    months: pageSyncPeriod
+                                                }, (progress) => {
+                                                    if (progress.type === 'complete') {
+                                                        setPageSyncResult({ success: true, message: progress.message || `${progress.synced || 0} konuşma aktarıldı` });
+                                                    }
+                                                });
+                                                setPageSyncResult({ success: true, message: res.data?.message || `${res.data?.syncedCount || 0} konuşma aktarıldı` });
+                                            } catch (e) {
+                                                setPageSyncResult({ success: false, message: e.response?.data?.error || e.message });
+                                            } finally {
+                                                setPageSyncing(false);
+                                            }
+                                        }}
+                                        style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                                    >
+                                        {pageSyncing ? <><Loader2 size={14} className="spin" /> Aktarılıyor...</> : 'Aktar'}
+                                    </button>
+                                </div>
+                                {pageSyncResult && (
+                                    <div style={{ marginTop: 10, padding: '6px 10px', borderRadius: 6, fontSize: '0.8rem', background: pageSyncResult.success ? '#ecfdf5' : '#fef2f2', color: pageSyncResult.success ? '#065f46' : '#991b1b' }}>
+                                        {pageSyncResult.message}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

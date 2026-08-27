@@ -589,412 +589,420 @@ const Automations = () => {
 
 
                 {/* Basit Otomasyonlar Tab (Automations + Rules merged) */}
-                {activeTab === 'automations' && (
-                    <div>
-                        <div className="table-responsive" style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                                    <tr>
-                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Otomasyon Adı</th>
-                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Durum</th>
-                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Tetikleyici</th>
-                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Aksiyon</th>
-                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem', textAlign: 'right' }}>İşlemler</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {automations.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="5" style={{ padding: '60px 24px', textAlign: 'center' }}>
-                                                <div className="empty-state" style={{ border: 'none', background: 'transparent' }}>
-                                                    <div className="icon">⚡</div>
-                                                    <h3>Henüz otomasyon yok</h3>
-                                                    <p style={{ color: '#6b7280', marginTop: '8px' }}>Tetikleyici ve aksiyon seçerek ilk otomasyonunuzu oluşturun.</p>
-                                                    <button className="btn btn-primary" style={{ marginTop: '20px' }} onClick={() => { resetAutomationForm(); setShowAutomationModal(true); }}>
-                                                        <Plus size={18} /> Otomasyon Oluştur
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        automations.map(automation => (
-                                            <tr key={automation.id} style={{ borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                                                <td style={{ padding: '16px 24px', color: '#111827', fontWeight: 500, fontSize: '0.9rem' }}>
-                                                    {automation.name}
-                                                    {automation.description && (
-                                                        <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 4, fontWeight: 400 }}>{automation.description}</div>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '16px 24px' }}>
-                                                    <span style={{ 
-                                                        fontSize: '0.7rem', fontWeight: 600, padding: '4px 10px', borderRadius: '6px',
-                                                        backgroundColor: automation.isActive ? '#dcfce7' : '#f3f4f6',
-                                                        color: automation.isActive ? '#16a34a' : '#6b7280',
-                                                        letterSpacing: '0.5px'
-                                                    }}>
-                                                        {automation.isActive ? 'AKTİF' : 'PASİF'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '16px 24px', color: '#4b5563', fontSize: '0.9rem' }}>
-                                                    {getTriggerLabel(automation.trigger)}
-                                                </td>
-                                                <td style={{ padding: '16px 24px', color: '#4b5563', fontSize: '0.9rem' }}>
-                                                    {getActionLabel(automation.action)}
-                                                </td>
-                                                <td style={{ padding: '16px 24px', textAlign: 'right' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                                                        <button className="btn btn-icon" onClick={() => openEditAutomation(automation)} style={{ color: '#6b7280', padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer' }} title="Düzenle">
-                                                            <Edit2 size={16} />
-                                                        </button>
-                                                        <button className="btn btn-icon" onClick={() => handleDeleteAutomation(automation.id)} style={{ color: '#ef4444', padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer' }} title="Sil">
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                {activeTab === 'automations' && (() => {
+                    // ── CATALOG DATA ──
+                    const CATALOG = [
+                        { type: 'CALL_SUCCESS_NOTIFY', icon: '✅', name: 'Arama Başarılı Bildirimi', desc: 'AI veya normal arama başarılı olduğunda müşteriye özet/teşekkür mesajı gönderir.', group: '📞 Arama Yönetimi', fields: ['templateId', 'channel'] },
+                        { type: 'CALL_FAILED_NOTIFY', icon: '📵', name: 'Arama Başarısız Bildirimi', desc: 'AI veya normal arama başarısız olduğunda müşteriye bilgilendirme mesajı gönderir.', group: '📞 Arama Yönetimi', fields: ['templateId', 'channel'] },
+                        { type: 'CALL_RETRY', icon: '🔁', name: 'Arama Tekrarlama', desc: 'Ulaşılamayan kişilere belirli aralıklarla otomatik geri arama yapar.', group: '📞 Arama Yönetimi', fields: ['delayMinutes', 'maxRetries'] },
+                        { type: 'MISSED_CALL_NOTIFY', icon: '📞', name: 'Cevapsız Arama Görevi', desc: 'Cevapsız kalan aramaları takıma bildirir ve geri arama görevi oluşturur.', group: '📞 Arama Yönetimi', fields: ['teamId'] },
+                        { type: 'VOICE_MESSAGE_TRANSCRIBE', icon: '🎤', name: 'Sesli Mesaj Çözümleme', desc: 'Gelen sesli mesajları yazıya çevirip müşteri notlarına ekler.', group: '📞 Arama Yönetimi', fields: [] },
 
-                        {/* Otomatik Görev Kuralları */}
-                        <div style={{ marginTop: '32px' }}>
-                            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#111827', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                ⚡ Otomatik Görev Kuralları
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {/* AI AUTO-CALL MASTER TOGGLE — Ana Vana */}
-                                <div style={{
-                                    background: retellAutoCallEnabled
-                                        ? 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)'
-                                        : 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
-                                    border: retellAutoCallEnabled ? '1px solid #99f6e4' : '1px solid #fecaca',
+                        { type: 'APPOINTMENT_PLANNED_NOTIFY', icon: '📅', name: 'Randevu Planlandı Mesajı', desc: 'Randevu oluşturulduğunda müşteriye "randevunuz planlandı" mesajı gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'channel'] },
+                        { type: 'APPOINTMENT_REMINDER', icon: '🔔', name: 'Randevu Hatırlatma', desc: '"Yarın saat X\'te randevunuz var" — randevu öncesi otomatik hatırlatma gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'reminderHours'] },
+                        { type: 'APPOINTMENT_CONFIRM', icon: '✔️', name: 'Randevu Teyidi', desc: '"Yarın randevunuz var, geliyor musunuz? Evet/Hayır" — Hayır ise otomatik iptal eder.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'reminderHours'] },
+                        { type: 'APPOINTMENT_CANCEL_NOTIFY', icon: '❌', name: 'Randevu İptal Bildirimi', desc: 'Randevu iptal edildiğinde müşteriye ve sorumlu kişiye otomatik bildirim gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId'] },
+                        { type: 'NO_SHOW_FOLLOWUP', icon: '👻', name: 'Gelmedi Takibi', desc: 'Randevusuna gelmeyen müşteriye takip mesajı gönderir ve yeni randevu önerir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'HEALTH_APPOINTMENT_PREP', icon: '🏥', name: 'Randevu Hazırlık Bilgisi', desc: 'Sağlık randevusu öncesi hazırlık talimatlarını (aç gelme, belge getirme vb.) gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'reminderHours'] },
+
+                        { type: 'REQUEST_RECEIVED_NOTIFY', icon: '📩', name: 'Talep Alındı Bildirimi', desc: 'Lead veya arama talebi oluştuğunda müşteriye WhatsApp ile "talebiniz alındı" gönderir.', group: '📩 Talep & Lead', fields: ['templateId', 'channel'] },
+                        { type: 'LEAD_WELCOME', icon: '👋', name: 'Hoşgeldin Mesajı', desc: 'Yeni gelen leadlere otomatik karşılama mesajı veya şablonu gönderir.', group: '📩 Talep & Lead', fields: ['templateId', 'channel'] },
+                        { type: 'LEAD_SCORING', icon: '🎯', name: 'Lead Puanlama', desc: 'Müşteri etkileşimlerine göre otomatik lead skoru hesaplar ve sıcak leadleri işaretler.', group: '📩 Talep & Lead', fields: [] },
+                        { type: 'LEAD_AUTO_ASSIGN', icon: '🎪', name: 'Otomatik Lead Atama', desc: 'Yeni leadleri takımlara veya kişilere round-robin dağıtır.', group: '📩 Talep & Lead', fields: ['teamId'] },
+                        { type: 'FUNNEL_STAGE_NOTIFY', icon: '📊', name: 'Aşama Değişiklik Bildirimi', desc: 'Müşteri satış hunisinde aşama değiştirdiğinde sorumlu kişiye bildirim gönderir.', group: '📩 Talep & Lead', fields: ['channel'] },
+                        { type: 'NEW_LEAD_NOTIFY', icon: '🆕', name: 'Yeni Lead Bildirimi', desc: 'Yeni bir lead geldiğinde ilgili takıma anlık bildirim gönderir.', group: '📩 Talep & Lead', fields: ['teamId'] },
+
+                        { type: 'SEND_LOCATION', icon: '📍', name: 'Konum Gönder', desc: 'Adres veya yol tarifi isteyen müşterilere otomatik olarak işletme konumunu gönderir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
+                        { type: 'SEND_CATALOG', icon: '📦', name: 'Katalog Gönder', desc: 'Ürün veya hizmet soran müşterilere otomatik katalog/fiyat listesi gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId'] },
+                        { type: 'PRICE_AUTO_REPLY', icon: '🏷️', name: 'Fiyat Bilgisi Gönder', desc: '"Fiyat ne?" gibi sorulara otomatik fiyat listesi gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message'] },
+                        { type: 'FAQ_AUTO_REPLY', icon: '❓', name: 'SSS Otomatik Cevap', desc: 'Sık sorulan sorulara (çalışma saatleri, adres, ödeme) otomatik yanıt verir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
+                        { type: 'SEND_WORKING_HOURS', icon: '🕐', name: 'Çalışma Saatleri Bildir', desc: '"Ne zaman açıksınız?" gibi sorulara çalışma saatlerini otomatik gönderir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
+
+                        { type: 'DRIP_DAY_0', icon: '📨', name: 'Başvuru Günü Mesajı', desc: 'Bugün başvuran/form dolduran kişiye aynı gün geldiği kanal + WhatsApp ile mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId', 'channel'] },
+                        { type: 'DRIP_DAY_1', icon: '📬', name: '1 Gün Sonra Takip', desc: 'Başvurudan 1 gün sonra WhatsApp şablonu ile hatırlatma gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
+                        { type: 'DRIP_DAY_3', icon: '📭', name: '3 Gün Sonra İlgi Ölçme', desc: 'Başvurudan 3 gün sonra ilgi seviyesini ölçen mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
+                        { type: 'DRIP_DAY_7', icon: '📮', name: '7 Gün Sonra Hatırlatma', desc: '1 hafta sonra özel teklif veya bilgilendirme mesajı gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
+                        { type: 'DRIP_DAY_14', icon: '💌', name: '14 Gün Sonra Kampanya', desc: '2 hafta sonra son fırsat / kampanya duyurusu gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
+                        { type: 'DRIP_DAY_30', icon: '📝', name: '30 Gün Sonra Son Şans', desc: '1 ay sonra "hâlâ ilgileniyor musunuz?" mesajı gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
+                        { type: 'POSITIVE_LEAD_CAMPAIGN', icon: '🌟', name: 'Olumlu Leadlere Kampanya', desc: 'Olumlu işaretlenmiş leadlere özel kampanya veya hatırlatıcı mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
+
+                        { type: 'BIRTHDAY_GREETING', icon: '🎂', name: 'Doğum Günü Kutlama', desc: 'Müşterilerin doğum gününde otomatik kutlama mesajı ve özel teklif gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
+                        { type: 'CUSTOMER_1ST_YEAR', icon: '🎉', name: 'Müşteri Olmanızın 1. Yılı', desc: '"Müşterimiz olduğunuzun 1. yılı, teşekkürler!" — yıllık sadakat mesajı gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
+                        { type: 'FIRST_PURCHASE_ANNIV', icon: '🛒', name: 'İlk Alışveriş Yıldönümü', desc: 'Müşterinin ilk alışveriş yıldönümünde özel indirim veya teşekkür mesajı gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
+                        { type: 'SPECIAL_DAY_CAMPAIGN', icon: '📅', name: 'Özel Gün Kampanyası', desc: 'Bayram, yılbaşı, anneler günü gibi özel günlerde toplu kampanya mesajı gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
+
+                        { type: 'SATISFACTION_SURVEY', icon: '⭐', name: 'Memnuniyet Anketi', desc: 'Görüşme veya hizmet sonrası müşteriye otomatik memnuniyet anketi gönderir.', group: '🎯 Müşteri İlişkileri', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'POST_SALE_FOLLOWUP', icon: '🛍️', name: 'Satış Sonrası Takip', desc: 'Satış sonrası müşteriye teşekkür ve ürün değerlendirme daveti gönderir.', group: '🎯 Müşteri İlişkileri', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'REFERRAL_REQUEST', icon: '🤝', name: 'Referans İsteği', desc: 'Memnun müşterilerden otomatik olarak referans veya yorum talep eder.', group: '🎯 Müşteri İlişkileri', fields: ['templateId'] },
+                        { type: 'INACTIVE_REACTIVATION', icon: '💤', name: 'Pasif Müşteri Reaktivasyonu', desc: 'Uzun süredir etkileşim kurmayan müşterilere "sizi özledik" kampanyası gönderir.', group: '🎯 Müşteri İlişkileri', fields: ['templateId', 'delayMinutes'] },
+
+                        { type: 'QUOTE_REMINDER', icon: '💰', name: 'Teklif Hatırlatma', desc: 'Gönderilen tekliflere belirli süre yanıt gelmezse müşteriye hatırlatma gönderir.', group: '💼 Satış & Teklif', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'QUOTE_EXPIRY_NOTIFY', icon: '⏳', name: 'Teklif Süresi Dolmak Üzere', desc: 'Teklifin geçerlilik süresi dolmadan müşteriye son hatırlatma gönderir.', group: '💼 Satış & Teklif', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'UPSELL_SUGGEST', icon: '💎', name: 'Çapraz Satış Önerisi', desc: 'Mevcut müşterilere ilgili ürün/hizmet önerisi gönderir.', group: '💼 Satış & Teklif', fields: ['templateId'] },
+                        { type: 'CONTRACT_RENEWAL', icon: '📋', name: 'Sözleşme Yenileme', desc: 'Sözleşme bitiş tarihinden önce yenileme hatırlatması gönderir.', group: '💼 Satış & Teklif', fields: ['templateId', 'reminderHours'] },
+
+                        { type: 'FIRST_RESPONSE_SLA', icon: '⏱️', name: 'İlk Yanıt SLA Uyarısı', desc: 'Belirli sürede yanıtlanmayan mesajlar için takıma uyarı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['delayMinutes'] },
+                        { type: 'COMPLAINT_ESCALATION', icon: '🚨', name: 'Şikayet Eskalasyonu', desc: 'Olumsuz mesajlar algılandığında yöneticiye otomatik bildirim gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['teamId'] },
+                        { type: 'TICKET_CLOSE_NOTIFY', icon: '🎫', name: 'Destek Talebi Kapatma', desc: 'Belirli süre yanıt gelmeyen destek taleplerini otomatik kapatır ve bildirir.', group: '🛎️ Müşteri Hizmetleri', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'AFTER_HOURS_REPLY', icon: '🌙', name: 'Mesai Dışı Otomatik Cevap', desc: 'Mesai dışında gelen mesajlara otomatik bilgilendirme mesajı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['message'] },
+                        { type: 'VIP_CUSTOMER_ALERT', icon: '👑', name: 'VIP Müşteri Uyarısı', desc: 'VIP müşteriden mesaj geldiğinde sorumlu kişiye anlık bildirim gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['teamId'] },
+
+                        { type: 'TASK_OVERDUE_ALERT', icon: '⏰', name: 'Görev Süresi Aşımı', desc: 'Tamamlanmamış görevler sürelerini aştığında sorumlu kişiye uyarı gönderir.', group: '⚙️ Operasyon', fields: ['delayMinutes'] },
+                        { type: 'UNASSIGNED_TASK_ALERT', icon: '👤', name: 'Sahipsiz Görev Uyarısı', desc: 'Kimseye atanmamış görevler belirli süre geçince takım liderine bildirir.', group: '⚙️ Operasyon', fields: ['delayMinutes', 'teamId'] },
+                        { type: 'DAILY_SUMMARY', icon: '📊', name: 'Günlük Özet Raporu', desc: 'Her gün sonunda açık görevler, aramalar ve yeni leadlerin özetini gönderir.', group: '⚙️ Operasyon', fields: ['channel'] },
+                        { type: 'PAYMENT_REMINDER', icon: '💳', name: 'Ödeme Hatırlatma', desc: 'Vadesi gelen veya geciken ödemeler için müşteriye otomatik hatırlatma gönderir.', group: '⚙️ Operasyon', fields: ['templateId', 'delayMinutes'] },
+                        { type: 'DOCUMENT_REQUEST', icon: '📄', name: 'Eksik Belge Hatırlatma', desc: 'Eksik belge veya evrak olan müşterilere otomatik hatırlatma gönderir.', group: '⚙️ Operasyon', fields: ['templateId'] },
+                        { type: 'TEAM_PERFORMANCE', icon: '📈', name: 'Takım Performans Raporu', desc: 'Haftalık performansı (yanıt süresi, kapanan case, arama sayısı) raporlar.', group: '⚙️ Operasyon', fields: ['channel'] },
+                    ];
+
+                    const approvedTpls = templates.filter(t => t.status === 'approved' || t.status === 'APPROVED');
+                    const LABELS = { templateId: '📋 WhatsApp Şablonu', channel: '📡 Kanal', delayMinutes: '⏳ Gecikme (dk)', reminderHours: '🔔 Hatırlatma', maxRetries: '🔁 Maks. Deneme', teamId: '👥 Takım', message: '💬 Mesaj' };
+                    const catalogGroups = [...new Set(CATALOG.map(a => a.group))];
+
+                    // System automation items for category 1
+                    const SYSTEM_ITEMS = [
+                        { key: 'AI_AUTO_CALL', icon: '🤖', name: 'AI Arama İzni', desc: retellAutoCallEnabled ? 'AI arama asistanları aktif — kendi mesai saatleri ve kurallarına göre arama yapabilirler.' : 'Tüm AI aramaları durduruldu — hiçbir ajan otomatik arama yapamaz.', isActive: retellAutoCallEnabled, isMaster: true },
+                        { key: 'SALES_PHONE_CALL', icon: '📞', name: 'Arama Talebi Algılama', desc: 'Form dolduran, mesajla telefon numarası veren veya "beni arayın" diyen kişiler için otomatik arama görevi oluşturur.', isActive: getRule('SALES_PHONE_CALL').isActive },
+                        { key: 'APPOINTMENT_AUTO_PLAN', icon: '📅', name: 'Randevu Talebi Algılama', desc: 'Yazışma, AI arama veya formda randevu talebi algılandığında otomatik randevu görevi oluşturur.', isActive: getRule('APPOINTMENT_AUTO_PLAN').isActive },
+                        { key: 'PHONE_CAPTURE', icon: '📱', name: 'Telefon Numarası Yakalama', desc: 'Müşteri mesajlarından telefon numarası algılayıp kişi kartına kaydeder.', isActive: getRule('PHONE_CAPTURE').isActive },
+                        { key: 'HOT_KEYWORD', icon: '🔥', name: 'Sıcak Anahtar Kelime Algılama', desc: 'Yüksek satın alma niyeti gösteren anahtar kelimeleri algılayıp müşteriyi sıcak fırsat olarak işaretler.', isActive: getRule('HOT_KEYWORD').isActive },
+                    ];
+
+                    // All categories in order
+                    const ALL_CATEGORIES = [
+                        { key: 'system', icon: '🤖', name: 'Sistem Otomasyonları', type: 'system' },
+                        { key: 'custom', icon: '✏️', name: 'Özel Otomasyonlar', type: 'custom' },
+                        ...catalogGroups.map(g => ({ key: g, icon: g.split(' ')[0], name: g.replace(/^[^\s]+\s/, ''), type: 'catalog', group: g }))
+                    ];
+
+                    // Compute active counts per category
+                    const getCategoryActiveCount = (cat) => {
+                        if (cat.type === 'system') {
+                            return SYSTEM_ITEMS.filter(s => s.isActive).length;
+                        }
+                        if (cat.type === 'custom') {
+                            return automations.filter(a => a.isActive).length;
+                        }
+                        return CATALOG.filter(a => a.group === cat.group).filter(a => getRule(a.type).isActive).length;
+                    };
+                    const getCategoryTotalCount = (cat) => {
+                        if (cat.type === 'system') return SYSTEM_ITEMS.length;
+                        if (cat.type === 'custom') return automations.length;
+                        return CATALOG.filter(a => a.group === cat.group).length;
+                    };
+
+                    return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {ALL_CATEGORIES.map(cat => {
+                            const isOpen = expandedAutoType === cat.key;
+                            const activeCount = getCategoryActiveCount(cat);
+                            const totalCount = getCategoryTotalCount(cat);
+
+                            return (
+                                <div key={cat.key} style={{
+                                    background: '#fff',
+                                    border: '1px solid #e5e7eb',
                                     borderRadius: '12px',
-                                    padding: '20px 24px',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                                    transition: 'all 0.3s ease'
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                                    overflow: 'hidden'
                                 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div>
-                                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: retellAutoCallEnabled ? '#0f766e' : '#991b1b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                🤖 AI Arama İzni
-                                                <span style={{
-                                                    fontSize: '0.7rem',
-                                                    fontWeight: 600,
-                                                    padding: '2px 8px',
-                                                    borderRadius: '10px',
-                                                    background: retellAutoCallEnabled ? '#0d9488' : '#dc2626',
-                                                    color: '#fff'
-                                                }}>
-                                                    {retellAutoCallEnabled ? 'ANA VANA AÇIK' : 'ANA VANA KAPALI'}
-                                                </span>
-                                            </div>
-                                            <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: '4px', lineHeight: 1.5 }}>
-                                                {retellAutoCallEnabled
-                                                    ? 'AI arama asistanları aktif — kendi mesai saatleri ve kurallarına göre arama yapabilirler.'
-                                                    : 'Tüm AI aramaları durduruldu — hiçbir ajan otomatik arama yapamaz.'}
-                                            </div>
-                                        </div>
-                                        <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '20px' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={retellAutoCallEnabled}
-                                                onChange={handleAutoCallMasterToggle}
-                                                disabled={masterToggleSaving}
-                                            />
-                                            <span className="toggle-slider" />
-                                        </label>
-                                    </div>
-                                </div>
-
-                                {/* SALES_PHONE_CALL Toggle */}
-                                <div style={{
-                                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px',
-                                    padding: '20px 24px',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div>
-                                            <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#111827' }}>
-                                                📞 Arama Talebi Algılama
-                                            </div>
-                                            <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: '4px', lineHeight: 1.5 }}>
-                                                Form dolduran, mesajla telefon numarası veren veya "beni arayın" diyen kişiler için
-                                                otomatik arama görevi oluşturur ve sorumlu takıma atar.
-                                            </div>
-                                        </div>
-                                        <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '20px' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={getRule('SALES_PHONE_CALL').isActive}
-                                                onChange={() => toggleRule('SALES_PHONE_CALL')}
-                                                disabled={rulesSaving['SALES_PHONE_CALL']}
-                                            />
-                                            <span className="toggle-slider" />
-                                        </label>
-                                    </div>
-
-                                    {/* Inline config — toggle açıkken göster */}
-                                    {getRule('SALES_PHONE_CALL').isActive && (
-                                        <div style={{
-                                            marginTop: '16px', paddingTop: '16px',
-                                            borderTop: '1px solid #f1f5f9'
-                                        }}>
-                                            <div style={{ display: 'flex', gap: 10, background: '#f8fafc', padding: '12px 16px', borderRadius: 8, border: '1px solid #e2e8f0', alignItems: 'flex-start' }}>
-                                                <div style={{ fontSize: '1.2rem' }}>ℹ️</div>
-                                                <div>
-                                                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: 4 }}>
-                                                        Arama Ayarları Taşındı
-                                                    </div>
-                                                    <div style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.5 }}>
-                                                        Çalışma saatleri, arama gecikmesi ve AI bekleme süresi ayarları artık her bir arama asistanı için <b>özel olarak</b> yapılandırılmaktadır.<br/>
-                                                        Lütfen <b>Takımlar ve Temsilciler</b> sayfasına gidip arama asistanınızın kartına tıklayarak ayarlarını yapın.
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* APPOINTMENT_AUTO_PLAN Toggle */}
-                                <div style={{
-                                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px',
-                                    padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                                }}>
-                                    <div>
-                                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#111827' }}>
-                                            📅 Randevu Talebi Algılama
-                                        </div>
-                                        <div style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: '4px', lineHeight: 1.5 }}>
-                                            Yazışma, AI arama veya formda randevu talebi algılandığında otomatik
-                                            randevu görevi oluşturur ve sorumlu takıma atar. Tarih/saat bilgisi varsa kullanır.
-                                        </div>
-                                    </div>
-                                    <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '20px' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={getRule('APPOINTMENT_AUTO_PLAN').isActive}
-                                            onChange={() => toggleRule('APPOINTMENT_AUTO_PLAN')}
-                                            disabled={rulesSaving['APPOINTMENT_AUTO_PLAN']}
-                                        />
-                                        <span className="toggle-slider" />
-                                    </label>
-                                </div>
-
-                                {/* ── 50 CRM Otomasyon Kataloğu ── */}
-                                {(() => {
-                                    const CATALOG = [
-                                        // ── 1. ARAMA YÖNETİMİ ──
-                                        { type: 'CALL_SUCCESS_NOTIFY', icon: '✅', name: 'Arama Başarılı Bildirimi', desc: 'AI veya normal arama başarılı olduğunda müşteriye özet/teşekkür mesajı gönderir.', group: '📞 Arama Yönetimi', fields: ['templateId', 'channel'] },
-                                        { type: 'CALL_FAILED_NOTIFY', icon: '📵', name: 'Arama Başarısız Bildirimi', desc: 'AI veya normal arama başarısız olduğunda müşteriye bilgilendirme mesajı gönderir.', group: '📞 Arama Yönetimi', fields: ['templateId', 'channel'] },
-                                        { type: 'CALL_RETRY', icon: '🔁', name: 'Arama Tekrarlama', desc: 'Ulaşılamayan kişilere belirli aralıklarla otomatik geri arama yapar.', group: '📞 Arama Yönetimi', fields: ['delayMinutes', 'maxRetries'] },
-                                        { type: 'MISSED_CALL_NOTIFY', icon: '📞', name: 'Cevapsız Arama Görevi', desc: 'Cevapsız kalan aramaları takıma bildirir ve geri arama görevi oluşturur.', group: '📞 Arama Yönetimi', fields: ['teamId'] },
-                                        { type: 'VOICE_MESSAGE_TRANSCRIBE', icon: '🎤', name: 'Sesli Mesaj Çözümleme', desc: 'Gelen sesli mesajları yazıya çevirip müşteri notlarına ekler.', group: '📞 Arama Yönetimi', fields: [] },
-
-                                        // ── 2. RANDEVU YÖNETİMİ ──
-                                        { type: 'APPOINTMENT_PLANNED_NOTIFY', icon: '📅', name: 'Randevu Planlandı Mesajı', desc: 'Randevu oluşturulduğunda müşteriye "randevunuz planlandı" mesajı gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'channel'] },
-                                        { type: 'APPOINTMENT_REMINDER', icon: '🔔', name: 'Randevu Hatırlatma', desc: '"Yarın saat X\'te randevunuz var" — randevu öncesi otomatik hatırlatma gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'reminderHours'] },
-                                        { type: 'APPOINTMENT_CONFIRM', icon: '✔️', name: 'Randevu Teyidi', desc: '"Yarın randevunuz var, geliyor musunuz? Evet/Hayır" — Hayır ise otomatik iptal eder.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'reminderHours'] },
-                                        { type: 'APPOINTMENT_CANCEL_NOTIFY', icon: '❌', name: 'Randevu İptal Bildirimi', desc: 'Randevu iptal edildiğinde müşteriye ve sorumlu kişiye otomatik bildirim gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId'] },
-                                        { type: 'NO_SHOW_FOLLOWUP', icon: '👻', name: 'Gelmedi Takibi', desc: 'Randevusuna gelmeyen müşteriye takip mesajı gönderir ve yeni randevu önerir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'HEALTH_APPOINTMENT_PREP', icon: '🏥', name: 'Randevu Hazırlık Bilgisi', desc: 'Sağlık randevusu öncesi hazırlık talimatlarını (aç gelme, belge getirme vb.) gönderir.', group: '📅 Randevu Yönetimi', fields: ['templateId', 'reminderHours'] },
-
-                                        // ── 3. TALEP & LEAD YÖNETİMİ ──
-                                        { type: 'REQUEST_RECEIVED_NOTIFY', icon: '📩', name: 'Talep Alındı Bildirimi', desc: 'Lead veya arama talebi oluştuğunda müşteriye WhatsApp ile "talebiniz alındı" gönderir.', group: '📩 Talep & Lead', fields: ['templateId', 'channel'] },
-                                        { type: 'LEAD_WELCOME', icon: '👋', name: 'Hoşgeldin Mesajı', desc: 'Yeni gelen leadlere otomatik karşılama mesajı veya şablonu gönderir.', group: '📩 Talep & Lead', fields: ['templateId', 'channel'] },
-                                        { type: 'LEAD_SCORING', icon: '🎯', name: 'Lead Puanlama', desc: 'Müşteri etkileşimlerine göre otomatik lead skoru hesaplar ve sıcak leadleri işaretler.', group: '📩 Talep & Lead', fields: [] },
-                                        { type: 'LEAD_AUTO_ASSIGN', icon: '🎪', name: 'Otomatik Lead Atama', desc: 'Yeni leadleri takımlara veya kişilere round-robin dağıtır.', group: '📩 Talep & Lead', fields: ['teamId'] },
-                                        { type: 'FUNNEL_STAGE_NOTIFY', icon: '📊', name: 'Aşama Değişiklik Bildirimi', desc: 'Müşteri satış hunisinde aşama değiştirdiğinde sorumlu kişiye bildirim gönderir.', group: '📩 Talep & Lead', fields: ['channel'] },
-                                        { type: 'NEW_LEAD_NOTIFY', icon: '🆕', name: 'Yeni Lead Bildirimi', desc: 'Yeni bir lead geldiğinde ilgili takıma anlık bildirim gönderir.', group: '📩 Talep & Lead', fields: ['teamId'] },
-
-                                        // ── 4. BİLGİ & İÇERİK ──
-                                        { type: 'SEND_LOCATION', icon: '📍', name: 'Konum Gönder', desc: 'Adres veya yol tarifi isteyen müşterilere otomatik olarak işletme konumunu gönderir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
-                                        { type: 'SEND_CATALOG', icon: '📦', name: 'Katalog Gönder', desc: 'Ürün veya hizmet soran müşterilere otomatik katalog/fiyat listesi gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId'] },
-                                        { type: 'PRICE_AUTO_REPLY', icon: '🏷️', name: 'Fiyat Bilgisi Gönder', desc: '"Fiyat ne?" gibi sorulara otomatik fiyat listesi gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message'] },
-                                        { type: 'FAQ_AUTO_REPLY', icon: '❓', name: 'SSS Otomatik Cevap', desc: 'Sık sorulan sorulara (çalışma saatleri, adres, ödeme) otomatik yanıt verir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
-                                        { type: 'SEND_WORKING_HOURS', icon: '🕐', name: 'Çalışma Saatleri Bildir', desc: '"Ne zaman açıksınız?" gibi sorulara çalışma saatlerini otomatik gönderir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
-
-                                        // ── 5. PAZARLAMA DİZİSİ (DRIP) ──
-                                        { type: 'DRIP_DAY_0', icon: '📨', name: 'Başvuru Günü Mesajı', desc: 'Bugün başvuran/form dolduran kişiye aynı gün geldiği kanal + WhatsApp ile mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId', 'channel'] },
-                                        { type: 'DRIP_DAY_1', icon: '📬', name: '1 Gün Sonra Takip', desc: 'Başvurudan 1 gün sonra WhatsApp şablonu ile hatırlatma gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
-                                        { type: 'DRIP_DAY_3', icon: '📭', name: '3 Gün Sonra İlgi Ölçme', desc: 'Başvurudan 3 gün sonra ilgi seviyesini ölçen mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
-                                        { type: 'DRIP_DAY_7', icon: '📮', name: '7 Gün Sonra Hatırlatma', desc: '1 hafta sonra özel teklif veya bilgilendirme mesajı gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
-                                        { type: 'DRIP_DAY_14', icon: '💌', name: '14 Gün Sonra Kampanya', desc: '2 hafta sonra son fırsat / kampanya duyurusu gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
-                                        { type: 'DRIP_DAY_30', icon: '📝', name: '30 Gün Sonra Son Şans', desc: '1 ay sonra "hâlâ ilgileniyor musunuz?" mesajı gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
-                                        { type: 'POSITIVE_LEAD_CAMPAIGN', icon: '🌟', name: 'Olumlu Leadlere Kampanya', desc: 'Olumlu işaretlenmiş leadlere özel kampanya veya hatırlatıcı mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
-
-                                        // ── 6. ÖZEL GÜN OTOMASYONLARI ──
-                                        { type: 'BIRTHDAY_GREETING', icon: '🎂', name: 'Doğum Günü Kutlama', desc: 'Müşterilerin doğum gününde otomatik kutlama mesajı ve özel teklif gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
-                                        { type: 'CUSTOMER_1ST_YEAR', icon: '🎉', name: 'Müşteri Olmanızın 1. Yılı', desc: '"Müşterimiz olduğunuzun 1. yılı, teşekkürler!" — yıllık sadakat mesajı gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
-                                        { type: 'FIRST_PURCHASE_ANNIV', icon: '🛒', name: 'İlk Alışveriş Yıldönümü', desc: 'Müşterinin ilk alışveriş yıldönümünde özel indirim veya teşekkür mesajı gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
-                                        { type: 'SPECIAL_DAY_CAMPAIGN', icon: '📅', name: 'Özel Gün Kampanyası', desc: 'Bayram, yılbaşı, anneler günü gibi özel günlerde toplu kampanya mesajı gönderir.', group: '🎁 Özel Günler', fields: ['templateId'] },
-
-                                        // ── 7. MÜŞTERİ İLİŞKİLERİ ──
-                                        { type: 'SATISFACTION_SURVEY', icon: '⭐', name: 'Memnuniyet Anketi', desc: 'Görüşme veya hizmet sonrası müşteriye otomatik memnuniyet anketi gönderir.', group: '🎯 Müşteri İlişkileri', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'POST_SALE_FOLLOWUP', icon: '🛍️', name: 'Satış Sonrası Takip', desc: 'Satış sonrası müşteriye teşekkür ve ürün değerlendirme daveti gönderir.', group: '🎯 Müşteri İlişkileri', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'REFERRAL_REQUEST', icon: '🤝', name: 'Referans İsteği', desc: 'Memnun müşterilerden otomatik olarak referans veya yorum talep eder.', group: '🎯 Müşteri İlişkileri', fields: ['templateId'] },
-                                        { type: 'INACTIVE_REACTIVATION', icon: '💤', name: 'Pasif Müşteri Reaktivasyonu', desc: 'Uzun süredir etkileşim kurmayan müşterilere "sizi özledik" kampanyası gönderir.', group: '🎯 Müşteri İlişkileri', fields: ['templateId', 'delayMinutes'] },
-
-                                        // ── 8. SATIŞ & TEKLİF ──
-                                        { type: 'QUOTE_REMINDER', icon: '💰', name: 'Teklif Hatırlatma', desc: 'Gönderilen tekliflere belirli süre yanıt gelmezse müşteriye hatırlatma gönderir.', group: '💼 Satış & Teklif', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'QUOTE_EXPIRY_NOTIFY', icon: '⏳', name: 'Teklif Süresi Dolmak Üzere', desc: 'Teklifin geçerlilik süresi dolmadan müşteriye son hatırlatma gönderir.', group: '💼 Satış & Teklif', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'UPSELL_SUGGEST', icon: '💎', name: 'Çapraz Satış Önerisi', desc: 'Mevcut müşterilere ilgili ürün/hizmet önerisi gönderir.', group: '💼 Satış & Teklif', fields: ['templateId'] },
-                                        { type: 'CONTRACT_RENEWAL', icon: '📋', name: 'Sözleşme Yenileme', desc: 'Sözleşme bitiş tarihinden önce yenileme hatırlatması gönderir.', group: '💼 Satış & Teklif', fields: ['templateId', 'reminderHours'] },
-
-                                        // ── 9. MÜŞTERİ HİZMETLERİ ──
-                                        { type: 'FIRST_RESPONSE_SLA', icon: '⏱️', name: 'İlk Yanıt SLA Uyarısı', desc: 'Belirli sürede yanıtlanmayan mesajlar için takıma uyarı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['delayMinutes'] },
-                                        { type: 'COMPLAINT_ESCALATION', icon: '🚨', name: 'Şikayet Eskalasyonu', desc: 'Olumsuz mesajlar algılandığında yöneticiye otomatik bildirim gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['teamId'] },
-                                        { type: 'TICKET_CLOSE_NOTIFY', icon: '🎫', name: 'Destek Talebi Kapatma', desc: 'Belirli süre yanıt gelmeyen destek taleplerini otomatik kapatır ve bildirir.', group: '🛎️ Müşteri Hizmetleri', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'AFTER_HOURS_REPLY', icon: '🌙', name: 'Mesai Dışı Otomatik Cevap', desc: 'Mesai dışında gelen mesajlara otomatik bilgilendirme mesajı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['message'] },
-                                        { type: 'VIP_CUSTOMER_ALERT', icon: '👑', name: 'VIP Müşteri Uyarısı', desc: 'VIP müşteriden mesaj geldiğinde sorumlu kişiye anlık bildirim gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['teamId'] },
-
-                                        // ── 10. OPERASYON ──
-                                        { type: 'TASK_OVERDUE_ALERT', icon: '⏰', name: 'Görev Süresi Aşımı', desc: 'Tamamlanmamış görevler sürelerini aştığında sorumlu kişiye uyarı gönderir.', group: '⚙️ Operasyon', fields: ['delayMinutes'] },
-                                        { type: 'UNASSIGNED_TASK_ALERT', icon: '👤', name: 'Sahipsiz Görev Uyarısı', desc: 'Kimseye atanmamış görevler belirli süre geçince takım liderine bildirir.', group: '⚙️ Operasyon', fields: ['delayMinutes', 'teamId'] },
-                                        { type: 'DAILY_SUMMARY', icon: '📊', name: 'Günlük Özet Raporu', desc: 'Her gün sonunda açık görevler, aramalar ve yeni leadlerin özetini gönderir.', group: '⚙️ Operasyon', fields: ['channel'] },
-                                        { type: 'PAYMENT_REMINDER', icon: '💳', name: 'Ödeme Hatırlatma', desc: 'Vadesi gelen veya geciken ödemeler için müşteriye otomatik hatırlatma gönderir.', group: '⚙️ Operasyon', fields: ['templateId', 'delayMinutes'] },
-                                        { type: 'DOCUMENT_REQUEST', icon: '📄', name: 'Eksik Belge Hatırlatma', desc: 'Eksik belge veya evrak olan müşterilere otomatik hatırlatma gönderir.', group: '⚙️ Operasyon', fields: ['templateId'] },
-                                        { type: 'TEAM_PERFORMANCE', icon: '📈', name: 'Takım Performans Raporu', desc: 'Haftalık performansı (yanıt süresi, kapanan case, arama sayısı) raporlar.', group: '⚙️ Operasyon', fields: ['channel'] },
-                                    ];
-
-                                    const groups = [...new Set(CATALOG.map(a => a.group))];
-                                    const approvedTpls = templates.filter(t => t.status === 'approved' || t.status === 'APPROVED');
-                                    const LABELS = { templateId: '📋 WhatsApp Şablonu', channel: '📡 Kanal', delayMinutes: '⏳ Gecikme (dk)', reminderHours: '🔔 Hatırlatma', maxRetries: '🔁 Maks. Deneme', teamId: '👥 Takım', message: '💬 Mesaj' };
-
-                                    return groups.map(grp => (
-                                        <div key={grp} style={{ marginTop: '16px' }}>
-                                            <div style={{
-                                                fontSize: '0.82rem', fontWeight: 700, color: '#374151',
-                                                padding: '6px 0', marginBottom: '4px',
-                                                borderBottom: '1px solid #e5e7eb',
-                                                display: 'flex', alignItems: 'center', gap: '6px'
+                                    {/* Category Header */}
+                                    <div
+                                        onClick={() => setExpandedAutoType(isOpen ? null : cat.key)}
+                                        style={{
+                                            padding: '14px 20px',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            cursor: 'pointer',
+                                            background: isOpen ? '#f8fafc' : '#fff',
+                                            transition: 'background 0.2s',
+                                            borderBottom: isOpen ? '1px solid #e5e7eb' : 'none'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ fontSize: '1.2rem' }}>{cat.icon}</span>
+                                            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111827' }}>{cat.name}</span>
+                                            <span style={{
+                                                fontSize: '0.7rem', fontWeight: 600,
+                                                padding: '2px 8px', borderRadius: '10px',
+                                                background: activeCount > 0 ? '#dcfce7' : '#f3f4f6',
+                                                color: activeCount > 0 ? '#16a34a' : '#9ca3af'
                                             }}>
-                                                {grp}
-                                                <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#9ca3af' }}>
-                                                    ({CATALOG.filter(a => a.group === grp).filter(a => getRule(a.type).isActive).length}/{CATALOG.filter(a => a.group === grp).length})
-                                                </span>
-                                            </div>
-                                            {CATALOG.filter(a => a.group === grp).map(auto => {
-                                                const rule = getRule(auto.type);
-                                                const isExp = expandedAutoType === auto.type;
-                                                const cfg = rule.config || {};
-                                                return (
-                                                    <div key={auto.type} style={{
-                                                        background: rule.isActive ? '#fff' : '#fafafa',
-                                                        border: rule.isActive ? '1px solid #d1fae5' : '1px solid #f3f4f6',
-                                                        borderRadius: '10px', marginBottom: '5px',
-                                                        transition: 'all 0.2s', overflow: 'hidden'
-                                                    }}>
-                                                        <div style={{
-                                                            padding: '12px 16px', display: 'flex',
-                                                            justifyContent: 'space-between', alignItems: 'center',
-                                                            cursor: 'pointer', opacity: rule.isActive ? 1 : 0.6
-                                                        }} onClick={() => setExpandedAutoType(isExp ? null : auto.type)}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                                                                <span style={{ fontSize: '1.15rem', flexShrink: 0 }}>{auto.icon}</span>
-                                                                <div style={{ minWidth: 0 }}>
-                                                                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: rule.isActive ? '#111827' : '#9ca3af' }}>
-                                                                        {auto.name}
-                                                                    </div>
-                                                                    {!isExp && <div style={{ fontSize: '0.73rem', color: '#b0b5bd', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{auto.desc}</div>}
+                                                {activeCount}/{totalCount} aktif
+                                            </span>
+                                        </div>
+                                        <div style={{ color: '#9ca3af', fontSize: '0.8rem', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>
+                                            <ChevronDown size={18} />
+                                        </div>
+                                    </div>
+
+                                    {/* Category Content */}
+                                    {isOpen && (
+                                        <div style={{ padding: '8px 12px 12px' }}>
+
+                                            {/* ── SYSTEM AUTOMATIONS ── */}
+                                            {cat.type === 'system' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    {SYSTEM_ITEMS.map(item => (
+                                                        <div key={item.key} style={{
+                                                            padding: '14px 16px',
+                                                            background: item.isMaster
+                                                                ? (item.isActive ? 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)' : 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)')
+                                                                : (item.isActive ? '#f0fdf4' : '#fafafa'),
+                                                            border: item.isMaster
+                                                                ? (item.isActive ? '1px solid #99f6e4' : '1px solid #fecaca')
+                                                                : (item.isActive ? '1px solid #bbf7d0' : '1px solid #f3f4f6'),
+                                                            borderRadius: '10px',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center'
+                                                        }}>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span style={{ fontSize: '1.1rem' }}>{item.icon}</span>
+                                                                    <span style={{ fontWeight: 600, fontSize: '0.88rem', color: item.isActive ? '#111827' : '#9ca3af' }}>
+                                                                        {item.name}
+                                                                    </span>
+                                                                    {item.isMaster && (
+                                                                        <span style={{
+                                                                            fontSize: '0.65rem', fontWeight: 600,
+                                                                            padding: '2px 8px', borderRadius: '10px',
+                                                                            background: item.isActive ? '#0d9488' : '#dc2626', color: '#fff'
+                                                                        }}>
+                                                                            {item.isActive ? 'ANA VANA AÇIK' : 'ANA VANA KAPALI'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '3px', lineHeight: 1.4 }}>
+                                                                    {item.desc}
                                                                 </div>
                                                             </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                                                                {auto.fields.length > 0 && <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{isExp ? '▲' : '⚙️'}</span>}
-                                                                <label className="toggle-switch" onClick={e => e.stopPropagation()}>
-                                                                    <input type="checkbox" checked={rule.isActive} onChange={() => toggleRule(auto.type)} disabled={rulesSaving[auto.type]} />
-                                                                    <span className="toggle-slider" />
-                                                                </label>
-                                                            </div>
+                                                            <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: '16px' }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={item.isActive}
+                                                                    onChange={() => {
+                                                                        if (item.isMaster) handleAutoCallMasterToggle();
+                                                                        else toggleRule(item.key);
+                                                                    }}
+                                                                    disabled={item.isMaster ? masterToggleSaving : rulesSaving[item.key]}
+                                                                />
+                                                                <span className="toggle-slider" />
+                                                            </label>
                                                         </div>
-                                                        {isExp && (
-                                                            <div style={{ padding: '0 16px 14px', borderTop: '1px solid #f1f5f9' }}>
-                                                                <div style={{ fontSize: '0.78rem', color: '#6b7280', margin: '10px 0 12px', lineHeight: 1.5 }}>{auto.desc}</div>
-                                                                {auto.fields.length > 0 && (
-                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                                                                        {auto.fields.includes('templateId') && (
-                                                                            <div style={{ flex: '1 1 200px' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.templateId}</label>
-                                                                                <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                    value={cfg.templateId || ''} onChange={e => updateAutoConfig(auto.type, 'templateId', e.target.value)}>
-                                                                                    <option value="">Şablon seçin...</option>
-                                                                                    {approvedTpls.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                                                                </select>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* ── CUSTOM AUTOMATIONS ── */}
+                                            {cat.type === 'custom' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    {automations.length === 0 ? (
+                                                        <div style={{ textAlign: 'center', padding: '30px 16px', color: '#9ca3af' }}>
+                                                            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚡</div>
+                                                            <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>Henüz özel otomasyon yok</div>
+                                                            <div style={{ fontSize: '0.78rem', marginTop: '4px' }}>Tetikleyici ve aksiyon seçerek ilk otomasyonunuzu oluşturun.</div>
+                                                        </div>
+                                                    ) : (
+                                                        automations.map(automation => (
+                                                            <div key={automation.id} style={{
+                                                                padding: '12px 16px',
+                                                                background: automation.isActive ? '#fff' : '#fafafa',
+                                                                border: automation.isActive ? '1px solid #e5e7eb' : '1px solid #f3f4f6',
+                                                                borderRadius: '10px',
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center'
+                                                            }}>
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                                                        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: automation.isActive ? '#111827' : '#9ca3af' }}>
+                                                                            {automation.name}
+                                                                        </span>
+                                                                        <span style={{
+                                                                            fontSize: '0.65rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
+                                                                            backgroundColor: automation.isActive ? '#dcfce7' : '#f3f4f6',
+                                                                            color: automation.isActive ? '#16a34a' : '#6b7280'
+                                                                        }}>
+                                                                            {automation.isActive ? 'AKTİF' : 'PASİF'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '3px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                                                        <span>🎯 {getTriggerLabel(automation.trigger)}</span>
+                                                                        <span>⚡ {getActionLabel(automation.action)}</span>
+                                                                    </div>
+                                                                    {automation.description && (
+                                                                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '2px' }}>{automation.description}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: '12px' }}>
+                                                                    <button onClick={() => openEditAutomation(automation)} style={{ color: '#6b7280', padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '6px' }} title="Düzenle">
+                                                                        <Edit2 size={15} />
+                                                                    </button>
+                                                                    <button onClick={() => handleDeleteAutomation(automation.id)} style={{ color: '#ef4444', padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '6px' }} title="Sil">
+                                                                        <Trash2 size={15} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                    <button
+                                                        onClick={() => { resetAutomationForm(); setEditingAutomation(null); setShowAutomationModal(true); }}
+                                                        style={{
+                                                            padding: '10px 16px',
+                                                            background: '#f8fafc',
+                                                            border: '1px dashed #d1d5db',
+                                                            borderRadius: '10px',
+                                                            color: '#6366f1',
+                                                            fontWeight: 600,
+                                                            fontSize: '0.85rem',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            gap: '6px',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <Plus size={16} /> Otomasyon Ekle
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* ── CATALOG AUTOMATIONS ── */}
+                                            {cat.type === 'catalog' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                    {CATALOG.filter(a => a.group === cat.group).map(auto => {
+                                                        const rule = getRule(auto.type);
+                                                        const isItemExp = expandedAutoType === cat.key && expandedRules[auto.type];
+                                                        const cfg = rule.config || {};
+                                                        return (
+                                                            <div key={auto.type} style={{
+                                                                background: rule.isActive ? '#fff' : '#fafafa',
+                                                                border: rule.isActive ? '1px solid #d1fae5' : '1px solid #f3f4f6',
+                                                                borderRadius: '10px',
+                                                                overflow: 'hidden',
+                                                                transition: 'all 0.2s'
+                                                            }}>
+                                                                <div style={{
+                                                                    padding: '12px 16px',
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center',
+                                                                    cursor: auto.fields.length > 0 ? 'pointer' : 'default',
+                                                                    opacity: rule.isActive ? 1 : 0.6
+                                                                }} onClick={() => {
+                                                                    if (auto.fields.length > 0) {
+                                                                        setExpandedRules(prev => ({ ...prev, [auto.type]: !prev[auto.type] }));
+                                                                    }
+                                                                }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                                                                        <span style={{ fontSize: '1.15rem', flexShrink: 0 }}>{auto.icon}</span>
+                                                                        <div style={{ minWidth: 0 }}>
+                                                                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: rule.isActive ? '#111827' : '#9ca3af' }}>
+                                                                                {auto.name}
                                                                             </div>
-                                                                        )}
-                                                                        {auto.fields.includes('channel') && (
-                                                                            <div style={{ flex: '1 1 150px' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.channel}</label>
-                                                                                <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                    value={cfg.channel || 'whatsapp'} onChange={e => updateAutoConfig(auto.type, 'channel', e.target.value)}>
-                                                                                    <option value="whatsapp">WhatsApp</option>
-                                                                                    <option value="email">E-posta</option>
-                                                                                    <option value="both">Her İkisi</option>
-                                                                                    <option value="sms">SMS</option>
-                                                                                </select>
-                                                                            </div>
-                                                                        )}
-                                                                        {auto.fields.includes('delayMinutes') && (
-                                                                            <div style={{ flex: '0 0 120px' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.delayMinutes}</label>
-                                                                                <input type="number" min="0" style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                    value={cfg.delayMinutes ?? 60} onChange={e => updateAutoConfig(auto.type, 'delayMinutes', parseInt(e.target.value) || 0)} />
-                                                                            </div>
-                                                                        )}
-                                                                        {auto.fields.includes('reminderHours') && (
-                                                                            <div style={{ flex: '0 0 140px' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.reminderHours}</label>
-                                                                                <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                    value={cfg.reminderHours ?? 24} onChange={e => updateAutoConfig(auto.type, 'reminderHours', parseInt(e.target.value))}>
-                                                                                    <option value={1}>1 saat önce</option>
-                                                                                    <option value={2}>2 saat önce</option>
-                                                                                    <option value={4}>4 saat önce</option>
-                                                                                    <option value={24}>1 gün önce</option>
-                                                                                    <option value={48}>2 gün önce</option>
-                                                                                </select>
-                                                                            </div>
-                                                                        )}
-                                                                        {auto.fields.includes('maxRetries') && (
-                                                                            <div style={{ flex: '0 0 120px' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.maxRetries}</label>
-                                                                                <input type="number" min="1" max="10" style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                    value={cfg.maxRetries ?? 3} onChange={e => updateAutoConfig(auto.type, 'maxRetries', parseInt(e.target.value) || 3)} />
-                                                                            </div>
-                                                                        )}
-                                                                        {auto.fields.includes('teamId') && (
-                                                                            <div style={{ flex: '1 1 180px' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.teamId}</label>
-                                                                                <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                    value={cfg.teamId || ''} onChange={e => updateAutoConfig(auto.type, 'teamId', e.target.value)}>
-                                                                                    <option value="">Takım seçin...</option>
-                                                                                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                                                                </select>
-                                                                            </div>
-                                                                        )}
-                                                                        {auto.fields.includes('message') && (
-                                                                            <div style={{ flex: '1 1 100%' }}>
-                                                                                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.message}</label>
-                                                                                <textarea rows={2} style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb', resize: 'vertical', fontFamily: 'inherit' }}
-                                                                                    value={cfg.message || ''} onChange={e => updateAutoConfig(auto.type, 'message', e.target.value)} placeholder="Otomatik mesaj içeriğini yazın..." />
+                                                                            {!isItemExp && <div style={{ fontSize: '0.73rem', color: '#b0b5bd', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{auto.desc}</div>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                                        {auto.fields.length > 0 && <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{isItemExp ? '▲' : '⚙️'}</span>}
+                                                                        <label className="toggle-switch" onClick={e => e.stopPropagation()}>
+                                                                            <input type="checkbox" checked={rule.isActive} onChange={() => toggleRule(auto.type)} disabled={rulesSaving[auto.type]} />
+                                                                            <span className="toggle-slider" />
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                                {isItemExp && (
+                                                                    <div style={{ padding: '0 16px 14px', borderTop: '1px solid #f1f5f9' }}>
+                                                                        <div style={{ fontSize: '0.78rem', color: '#6b7280', margin: '10px 0 12px', lineHeight: 1.5 }}>{auto.desc}</div>
+                                                                        {auto.fields.length > 0 && (
+                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                                                                {auto.fields.includes('templateId') && (
+                                                                                    <div style={{ flex: '1 1 200px' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.templateId}</label>
+                                                                                        <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={cfg.templateId || ''} onChange={e => updateAutoConfig(auto.type, 'templateId', e.target.value)}>
+                                                                                            <option value="">Şablon seçin...</option>
+                                                                                            {approvedTpls.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                                                        </select>
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('channel') && (
+                                                                                    <div style={{ flex: '1 1 150px' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.channel}</label>
+                                                                                        <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={cfg.channel || 'whatsapp'} onChange={e => updateAutoConfig(auto.type, 'channel', e.target.value)}>
+                                                                                            <option value="whatsapp">WhatsApp</option>
+                                                                                            <option value="email">E-posta</option>
+                                                                                            <option value="both">Her İkisi</option>
+                                                                                            <option value="sms">SMS</option>
+                                                                                        </select>
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('delayMinutes') && (
+                                                                                    <div style={{ flex: '0 0 120px' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.delayMinutes}</label>
+                                                                                        <input type="number" min="0" style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={cfg.delayMinutes ?? 60} onChange={e => updateAutoConfig(auto.type, 'delayMinutes', parseInt(e.target.value) || 0)} />
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('reminderHours') && (
+                                                                                    <div style={{ flex: '0 0 140px' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.reminderHours}</label>
+                                                                                        <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={cfg.reminderHours ?? 24} onChange={e => updateAutoConfig(auto.type, 'reminderHours', parseInt(e.target.value))}>
+                                                                                            <option value={1}>1 saat önce</option>
+                                                                                            <option value={2}>2 saat önce</option>
+                                                                                            <option value={4}>4 saat önce</option>
+                                                                                            <option value={24}>1 gün önce</option>
+                                                                                            <option value={48}>2 gün önce</option>
+                                                                                        </select>
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('maxRetries') && (
+                                                                                    <div style={{ flex: '0 0 120px' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.maxRetries}</label>
+                                                                                        <input type="number" min="1" max="10" style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={cfg.maxRetries ?? 3} onChange={e => updateAutoConfig(auto.type, 'maxRetries', parseInt(e.target.value) || 3)} />
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('teamId') && (
+                                                                                    <div style={{ flex: '1 1 180px' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.teamId}</label>
+                                                                                        <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={cfg.teamId || ''} onChange={e => updateAutoConfig(auto.type, 'teamId', e.target.value)}>
+                                                                                            <option value="">Takım seçin...</option>
+                                                                                            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                                                        </select>
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('message') && (
+                                                                                    <div style={{ flex: '1 1 100%' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.message}</label>
+                                                                                        <textarea rows={2} style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb', resize: 'vertical', fontFamily: 'inherit' }}
+                                                                                            value={cfg.message || ''} onChange={e => updateAutoConfig(auto.type, 'message', e.target.value)} placeholder="Otomatik mesaj içeriğini yazın..." />
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         )}
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
-                                    ));
-                                })()}
-                            </div>
-                        </div>
-
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-                )}
+                    );
+                })()}
+
 
                 {/* Dinamik Otomasyonlar Tab */}
                 {activeTab === 'flows' && (

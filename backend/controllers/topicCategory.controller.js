@@ -252,7 +252,7 @@ export const autoGenerateCategories = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         // Ürün bilgisini de prompt'a ekle (varsa ama az ise)
         const productInfo = products.length > 0
@@ -452,7 +452,7 @@ export const backfillConversations = async (req, res) => {
             const aiApiKey = await getEffectiveAiApiKey(workspaceId);
             if (aiApiKey) {
                 const genAI = new GoogleGenerativeAI(aiApiKey);
-                const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+                const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
                 // AI batch'leri (her seferde max 50 konuşma)
                 const aiBatchSize = 50;
@@ -697,7 +697,7 @@ export const simplifyCategories = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const catList = categories.map(c => `"${c.name}" (${c._count.conversations} konuşma)`).join('\n');
 
@@ -841,7 +841,7 @@ export const aiChatCategories = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const catListStr = categories.map(c => {
             const kws = c.keywords ? JSON.parse(c.keywords).slice(0, 5).join(', ') : '';
@@ -1093,7 +1093,7 @@ export const importFromExcel = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         const prompt = `Bir şirketin (${workspace?.companyName || workspace?.name || 'Bilinmeyen'}) ürün/hizmet listesini içeren Excel dosyası içeriği aşağıda. 
 
