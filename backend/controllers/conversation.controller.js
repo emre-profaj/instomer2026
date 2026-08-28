@@ -2417,6 +2417,14 @@ export const createManualConversation = async (req, res) => {
         console.log(`📝 [Manual Conversation] Creating new case and conversation`);
         
         // Create new Case
+        let caseTypeId = null;
+        if (newConv?.topicCategoryId) {
+            try {
+                const tc = await prisma.topicCategory.findUnique({ where: { id: newConv.topicCategoryId }, select: { caseTypeId: true } });
+                caseTypeId = tc?.caseTypeId || null;
+            } catch (_) {}
+        }
+
         const newCase = await prisma.case.create({
             data: {
                 workspaceId: workspaceId,
@@ -2426,6 +2434,7 @@ export const createManualConversation = async (req, res) => {
                 status: 'ACTIVE',
                 priority: 'NORMAL',
                 assignedToId: req.user.id,
+                caseTypeId,
                 ...(funnelType && { funnelType }),
                 ...(funnelStageId && { funnelStageId })
             }

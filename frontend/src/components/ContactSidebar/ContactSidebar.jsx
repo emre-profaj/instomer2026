@@ -2166,6 +2166,30 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 4px' }}>
                                             {/* Case Type Badge */}
                                             {(() => {
+                                                // 1. Önce CaseType relation'ını kontrol et (yeni sistem)
+                                                const caseTypeRel = activeCaseInfo?.caseType || c?.caseType;
+                                                if (caseTypeRel?.name) {
+                                                    const ctColor = caseTypeRel.color || '#6b7280';
+                                                    return (
+                                                        <span style={{
+                                                            background: ctColor + '1a',
+                                                            color: ctColor,
+                                                            border: `1px solid ${ctColor}40`,
+                                                            borderRadius: 4,
+                                                            padding: '2px 6px',
+                                                            fontSize: '0.6rem',
+                                                            fontWeight: 700,
+                                                            letterSpacing: '0.03em',
+                                                            lineHeight: 1,
+                                                            whiteSpace: 'nowrap',
+                                                            textTransform: 'uppercase'
+                                                        }}>
+                                                            {caseTypeRel.icon ? `${caseTypeRel.icon} ` : ''}{caseTypeRel.name}
+                                                        </span>
+                                                    );
+                                                }
+
+                                                // 2. Legacy type field'ına fallback
                                                 const rawType = activeCaseInfo?.type || c?.type || 'GENEL';
                                                 // Map both Turkish schema values AND English values
                                                 const typeConfig = {

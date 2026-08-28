@@ -3533,13 +3533,25 @@ async function handleCallEnded(call) {
                             ? `Gelen Arama: ${callRecord.fromNumber}`
                             : `Yapılan Arama: ${callRecord.toNumber}`;
 
+                        let caseTypeId = null;
+                        try {
+                            if (callRecord.conversationId) {
+                                const conversation = await prisma.conversation.findUnique({ where: { id: callRecord.conversationId }, select: { topicCategoryId: true } });
+                                if (conversation?.topicCategoryId) {
+                                    const tc = await prisma.topicCategory.findUnique({ where: { id: conversation.topicCategoryId }, select: { caseTypeId: true } });
+                                    caseTypeId = tc?.caseTypeId || null;
+                                }
+                            }
+                        } catch (_) {}
+
                         const newCase = await prisma.case.create({
                             data: {
                                 workspaceId: caseWorkspaceId,
                                 contactId: caseContactId,
                                 caseNumber,
                                 title: phoneLabel,
-                                priority: 'NORMAL'
+                                priority: 'NORMAL',
+                                caseTypeId
                             }
                         });
 

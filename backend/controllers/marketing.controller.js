@@ -709,6 +709,12 @@ export const bulkSendTemplate = async (req, res) => {
                             }
                             const caseNumber = `CSE-${year}-${String(nextNum).padStart(4, '0')}`;
 
+                            let caseTypeId = null;
+                            try {
+                                const frsatType = await prisma.caseType.findFirst({ where: { workspaceId, systemCode: 'FIRSAT' } });
+                                caseTypeId = frsatType?.id || null;
+                            } catch (_) {}
+
                             const newCase = await prisma.case.create({
                                 data: {
                                     workspaceId,
@@ -717,7 +723,8 @@ export const bulkSendTemplate = async (req, res) => {
                                     title: `WA: ${template.name}`,
                                     type: 'FIRSAT',
                                     status: 'ACTIVE',
-                                    priority: 'NORMAL'
+                                    priority: 'NORMAL',
+                                    caseTypeId
                                 }
                             });
                             // Conversation'ı case'e bağla

@@ -1,11 +1,20 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
-// Get all case types for a workspace
+// Default case types to seed for new workspaces
+const DEFAULT_CASE_TYPES = [
+    { name: 'Fırsat', systemCode: 'FIRSAT', color: '#eab308', icon: '💰', order: 0 },
+    { name: 'Şikayet', systemCode: 'SIKAYET', color: '#dc2626', icon: '⚠️', order: 1 },
+    { name: 'Randevu', systemCode: 'RANDEVU', color: '#1d4ed8', icon: '📅', order: 2 },
+    { name: 'Destek', systemCode: 'DESTEK', color: '#0369a1', icon: '🛠️', order: 3 },
+    { name: 'İş Başvurusu', systemCode: 'IS_BASVURUSU', color: '#6d28d9', icon: '📋', order: 4 },
+    { name: 'Genel', systemCode: 'GENEL', color: '#6b7280', icon: '📁', order: 5 },
+];
+
+// Get all case types for a workspace (auto-seeds defaults if empty)
 export const getCaseTypes = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const caseTypes = await prisma.caseType.findMany({
+        let caseTypes = await prisma.caseType.findMany({
             where: { workspaceId },
             include: {
                 categories: {
@@ -14,6 +23,20 @@ export const getCaseTypes = async (req, res) => {
             },
             orderBy: { order: 'asc' }
         });
+
+        // Auto-seed: workspace'te hiç CaseType yoksa varsayılanları oluştur
+        if (caseTypes.length === 0) {
+            console.log(`🌱 [CaseType] Auto-seeding default case types for workspace ${workspaceId}`);
+            await prisma.caseType.createMany({
+                data: DEFAULT_CASE_TYPES.map(ct => ({ ...ct, workspaceId }))
+            });
+            caseTypes = await prisma.caseType.findMany({
+                where: { workspaceId },
+                include: { categories: { orderBy: { order: 'asc' } } },
+                orderBy: { order: 'asc' }
+            });
+        }
+
         res.json({ success: true, data: caseTypes });
     } catch (error) {
         console.error('Error in getCaseTypes:', error);

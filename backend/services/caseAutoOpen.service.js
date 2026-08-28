@@ -28,6 +28,21 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
   
   const nextNumber = await getNextCaseNumber(workspaceId);
   
+  let caseTypeId = null;
+  try {
+      const conv = await prisma.conversation.findUnique({
+          where: { id: conversationId },
+          select: { topicCategoryId: true }
+      });
+      if (conv?.topicCategoryId) {
+          const tc = await prisma.topicCategory.findUnique({
+              where: { id: conv.topicCategoryId },
+              select: { caseTypeId: true }
+          });
+          caseTypeId = tc?.caseTypeId || null;
+      }
+  } catch (_) {}
+
   const newCase = await prisma.case.create({
     data: {
       workspaceId,
@@ -39,6 +54,7 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
       conversations: { connect: { id: conversationId } },
       assignedToId: lastCase?.assignedToId || null,
       assignedTeamId: lastCase?.assignedTeamId || null,
+      caseTypeId,
     }
   });
   

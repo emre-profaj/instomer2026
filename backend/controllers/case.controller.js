@@ -102,6 +102,15 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
         }
         const title = topic || channelLabel;
 
+        let caseTypeId = null;
+        if (conv.topicCategoryId) {
+            const tc = await prisma.topicCategory.findUnique({
+                where: { id: conv.topicCategoryId },
+                select: { caseTypeId: true }
+            });
+            caseTypeId = tc?.caseTypeId || null;
+        }
+
         const newCase = await prisma.case.create({
             data: {
                 workspaceId,
@@ -113,6 +122,7 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 funnelType: conv.funnelType || null,
                 funnelStageId: conv.funnelStageId || null,
                 categoryId: conv.topicCategoryId || null,
+                caseTypeId,
                 priority: 'NORMAL'
             }
         });
@@ -163,6 +173,15 @@ export const getContactCases = async (req, res) => {
             for (const conv of orphanConversations) {
                 try {
                     const caseNumber = await generateCaseNumber(workspaceId);
+                    let caseTypeId = null;
+                    if (conv.topicCategoryId) {
+                        const tc = await prisma.topicCategory.findUnique({
+                            where: { id: conv.topicCategoryId },
+                            select: { caseTypeId: true }
+                        });
+                        caseTypeId = tc?.caseTypeId || null;
+                    }
+
                     const newCase = await prisma.case.create({
                         data: {
                             workspaceId,
@@ -174,6 +193,7 @@ export const getContactCases = async (req, res) => {
                             funnelType: conv.funnelType || null,
                             funnelStageId: conv.funnelStageId || null,
                             categoryId: conv.topicCategoryId || null,
+                            caseTypeId,
                             priority: 'NORMAL'
                         }
                     });
@@ -217,6 +237,9 @@ export const getContactCases = async (req, res) => {
                 },
                 team: {
                     select: { id: true, name: true, color: true }
+                },
+                caseType: {
+                    select: { id: true, name: true, color: true, icon: true }
                 }
             },
             orderBy: { updatedAt: 'desc' }
@@ -403,7 +426,7 @@ export const getCase = async (req, res) => {
 export const createCase = async (req, res) => {
     try {
         const { workspaceId, contactId } = req.params;
-        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority } = req.body;
+        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId } = req.body;
 
         if (!title?.trim()) {
             return res.status(400).json({ error: 'Case başlığı gerekli' });
@@ -422,7 +445,8 @@ export const createCase = async (req, res) => {
                 funnelStageId: funnelStageId || null,
                 assignedToId: assignedToId || null,
                 assignedTeamId: assignedTeamId || null,
-                priority: priority || 'NORMAL'
+                priority: priority || 'NORMAL',
+                caseTypeId: caseTypeId || null
             }
         });
 
@@ -1003,6 +1027,7 @@ export const splitCase = async (req, res) => {
         priority: sourceCase.priority,
         assignedToId: sourceCase.assignedToId,
         assignedTeamId: sourceCase.assignedTeamId,
+        caseTypeId: sourceCase.caseTypeId || null,
       }
     });
     

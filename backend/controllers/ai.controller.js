@@ -4029,7 +4029,7 @@ Konu başlığı:`;
         try {
             const convForCase = await prisma.conversation.findUnique({
                 where: { id: conversationId },
-                select: { caseId: true, contactId: true, assignedToId: true, assignedTeamId: true }
+                select: { caseId: true, contactId: true, assignedToId: true, assignedTeamId: true, topicCategoryId: true }
             });
             if (convForCase && !convForCase.caseId && convForCase.contactId) {
                 // Case numarası oluştur (inline)
@@ -4046,6 +4046,14 @@ Konu başlığı:`;
                 }
                 const caseNumber = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
 
+                let caseTypeId = null;
+                try {
+                    if (convForCase.topicCategoryId) {
+                        const tcForCase = await prisma.topicCategory.findUnique({ where: { id: convForCase.topicCategoryId }, select: { caseTypeId: true } });
+                        caseTypeId = tcForCase?.caseTypeId || null;
+                    }
+                } catch (_) {}
+
                 const newCase = await prisma.case.create({
                     data: {
                         workspaceId,
@@ -4054,7 +4062,8 @@ Konu başlığı:`;
                         title: topic,
                         assignedToId: convForCase.assignedToId || null,
                         assignedTeamId: convForCase.assignedTeamId || null,
-                        priority: 'NORMAL'
+                        priority: 'NORMAL',
+                        caseTypeId
                     }
                 });
                 await prisma.conversation.update({
