@@ -538,7 +538,8 @@ export const resourceAPI = {
     getAll: (workspaceId, params) => api.get(`/resources/${workspaceId}`, { params }),
     create: (workspaceId, data) => api.post(`/resources/${workspaceId}`, data),
     update: (workspaceId, resourceId, data) => api.put(`/resources/${workspaceId}/${resourceId}`, data),
-    delete: (workspaceId, resourceId) => api.delete(`/resources/${workspaceId}/${resourceId}`)
+    delete: (workspaceId, resourceId) => api.delete(`/resources/${workspaceId}/${resourceId}`),
+    syncHealthDoctors: (workspaceId) => api.post(`/resources/${workspaceId}/sync-health-doctors`)
 };
 
 // Automation & Template API

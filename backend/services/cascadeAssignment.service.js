@@ -17,7 +17,7 @@ import { emitToWorkspace } from '../socket.js';
 export async function cascadeAssignment(conversationId, workspaceId, options = {}) {
     const { assignedToId, assignedTeamId, teamIds, source = 'Unknown' } = options;
 
-    if (!assignedToId && !assignedTeamId) return; // Hiçbir şey değişmediyse çık
+    if (assignedToId === undefined && assignedTeamId === undefined) return; // Hiçbir şey değişmediyse çık
 
     try {
         // conversation'dan caseId'yi al
@@ -34,8 +34,8 @@ export async function cascadeAssignment(conversationId, workspaceId, options = {
 
         // 1. Case'i güncelle
         const caseUpdate = {};
-        if (assignedToId) caseUpdate.assignedToId = assignedToId;
-        if (assignedTeamId) caseUpdate.assignedTeamId = assignedTeamId;
+        if (assignedToId !== undefined) caseUpdate.assignedToId = assignedToId;
+        if (assignedTeamId !== undefined) caseUpdate.assignedTeamId = assignedTeamId;
 
         await prisma.case.update({
             where: { id: caseId },
@@ -44,9 +44,9 @@ export async function cascadeAssignment(conversationId, workspaceId, options = {
 
         // 2. Kardeş conversation'ları güncelle (bu conversation hariç)
         const siblingUpdate = {};
-        if (assignedToId) siblingUpdate.assignedToId = assignedToId;
-        if (assignedTeamId) siblingUpdate.assignedTeamId = assignedTeamId;
-        if (teamIds) siblingUpdate.teamIds = teamIds;
+        if (assignedToId !== undefined) siblingUpdate.assignedToId = assignedToId;
+        if (assignedTeamId !== undefined) siblingUpdate.assignedTeamId = assignedTeamId;
+        if (teamIds !== undefined) siblingUpdate.teamIds = teamIds;
 
         const siblingResult = await prisma.conversation.updateMany({
             where: {

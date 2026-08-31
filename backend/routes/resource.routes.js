@@ -4,12 +4,16 @@ import {
     getResources,
     createResource,
     updateResource,
-    deleteResource
+    deleteResource,
+    syncHealthDoctors
 } from '../controllers/resource.controller.js';
 
 const router = express.Router();
 
 router.use(authenticateJWT);
+
+// Sync health system doctors to resources
+router.post('/:workspaceId/sync-health-doctors', requireWorkspaceAccess, syncHealthDoctors);
 
 // Get all resources
 router.get('/:workspaceId', requireWorkspaceAccess, getResources);

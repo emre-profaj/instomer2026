@@ -484,15 +484,11 @@ export const getFunnels = async (req, res) => {
                 if (added) didAddStages = true;
             }
 
-            // ── 7) Stage sıralamasını düzelt ──
-            let didReorder = false;
-            for (const funnel of funnels) {
-                const reordered = await reorderStages(funnel);
-                if (reordered) didReorder = true;
-            }
+            // ── 7) Stage sıralamasını koru (kullanıcı özelleştirmelerini ezme) ──
+            // didReorder kaldırıldı - kullanıcı sıralaması korunmalı
 
             // ── 8) Son hali yükle ──
-            if (didCreate || didAddStages || didRenameFunnels || didDedup || didReorder) {
+            if (didCreate || didAddStages || didRenameFunnels || didDedup) {
                 funnels = await prisma.funnel.findMany({
                     where: { workspaceId },
                     orderBy: { order: 'asc' },
@@ -551,7 +547,7 @@ export const getFunnels = async (req, res) => {
 export const createFunnel = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, color, icon, assignedUserId, assignedTeamId, classificationCriteria, parentId } = req.body;
+        const { name, color, icon, assignedUserId, assignedTeamId, classificationCriteria, parentId, funnelType } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'Akış adı zorunludur' });
 
         const maxOrder = await prisma.funnel.aggregate({ where: { workspaceId }, _max: { order: true } });
@@ -598,7 +594,7 @@ export const createFunnel = async (req, res) => {
                     assignedTeamId: assignedTeamId || null,
                     classificationCriteria: finalClassCriteria,
                     parentId: parentId || null,
-                    funnelType: parentId ? 'SUB' : 'SUB',
+                    funnelType: funnelType || 'SUB',
                     stages: { create: stages }
                 },
                 include: { stages: { orderBy: { order: 'asc' } } }
@@ -615,7 +611,7 @@ export const createFunnel = async (req, res) => {
                     assignedTeamId: assignedTeamId || null,
                     classificationCriteria: finalClassCriteria,
                     parentId: parentId || null,
-                    funnelType: parentId ? 'SUB' : 'SUB'
+                    funnelType: funnelType || 'SUB'
                 }
             });
             funnel.stages = [];
@@ -631,7 +627,20 @@ export const createFunnel = async (req, res) => {
 export const updateFunnel = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color, icon, order, assignedUserId, assignedTeamId, assignedBotId, qualifiedLeadStageId, classificationCriteria, categoryIds } = req.body;
+        const {
+            name,
+            color,
+            icon,
+            order,
+            assignedUserId,
+            assignedTeamId,
+            assignedBotId,
+            qualifiedLeadStageId,
+            classificationCriteria,
+            categoryIds,
+            parentId,
+            funnelType
+        } = req.body;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
 
@@ -687,7 +696,9 @@ export const updateFunnel = async (req, res) => {
             ...(assignedTeamId !== undefined && { assignedTeamId }),
             ...(assignedBotId !== undefined && { assignedBotId: assignedBotId || null }),
             ...(qualifiedLeadStageId !== undefined && { qualifiedLeadStageId: qualifiedLeadStageId || null }),
-            ...(finalClassCriteria !== undefined && { classificationCriteria: finalClassCriteria })
+            ...(finalClassCriteria !== undefined && { classificationCriteria: finalClassCriteria }),
+            ...(req.body.hasOwnProperty('parentId') || parentId !== undefined ? { parentId: parentId || null } : {}),
+            ...(funnelType !== undefined && { funnelType })
         };
 
         let funnel;

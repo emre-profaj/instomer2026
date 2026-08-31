@@ -361,9 +361,20 @@ const Funnels = () => {
     };
 
     // ── Helpers ──
-    const getParentOptions = () => {
-        const editingId = funnelPanel?.id;
-        return funnels.filter(f => f.id !== editingId);
+    const getParentOptions = (editingId = funnelPanel?.id) => {
+        const isDescendant = (parentId, checkId) => {
+            const children = childrenMap[checkId] || [];
+            for (const c of children) {
+                if (c.id === parentId) return true;
+                if (isDescendant(parentId, c.id)) return true;
+            }
+            return false;
+        };
+        return funnels.filter(f => {
+            if (editingId && f.id === editingId) return false;
+            if (editingId && isDescendant(f.id, editingId)) return false;
+            return true;
+        });
     };
 
     const getEntryRulesCount = (stage) => {
@@ -411,7 +422,10 @@ const Funnels = () => {
         ));
 
         try {
-            await funnelAPI.update(currentWorkspace.id, draggedFunnelId, { parentId: targetParentId });
+            const res = await funnelAPI.update(currentWorkspace.id, draggedFunnelId, { parentId: targetParentId });
+            if (res.data?.funnel) {
+                setFunnels(prev => prev.map(f => f.id === draggedFunnelId ? { ...f, ...res.data.funnel } : f));
+            }
         } catch (err) {
             console.error('Reparent error:', err);
             loadFunnels();
@@ -488,8 +502,12 @@ const Funnels = () => {
                         <div className="settings-field">
                             <label>Üst Akış</label>
                             <select value={newParentId} onChange={e => setNewParentId(e.target.value)}>
-                                <option value="">Üst Akış Yok (Bağımsız)</option>
-                                {getParentOptions().map(f => <option key={f.id} value={f.id}>↳ {f.name} altına</option>)}
+                                {mainFunnel && (
+                                    <option value={mainFunnel.id}>↳ {mainFunnel.name} (Ana Akış) Altında</option>
+                                )}
+                                {getParentOptions().filter(f => f.id !== mainFunnel?.id).map(f =>
+                                    <option key={f.id} value={f.id}>↳ {f.name} altına</option>
+                                )}
                             </select>
                         </div>
                         <div className="settings-field">
@@ -1186,11 +1204,13 @@ const Funnels = () => {
                                     <div className="settings-field">
                                         <label>Üst Akış</label>
                                         <select
-                                            value={funnelPanel.parentId}
+                                            value={funnelPanel.parentId || ''}
                                             onChange={e => setFunnelPanel(p => ({ ...p, parentId: e.target.value }))}
                                         >
-                                            <option value="">Üst Akış Yok (Bağımsız)</option>
-                                            {funnels.filter(f => f.id !== funnelPanel.id && f.funnelType !== 'MAIN' && !f.parentId).map(f =>
+                                            {mainFunnel && (
+                                                <option value={mainFunnel.id}>↳ {mainFunnel.name} (Ana Akış) Altında</option>
+                                            )}
+                                            {getParentOptions(funnelPanel.id).filter(f => f.id !== mainFunnel?.id).map(f =>
                                                 <option key={f.id} value={f.id}>↳ {f.name} altına</option>
                                             )}
                                         </select>

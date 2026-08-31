@@ -3407,19 +3407,6 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('⚠️ [LEADGEN Routing] Error:', routingErr.message);
         }
 
-        // 3.6. Kanal yönlendirmesi (akış/aşama + takım ataması)
-        try {
-            const { applyChannelRouting } = await import('../services/conversationRouting.service.js');
-            const routingResult = await applyChannelRouting(facebookPage.workspaceId, conversation.id, 'LEAD', true);
-            if (routingResult) {
-                console.log(`✅ [LEADGEN] Channel routing applied: team=${routingResult.teamId}, funnel assigned`);
-            } else {
-                console.log(`ℹ️ [LEADGEN] No channel routing for LEAD channel, default funnel may be assigned`);
-            }
-        } catch (chRoutingErr) {
-            console.error('⚠️ [LEADGEN] Channel routing error:', chRoutingErr.message);
-        }
-
         // 4. Create Message with lead info (Clean format)
         // Build extra fields - skip contact info fields
         const skipFields = ['full_name', 'name', 'email', 'phone_number', 'phone', 'phonenumber', 'first_name', 'last_name', 'tel', 'telefon', 'e_mail', 'mail'];
@@ -3468,6 +3455,23 @@ async function handleLeadgenEvent(leadValue, entryId) {
             }
         });
         console.log(`✅ [LEADGEN] Message created: ${message.id}`);
+
+        // 3.6. Kanal yönlendirmesi (akış/aşama + takım ataması)
+        try {
+            const { applyChannelRouting } = await import('../services/conversationRouting.service.js');
+            const routingResult = await applyChannelRouting(facebookPage.workspaceId, conversation.id, 'LEAD', true, null, {
+                messageText: messageContent,
+                formId: leadData.form_id,
+                fieldData
+            });
+            if (routingResult) {
+                console.log(`✅ [LEADGEN] Channel routing applied: team=${routingResult.teamId}, funnel assigned`);
+            } else {
+                console.log(`ℹ️ [LEADGEN] No channel routing for LEAD channel, default funnel may be assigned`);
+            }
+        } catch (chRoutingErr) {
+            console.error('⚠️ [LEADGEN] Channel routing error:', chRoutingErr.message);
+        }
 
         // 5. Emit Socket Events (workspace-specific)
         try {
@@ -3705,43 +3709,71 @@ async function handleLeadgenEvent(leadValue, entryId) {
         // --- 🎯 EVRENSEL SINIFLANDIRICI (Meta Lead Form) ---
         if (conversation?.id && contact?.id) {
             try {
-                const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
+                const { executeClassificationActions, classifyAndExtract } = await import('../services/universalClassifier.service.js');
 
-                // Lead form'dan gelen veri zaten yapılandırılmış — direkt kullan
-                // Konu alanını form fieldlarından çıkar
-                let leadTopic = null;
-                let leadPreferredCallTime = null;
-                for (const [key, value] of Object.entries(fieldData)) {
-                    const lk = key.toLowerCase();
-                    if ((lk.includes('konu') || lk.includes('mesaj') || lk.includes('hizmet') ||
-                         lk.includes('service') || lk.includes('subject') || lk.includes('ilgi') ||
-                         lk.includes('bolum') || lk.includes('bölüm')) && value) {
-                        if (!leadTopic) leadTopic = value;
-                    }
-                    // Tercih edilen arama zamanı: "Sizi Ne Zaman ArayaliM?", "Tercih Ettiğiniz Saat", "Aranma Saati" vb.
-                    if ((lk.includes('zaman') || lk.includes('saat') || lk.includes('arama') || 
-                         lk.includes('arayal') || lk.includes('time') || lk.includes('call') ||
-                         lk.includes('tercih')) && value && !leadPreferredCallTime) {
-                        leadPreferredCallTime = value;
-                    }
+                let classResult = null;
+                try {
+                    // Lead form içeriğini AI Sınıflandırıcıya göndererek akış (Funnel) ve takım eşleştirmesi yap
+                    classResult = await classifyAndExtract(
+                        conversation.id,
+                        [{ content: messageContent, isFromContact: true, createdAt: new Date() }],
+                        contact,
+                        'FORM',
+                        facebookPage.workspaceId
+                    );
+                } catch (aiClassifyErr) {
+                    console.error('⚠️ [LEADGEN AI Classifier] AI extraction error, falling back:', aiClassifyErr.message);
                 }
 
-                const classResult = {
-                    classification: 'FIRSAT',
-                    confidence: 0.95,
-                    extractedData: {
-                        name: leadName,
-                        phone: leadPhone,
-                        topic: leadTopic || formName || 'Facebook Lead Form',
-                        preferredCallTime: leadPreferredCallTime,
-                        requestedAction: 'CALL',
-                        requestedDate: null,
-                        branchInfo: null
-                    },
-                    isQualifiedLead: !!(leadPhone && (leadName || leadEmail)),
-                    matchedFunnelId: null,
-                    reasoning: 'Facebook Lead Form — yapılandırılmış veri'
-                };
+                if (!classResult) {
+                    // Fallback: Yapılandırılmış verilerden oluştur
+                    let leadTopic = null;
+                    let leadPreferredCallTime = null;
+                    for (const [key, value] of Object.entries(fieldData)) {
+                        const lk = key.toLowerCase();
+                        if ((lk.includes('konu') || lk.includes('mesaj') || lk.includes('hizmet') ||
+                             lk.includes('service') || lk.includes('subject') || lk.includes('ilgi') ||
+                             lk.includes('bolum') || lk.includes('bölüm')) && value) {
+                            if (!leadTopic) leadTopic = value;
+                        }
+                        // Tercih edilen arama zamanı: "Sizi Ne Zaman ArayaliM?", "Tercih Ettiğiniz Saat", "Aranma Saati" vb.
+                        if ((lk.includes('zaman') || lk.includes('saat') || lk.includes('arama') || 
+                             lk.includes('arayal') || lk.includes('time') || lk.includes('call') ||
+                             lk.includes('tercih')) && value && !leadPreferredCallTime) {
+                            leadPreferredCallTime = value;
+                        }
+                    }
+
+                    classResult = {
+                        classification: 'FIRSAT',
+                        confidence: 0.95,
+                        extractedData: {
+                            name: leadName,
+                            phone: leadPhone,
+                            topic: leadTopic || formName || 'Facebook Lead Form',
+                            preferredCallTime: leadPreferredCallTime,
+                            requestedAction: 'CALL',
+                            requestedDate: null,
+                            branchInfo: null
+                        },
+                        isQualifiedLead: !!(leadPhone && (leadName || leadEmail)),
+                        matchedFunnelId: null,
+                        reasoning: 'Facebook Lead Form — yapılandırılmış veri fallback'
+                    };
+                }
+
+                if (classResult && !classResult.matchedFunnelId) {
+                    const { findBestMatchingFunnel } = await import('../services/universalClassifier.service.js');
+                    const funnels = await prisma.funnel.findMany({
+                        where: { workspaceId: facebookPage.workspaceId },
+                        select: { id: true, name: true, classificationCriteria: true }
+                    });
+                    const fallbackFunnelId = findBestMatchingFunnel(funnels, messageContent + ' ' + JSON.stringify(fieldData));
+                    if (fallbackFunnelId) {
+                        classResult.matchedFunnelId = fallbackFunnelId;
+                        console.log(`🎯 [LEADGEN] Lead form matched funnel: ${fallbackFunnelId}`);
+                    }
+                }
 
                 // Conversation'a sınıflandırma verisi kaydet
                 await prisma.conversation.update({
@@ -3753,7 +3785,7 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     }
                 });
 
-                if (classResult.isQualifiedLead) {
+                if (classResult.isQualifiedLead || classResult.classification !== 'GENEL') {
                     await executeClassificationActions(
                         facebookPage.workspaceId, conversation.id, contact.id, classResult
                     );

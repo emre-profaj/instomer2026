@@ -439,41 +439,57 @@ const Customers = () => {
         selectedContactRef.current = selectedContact;
     }, [selectedContact]);
 
+    // Helper to get active query parameters for fetching contacts
+    const getContactQueryParams = useCallback((overrides = {}) => ({
+        search,
+        status: statusFilter,
+        source: sourceFilter,
+        category: categoryFilter,
+        tag: tagFilter,
+        contactInfo: contactInfoFilter,
+        callStatus: callStatusFilter,
+        importGroup: importGroupFilter,
+        segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
+        funnelType: selectedFunnelIds.length > 0 ? 'ALL' : funnelFilter,
+        funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
+        funnelStageId: funnelStageFilter,
+        showArchived: showArchived.toString(),
+        onlyOpenCases: onlyOpenCases.toString(),
+        assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
+        sortField,
+        sortDir,
+        limit,
+        offset: (page - 1) * limit,
+        dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
+        dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
+        dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
+        tzOffset: new Date().getTimezoneOffset(),
+        topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
+        hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
+        ...overrides
+    }), [
+        search, statusFilter, sourceFilter, categoryFilter, tagFilter,
+        contactInfoFilter, callStatusFilter, importGroupFilter, segmentFilter,
+        selectedFunnelIds, funnelFilter, mergedFunnelIds, funnelStageFilter,
+        showArchived, onlyOpenCases, assignmentFilter, sortField, sortDir,
+        limit, page, dateFilter, dateFrom, dateTo, topicCategoryFilter, quickFilterMode
+    ]);
+
+    // Client-side score filtering
+    const applyScoreFilter = useCallback((contactList) => {
+        let filtered = contactList || [];
+        if (scoreFilter === 'hot') filtered = filtered.filter(c => (c.leadScore || 0) >= 70);
+        if (scoreFilter === 'warm') filtered = filtered.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70);
+        if (scoreFilter === 'cold') filtered = filtered.filter(c => (c.leadScore || 0) < 40);
+        return filtered;
+    }, [scoreFilter]);
+
     // Silent reload: updates the contact list without changing the selected contact
     const silentReloadContacts = useCallback(async () => {
         if (!currentWorkspace) return;
         try {
-            const response = await contactAPI.getAll(currentWorkspace.id, {
-                search,
-                status: statusFilter,
-                source: sourceFilter,
-                category: categoryFilter,
-                tag: tagFilter,
-                contactInfo: contactInfoFilter,
-                callStatus: callStatusFilter,
-                importGroup: importGroupFilter,
-                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
-                funnelType: selectedFunnelIds.length > 0 ? 'ALL' : funnelFilter,
-                funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
-                funnelStageId: funnelStageFilter,
-                showArchived: showArchived.toString(),
-                onlyOpenCases: onlyOpenCases.toString(),
-                assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
-                sortField,
-                sortDir,
-                limit,
-                offset: (page - 1) * limit,
-                dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
-                dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
-                dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
-                tzOffset: new Date().getTimezoneOffset(),
-                topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
-                hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
-            });
-            let filtered = response.data.contacts;
-            if (scoreFilter === 'hot') filtered = filtered.filter(c => (c.leadScore || 0) >= 70);
-            if (scoreFilter === 'warm') filtered = filtered.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70);
-            if (scoreFilter === 'cold') filtered = filtered.filter(c => (c.leadScore || 0) < 40);
+            const response = await contactAPI.getAll(currentWorkspace.id, getContactQueryParams());
+            const filtered = applyScoreFilter(response.data.contacts);
             setContacts(filtered);
             setTotal(response.data.total);
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
@@ -487,7 +503,7 @@ const Customers = () => {
             // Seçili kişi varsa güncel verisini API yanıtından al (atama değişikliği yansısın)
             const currentSelected = selectedContactRef.current;
             if (currentSelected) {
-                const freshContact = response.data.contacts.find(c => c.id === currentSelected.id);
+                const freshContact = response.data.contacts?.find(c => c.id === currentSelected.id);
                 if (freshContact) {
                     setSelectedContact(prev => ({ ...prev, ...freshContact }));
                 }
@@ -495,7 +511,7 @@ const Customers = () => {
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
-    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, topicCategoryFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter, quickFilterMode, scoreFilter, segmentFilter]);
+    }, [currentWorkspace, getContactQueryParams, applyScoreFilter]);
 
     useEffect(() => {
         const handleContactUpdate = (event) => {
@@ -590,38 +606,8 @@ const Customers = () => {
     const loadContacts = async () => {
         try {
             setLoading(true);
-            const response = await contactAPI.getAll(currentWorkspace.id, {
-                search,
-                status: statusFilter,
-                source: sourceFilter,
-                category: categoryFilter,
-                tag: tagFilter,
-                contactInfo: contactInfoFilter,
-                callStatus: callStatusFilter,
-                importGroup: importGroupFilter,
-                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
-                funnelType: selectedFunnelIds.length > 0 ? 'ALL' : funnelFilter,
-                funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
-                funnelStageId: funnelStageFilter,
-                showArchived: showArchived.toString(),
-                onlyOpenCases: onlyOpenCases.toString(),
-                assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
-                sortField,
-                sortDir,
-                limit,
-                offset: (page - 1) * limit,
-                // Date filter
-                dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
-                dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
-                dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
-                tzOffset: new Date().getTimezoneOffset(),
-                topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
-                hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
-            });
-            let filtered = response.data.contacts;
-            if (scoreFilter === 'hot') filtered = filtered.filter(c => (c.leadScore || 0) >= 70);
-            if (scoreFilter === 'warm') filtered = filtered.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70);
-            if (scoreFilter === 'cold') filtered = filtered.filter(c => (c.leadScore || 0) < 40);
+            const response = await contactAPI.getAll(currentWorkspace.id, getContactQueryParams());
+            const filtered = applyScoreFilter(response.data.contacts);
             setContacts(filtered);
             setTotal(response.data.total);
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
@@ -636,7 +622,7 @@ const Customers = () => {
             }
 
             // Auto-select first contact if none selected
-            if (!selectedContact && response.data.contacts.length > 0) {
+            if (!selectedContact && response.data.contacts?.length > 0) {
                 setSelectedContact(response.data.contacts[0]);
             }
         } catch (error) {
@@ -971,24 +957,14 @@ const Customers = () => {
 
         setExporting(true);
         try {
-            const response = await contactAPI.getAll(currentWorkspace.id, {
-                page: 1,
-                limit: 10000, // Get all contacts
-                search,
-                status: statusFilter !== 'ALL' ? statusFilter : undefined,
-                source: sourceFilter !== 'ALL' ? sourceFilter : undefined,
-                category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
-                funnelType: funnelFilter !== 'ALL' ? funnelFilter : undefined,
-                funnelStageId: funnelStageFilter !== 'ALL' ? funnelStageFilter : undefined,
-                tag: tagFilter !== 'ALL' ? tagFilter : undefined,
-                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
-                topicCategory: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
-                importGroup: importGroupFilter !== 'ALL' ? importGroupFilter : undefined,
-                isArchived: showArchived
-            });
+            const response = await contactAPI.getAll(currentWorkspace.id, getContactQueryParams({
+                limit: 10000,
+                offset: 0
+            }));
+            const allContacts = applyScoreFilter(response.data.contacts);
 
             // Filter by date range
-            const filteredContacts = response.data.contacts.filter(contact => {
+            const filteredContacts = allContacts.filter(contact => {
                 if (!contact.firstMessageAt) return false;
                 const firstMessageDate = new Date(contact.firstMessageAt);
                 const startDate = new Date(exportStartDate);
@@ -1084,22 +1060,26 @@ const Customers = () => {
     // Bulk selection handlers
     const handleToggleSelect = (e, id) => {
         e.stopPropagation();
-        setSelectedIds(prev =>
-            prev.includes(id)
+        setSelectedIds(prev => {
+            const next = prev.includes(id)
                 ? prev.filter(i => i !== id)
-                : [...prev, id]
-        );
+                : [...prev, id];
+            if (next.length === 0) setAllSelectedContacts([]);
+            return next;
+        });
     };
 
     const handleSelectAll = () => {
         if (selectedIds.length === contacts.length) {
             setSelectedIds([]);
+            setAllSelectedContacts([]);
         } else {
             setSelectedIds(contacts.map(c => c.id));
+            setAllSelectedContacts(contacts);
         }
     };
 
-    // Select ALL contacts across all pages
+    // Select ALL contacts across all pages matching current filters
     const handleSelectAllGlobal = async () => {
         if (selectedIds.length === total) {
             setSelectedIds([]);
@@ -1107,20 +1087,11 @@ const Customers = () => {
             return;
         }
         try {
-            const response = await contactAPI.getAll(currentWorkspace.id, {
-                search,
-                status: statusFilter,
-                source: sourceFilter,
-                category: categoryFilter,
-                tag: tagFilter,
-                segment: segmentFilter !== 'ALL' ? segmentFilter : undefined,
-                callStatus: callStatusFilter,
-                showArchived: showArchived.toString(),
-                onlyOpenCases: onlyOpenCases.toString(),
+            const response = await contactAPI.getAll(currentWorkspace.id, getContactQueryParams({
                 limit: 10000,
                 offset: 0
-            });
-            const all = response.data.contacts || [];
+            }));
+            const all = applyScoreFilter(response.data.contacts);
             setSelectedIds(all.map(c => c.id));
             setAllSelectedContacts(all);
         } catch (err) {
@@ -1145,6 +1116,7 @@ const Customers = () => {
                         await contactAPI.delete(currentWorkspace.id, id);
                     }
                     setSelectedIds([]);
+                    setAllSelectedContacts([]);
                     if (selectedContact && selectedIds.includes(selectedContact.id)) {
                         setSelectedContact(null);
                     }
@@ -1224,6 +1196,7 @@ const Customers = () => {
         setBulkStatusFunnel('');
         setBulkStatusStage('');
         setSelectedIds([]);
+        setAllSelectedContacts([]);
         silentReloadContacts();
     };
 
@@ -3099,7 +3072,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                         <div className="customers-floating-bulk-bar">
                             <div className="customers-bulk-bar-content">
                                 <div className="customers-bulk-bar-left">
-                                    <button className="customers-bulk-close-btn" onClick={() => setSelectedIds([])}>
+                                    <button className="customers-bulk-close-btn" onClick={() => { setSelectedIds([]); setAllSelectedContacts([]); }}>
                                         <X size={16} />
                                     </button>
                                     <span className="customers-bulk-count"><strong>{selectedIds.length}</strong> kişi seçildi</span>
@@ -3111,7 +3084,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         </button>
                                     )}
                                     {selectedIds.length === total && total > contacts.length && (
-                                        <button className="customers-bulk-select-all-btn" onClick={() => setSelectedIds([])}>
+                                        <button className="customers-bulk-select-all-btn" onClick={() => { setSelectedIds([]); setAllSelectedContacts([]); }}>
                                             Seçimi Kaldır ({total})
                                         </button>
                                     )}
@@ -3218,6 +3191,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 setShowBulkWA(false);
                                                                 setSelectedTemplate('');
                                                                 setSelectedIds([]);
+                                                                setAllSelectedContacts([]);
                                                             }}>
                                                                 {bulkWASending ? <><Loader size={14} className="spin" /> Gönderiliyor...</> : <><Send size={14} /> Gönder</>}
                                                             </button>
@@ -3303,6 +3277,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 setEmailSubject('');
                                                                 setEmailBody('');
                                                                 setSelectedIds([]);
+                                                                setAllSelectedContacts([]);
                                                             }}>
                                                                 {bulkEmailSending ? <><Loader size={14} className="spin" /> Gönderiliyor...</> : <><Send size={14} /> Gönder</>}
                                                             </button>
@@ -3407,6 +3382,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 alert(`✅ ${total - errors} / ${total} kişi arandı.`);
                                                                 setShowBulkCall(false);
                                                                 setSelectedIds([]);
+                                                                setAllSelectedContacts([]);
                                                             }}>
                                                                 {bulkCallRunning ? <><Loader size={14} className="spin" /> Aranıyor...</> : <><PhoneCall size={14} /> Aramaları Başlat</>}
                                                             </button>

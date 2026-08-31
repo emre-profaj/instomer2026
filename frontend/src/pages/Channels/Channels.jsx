@@ -1635,80 +1635,95 @@ const Channels = () => {
                             
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                                 {/* Disao CRM Card */}
-                                <div className="integration-card">
-                                    <div style={{ borderTop: '3px solid #8b5cf6', borderRadius: '12px', padding: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                                            <Zap size={24} color="#8b5cf6" />
-                                            <div>
-                                                <h3 style={{ fontWeight: 600, fontSize: '15px' }}>Disao CRM</h3>
-                                                <span style={{ fontSize: '12px', color: disaoConnection ? '#16a34a' : '#9ca3af' }}>
-                                                    {disaoConnection ? '● Bağlı' : '● Bağlı Değil'}
+                                <div className="channels-integration-card card-disao">
+                                    <div>
+                                        <div className="integration-card-header">
+                                            <div className="integration-icon-wrap" style={{ background: '#f5f3ff' }}>
+                                                <Zap size={22} color="#8b5cf6" />
+                                            </div>
+                                            <div className="integration-title-group">
+                                                <h3>Disao CRM</h3>
+                                                <span className={`integration-status-pill ${disaoConnection ? 'connected' : 'disconnected'}`}>
+                                                    ● {disaoConnection ? 'Bağlı' : 'Bağlı Değil'}
                                                 </span>
                                             </div>
                                         </div>
-                                        {disaoConnection && <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>{disaoConnection.email || disaoConnection.username}</p>}
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            {disaoConnection ? (
-                                                <>
-                                                    <button onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }} style={settingsBtnStyle}>Ayarlar</button>
-                                                    <button onClick={handleDeleteDisaoCrm} style={disconnectBtnStyle}>Bağlantıyı Kes</button>
-                                                </>
-                                            ) : (
-                                                <button onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }} style={connectBtnStyle}>Bağlan</button>
-                                            )}
-                                        </div>
+                                        {disaoConnection && (
+                                            <div className="integration-card-body">
+                                                {disaoConnection.email || disaoConnection.username}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="integration-card-actions">
+                                        {disaoConnection ? (
+                                            <>
+                                                <button onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }} className="btn-integration-settings">Ayarlar</button>
+                                                <button onClick={handleDeleteDisaoCrm} className="btn-integration-disconnect">Bağlantıyı Kes</button>
+                                            </>
+                                        ) : (
+                                            <button onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }} className="btn-integration-connect">Bağlan</button>
+                                        )}
                                     </div>
                                 </div>
                                 
                                 {/* HBYS Card */}
-                                <div className="integration-card">
-                                    <div style={{ borderTop: '3px solid #7c3aed', borderRadius: '12px', padding: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                                            <Activity size={24} color="#7c3aed" />
-                                            <div>
-                                                <h3 style={{ fontWeight: 600, fontSize: '15px' }}>Sağlık Sistemi (HBYS)</h3>
-                                                <span style={{ fontSize: '12px', color: healthConnection ? '#16a34a' : '#9ca3af' }}>
-                                                    {healthConnection ? '● Bağlı' : '● Bağlı Değil'}
+                                <div className="channels-integration-card card-hbys">
+                                    <div>
+                                        <div className="integration-card-header">
+                                            <div className="integration-icon-wrap" style={{ background: '#f5f3ff' }}>
+                                                <Activity size={22} color="#7c3aed" />
+                                            </div>
+                                            <div className="integration-title-group">
+                                                <h3>Sağlık Sistemi (HBYS)</h3>
+                                                <span className={`integration-status-pill ${healthConnection ? 'connected' : 'disconnected'}`}>
+                                                    ● {healthConnection ? 'Bağlı' : 'Bağlı Değil'}
                                                 </span>
                                             </div>
                                         </div>
-                                        {healthConnection && <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>{healthConnection.baseUrl}</p>}
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            {healthConnection ? (
-                                                <>
-                                                    <button onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }} style={settingsBtnStyle}>Ayarlar</button>
-                                                    {/* We assume there is some disconnect or just rely on the modal to disable it */}
-                                                </>
-                                            ) : (
-                                                <button onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }} style={connectBtnStyle}>Bağlan</button>
-                                            )}
-                                        </div>
+                                        {healthConnection && (
+                                            <div className="integration-card-body">
+                                                {healthConnection.baseUrl}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="integration-card-actions">
+                                        {healthConnection ? (
+                                            <button onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }} className="btn-integration-settings">Ayarlar</button>
+                                        ) : (
+                                            <button onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }} className="btn-integration-connect">Bağlan</button>
+                                        )}
                                     </div>
                                 </div>
 
                                 {/* Telsam Card */}
-                                <div className="integration-card">
-                                    <div style={{ borderTop: '3px solid #0284c7', borderRadius: '12px', padding: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                                            <PhoneCall size={24} color="#0284c7" />
-                                            <div>
-                                                <h3 style={{ fontWeight: 600, fontSize: '15px' }}>Telsam Santral</h3>
-                                                <span style={{ fontSize: '12px', color: telsamConfig ? '#16a34a' : '#9ca3af' }}>
-                                                    {telsamConfig ? '● Bağlı' : '● Bağlı Değil'}
+                                <div className="channels-integration-card card-telsam">
+                                    <div>
+                                        <div className="integration-card-header">
+                                            <div className="integration-icon-wrap" style={{ background: '#f0f9ff' }}>
+                                                <PhoneCall size={22} color="#0284c7" />
+                                            </div>
+                                            <div className="integration-title-group">
+                                                <h3>Telsam Santral</h3>
+                                                <span className={`integration-status-pill ${telsamConfig ? 'connected' : 'disconnected'}`}>
+                                                    ● {telsamConfig ? 'Bağlı' : 'Bağlı Değil'}
                                                 </span>
                                             </div>
                                         </div>
-                                        {telsamConfig && <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px' }}>{telsamConfig.siteUrl}</p>}
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            {telsamConfig ? (
-                                                <>
-                                                    <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} style={settingsBtnStyle}>Ayarlar</button>
-                                                    <button onClick={handleDeleteTelsam} style={disconnectBtnStyle}>Bağlantıyı Kes</button>
-                                                </>
-                                            ) : (
-                                                <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} style={connectBtnStyle}>Bağlan</button>
-                                            )}
-                                        </div>
+                                        {telsamConfig && (
+                                            <div className="integration-card-body">
+                                                {telsamConfig.siteUrl}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="integration-card-actions">
+                                        {telsamConfig ? (
+                                            <>
+                                                <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} className="btn-integration-settings">Ayarlar</button>
+                                                <button onClick={handleDeleteTelsam} className="btn-integration-disconnect">Bağlantıyı Kes</button>
+                                            </>
+                                        ) : (
+                                            <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} className="btn-integration-connect">Bağlan</button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

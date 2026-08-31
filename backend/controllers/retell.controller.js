@@ -3408,8 +3408,8 @@ async function handleCallEnded(call) {
             // Başarılı çağrı → Activity'yi tamamla + aynı numaraya tüm bekleyen aramaları iptal et
             if (!isFailedCall && callRecord.createdById && callRecord.createdById.startsWith('activity_')) {
                 const activityId = callRecord.createdById.replace('activity_', '');
+                const durationText = duration ? `${duration} saniye` : 'Bilinmiyor';
                 try {
-                    const durationText = duration ? `${duration} saniye` : 'Bilinmiyor';
                     await prisma.contactActivity.update({
                         where: { id: activityId },
                         data: {

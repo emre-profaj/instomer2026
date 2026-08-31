@@ -93,6 +93,10 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
     }
     if (targetUserId) {
       assignments.assignedToId = targetUserId;
+    } else if (targetTeamId) {
+      // Hedef takım belirlendi ama belirli bir kullanıcı seçilmediyse:
+      // Varsayılan olarak önceki kullanıcının atamasını temizle (havuza aktar)
+      assignments.assignedToId = null;
     }
 
     // 5. Veritabanı CASCADE Güncellemeleri

@@ -78,11 +78,15 @@ export const getConversations = async (req, res) => {
         // Role-based visibility and explicit assignment filtering
         if (role === 'AGENT') {
             // Agents see conversations assigned to them OR their teams (but NOT assigned to someone else)
+            // Agent'lar için sosyal medya post / yorum konuşmalarını gizle
             const userTeams = await prisma.teamMember.findMany({
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
-            const myTeamIds = userTeams.map(t => t.teamId);
+            const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
+
+            // Post/yorum konuşmalarını Agent'lar görmez
+            where.channel = { notIn: ['FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT'] };
 
             // 🚀 LEAD Kanalı için özel kural:
             // LEAD'ler için agent sadece kendisine atanmış olanları görebilir
@@ -400,16 +404,17 @@ export const getUnreadCount = async (req, res) => {
             unreadCount: { gt: 0 }
         };
 
-        // Agents only see their own assigned conversations
+        // Agents only see their own assigned conversations (excluding post comments)
         if (role === 'AGENT') {
             const userTeams = await prisma.teamMember.findMany({
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
-            const myTeamIds = userTeams.map(t => t.teamId);
+            const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
             where = {
                 ...where,
+                channel: { notIn: ['FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT'] },
                 OR: [
                     { assignedToId: req.user.id },
                     ...(myTeamIds.length > 0 ? myTeamIds.map(tid => ({
@@ -445,14 +450,15 @@ export const markAllAsRead = async (req, res) => {
             unreadCount: { gt: 0 }
         };
 
-        // Agents only mark their own assigned conversations as read
+        // Agents only mark their own assigned conversations as read (excluding post comments)
         if (role === 'AGENT') {
             const userTeams = await prisma.teamMember.findMany({
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
-            const teamIds = userTeams.map(t => t.teamId);
+            const teamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
+            where.channel = { notIn: ['FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT'] };
             where.OR = [
                 { assignedToId: req.user.id },
                 ...(teamIds.length > 0 ? teamIds.map(teamId => ({

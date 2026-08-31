@@ -855,6 +855,70 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             }
         }
 
+        // Eksik doktor veya branş bilgisini preState'ten tamamla
+        if (conversationId) {
+            try {
+                const convCheck = await prisma.conversation.findUnique({ where: { id: conversationId } });
+                if (convCheck?.appointmentState) {
+                    const stateObj = JSON.parse(convCheck.appointmentState);
+                    if (!doctor_name) {
+                        doctor_name = stateObj.doctor_name || stateObj.doktor_adi || '';
+                        if (!doctor_name && stateObj.doctors?.length === 1) {
+                            doctor_name = stateObj.doctors[0].doktor_adi || '';
+                        } else if (!doctor_name && stateObj.doktor_kodu && stateObj.doctors?.length) {
+                            const foundDoc = stateObj.doctors.find(d => String(d.doktor_kodu) === String(stateObj.doktor_kodu));
+                            if (foundDoc) doctor_name = foundDoc.doktor_adi;
+                        }
+                    }
+                    if (!branch) {
+                        branch = stateObj.branch || stateObj.brans_adi || '';
+                        if (!branch && stateObj.branches?.length === 1) {
+                            branch = stateObj.branches[0].brans_adi || '';
+                        } else if (!branch && stateObj.brans_kodu && stateObj.branches?.length) {
+                            const foundBranch = stateObj.branches.find(b => String(b.brans_kodu) === String(stateObj.brans_kodu));
+                            if (foundBranch) branch = foundBranch.brans_adi;
+                        }
+                    }
+                }
+            } catch (stErr) {
+                console.warn('⚠️ [AppointmentBot] State parsing error for doctor/branch:', stErr.message);
+            }
+        }
+
+        // CalendarResource eşleştirmesi
+        let resolvedResourceId = null;
+        if (doctor_name || branch) {
+            try {
+                if (doctor_name) {
+                    const matchedRes = await prisma.calendarResource.findFirst({
+                        where: {
+                            workspaceId,
+                            name: { contains: doctor_name.trim(), mode: 'insensitive' }
+                        }
+                    });
+                    if (matchedRes) {
+                        resolvedResourceId = matchedRes.id;
+                    }
+                }
+                if (!resolvedResourceId && branch) {
+                    const matchedBranchRes = await prisma.calendarResource.findFirst({
+                        where: {
+                            workspaceId,
+                            description: { contains: branch.trim(), mode: 'insensitive' }
+                        }
+                    });
+                    if (matchedBranchRes) {
+                        resolvedResourceId = matchedBranchRes.id;
+                        if (!doctor_name && matchedBranchRes.type === 'PERSON') {
+                            doctor_name = matchedBranchRes.name;
+                        }
+                    }
+                }
+            } catch (resErr) {
+                console.warn('⚠️ [AppointmentBot] Resource match error:', resErr.message);
+            }
+        }
+
         const { startTime, endTime } = parseAppointmentDateTime(date, time);
 
         const admin = await prisma.workspaceMember.findFirst({
@@ -875,6 +939,7 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                 branch:        branch        || '',
                 procedure:     procedure     || null,
                 doctorName:    doctor_name   || '',
+                resourceId:    resolvedResourceId || null,
                 createdById:   admin?.user?.id || 'system',
                 createdByBotId: botId         || null,
                 conversationId: conversationId || null,
