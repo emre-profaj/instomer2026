@@ -444,6 +444,7 @@ export const channelRoutingAPI = {
 
 export const contactAPI = {
     getAll: (workspaceId, params) => api.get(`/contacts/${workspaceId}`, { params }),
+    getContacts: (workspaceId, params) => api.get(`/contacts/${workspaceId}`, { params }),
     getById: (workspaceId, id) => api.get(`/contacts/${workspaceId}/${id}`),
     create: (workspaceId, data) => api.post(`/contacts/${workspaceId}`, data),
     update: (workspaceId, id, data) => api.put(`/contacts/${workspaceId}/${id}`, data),

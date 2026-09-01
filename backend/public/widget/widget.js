@@ -90,92 +90,100 @@
             }
             #ag-fab-wrapper {
                 position: relative;
-                width: 60px;
-                height: 60px;
+                display: inline-flex;
                 ${isLeft ? 'margin-right: auto;' : 'margin-left: auto;'}
-            }
-            
-            /* Elegant rotating border */
-            #ag-fab-wrapper::before {
-                content: '';
-                position: absolute;
-                top: -4px;
-                left: -4px;
-                right: -4px;
-                bottom: -4px;
-                border-radius: 50%;
-                background: linear-gradient(
-                    90deg,
-                    rgba(255, 23, 68, 0.9),
-                    rgba(255, 82, 82, 0.6),
-                    rgba(255, 107, 107, 0.3),
-                    transparent,
-                    transparent,
-                    rgba(255, 107, 107, 0.3),
-                    rgba(255, 82, 82, 0.6),
-                    rgba(255, 23, 68, 0.9)
-                );
-                animation: rotate 4s linear infinite;
-                opacity: 1;
-            }
-            
-            /* Inner glow */
-            #ag-fab-wrapper::after {
-                content: '';
-                position: absolute;
-                top: -2px;
-                left: -2px;
-                right: -2px;
-                bottom: -2px;
-                border-radius: 50%;
-                background: radial-gradient(circle, transparent 60%, rgba(255, 23, 68, 0.15) 100%);
-                animation: pulse 3s ease-in-out infinite;
-                z-index: 0;
-            }
-            
-            @keyframes rotate {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            
-            @keyframes gradientShift {
-                0%, 100% { background-position: 0% 50%; }
-                50% { background-position: 100% 50%; }
-            }
-            
-            @keyframes pulse {
-                0%, 100% { transform: scale(1); opacity: 0.3; }
-                50% { transform: scale(1.15); opacity: 0; }
             }
             
             #ag-fab {
                 position: relative;
                 z-index: 1;
-                width: 60px;
-                height: 60px;
-                border-radius: 50%;
-                background-color: ${settings.primaryColor};
-                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                background: #ffffff;
+                border-radius: 9999px;
+                padding: 6px 18px 6px 7px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
                 cursor: pointer;
                 display: flex;
                 align-items: center;
-                justify-content: center;
-                transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                border: none;
+                gap: 10px;
+                border: 1px solid rgba(0, 0, 0, 0.06);
+                transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease;
+                user-select: none;
             }
-            #ag-fab:hover { transform: scale(1.1); }
-            #ag-fab svg { width: 28px; height: 28px; fill: white; }
+            
+            #ag-fab:hover {
+                transform: translateY(-2px) scale(1.02);
+                box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16), 0 3px 10px rgba(0, 0, 0, 0.08);
+            }
+            
+            #ag-fab:active {
+                transform: translateY(0) scale(0.98);
+            }
+
+            .ag-fab-icon-box {
+                width: 38px;
+                height: 38px;
+                min-width: 38px;
+                border-radius: 50%;
+                background: #111827;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+            
+            .ag-fab-icon-box svg {
+                width: 22px;
+                height: 22px;
+                fill: #ffffff;
+            }
+            
+            .ag-fab-text {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                gap: 2px;
+                text-align: left;
+            }
+            
+            .ag-fab-title {
+                font-size: 13.5px;
+                font-weight: 700;
+                color: #0f172a;
+                line-height: 1.2;
+                letter-spacing: -0.01em;
+            }
+            
+            .ag-fab-subtitle {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                font-size: 11.5px;
+                font-weight: 500;
+                color: #64748b;
+                line-height: 1.2;
+            }
+            
+            .ag-fab-status-dot {
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: #10b981;
+                display: inline-block;
+                flex-shrink: 0;
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+            }
             
             #ag-chat-window {
                 position: absolute;
-                bottom: 80px;
+                bottom: 68px;
                 ${isLeft ? 'left: 0;' : 'right: 0;'}
-                width: ${widgetWidth}px;
-                max-width: calc(100vw - 40px);
-                height: 500px;
-                background: white;
-                border-radius: 16px;
-                box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+                width: ${widgetWidth || 380}px;
+                max-width: calc(100vw - 32px);
+                height: 560px;
+                max-height: calc(100vh - 100px);
+                background: #ffffff;
+                border-radius: 24px;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.08);
                 display: none;
                 flex-direction: column;
                 overflow: hidden;
@@ -183,145 +191,276 @@
             #ag-chat-window.open { display: flex; }
             
             .ag-header {
-                background-color: ${settings.primaryColor};
-                padding: 20px;
-                color: white;
+                background-color: #0f172a;
+                padding: 16px 18px;
+                color: #ffffff;
                 position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                flex-shrink: 0;
             }
+            
+            .ag-header-left {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                min-width: 0;
+            }
+            
+            .ag-header-avatar {
+                width: 40px;
+                height: 40px;
+                min-width: 40px;
+                border-radius: 50%;
+                background: #1e293b;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+            
+            .ag-header-avatar svg {
+                width: 22px;
+                height: 22px;
+                fill: #38bdf8;
+            }
+            
+            .ag-header-info {
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+            }
+            
             .ag-header-title {
-                font-size: 18px;
-                font-weight: 600;
-                margin-bottom: 4px;
+                font-size: 14.5px;
+                font-weight: 700;
+                color: #ffffff;
+                line-height: 1.25;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
+            
             .ag-header-subtitle {
-                font-size: 13px;
-                opacity: 0.9;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11.5px;
+                color: #94a3b8;
+                margin-top: 2px;
+                line-height: 1.2;
+            }
+            
+            .ag-status-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #10b981;
+                display: inline-block;
+                flex-shrink: 0;
             }
             
             .ag-minimize-btn {
-                position: absolute;
-                top: 12px;
-                right: 12px;
-                width: 28px;
-                height: 28px;
+                width: 34px;
+                height: 34px;
+                min-width: 34px;
                 border: none;
                 border-radius: 50%;
-                background: rgba(255,255,255,0.2);
+                background: rgba(255, 255, 255, 0.12);
+                color: #ffffff;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                transition: background 0.2s;
+                transition: background 0.2s, transform 0.15s;
                 padding: 0;
+                flex-shrink: 0;
             }
-            .ag-minimize-btn:hover { background: rgba(255,255,255,0.3); }
-            .ag-minimize-btn svg { width: 16px; height: 16px; fill: white; }
+            .ag-minimize-btn:hover { background: rgba(255, 255, 255, 0.22); }
+            .ag-minimize-btn:active { transform: scale(0.92); }
+            .ag-minimize-btn svg { width: 16px; height: 16px; stroke: #ffffff; }
             
             .ag-messages {
                 flex: 1;
                 overflow-y: auto;
-                padding: 16px;
-                background: #f9fafb;
+                padding: 18px 16px;
+                background: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
             }
             .ag-message {
-                margin-bottom: 12px;
-                padding: 10px 14px;
-                border-radius: 12px;
-                max-width: 80%;
+                padding: 12px 16px;
+                border-radius: 16px;
+                max-width: 88%;
                 word-wrap: break-word;
-                line-height: 1.4;
-                font-size: 14px;
+                line-height: 1.5;
+                font-size: 13.5px;
             }
             .ag-message.bot {
-                background: white;
-                color: #1f2937;
+                background: #ffffff;
+                color: #1e293b;
                 align-self: flex-start;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                border: 1px solid #e2e8f0;
+                border-radius: 16px 16px 16px 4px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
             }
             .ag-message.user {
-                background: ${settings.primaryColor};
-                color: white;
+                background: #0f172a;
+                color: #ffffff;
                 margin-left: auto;
                 align-self: flex-end;
+                border-radius: 16px 16px 4px 16px;
             }
             
             .ag-typing {
                 display: none;
-                padding: 0 16px 8px;
-                font-size: 13px;
-                color: #6b7280;
+                padding: 0 18px 8px;
+                font-size: 12px;
+                color: #94a3b8;
                 font-style: italic;
             }
             
             .ag-input-area {
+                padding: 10px 16px 12px;
+                border-top: 1px solid #f1f5f9;
+                background: #ffffff;
                 display: flex;
-                padding: 12px;
-                border-top: 1px solid #e5e7eb;
-                background: white;
-                gap: 8px;
+                flex-direction: column;
+                gap: 6px;
+                flex-shrink: 0;
             }
+            
+            .ag-quick-replies {
+                display: flex;
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                gap: 8px;
+                padding: 2px 2px 6px 2px;
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .ag-quick-replies::-webkit-scrollbar {
+                display: none;
+            }
+            
+            .ag-quick-reply-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: #f1f5f9;
+                border: 1px solid #e2e8f0;
+                border-radius: 9999px;
+                padding: 5px 13px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #1e293b;
+                cursor: pointer;
+                white-space: nowrap;
+                flex-shrink: 0;
+                transition: all 0.2s ease;
+                user-select: none;
+            }
+            .ag-quick-reply-pill:hover {
+                background: #ffffff;
+                border-color: #cbd5e1;
+                color: #0f172a;
+                transform: translateY(-1px);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            }
+            .ag-quick-reply-pill:active {
+                transform: translateY(0);
+            }
+            
+            .ag-input-pill {
+                display: flex;
+                align-items: center;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 9999px;
+                padding: 4px 5px 4px 16px;
+                gap: 8px;
+                transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+            }
+            .ag-input-pill:focus-within {
+                border-color: #0f172a;
+                background: #ffffff;
+                box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+            }
+            
             .ag-input {
                 flex: 1;
-                padding: 10px 12px;
-                border: 1px solid #d1d5db;
-                border-radius: 8px;
-                font-size: 16px; /* Minimum 16px to prevent iOS Safari auto-zoom */
+                border: none;
+                background: transparent;
                 outline: none;
+                font-size: 13.5px;
+                color: #0f172a;
                 font-family: inherit;
+                min-width: 0;
+                padding: 6px 0;
             }
-            .ag-input:focus {
-                border-color: ${settings.primaryColor};
-                box-shadow: 0 0 0 3px ${settings.primaryColor}20;
+            .ag-input::placeholder {
+                color: #94a3b8;
             }
+            
             .ag-send-btn {
-                padding: 10px 20px;
-                background-color: ${settings.primaryColor};
+                width: 34px;
+                height: 34px;
+                min-width: 34px;
+                background-color: #0f172a;
                 color: white;
                 border: none;
-                border-radius: 8px;
+                border-radius: 50%;
                 cursor: pointer;
-                font-weight: 500;
-                font-size: 14px;
-                transition: opacity 0.2s;
-                font-family: inherit;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+                padding: 0;
+                flex-shrink: 0;
             }
-            .ag-send-btn:hover { opacity: 0.9; }
-            .ag-send-btn:active { transform: scale(0.98); }
+            .ag-send-btn:hover {
+                background-color: #1e293b;
+                transform: scale(1.05);
+            }
+            .ag-send-btn:active { transform: scale(0.95); }
+            .ag-send-btn svg { width: 15px; height: 15px; fill: white; }
             
             .ag-footer {
-                padding: 8px 12px;
                 text-align: center;
                 font-size: 11px;
-                color: #9ca3af;
-                background: #f9fafb;
-                border-top: 1px solid #e5e7eb;
+                color: #94a3b8;
+                padding: 2px 0 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
             }
-            .ag-footer a {
-                color: #6b7280;
-                text-decoration: none;
-                font-weight: 500;
-                transition: color 0.2s;
-            }
-            .ag-footer a:hover {
-                color: ${settings.primaryColor};
+            .ag-footer svg {
+                width: 12px;
+                height: 12px;
+                fill: #f59e0b;
             }
             
             /* Pre-Chat Form Styles */
             .ag-prechat-form {
-                padding: 24px;
-                background: #f9fafb;
+                padding: 24px 20px;
+                background: #ffffff;
                 flex: 1;
                 overflow-y: auto;
             }
             .ag-form-title {
                 font-size: 16px;
-                font-weight: 600;
-                color: #1f2937;
+                font-weight: 700;
+                color: #0f172a;
                 margin-bottom: 4px;
             }
             .ag-form-subtitle {
                 font-size: 13px;
-                color: #6b7280;
+                color: #64748b;
                 margin-bottom: 20px;
             }
             .ag-form-group {
@@ -330,8 +469,8 @@
             .ag-form-label {
                 display: block;
                 font-size: 13px;
-                font-weight: 500;
-                color: #374151;
+                font-weight: 600;
+                color: #334155;
                 margin-bottom: 6px;
             }
             .ag-form-label .required {
@@ -340,38 +479,42 @@
             }
             .ag-form-input {
                 width: 100%;
-                padding: 10px 12px;
-                border: 1px solid #d1d5db;
-                border-radius: 8px;
-                font-size: 14px;
+                padding: 10px 14px;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                font-size: 13.5px;
+                background: #f8fafc;
                 outline: none;
                 font-family: inherit;
-                transition: border-color 0.2s, box-shadow 0.2s;
+                transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
             }
             .ag-form-input:focus {
-                border-color: ${settings.primaryColor};
-                box-shadow: 0 0 0 3px ${settings.primaryColor}20;
+                border-color: #0f172a;
+                background: #ffffff;
+                box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
             }
             .ag-form-input.error {
                 border-color: #ef4444;
             }
             .ag-form-input::placeholder {
-                color: #9ca3af;
+                color: #94a3b8;
             }
             .ag-form-select {
                 width: 100%;
-                padding: 10px 12px;
-                border: 1px solid #d1d5db;
-                border-radius: 8px;
-                font-size: 14px;
+                padding: 10px 14px;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                font-size: 13.5px;
+                background: #f8fafc;
                 outline: none;
                 font-family: inherit;
-                background: white;
                 cursor: pointer;
+                transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
             }
             .ag-form-select:focus {
-                border-color: ${settings.primaryColor};
-                box-shadow: 0 0 0 3px ${settings.primaryColor}20;
+                border-color: #0f172a;
+                background: #ffffff;
+                box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
             }
             .ag-form-error {
                 font-size: 12px;
@@ -384,20 +527,20 @@
             }
             .ag-form-submit {
                 width: 100%;
-                padding: 12px;
-                background-color: ${settings.primaryColor};
+                padding: 13px;
+                background-color: #0f172a;
                 color: white;
                 border: none;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: 500;
+                border-radius: 12px;
+                font-size: 14.5px;
+                font-weight: 600;
                 cursor: pointer;
-                transition: opacity 0.2s;
+                transition: background 0.2s;
                 font-family: inherit;
                 margin-top: 8px;
             }
             .ag-form-submit:hover {
-                opacity: 0.9;
+                background-color: #1e293b;
             }
             .ag-form-submit:disabled {
                 opacity: 0.6;
@@ -426,10 +569,25 @@
             <div id="ag-widget-container">
                 <div id="ag-chat-window">
                     <div class="ag-header">
-                        <div class="ag-header-title">${settings.title || 'Canlı Destek'}</div>
-                        <div class="ag-header-subtitle">${settings.subtitle || ''}</div>
-                        <button class="ag-minimize-btn" id="ag-minimize" title="Küçült">
-                            <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+                        <div class="ag-header-left">
+                            <div class="ag-header-avatar">
+                                <svg id="fi_17938466" enable-background="new 0 0 96 96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="m94 56c0-4.8310547-2.8756104-8.9938965-7-10.8946533v-1.1053467c0-21.5048828-17.4951172-39-39-39s-39 17.4951172-39 39v1.1053467c-4.1243896 1.9007568-7 6.0635986-7 10.8946533 0 6.6166992 5.3828125 12 12 12h4c1.1044922 0 2-.8955078 2-2v-20c0-1.1044922-.8955078-2-2-2h-4c-.3375244 0-.6694336.0231934-1 .0506592v-.0506592c0-19.2988281 15.7011719-35 35-35s35 15.7011719 35 35v.0506592c-.3305664-.0274658-.6624756-.0506592-1-.0506592h-4c-1.1044922 0-2 .8955078-2 2v20c0 1.1044922.8955078 2 2 2h4c.3375244 0 .6694336-.0231934 1-.0506592v3.0506592c0 6.6166992-5.3828125 12-12 12h-15c0-2.2055664-1.7939453-4-4-4h-10c-2.2060547 0-4 1.7944336-4 4v4c0 2.2055664 1.7939453 4 4 4h10c2.2060547 0 4-1.7944336 4-4h15c8.8222656 0 16-7.1777344 16-16v-4.1053467c4.1243896-1.9007568 7-6.0635986 7-10.8946533zm-78-8v16h-2c-4.4111328 0-8-3.5888672-8-8s3.5888672-8 8-8zm26 39v-4h10l.0014648 1.9855957c-.000061.0049439-.0014648.0094605-.0014648.0144043 0 .0050049.0014038.0096436.0014648.0146484l.0014649 1.9853516zm40-23h-2v-16h2c4.4111328 0 8 3.5888672 8 8s-3.5888672 8-8 8zm-34 5c12.1308594 0 22-9.8691406 22-22s-9.8691406-22-22-22-22 9.8691406-22 22c0 3.9248047 1.0517578 7.7607422 3.0498047 11.1459961l-2.0136719 10.4765625c-.1396484.7275391.1337891 1.4726563.7119141 1.9370117.3613281.2900391.8046875.4404297 1.2519531.4404297.2685547 0 .5380859-.0537109.7929688-.1635742l8.9794922-3.8759766c2.9111328 1.3540039 6.0107421 2.0395508 9.227539 2.0395508zm-16.3222656-3.3339844 1.4462891-7.527832c.0966797-.503418-.0029297-1.0244141-.2792969-1.4560547-1.8613282-2.9052734-2.8447266-6.253418-2.8447266-9.6821289 0-9.925293 8.0751953-18 18-18s18 8.074707 18 18-8.0751953 18-18 18c-2.8916016 0-5.6689453-.6787109-8.2548828-2.0170898-.5322266-.2758789-1.1611328-.2988281-1.7119141-.0600586zm16.3222656-12.6660156h-10c-1.1044922 0-2-.8955078-2-2s.8955078-2 2-2h10c1.1044922 0 2 .8955078 2 2s-.8955078 2-2 2zm-12-10c0-1.1044922.8955078-2 2-2h20c1.1044922 0 2 .8955078 2 2s-.8955078 2-2 2h-20c-1.1044922 0-2-.8955078-2-2z"/>
+                                </svg>
+                            </div>
+                            <div class="ag-header-info">
+                                <div class="ag-header-title">Instomer Akıllı Danışman</div>
+                                <div class="ag-header-subtitle">
+                                    <span class="ag-status-dot"></span>
+                                    <span>${settings.subtitle || 'Online Canlı Destek'}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="ag-minimize-btn" id="ag-minimize" title="Kapat">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
                         </button>
                     </div>
                     
@@ -472,24 +630,40 @@
                     <!-- Chat Content (hidden until form submitted) -->
                     <div id="ag-chat-content" class="ag-chat-content ${formAlreadySubmitted ? '' : 'hidden'}">
                         <div class="ag-messages" id="ag-messages">
-                            <div class="ag-message bot">${settings.greetingMessage || 'Merhaba!'}</div>
+                            <div class="ag-message bot">${settings.greetingMessage || 'Merhaba! Size nasıl yardımcı olabilirim?'}</div>
                         </div>
                         <div id="ag-typing" class="ag-typing">Asistan yazıyor...</div>
                         <div class="ag-input-area">
-                            <input type="text" class="ag-input" id="ag-input" placeholder="Mesajınızı yazın...">
-                            <button class="ag-send-btn" id="ag-send">Gönder</button>
+                            <div id="ag-quick-replies" class="ag-quick-replies"></div>
+                            <div class="ag-input-pill">
+                                <input type="text" class="ag-input" id="ag-input" placeholder="Mesajınızı yazın...">
+                                <button class="ag-send-btn" id="ag-send" title="Gönder">
+                                    <svg viewBox="0 0 24 24">
+                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="ag-footer">
+                                <svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.2L12 16.6l-6.3 4.6 2.3-7.2-6-4.6h7.6z"/></svg>
+                                <span>Instomer Akıllı Asistan</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="ag-footer">
-                        Powered by <a href="https://instomer.com" target="_blank" rel="noopener">Instomer</a>
                     </div>
                 </div>
                 <div id="ag-fab-wrapper">
-                    <div id="ag-fab">
-                        <svg viewBox="0 0 64 64" fill="white" style="width: 30px; height: 30px;">
-                            <path d="m59.56 28.38c.29 1.499.44 3.043.44 4.62 0 14.389-12.58 26-28 26-5.07 0-9.83-1.255-13.94-3.452-.58-.31-1.27-.316-1.86-.017-3.6 1.844-7.69 2.877-11.07 3.455-.37.063-.74-.092-.96-.397-.21-.305-.23-.706-.04-1.03 0-.003 0-.007 0-.011 1.85-3.3 3.01-7.058 3.72-10.328.11-.501.02-1.025-.25-1.463-2.29-3.767-3.6-8.12-3.6-12.757 0-14.389 12.58-26 28-26 2.26 0 4.46.249 6.56.72 1.08.24 2.15-.439 2.39-1.516s-.44-2.148-1.51-2.388c-2.39-.533-4.88-.816-7.44-.816-17.7 0-32 13.482-32 30 0 5.105 1.36 9.915 3.77 14.13-.64 2.731-1.62 5.77-3.13 8.462-.94 1.657-.84 3.722.26 5.293s3.01 2.367 4.9 2.044c3.44-.589 7.55-1.624 11.29-3.38 4.45 2.201 9.53 3.451 14.91 3.451 17.7 0 32-13.482 32-30 0-1.836-.18-3.634-.51-5.38-.21-1.084-1.26-1.793-2.35-1.584-1.08.21-1.79 1.26-1.58 2.344zm-27.56.62c2.21 0 4 1.792 4 4s-1.79 4-4 4-4-1.792-4-4 1.79-4 4-4zm-15 0c2.21 0 4 1.792 4 4s-1.79 4-4 4-4-1.792-4-4 1.79-4 4-4zm27.61-22.963-2.07 5.479c0 .006 0 .012-.01.017 0 .004-.01.008-.01.01 0 0-5.48 2.066-5.48 2.066-1.83.689-3.04 2.438-3.04 4.391s1.21 3.702 3.04 4.391c0 0 5.48 2.066 5.48 2.066 0 .002.01.006.01.01.01.005.01.011.01.017 0 0 2.07 5.479 2.07 5.479.69 1.827 2.44 3.037 4.39 3.037s3.7-1.21 4.39-3.037c0 0 2.07-5.479 2.07-5.479 0-.006 0-.012.01-.017 0-.004.01-.008.01-.01 0 0 5.48-2.066 5.48-2.066 1.83-.689 3.04-2.438 3.04-4.391s-1.21-3.702-3.04-4.391c0 0-5.48-2.066-5.48-2.066 0-.002-.01-.006-.01-.01-.01-.005-.01-.011-.01-.017 0 0-2.07-5.479-2.07-5.479-.69-1.827-2.44-3.037-4.39-3.037s-3.7 1.21-4.39 3.037zm3.74 1.411c.1-.27.36-.448.65-.448s.55.178.65.448c0 0 2.06 5.48 2.06 5.48.21.538.52 1.026.93 1.433s.89.722 1.43.925c0 0 5.48 2.066 5.48 2.066.27.102.45.36.45.648s-.18.546-.45.648c0 0-5.48 2.066-5.48 2.066-.54.203-1.02.518-1.43.925s-.72.895-.93 1.433c0 0-2.06 5.48-2.06 5.48-.1.27-.36.448-.65.448s-.55-.178-.65-.448c0 0-2.06-5.48-2.06-5.48-.21-.538-.52-1.026-.93-1.433s-.89-.722-1.43-.925c0 0-5.48-2.066-5.48-2.066-.27-.102-.45-.36-.45-.648s.18-.546.45-.648c0 0 5.48-2.066 5.48-2.066.54-.203 1.02-.518 1.43-.925s.72-.895.93-1.433c0 0 2.06-5.48 2.06-5.48z"/>
-                        </svg>
+                    <div id="ag-fab" role="button" aria-label="Dijital Asistan">
+                        <div class="ag-fab-icon-box">
+                            <svg id="fi_17938466" enable-background="new 0 0 96 96" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+                                <path d="m94 56c0-4.8310547-2.8756104-8.9938965-7-10.8946533v-1.1053467c0-21.5048828-17.4951172-39-39-39s-39 17.4951172-39 39v1.1053467c-4.1243896 1.9007568-7 6.0635986-7 10.8946533 0 6.6166992 5.3828125 12 12 12h4c1.1044922 0 2-.8955078 2-2v-20c0-1.1044922-.8955078-2-2-2h-4c-.3375244 0-.6694336.0231934-1 .0506592v-.0506592c0-19.2988281 15.7011719-35 35-35s35 15.7011719 35 35v.0506592c-.3305664-.0274658-.6624756-.0506592-1-.0506592h-4c-1.1044922 0-2 .8955078-2 2v20c0 1.1044922.8955078 2 2 2h4c.3375244 0 .6694336-.0231934 1-.0506592v3.0506592c0 6.6166992-5.3828125 12-12 12h-15c0-2.2055664-1.7939453-4-4-4h-10c-2.2060547 0-4 1.7944336-4 4v4c0 2.2055664 1.7939453 4 4 4h10c2.2060547 0 4-1.7944336 4-4h15c8.8222656 0 16-7.1777344 16-16v-4.1053467c4.1243896-1.9007568 7-6.0635986 7-10.8946533zm-78-8v16h-2c-4.4111328 0-8-3.5888672-8-8s3.5888672-8 8-8zm26 39v-4h10l.0014648 1.9855957c-.000061.0049439-.0014648.0094605-.0014648.0144043 0 .0050049.0014038.0096436.0014648.0146484l.0014649 1.9853516zm40-23h-2v-16h2c4.4111328 0 8 3.5888672 8 8s-3.5888672 8-8 8zm-34 5c12.1308594 0 22-9.8691406 22-22s-9.8691406-22-22-22-22 9.8691406-22 22c0 3.9248047 1.0517578 7.7607422 3.0498047 11.1459961l-2.0136719 10.4765625c-.1396484.7275391.1337891 1.4726563.7119141 1.9370117.3613281.2900391.8046875.4404297 1.2519531.4404297.2685547 0 .5380859-.0537109.7929688-.1635742l8.9794922-3.8759766c2.9111328 1.3540039 6.0107421 2.0395508 9.227539 2.0395508zm-16.3222656-3.3339844 1.4462891-7.527832c.0966797-.503418-.0029297-1.0244141-.2792969-1.4560547-1.8613282-2.9052734-2.8447266-6.253418-2.8447266-9.6821289 0-9.925293 8.0751953-18 18-18s18 8.074707 18 18-8.0751953 18-18 18c-2.8916016 0-5.6689453-.6787109-8.2548828-2.0170898-.5322266-.2758789-1.1611328-.2988281-1.7119141-.0600586zm16.3222656-12.6660156h-10c-1.1044922 0-2-.8955078-2-2s.8955078-2 2-2h10c1.1044922 0 2 .8955078 2 2s-.8955078 2-2 2zm-12-10c0-1.1044922.8955078-2 2-2h20c1.1044922 0 2 .8955078 2 2s-.8955078 2-2 2h-20c-1.1044922 0-2-.8955078-2-2z"/>
+                            </svg>
+                        </div>
+                        <div class="ag-fab-text">
+                            <div class="ag-fab-title">Dijital Asistan</div>
+                            <div class="ag-fab-subtitle">
+                                <span class="ag-fab-status-dot"></span>
+                                <span>Online Canlı Destek</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -510,6 +684,7 @@
         const messagesContainer = shadow.getElementById('ag-messages');
         const typingIndicator = shadow.getElementById('ag-typing');
         const minimizeBtn = shadow.getElementById('ag-minimize');
+        const quickRepliesContainer = shadow.getElementById('ag-quick-replies');
 
         // Pre-chat form elements
         const prechatForm = shadow.getElementById('ag-prechat-form');
@@ -520,6 +695,31 @@
         const formSubmitBtn = shadow.getElementById('ag-form-submit');
         const errorName = shadow.getElementById('ag-error-name');
         const errorPhone = shadow.getElementById('ag-error-phone');
+
+        // Render quick reply suggestions
+        let repliesList = [];
+        if (Array.isArray(settings.quickReplies)) {
+            repliesList = settings.quickReplies;
+        } else if (typeof settings.quickReplies === 'string') {
+            try { repliesList = JSON.parse(settings.quickReplies); } catch (e) { }
+        }
+
+        if (quickRepliesContainer && repliesList && repliesList.length > 0) {
+            repliesList.forEach(reply => {
+                const text = typeof reply === 'string' ? reply.trim() : (reply && reply.text ? reply.text.trim() : '');
+                if (!text) return;
+                const pill = document.createElement('div');
+                pill.className = 'ag-quick-reply-pill';
+                pill.textContent = text;
+                pill.onclick = () => {
+                    input.value = text;
+                    sendMessage();
+                };
+                quickRepliesContainer.appendChild(pill);
+            });
+        } else if (quickRepliesContainer) {
+            quickRepliesContainer.style.display = 'none';
+        }
 
         fab.onclick = () => {
             chatWindow.classList.toggle('open');

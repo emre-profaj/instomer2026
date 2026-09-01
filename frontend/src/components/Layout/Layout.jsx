@@ -3,7 +3,6 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import NotificationBanner from '../NotificationBanner/NotificationBanner';
-import InstoBot from '../InstoBot/InstoBot';
 import './Layout.css';
 
 const Layout = ({ title }) => {
@@ -30,7 +29,6 @@ const Layout = ({ title }) => {
                 </div>
             </div>
             <NotificationBanner />
-            <InstoBot />
         </div>
     );
 };

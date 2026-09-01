@@ -2431,9 +2431,9 @@ export const createManualConversation = async (req, res) => {
         
         // Create new Case
         let caseTypeId = null;
-        if (newConv?.topicCategoryId) {
+        if (req.body.topicCategoryId) {
             try {
-                const tc = await prisma.topicCategory.findUnique({ where: { id: newConv.topicCategoryId }, select: { caseTypeId: true } });
+                const tc = await prisma.topicCategory.findUnique({ where: { id: req.body.topicCategoryId }, select: { caseTypeId: true } });
                 caseTypeId = tc?.caseTypeId || null;
             } catch (_) {}
         }

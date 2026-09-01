@@ -270,17 +270,16 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
       return null;
     }
 
-    // Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla
-    const recentActivity = await prisma.contactActivity.findFirst({
+    // Cross-type & status dedup: Bu kişi için zaten açık/bekleyen (PLANNED) bir aktivite varsa mükerrer oluşturma
+    const existingPlannedActivity = await prisma.contactActivity.findFirst({
       where: {
         contactId,
         workspaceId,
-        status: 'PLANNED',
-        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) }
+        status: 'PLANNED'
       }
     });
-    if (recentActivity) {
-      console.log(`📋 [IntentActivity] Son 5 dk'da zaten planlı aktivite var (${recentActivity.type}), ${type} atlanıyor`);
+    if (existingPlannedActivity) {
+      console.log(`📋 [IntentActivity] Bu kişi için zaten açık bir planlı aktivite var (ID: ${existingPlannedActivity.id}, Tip: ${existingPlannedActivity.type}), yeni ${type} oluşturulmayacak.`);
       return null;
     }
 

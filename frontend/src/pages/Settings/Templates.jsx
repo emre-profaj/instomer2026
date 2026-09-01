@@ -1,29 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from '../../services/template.api';
-import api, { automationAPI, contactAPI } from '../../services/api';
+import api, { automationAPI, contactAPI, whatsappAPI } from '../../services/api';
 import {
     Plus, Trash2, Edit2, Send, RefreshCw,
-    CheckCircle, Clock, XCircle, Globe, Search, X,
-    Smartphone
+    CheckCircle2, Clock, XCircle, Globe, Search, X,
+    Smartphone, Mail, MessageSquare, Zap, Copy, Check,
+    FileText, Image as ImageIcon, Video, File, Layers,
+    ExternalLink, PhoneCall, Sparkles, Filter
 } from 'lucide-react';
 import './Templates.css';
 
 const Templates = () => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
-    
+
     const [activeTab, setActiveTab] = useState('WHATSAPP');
     const [loading, setLoading] = useState(false);
+    const [tabCounts, setTabCounts] = useState({ WHATSAPP: 0, EMAIL: 0, SMS: 0, QUICK_REPLY: 0 });
+
+    // Search and filter states
+    const [searchQuery, setSearchQuery] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('ALL');
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [copiedId, setCopiedId] = useState(null);
 
     // --- Simple templates state (EMAIL, SMS, QUICK_REPLY) ---
     const [simpleTemplates, setSimpleTemplates] = useState([]);
-    const [showSimpleForm, setShowSimpleForm] = useState(false);
+    const [showSimpleModal, setShowSimpleModal] = useState(false);
     const [editId, setEditId] = useState(null);
     const [formData, setFormData] = useState({ name: '', subject: '', bodyText: '', bodyHtml: '', shortcut: '', message: '' });
 
     // --- WhatsApp Meta templates state ---
     const [waTemplates, setWaTemplates] = useState([]);
+    const [phoneNumbers, setPhoneNumbers] = useState([]);
     const [syncing, setSyncing] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState(null);
@@ -31,7 +41,7 @@ const Templates = () => {
     const [templateForm, setTemplateForm] = useState({
         name: '', language: 'tr', category: 'MARKETING', status: 'PENDING',
         headerType: '', headerContent: '', headerHandle: '', headerMediaUrl: '',
-        bodyText: '', footerText: '', buttons: []
+        bodyText: '', footerText: '', buttons: [], whatsappPhoneNumberId: ''
     });
 
     // --- Send Modal state ---
@@ -46,22 +56,74 @@ const Templates = () => {
 
     useEffect(() => {
         if (workspaceId) {
+            fetchAllCounts();
+            fetchPhoneNumbers();
             if (activeTab === 'WHATSAPP') {
                 fetchWaTemplates();
             } else {
-                fetchSimpleTemplates();
+                fetchSimpleTemplates(activeTab);
             }
         }
     }, [workspaceId, activeTab]);
 
+    // Fetch tab counts across all types
+    const fetchAllCounts = async () => {
+        if (!workspaceId) return;
+        try {
+            const [waRes, emailRes, smsRes, qrRes] = await Promise.allSettled([
+                automationAPI.getTemplates(workspaceId),
+                getTemplates(workspaceId, 'EMAIL'),
+                getTemplates(workspaceId, 'SMS'),
+                getTemplates(workspaceId, 'QUICK_REPLY')
+            ]);
+
+            const getCount = (res, isWa = false) => {
+                if (res.status !== 'fulfilled') return 0;
+                const val = res.value;
+                if (isWa) {
+                    if (Array.isArray(val.data?.templates)) return val.data.templates.length;
+                    if (Array.isArray(val.data)) return val.data.length;
+                    if (Array.isArray(val.templates)) return val.templates.length;
+                    return 0;
+                }
+                if (Array.isArray(val.data)) return val.data.length;
+                if (Array.isArray(val)) return val.length;
+                return 0;
+            };
+
+            setTabCounts({
+                WHATSAPP: getCount(waRes, true),
+                EMAIL: getCount(emailRes),
+                SMS: getCount(smsRes),
+                QUICK_REPLY: getCount(qrRes)
+            });
+        } catch (err) {
+            console.error('Error fetching template counts:', err);
+        }
+    };
+
+    const fetchPhoneNumbers = async () => {
+        try {
+            const res = await whatsappAPI.getPhoneNumbers(workspaceId);
+            const list = res.data?.phoneNumbers || res.data || [];
+            setPhoneNumbers(Array.isArray(list) ? list : []);
+        } catch (err) {
+            console.warn('Could not fetch WhatsApp numbers:', err.message);
+        }
+    };
+
     // ==================== Simple Template Functions ====================
-    const fetchSimpleTemplates = async () => {
+    const fetchSimpleTemplates = async (type = activeTab) => {
         setLoading(true);
         try {
-            const res = await getTemplates(workspaceId, activeTab);
-            setSimpleTemplates(res.data || []);
+            const res = await getTemplates(workspaceId, type);
+            const list = res.data || (Array.isArray(res) ? res : []);
+            const cleanList = Array.isArray(list) ? list : [];
+            setSimpleTemplates(cleanList);
+            setTabCounts(prev => ({ ...prev, [type]: cleanList.length }));
         } catch (err) {
             console.error('Error fetching templates:', err);
+            setSimpleTemplates([]);
         } finally {
             setLoading(false);
         }
@@ -76,22 +138,27 @@ const Templates = () => {
             } else {
                 await createTemplate(workspaceId, data);
             }
-            setShowSimpleForm(false);
+            setShowSimpleModal(false);
             setEditId(null);
             fetchSimpleTemplates();
+            fetchAllCounts();
         } catch (err) {
-            console.error(err);
-            alert('Kaydedilirken hata oluştu.');
+            console.error('Save simple template error:', err);
+            alert('Şablon kaydedilirken bir hata oluştu: ' + (err.response?.data?.message || err.message));
         }
     };
 
     const handleSimpleEdit = (t) => {
         setFormData({
-            name: t.name || '', subject: t.subject || '', bodyText: t.bodyText || '',
-            bodyHtml: t.bodyHtml || '', shortcut: t.shortcut || '', message: t.message || ''
+            name: t.name || '',
+            subject: t.subject || '',
+            bodyText: t.bodyText || '',
+            bodyHtml: t.bodyHtml || '',
+            shortcut: t.shortcut || '',
+            message: t.message || ''
         });
         setEditId(t.id);
-        setShowSimpleForm(true);
+        setShowSimpleModal(true);
     };
 
     const handleSimpleDelete = async (id) => {
@@ -99,8 +166,10 @@ const Templates = () => {
         try {
             await deleteTemplate(workspaceId, id, activeTab);
             fetchSimpleTemplates();
+            fetchAllCounts();
         } catch (err) {
-            console.error(err);
+            console.error('Delete simple template error:', err);
+            alert('Şablon silinirken hata oluştu');
         }
     };
 
@@ -109,10 +178,13 @@ const Templates = () => {
         setLoading(true);
         try {
             const res = await automationAPI.getTemplates(workspaceId);
-            const data = res.data ?? res;
-            setWaTemplates(Array.isArray(data) ? data : []);
+            const list = res.data?.templates || (Array.isArray(res.data) ? res.data : (Array.isArray(res.templates) ? res.templates : []));
+            const cleanList = Array.isArray(list) ? list : [];
+            setWaTemplates(cleanList);
+            setTabCounts(prev => ({ ...prev, WHATSAPP: cleanList.length }));
         } catch (err) {
             console.error('Error fetching WA templates:', err);
+            setWaTemplates([]);
         } finally {
             setLoading(false);
         }
@@ -122,17 +194,18 @@ const Templates = () => {
         setSyncing(true);
         try {
             const response = await automationAPI.syncTemplates(workspaceId);
-            const { message, syncedCount, errors } = response.data;
+            const { message, syncedCount, errors } = response.data || {};
             if (errors && errors.length > 0) {
-                const errMsgs = errors.map(e => `${e.phone}: ${e.error}`).join('\n');
-                alert(`${message}\n\n⚠️ Hatalar:\n${errMsgs}`);
+                const errMsgs = errors.map(e => `${e.phone || 'Numara'}: ${e.error}`).join('\n');
+                alert(`${message || 'Senkronizasyon tamamlandı'}\n\n⚠️ Hatalar:\n${errMsgs}`);
             } else {
-                alert(message || 'Şablonlar senkronize edildi');
+                alert(message || `${syncedCount || 0} şablon başarıyla eşitlendi.`);
             }
-            fetchWaTemplates();
+            await fetchWaTemplates();
+            fetchAllCounts();
         } catch (error) {
             console.error('Sync error:', error);
-            alert(error.response?.data?.error || 'Senkronizasyon hatası');
+            alert(error.response?.data?.error || 'Meta ile senkronizasyon sırasında hata oluştu.');
         } finally {
             setSyncing(false);
         }
@@ -140,10 +213,15 @@ const Templates = () => {
 
     const handleSaveWaTemplate = async () => {
         try {
+            if (!templateForm.name.trim() || !templateForm.bodyText.trim()) {
+                alert('Lütfen şablon adı ve mesaj içeriğini doldurun.');
+                return;
+            }
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && !templateForm.headerHandle && !templateForm.headerMediaUrl) {
                 alert('Lütfen bir medya dosyası seçip yüklenmesini bekleyin.');
                 return;
             }
+
             if (editingTemplate) {
                 await automationAPI.updateTemplate(workspaceId, editingTemplate.id, templateForm);
             } else {
@@ -153,40 +231,63 @@ const Templates = () => {
             setEditingTemplate(null);
             resetTemplateForm();
             fetchWaTemplates();
+            fetchAllCounts();
         } catch (error) {
-            console.error('Save template error:', error);
-            alert(error.response?.data?.error || 'Şablon kaydedilemedi');
+            console.error('Save WA template error:', error);
+            alert(error.response?.data?.error || error.response?.data?.message || 'Şablon kaydedilemedi.');
         }
     };
 
     const handleDeleteWaTemplate = async (templateId) => {
-        if (!confirm('Bu şablonu silmek istediğinize emin misiniz?')) return;
+        if (!window.confirm('Bu WhatsApp şablonunu silmek istediğinize emin misiniz? (Meta üzerinden de silinecektir)')) return;
         try {
             await automationAPI.deleteTemplate(workspaceId, templateId);
             fetchWaTemplates();
+            fetchAllCounts();
         } catch (error) {
-            console.error('Delete error:', error);
-            alert('Şablon silinemedi');
+            console.error('Delete WA template error:', error);
+            alert(error.response?.data?.error || 'Şablon silinemedi');
         }
     };
 
     const openEditTemplate = (template) => {
         setEditingTemplate(template);
+        let parsedButtons = [];
+        try {
+            parsedButtons = template.buttons ? (typeof template.buttons === 'string' ? JSON.parse(template.buttons) : template.buttons) : [];
+        } catch {}
+
         setTemplateForm({
-            name: template.name, language: template.language, category: template.category,
-            status: template.status, bodyText: template.bodyText,
-            headerType: template.headerType || '', headerContent: template.headerContent || '',
+            name: template.name || '',
+            language: template.language || 'tr',
+            category: template.category || 'MARKETING',
+            status: template.status || 'PENDING',
+            bodyText: template.bodyText || '',
+            headerType: template.headerType || '',
+            headerContent: template.headerContent || '',
+            headerHandle: '',
+            headerMediaUrl: template.headerContent || '',
             footerText: template.footerText || '',
-            buttons: template.buttons ? (typeof template.buttons === 'string' ? JSON.parse(template.buttons) : template.buttons) : []
+            buttons: parsedButtons,
+            whatsappPhoneNumberId: template.whatsappPhoneNumberId || ''
         });
         setShowTemplateModal(true);
     };
 
     const resetTemplateForm = () => {
         setTemplateForm({
-            name: '', language: 'tr', category: 'MARKETING', status: 'PENDING',
-            headerType: '', headerContent: '', headerHandle: '', headerMediaUrl: '',
-            bodyText: '', footerText: '', buttons: []
+            name: '',
+            language: 'tr',
+            category: 'MARKETING',
+            status: 'PENDING',
+            headerType: '',
+            headerContent: '',
+            headerHandle: '',
+            headerMediaUrl: '',
+            bodyText: '',
+            footerText: '',
+            buttons: [],
+            whatsappPhoneNumberId: phoneNumbers[0]?.id || ''
         });
     };
 
@@ -197,7 +298,7 @@ const Templates = () => {
         setPhoneNumber('');
         setContactSearch('');
         setContactResults([]);
-        const matches = template.bodyText.match(/\{\{(\d+)\}\}/g) || [];
+        const matches = (template.bodyText || '').match(/\{\{(\d+)\}\}/g) || [];
         const uniqueVars = [...new Set(matches)].map((v) => ({ placeholder: v, value: '' }));
         setTemplateVariables(uniqueVars);
         setShowSendModal(true);
@@ -229,286 +330,617 @@ const Templates = () => {
                 phoneNumber: phoneNumber || undefined,
                 variables: variables.length > 0 ? variables : undefined
             });
-            alert('Şablon mesajı gönderildi!');
+            alert('Şablon mesajı başarıyla gönderildi!');
             setShowSendModal(false);
         } catch (error) {
             console.error('Send error:', error);
-            alert(error.response?.data?.error || 'Mesaj gönderilemedi');
+            alert(error.response?.data?.error || error.response?.data?.message || 'Mesaj gönderilemedi');
         } finally {
             setSending(false);
         }
     };
 
-    // ==================== Helper ====================
-    const getStatusIcon = (status) => {
+    // Quick copy to clipboard
+    const handleCopyText = (id, text) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    // Filtered templates calculation
+    const filteredWaTemplates = useMemo(() => {
+        return waTemplates.filter(t => {
+            const matchesQuery = searchQuery === '' ||
+                (t.name && t.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                (t.bodyText && t.bodyText.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                (t.templateId && t.templateId.toLowerCase().includes(searchQuery.toLowerCase()));
+
+            const matchesCategory = categoryFilter === 'ALL' || t.category === categoryFilter;
+            const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
+
+            return matchesQuery && matchesCategory && matchesStatus;
+        });
+    }, [waTemplates, searchQuery, categoryFilter, statusFilter]);
+
+    const filteredSimpleTemplates = useMemo(() => {
+        return simpleTemplates.filter(t => {
+            if (!searchQuery) return true;
+            const q = searchQuery.toLowerCase();
+            return (
+                (t.name && t.name.toLowerCase().includes(q)) ||
+                (t.subject && t.subject.toLowerCase().includes(q)) ||
+                (t.shortcut && t.shortcut.toLowerCase().includes(q)) ||
+                (t.bodyText && t.bodyText.toLowerCase().includes(q)) ||
+                (t.message && t.message.toLowerCase().includes(q))
+            );
+        });
+    }, [simpleTemplates, searchQuery]);
+
+    // Helpers
+    const getStatusBadge = (status) => {
         switch (status) {
-            case 'APPROVED': return <CheckCircle size={14} style={{ marginRight: '4px', color: '#22c55e' }} />;
-            case 'PENDING': return <Clock size={14} style={{ marginRight: '4px', color: '#f59e0b' }} />;
-            case 'REJECTED': return <XCircle size={14} style={{ marginRight: '4px', color: '#ef4444' }} />;
-            default: return null;
+            case 'APPROVED':
+                return <span className="tpl-badge tpl-badge-approved"><CheckCircle2 size={13} /> Onaylı</span>;
+            case 'PENDING':
+                return <span className="tpl-badge tpl-badge-pending"><Clock size={13} /> Bekliyor</span>;
+            case 'REJECTED':
+                return <span className="tpl-badge tpl-badge-rejected"><XCircle size={13} /> Reddedildi</span>;
+            default:
+                return <span className="tpl-badge tpl-badge-neutral">{status || 'Taslak'}</span>;
         }
     };
 
-    // ==================== Simple Form Render ====================
-    const renderSimpleForm = () => (
-        <form onSubmit={handleSimpleSave} className="template-form-card">
-            <h3>{editId ? 'Şablonu Düzenle' : 'Yeni Şablon Ekle'}</h3>
-            {activeTab === 'QUICK_REPLY' ? (
-                <>
-                    <div className="form-field">
-                        <label>Kısayol (/ ile başlar)</label>
-                        <input required type="text" value={formData.shortcut} onChange={e => setFormData({...formData, shortcut: e.target.value})} className="form-input" placeholder="/merhaba" />
+    const getCategoryBadge = (category) => {
+        switch (category) {
+            case 'MARKETING':
+                return <span className="tpl-cat-badge cat-marketing">📢 Pazarlama</span>;
+            case 'UTILITY':
+                return <span className="tpl-cat-badge cat-utility">⚙️ Hizmet</span>;
+            case 'AUTHENTICATION':
+                return <span className="tpl-cat-badge cat-auth">🔐 Doğrulama</span>;
+            default:
+                return <span className="tpl-cat-badge cat-general">{category || 'Genel'}</span>;
+        }
+    };
+
+    const getHeaderTypeBadge = (type) => {
+        if (!type) return null;
+        switch (type) {
+            case 'IMAGE':
+                return <span className="tpl-header-badge"><ImageIcon size={12} /> Resim</span>;
+            case 'VIDEO':
+                return <span className="tpl-header-badge"><Video size={12} /> Video</span>;
+            case 'DOCUMENT':
+                return <span className="tpl-header-badge"><File size={12} /> Döküman</span>;
+            case 'TEXT':
+                return <span className="tpl-header-badge"><FileText size={12} /> Metin Başlık</span>;
+            default:
+                return null;
+        }
+    };
+
+    // Helper to highlight variables in text
+    const renderFormattedText = (text) => {
+        if (!text) return null;
+        // Match {{1}}, {{ad}}, {{firma}} etc.
+        const parts = text.split(/(\{\{[^}]+\}\})/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('{{') && part.endsWith('}}')) {
+                return <span key={i} className="tpl-variable-chip">{part}</span>;
+            }
+            return part;
+        });
+    };
+
+    const tabConfig = [
+        { id: 'WHATSAPP', label: 'WhatsApp', icon: <Smartphone size={16} />, count: tabCounts.WHATSAPP },
+        { id: 'EMAIL', label: 'E-Posta', icon: <Mail size={16} />, count: tabCounts.EMAIL },
+        { id: 'SMS', label: 'SMS', icon: <MessageSquare size={16} />, count: tabCounts.SMS },
+        { id: 'QUICK_REPLY', label: 'Hızlı Yanıtlar', icon: <Zap size={16} />, count: tabCounts.QUICK_REPLY },
+    ];
+
+    return (
+        <div className="tpl-page-container">
+            {/* Page Header */}
+            <div className="tpl-header-card">
+                <div className="tpl-header-left">
+                    <div className="tpl-icon-box">
+                        <Layers size={24} />
                     </div>
-                    <div className="form-field">
-                        <label>Mesaj İçeriği</label>
-                        <textarea required rows={4} value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})} className="form-textarea" placeholder="Merhaba, size nasıl yardımcı olabilirim?" />
+                    <div>
+                        <div className="tpl-header-title-row">
+                            <h1>Şablon Yönetimi</h1>
+                            <span className="tpl-workspace-badge">
+                                {currentWorkspace?.name || 'Workspace'}
+                            </span>
+                        </div>
+                        <p>E-posta, SMS, WhatsApp Meta ve Hızlı Yanıt şablonlarınızı tek panelden yönetin ve test edin.</p>
                     </div>
-                </>
+                </div>
+
+                <div className="tpl-header-actions">
+                    {activeTab === 'WHATSAPP' && (
+                        <button
+                            onClick={handleSyncTemplates}
+                            disabled={syncing}
+                            className="tpl-btn tpl-btn-secondary"
+                            title="Meta sunucularındaki şablonları senkronize et"
+                        >
+                            <RefreshCw size={16} className={syncing ? 'tpl-spin' : ''} />
+                            {syncing ? 'Eşitleniyor...' : 'Şablonları Eşitle'}
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => {
+                            if (activeTab === 'WHATSAPP') {
+                                resetTemplateForm();
+                                setEditingTemplate(null);
+                                setShowTemplateModal(true);
+                            } else {
+                                setEditId(null);
+                                setFormData({ name: '', subject: '', bodyText: '', bodyHtml: '', shortcut: '', message: '' });
+                                setShowSimpleModal(true);
+                            }
+                        }}
+                        className="tpl-btn tpl-btn-primary"
+                    >
+                        <Plus size={16} />
+                        {activeTab === 'WHATSAPP' ? 'Yeni WhatsApp Şablonu' :
+                         activeTab === 'EMAIL' ? 'Yeni E-Posta Şablonu' :
+                         activeTab === 'SMS' ? 'Yeni SMS Şablonu' : 'Yeni Hızlı Yanıt'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="tpl-tabs-bar">
+                <div className="tpl-tabs-wrapper">
+                    {tabConfig.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => {
+                                setActiveTab(tab.id);
+                                setSearchQuery('');
+                                setCategoryFilter('ALL');
+                                setStatusFilter('ALL');
+                            }}
+                            className={`tpl-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                        >
+                            <span className="tpl-tab-icon">{tab.icon}</span>
+                            <span className="tpl-tab-label">{tab.label}</span>
+                            <span className="tpl-tab-counter">{tab.count || 0}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Search & Filter Controls Bar */}
+            <div className="tpl-filter-bar">
+                <div className="tpl-search-box">
+                    <Search size={16} className="tpl-search-icon" />
+                    <input
+                        type="text"
+                        placeholder={
+                            activeTab === 'WHATSAPP' ? 'Şablon adı, Meta ID veya içerik ara...' :
+                            activeTab === 'QUICK_REPLY' ? 'Kısayol (/merhaba) veya mesaj ara...' :
+                            'Şablon adı, konu veya metin ara...'
+                        }
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="tpl-search-input"
+                    />
+                    {searchQuery && (
+                        <button onClick={() => setSearchQuery('')} className="tpl-search-clear">
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+
+                {activeTab === 'WHATSAPP' && (
+                    <div className="tpl-filter-group">
+                        <div className="tpl-select-wrapper">
+                            <Filter size={14} className="tpl-select-icon" />
+                            <select
+                                value={categoryFilter}
+                                onChange={(e) => setCategoryFilter(e.target.value)}
+                                className="tpl-select"
+                            >
+                                <option value="ALL">Tüm Kategoriler</option>
+                                <option value="MARKETING">Pazarlama (Marketing)</option>
+                                <option value="UTILITY">Hizmet (Utility)</option>
+                                <option value="AUTHENTICATION">Doğrulama (Auth)</option>
+                            </select>
+                        </div>
+
+                        <div className="tpl-select-wrapper">
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="tpl-select"
+                            >
+                                <option value="ALL">Tüm Durumlar</option>
+                                <option value="APPROVED">Onaylı</option>
+                                <option value="PENDING">Onay Bekliyor</option>
+                                <option value="REJECTED">Reddedildi</option>
+                            </select>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Content Area */}
+            {loading ? (
+                <div className="tpl-loading-box">
+                    <RefreshCw size={28} className="tpl-spin" />
+                    <p>Şablonlar yükleniyor...</p>
+                </div>
             ) : (
                 <>
-                    <div className="form-field">
-                        <label>Şablon Adı (Sistem İçi)</label>
-                        <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="form-input" placeholder="Örn: Hoşgeldin Mesajı" />
-                    </div>
-                    {activeTab === 'EMAIL' && (
-                        <div className="form-field">
-                            <label>E-posta Konusu</label>
-                            <input required type="text" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} className="form-input" placeholder="Örn: Talebiniz Alındı" />
-                        </div>
-                    )}
-                    <div className="form-field">
-                        <label>Mesaj İçeriği (Değişkenler: {'{{ad}}'}, {'{{firma}}'})</label>
-                        <textarea required rows={6} value={formData.bodyText} onChange={e => setFormData({...formData, bodyText: e.target.value})} className="form-textarea" placeholder="Merhaba {{ad}}, ..." />
-                    </div>
-                </>
-            )}
-            <div className="form-actions">
-                <button type="button" onClick={() => setShowSimpleForm(false)} className="btn-cancel">İptal</button>
-                <button type="submit" className="btn-save">Kaydet</button>
-            </div>
-        </form>
-    );
-
-    // ==================== RENDER ====================
-    return (
-        <div className="templates-page">
-            {/* Header */}
-            <div className="templates-header">
-                <div>
-                    <h1>Şablonlar</h1>
-                    <p>E-posta, SMS, WhatsApp ve Hızlı Yanıt şablonlarınızı yönetin.</p>
-                </div>
-                <div className="templates-header-actions">
-                    {activeTab === 'WHATSAPP' ? (
-                        <>
-                            <button onClick={handleSyncTemplates} disabled={syncing} className="btn-sync">
-                                <RefreshCw size={16} className={syncing ? 'spin' : ''} />
-                                {syncing ? 'Eşitleniyor...' : 'Şablonları Eşitle'}
-                            </button>
-                            <button onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }} className="btn-add-template">
-                                <Plus size={16} /> Şablon Ekle
-                            </button>
-                        </>
-                    ) : (
-                        !showSimpleForm && (
-                            <button onClick={() => { setEditId(null); setFormData({name:'', subject:'', bodyText:'', bodyHtml:'', shortcut:'', message:''}); setShowSimpleForm(true); }} className="btn-add-template">
-                                + Yeni Şablon
-                            </button>
-                        )
-                    )}
-                </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="templates-tabs">
-                {[
-                    { id: 'WHATSAPP', label: 'WhatsApp' },
-                    { id: 'EMAIL', label: 'E-Posta' },
-                    { id: 'SMS', label: 'SMS' },
-                    { id: 'QUICK_REPLY', label: 'Hızlı Yanıtlar' }
-                ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => { setActiveTab(tab.id); setShowSimpleForm(false); }}
-                        className={`template-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                    >
-                        {tab.label}
-                        {tab.id === 'WHATSAPP' && waTemplates.length > 0 && <span className="tab-count">{waTemplates.length}</span>}
-                    </button>
-                ))}
-            </div>
-
-            {/* ==================== WhatsApp Tab ==================== */}
-            {activeTab === 'WHATSAPP' && (
-                loading ? (
-                    <div className="empty-state">Yükleniyor...</div>
-                ) : waTemplates.length === 0 ? (
-                    <div className="empty-state">
-                        <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📝</div>
-                        <h3>Henüz WhatsApp şablonu yok</h3>
-                        <p>Meta onaylı WhatsApp şablonları oluşturmak için "Şablon Ekle" butonuna tıklayın.</p>
-                        <button className="btn-add-template" style={{ marginTop: '16px' }} onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
-                            <Plus size={16} /> Şablon Ekle
-                        </button>
-                    </div>
-                ) : (
-                    <div className="templates-grid">
-                        {waTemplates.map(template => (
-                            <div key={template.id} className="template-card wa-card">
-                                <div>
-                                    <div className="card-header">
-                                        <div>
-                                            <h3 className="template-title">{template.name}</h3>
-                                            <div className="template-id">{template.templateId}</div>
-                                        </div>
-                                        <span className={`template-status ${template.status?.toLowerCase()}`}>
-                                            {getStatusIcon(template.status)}
-                                            {template.status === 'APPROVED' ? 'ONAYLI' : template.status === 'PENDING' ? 'BEKLİYOR' : template.status === 'REJECTED' ? 'REDDEDİLDİ' : template.status}
-                                        </span>
-                                    </div>
-
-                                    <div className="template-tags">
-                                        <span className="template-tag">
-                                            {template.category === 'MARKETING' ? 'PAZARLAMA' : template.category === 'UTILITY' ? 'HİZMET' : template.category === 'AUTHENTICATION' ? 'DOĞRULAMA' : template.category}
-                                        </span>
-                                        {template.headerType && (
-                                            <span className="template-tag media">
-                                                {template.headerType === 'IMAGE' && '🖼️ Resim'}
-                                                {template.headerType === 'VIDEO' && '🎬 Video'}
-                                                {template.headerType === 'DOCUMENT' && '📄 Döküman'}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="template-body">
-                                        <p>{template.bodyText}</p>
-                                    </div>
-
-                                    <div className="template-meta">
-                                        <span><Globe size={14} /> {template.language}</span>
-                                        {template.whatsappPhoneNumber && (
-                                            <span><Smartphone size={14} /> {template.whatsappPhoneNumber.displayPhoneNumber}</span>
-                                        )}
-                                    </div>
+                    {/* ==================== WhatsApp Tab Grid ==================== */}
+                    {activeTab === 'WHATSAPP' && (
+                        filteredWaTemplates.length === 0 ? (
+                            <div className="tpl-empty-box">
+                                <div className="tpl-empty-icon-circle">
+                                    <Smartphone size={32} />
                                 </div>
-
-                                <div className="wa-card-actions">
-                                    <button className="btn-wa-action send" onClick={() => openSendModal(template)}>
-                                        <Send size={14} /> Gönder
+                                <h3>{searchQuery || categoryFilter !== 'ALL' || statusFilter !== 'ALL' ? 'Filtreye uygun şablon bulunamadı' : 'Henüz WhatsApp Şablonu Yok'}</h3>
+                                <p>
+                                    {searchQuery || categoryFilter !== 'ALL' || statusFilter !== 'ALL'
+                                        ? 'Arama kriterlerinizi değiştirerek tekrar deneyin.'
+                                        : 'Meta onaylı WhatsApp şablonlarınızı eşitlemek veya yeni şablon oluşturmak için aşağıdaki adımları kullanabilirsiniz.'}
+                                </p>
+                                <div className="tpl-empty-actions">
+                                    <button onClick={handleSyncTemplates} disabled={syncing} className="tpl-btn tpl-btn-secondary">
+                                        <RefreshCw size={15} className={syncing ? 'tpl-spin' : ''} /> Şablonları Eşitle
                                     </button>
-                                    <button className="btn-wa-action edit" onClick={() => openEditTemplate(template)}>
-                                        <Edit2 size={14} />
-                                    </button>
-                                    <button className="btn-wa-action delete" onClick={() => handleDeleteWaTemplate(template.id)}>
-                                        <Trash2 size={14} />
+                                    <button onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }} className="tpl-btn tpl-btn-primary">
+                                        <Plus size={15} /> Yeni Şablon Oluştur
                                     </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )
-            )}
+                        ) : (
+                            <div className="tpl-grid">
+                                {filteredWaTemplates.map(template => {
+                                    let buttonsList = [];
+                                    try {
+                                        buttonsList = template.buttons ? (typeof template.buttons === 'string' ? JSON.parse(template.buttons) : template.buttons) : [];
+                                    } catch {}
 
-            {/* ==================== Simple Tabs (EMAIL, SMS, QUICK_REPLY) ==================== */}
-            {activeTab !== 'WHATSAPP' && (
-                <>
-                    {showSimpleForm && renderSimpleForm()}
-                    {loading ? (
-                        <div className="empty-state">Yükleniyor...</div>
-                    ) : simpleTemplates.length === 0 ? (
-                        <div className="empty-state">
-                            <p>Bu kategoride henüz bir şablon bulunmuyor.</p>
-                        </div>
-                    ) : (
-                        <div className="templates-grid">
-                            {simpleTemplates.map(t => (
-                                <div key={t.id} className="template-card">
-                                    <div>
-                                        <div className="card-header">
-                                            <h3 className="template-title">
-                                                {activeTab === 'QUICK_REPLY' ? <span className="shortcut-badge">{t.shortcut}</span> : t.name}
-                                            </h3>
-                                            <div className="card-actions">
-                                                <button onClick={() => handleSimpleEdit(t)} className="icon-btn" title="Düzenle">✏️</button>
-                                                <button onClick={() => handleSimpleDelete(t.id)} className="icon-btn" title="Sil">🗑️</button>
+                                    return (
+                                        <div key={template.id} className="tpl-card tpl-card-wa">
+                                            {/* Card Top */}
+                                            <div className="tpl-card-header">
+                                                <div className="tpl-card-title-group">
+                                                    <h3 className="tpl-card-title" title={template.name}>
+                                                        {template.name}
+                                                    </h3>
+                                                    {template.templateId && (
+                                                        <div className="tpl-meta-id" title="Meta Template ID">
+                                                            <span>ID: {template.templateId}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="tpl-card-status">
+                                                    {getStatusBadge(template.status)}
+                                                </div>
+                                            </div>
+
+                                            {/* Badges Row */}
+                                            <div className="tpl-card-badges">
+                                                {getCategoryBadge(template.category)}
+                                                {getHeaderTypeBadge(template.headerType)}
+                                                <span className="tpl-lang-badge">
+                                                    <Globe size={11} /> {template.language === 'tr' ? 'Türkçe' : template.language}
+                                                </span>
+                                            </div>
+
+                                            {/* Header Content Preview if any */}
+                                            {template.headerType && (
+                                                <div className="tpl-header-preview-box">
+                                                    {template.headerType === 'IMAGE' && (
+                                                        <div className="tpl-media-placeholder">
+                                                            <ImageIcon size={16} /> <span>Görsel Başlık</span>
+                                                        </div>
+                                                    )}
+                                                    {template.headerType === 'VIDEO' && (
+                                                        <div className="tpl-media-placeholder">
+                                                            <Video size={16} /> <span>Video Başlık</span>
+                                                        </div>
+                                                    )}
+                                                    {template.headerType === 'DOCUMENT' && (
+                                                        <div className="tpl-media-placeholder">
+                                                            <File size={16} /> <span>Döküman / PDF</span>
+                                                        </div>
+                                                    )}
+                                                    {template.headerType === 'TEXT' && template.headerContent && (
+                                                        <div className="tpl-text-header-preview">
+                                                            <strong>{template.headerContent}</strong>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Message Body */}
+                                            <div className="tpl-card-body">
+                                                <p>{renderFormattedText(template.bodyText)}</p>
+                                            </div>
+
+                                            {/* Footer Text if any */}
+                                            {template.footerText && (
+                                                <div className="tpl-card-footer-text">
+                                                    <small>{template.footerText}</small>
+                                                </div>
+                                            )}
+
+                                            {/* Interactive Buttons Preview */}
+                                            {buttonsList.length > 0 && (
+                                                <div className="tpl-card-buttons-preview">
+                                                    {buttonsList.map((btn, bIdx) => (
+                                                        <div key={bIdx} className="tpl-btn-preview-item">
+                                                            {btn.type === 'URL' && <ExternalLink size={12} />}
+                                                            {btn.type === 'PHONE_NUMBER' && <PhoneCall size={12} />}
+                                                            {btn.type === 'QUICK_REPLY' && <Zap size={12} />}
+                                                            <span>{btn.text || 'Buton'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Phone Connection info */}
+                                            {template.whatsappPhoneNumber && (
+                                                <div className="tpl-phone-tag">
+                                                    <Smartphone size={12} />
+                                                    <span>{template.whatsappPhoneNumber.displayPhoneNumber || template.whatsappPhoneNumber.name}</span>
+                                                </div>
+                                            )}
+
+                                            {/* Card Action Buttons */}
+                                            <div className="tpl-card-actions">
+                                                <button
+                                                    className="tpl-action-btn tpl-btn-send"
+                                                    onClick={() => openSendModal(template)}
+                                                    title="Mesaj Gönder / Test Et"
+                                                >
+                                                    <Send size={14} /> Gönder
+                                                </button>
+
+                                                <button
+                                                    className="tpl-action-btn tpl-btn-icon"
+                                                    onClick={() => handleCopyText(template.id, template.bodyText)}
+                                                    title="Metni Kopyala"
+                                                >
+                                                    {copiedId === template.id ? <Check size={14} className="tpl-copied-check" /> : <Copy size={14} />}
+                                                </button>
+
+                                                <button
+                                                    className="tpl-action-btn tpl-btn-icon"
+                                                    onClick={() => openEditTemplate(template)}
+                                                    title="Düzenle"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+
+                                                <button
+                                                    className="tpl-action-btn tpl-btn-icon tpl-btn-delete"
+                                                    onClick={() => handleDeleteWaTemplate(template.id)}
+                                                    title="Sil"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </div>
                                         </div>
+                                    );
+                                })}
+                            </div>
+                        )
+                    )}
+
+                    {/* ==================== Simple Tabs (EMAIL, SMS, QUICK_REPLY) Grid ==================== */}
+                    {activeTab !== 'WHATSAPP' && (
+                        filteredSimpleTemplates.length === 0 ? (
+                            <div className="tpl-empty-box">
+                                <div className="tpl-empty-icon-circle">
+                                    {activeTab === 'EMAIL' ? <Mail size={32} /> :
+                                     activeTab === 'SMS' ? <MessageSquare size={32} /> : <Zap size={32} />}
+                                </div>
+                                <h3>{searchQuery ? 'Filtreye uygun şablon bulunamadı' : 'Henüz Şablon Eklenmedi'}</h3>
+                                <p>
+                                    {searchQuery ? 'Farklı bir arama terimi deneyin.' :
+                                     activeTab === 'EMAIL' ? 'Müşterilerinize göndereceğiniz e-posta şablonlarını buradan oluşturun.' :
+                                     activeTab === 'SMS' ? 'Müşterilerinize tek tıkla göndereceğiniz SMS şablonlarını yönetin.' :
+                                     'Sohbetlerde /kısayol yazarak anında gönderebileceğiniz hızlı hazır yanıtlar ekleyin.'}
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        setEditId(null);
+                                        setFormData({ name: '', subject: '', bodyText: '', bodyHtml: '', shortcut: '', message: '' });
+                                        setShowSimpleModal(true);
+                                    }}
+                                    className="tpl-btn tpl-btn-primary"
+                                >
+                                    <Plus size={15} /> + Yeni Şablon Oluştur
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="tpl-grid">
+                                {filteredSimpleTemplates.map(t => (
+                                    <div key={t.id} className="tpl-card">
+                                        <div className="tpl-card-header">
+                                            {activeTab === 'QUICK_REPLY' ? (
+                                                <div className="tpl-shortcut-pill">
+                                                    <Zap size={13} /> {t.shortcut}
+                                                </div>
+                                            ) : (
+                                                <h3 className="tpl-card-title">{t.name}</h3>
+                                            )}
+
+                                            <div className="tpl-card-actions-inline">
+                                                <button
+                                                    onClick={() => handleCopyText(t.id, activeTab === 'QUICK_REPLY' ? t.message : t.bodyText)}
+                                                    className="tpl-icon-btn"
+                                                    title="Metni Kopyala"
+                                                >
+                                                    {copiedId === t.id ? <Check size={14} className="tpl-copied-check" /> : <Copy size={14} />}
+                                                </button>
+                                                <button onClick={() => handleSimpleEdit(t)} className="tpl-icon-btn" title="Düzenle">
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button onClick={() => handleSimpleDelete(t.id)} className="tpl-icon-btn tpl-delete-btn" title="Sil">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+
                                         {activeTab === 'EMAIL' && t.subject && (
-                                            <div className="template-subject">Konu: {t.subject}</div>
+                                            <div className="tpl-subject-row">
+                                                <span className="tpl-subject-label">Konu:</span>
+                                                <span className="tpl-subject-val">{t.subject}</span>
+                                            </div>
                                         )}
-                                        <div className="template-body">
-                                            {activeTab === 'QUICK_REPLY' ? t.message : t.bodyText}
+
+                                        <div className="tpl-card-body">
+                                            <p>{renderFormattedText(activeTab === 'QUICK_REPLY' ? t.message : t.bodyText)}</p>
+                                        </div>
+
+                                        <div className="tpl-card-bottom-info">
+                                            <span className="tpl-date-text">
+                                                {t.createdAt ? new Date(t.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                                            </span>
+                                            {activeTab === 'SMS' && t.bodyText && (
+                                                <span className="tpl-char-count">{t.bodyText.length} karakter</span>
+                                            )}
                                         </div>
                                     </div>
-                                    <div className="template-footer">
-                                        {new Date(t.createdAt).toLocaleDateString('tr-TR')}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )
                     )}
                 </>
             )}
 
-            {/* ==================== WhatsApp Template Create/Edit Modal ==================== */}
+            {/* ==================== WhatsApp Create/Edit Modal with Live Preview ==================== */}
             {showTemplateModal && (
-                <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
-                    <div className="wa-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="wa-modal-header">
-                            <h2>{editingTemplate ? 'Şablonu Düzenle' : 'Yeni WhatsApp Şablonu'}</h2>
-                            <button className="modal-close-btn" onClick={() => setShowTemplateModal(false)}>×</button>
+                <div className="tpl-modal-backdrop" onClick={() => setShowTemplateModal(false)}>
+                    <div className="tpl-modal-dialog tpl-modal-large" onClick={(e) => e.stopPropagation()}>
+                        <div className="tpl-modal-header">
+                            <div>
+                                <h2>{editingTemplate ? 'WhatsApp Şablonunu Düzenle' : 'Yeni WhatsApp Şablonu Oluştur'}</h2>
+                                <p className="tpl-modal-subtitle">Meta Business API uyumlu mesaj şablonu</p>
+                            </div>
+                            <button className="tpl-modal-close" onClick={() => setShowTemplateModal(false)}>
+                                <X size={20} />
+                            </button>
                         </div>
-                        <div className="wa-modal-body">
-                            <div className="form-info-note">
-                                ℹ️ Şablonunuz kaydedildiğinde Meta'ya gönderilecek ve onay sürecine (PENDING) girecektir. Meta onayladığında otomatik olarak ONAYLI statüsüne geçer.
-                            </div>
 
-                            <div className="form-row">
-                                <div className="form-field" style={{ flex: 1 }}>
+                        <div className="tpl-modal-body tpl-modal-split">
+                            {/* Form Side */}
+                            <div className="tpl-modal-form-col">
+                                <div className="tpl-notice-banner">
+                                    <Sparkles size={16} />
+                                    <span>
+                                        Şablonunuz kaydedildiğinde Meta onay sürecine (PENDING) gönderilir. Onaylandığında otomatik olarak aktifleşir.
+                                    </span>
+                                </div>
+
+                                <div className="tpl-form-group">
                                     <label>Şablon Adı *</label>
-                                    <input type="text" className="form-input" value={templateForm.name}
+                                    <input
+                                        type="text"
+                                        className="tpl-input"
+                                        value={templateForm.name}
                                         onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
-                                        placeholder="örn: lead_welcome" />
+                                        placeholder="örn: hosgeldin_mesaji (küçük harf ve alt çizgi)"
+                                    />
+                                    <small className="tpl-field-hint">Yalnızca küçük harfler, rakamlar ve alt çizgi (_) kullanabilirsiniz.</small>
                                 </div>
-                            </div>
 
-                            <div className="form-row">
-                                <div className="form-field">
-                                    <label>Dil</label>
-                                    <select className="form-input" value={templateForm.language}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, language: e.target.value })}>
-                                        <option value="tr">Türkçe</option>
-                                        <option value="en">English</option>
-                                        <option value="en_US">English (US)</option>
-                                    </select>
-                                </div>
-                                <div className="form-field">
-                                    <label>Kategori</label>
-                                    <select className="form-input" value={templateForm.category}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, category: e.target.value })}>
-                                        <option value="MARKETING">Marketing</option>
-                                        <option value="UTILITY">Utility</option>
-                                        <option value="AUTHENTICATION">Authentication</option>
-                                    </select>
-                                </div>
-                            </div>
+                                <div className="tpl-form-grid-2">
+                                    <div className="tpl-form-group">
+                                        <label>Dil</label>
+                                        <select
+                                            className="tpl-select-input"
+                                            value={templateForm.language}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, language: e.target.value })}
+                                        >
+                                            <option value="tr">🇹🇷 Türkçe (tr)</option>
+                                            <option value="en">🇬🇧 English (en)</option>
+                                            <option value="en_US">🇺🇸 English US (en_US)</option>
+                                            <option value="de">🇩🇪 Deutsch (de)</option>
+                                            <option value="ar">🇸🇦 العربية (ar)</option>
+                                            <option value="ru">🇷🇺 Русский (ru)</option>
+                                        </select>
+                                    </div>
 
-                            {/* Header Type */}
-                            <div className="form-row">
-                                <div className="form-field">
-                                    <label>Header Tipi</label>
-                                    <select className="form-input" value={templateForm.headerType}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, headerType: e.target.value })}>
-                                        <option value="">Yok (Sadece Metin)</option>
-                                        <option value="IMAGE">🖼️ Resim</option>
+                                    <div className="tpl-form-group">
+                                        <label>Kategori</label>
+                                        <select
+                                            className="tpl-select-input"
+                                            value={templateForm.category}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, category: e.target.value })}
+                                        >
+                                            <option value="MARKETING">📢 Pazarlama (Marketing)</option>
+                                            <option value="UTILITY">⚙️ Hizmet (Utility)</option>
+                                            <option value="AUTHENTICATION">🔐 Doğrulama (Auth)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Phone number selection */}
+                                {phoneNumbers.length > 1 && (
+                                    <div className="tpl-form-group">
+                                        <label>WhatsApp Numarası</label>
+                                        <select
+                                            className="tpl-select-input"
+                                            value={templateForm.whatsappPhoneNumberId}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, whatsappPhoneNumberId: e.target.value })}
+                                        >
+                                            {phoneNumbers.map(p => (
+                                                <option key={p.id} value={p.id}>
+                                                    {p.displayPhoneNumber} ({p.name || 'Numara'})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Header Type */}
+                                <div className="tpl-form-group">
+                                    <label>Başlık / Header (Opsiyonel)</label>
+                                    <select
+                                        className="tpl-select-input"
+                                        value={templateForm.headerType}
+                                        onChange={(e) => setTemplateForm({ ...templateForm, headerType: e.target.value, headerContent: '' })}
+                                    >
+                                        <option value="">Yok (Sadece Metin Gövdesi)</option>
+                                        <option value="TEXT">📝 Metin Başlık</option>
+                                        <option value="IMAGE">🖼️ Görsel / Resim</option>
                                         <option value="VIDEO">🎬 Video</option>
-                                        <option value="DOCUMENT">📄 Döküman</option>
+                                        <option value="DOCUMENT">📄 Döküman / PDF</option>
                                     </select>
                                 </div>
-                                {templateForm.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && (
-                                    <div className="form-field">
-                                        <label>Medya Dosyası (Zorunlu)</label>
-                                        <input type="file" className="form-input"
+
+                                {templateForm.headerType === 'TEXT' && (
+                                    <div className="tpl-form-group">
+                                        <label>Başlık Metni</label>
+                                        <input
+                                            type="text"
+                                            className="tpl-input"
+                                            value={templateForm.headerContent}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, headerContent: e.target.value })}
+                                            placeholder="örn: Özel Fırsat Duyurusu!"
+                                            maxLength={60}
+                                        />
+                                    </div>
+                                )}
+
+                                {['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && (
+                                    <div className="tpl-form-group">
+                                        <label>Örnek Medya Dosyası (Zorunlu)</label>
+                                        <input
+                                            type="file"
+                                            className="tpl-file-input"
                                             accept={
                                                 templateForm.headerType === 'IMAGE' ? 'image/jpeg,image/png' :
                                                 templateForm.headerType === 'VIDEO' ? 'video/mp4' : '.pdf'
@@ -537,201 +969,483 @@ const Templates = () => {
                                                     });
                                                 } catch (error) {
                                                     console.error('Media upload error:', error);
-                                                    alert('Medya yüklenirken bir hata oluştu: ' + (error.response?.data?.error || error.message));
+                                                    alert('Medya yüklenirken hata oluştu: ' + (error.response?.data?.error || error.message));
                                                 } finally {
                                                     setIsUploadingMedia(false);
                                                 }
                                             }}
                                         />
-                                        <small className="form-hint">
-                                            Maksimum boyut: {templateForm.headerType === 'IMAGE' ? '5 MB' : templateForm.headerType === 'VIDEO' ? '16 MB' : '100 MB'}
-                                        </small>
-                                        {isUploadingMedia && <span className="upload-status loading">⏳ Yükleniyor...</span>}
+                                        {isUploadingMedia && <div className="tpl-upload-status loading">⏳ Medya Meta sunucularına yükleniyor...</div>}
                                         {!isUploadingMedia && templateForm.headerMediaUrl && (
-                                            <div className="upload-status success">
-                                                ✅ Yüklendi!
-                                                {templateForm.headerType === 'IMAGE' && (
-                                                    <img src={templateForm.headerMediaUrl} alt="Preview" style={{ display: 'block', marginTop: '10px', maxHeight: '100px', borderRadius: '8px' }} />
-                                                )}
+                                            <div className="tpl-upload-status success">
+                                                ✅ Dosya yüklendi
                                             </div>
                                         )}
                                     </div>
                                 )}
-                            </div>
 
-                            <div className="form-field">
-                                <label>Şablon Metni *</label>
-                                <textarea className="form-textarea" value={templateForm.bodyText}
-                                    onChange={(e) => setTemplateForm({ ...templateForm, bodyText: e.target.value })}
-                                    placeholder="Merhaba {{1}}, talebiniz için teşekkürler. Size en kısa sürede dönüş yapacağız."
-                                    rows={4} />
-                                <small className="form-hint">Değişkenler için {'{{1}}'}, {'{{2}}'} gibi yer tutucular kullanın</small>
-                            </div>
-
-                            <div className="form-field">
-                                <label>Footer (Opsiyonel)</label>
-                                <input type="text" className="form-input" value={templateForm.footerText}
-                                    onChange={(e) => setTemplateForm({ ...templateForm, footerText: e.target.value })}
-                                    placeholder="örn: Yanıt vermek için EVET yazın" />
-                            </div>
-
-                            {/* Buttons */}
-                            <div className="form-field">
-                                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    Eylem Düğmeleri (Opsiyonel)
-                                    {templateForm.buttons.length < 3 && (
-                                        <button type="button" className="btn-add-button"
-                                            onClick={() => setTemplateForm({
-                                                ...templateForm,
-                                                buttons: [...templateForm.buttons, { type: 'URL', text: '', url: '' }]
-                                            })}>
-                                            <Plus size={14} /> Düğme Ekle
-                                        </button>
-                                    )}
-                                </label>
-                                {templateForm.buttons.map((btn, idx) => (
-                                    <div key={idx} className="button-row">
-                                        <select className="form-input" value={btn.type}
-                                            onChange={(e) => {
-                                                const newBtns = [...templateForm.buttons];
-                                                const newType = e.target.value;
-                                                newBtns[idx] = { type: newType, text: btn.text };
-                                                if (newType === 'URL') newBtns[idx].url = '';
-                                                if (newType === 'PHONE_NUMBER') newBtns[idx].phone_number = '';
-                                                setTemplateForm({ ...templateForm, buttons: newBtns });
-                                            }}
-                                            style={{ flex: '1', minWidth: '130px' }}>
-                                            <option value="URL">🌐 Site Ziyareti (URL)</option>
-                                            <option value="PHONE_NUMBER">📞 Telefonla Ara</option>
-                                            <option value="QUICK_REPLY">💬 Hızlı Yanıt (Metin)</option>
-                                        </select>
-                                        <input className="form-input" placeholder="Düğme Yazısı" value={btn.text}
-                                            onChange={(e) => {
-                                                const newBtns = [...templateForm.buttons];
-                                                newBtns[idx].text = e.target.value;
-                                                setTemplateForm({ ...templateForm, buttons: newBtns });
-                                            }}
-                                            style={{ flex: '1' }} maxLength={20} />
-                                        {btn.type === 'URL' && (
-                                            <input className="form-input" placeholder="https://..." value={btn.url || ''}
-                                                onChange={(e) => {
-                                                    const newBtns = [...templateForm.buttons];
-                                                    newBtns[idx].url = e.target.value;
-                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
-                                                }}
-                                                style={{ flex: '1.5' }} />
-                                        )}
-                                        {btn.type === 'PHONE_NUMBER' && (
-                                            <input className="form-input" placeholder="+90555..." value={btn.phone_number || ''}
-                                                onChange={(e) => {
-                                                    const newBtns = [...templateForm.buttons];
-                                                    newBtns[idx].phone_number = e.target.value;
-                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
-                                                }}
-                                                style={{ flex: '1.5' }} />
-                                        )}
-                                        <button type="button" className="btn-remove-button"
+                                {/* Body Text */}
+                                <div className="tpl-form-group">
+                                    <div className="tpl-label-row">
+                                        <label>Mesaj Gövdesi *</label>
+                                        <button
+                                            type="button"
+                                            className="tpl-insert-var-btn"
                                             onClick={() => {
-                                                const newBtns = templateForm.buttons.filter((_, i) => i !== idx);
-                                                setTemplateForm({ ...templateForm, buttons: newBtns });
-                                            }}>
-                                            <Trash2 size={16} />
+                                                const matches = (templateForm.bodyText.match(/\{\{(\d+)\}\}/g) || []);
+                                                const nextNum = matches.length + 1;
+                                                setTemplateForm({
+                                                    ...templateForm,
+                                                    bodyText: templateForm.bodyText + ` {{${nextNum}}}`
+                                                });
+                                            }}
+                                        >
+                                            + Değişken Ekle
                                         </button>
                                     </div>
-                                ))}
-                                {templateForm.buttons.length > 0 && (
-                                    <small className="form-hint">* Maksimum 3 buton eklenebilir. (Meta kuralları gereği)</small>
-                                )}
+                                    <textarea
+                                        className="tpl-textarea"
+                                        value={templateForm.bodyText}
+                                        onChange={(e) => setTemplateForm({ ...templateForm, bodyText: e.target.value })}
+                                        placeholder="Merhaba {{1}}, talebiniz için teşekkür ederiz. Size en kısa sürede dönüş yapacağız."
+                                        rows={5}
+                                    />
+                                    <small className="tpl-field-hint">Müşteri adı veya tarih gibi dinamik alanlar için {'{{1}}'}, {'{{2}}'} kullanın.</small>
+                                </div>
+
+                                {/* Footer Text */}
+                                <div className="tpl-form-group">
+                                    <label>Alt Bilgi / Footer (Opsiyonel)</label>
+                                    <input
+                                        type="text"
+                                        className="tpl-input"
+                                        value={templateForm.footerText}
+                                        onChange={(e) => setTemplateForm({ ...templateForm, footerText: e.target.value })}
+                                        placeholder="örn: İptal etmek için RED yazabilirsiniz."
+                                        maxLength={60}
+                                    />
+                                </div>
+
+                                {/* Buttons Builder */}
+                                <div className="tpl-form-group">
+                                    <div className="tpl-label-row">
+                                        <label>Eylem Butonları ({templateForm.buttons.length}/3)</label>
+                                        {templateForm.buttons.length < 3 && (
+                                            <button
+                                                type="button"
+                                                className="tpl-insert-var-btn"
+                                                onClick={() => setTemplateForm({
+                                                    ...templateForm,
+                                                    buttons: [...templateForm.buttons, { type: 'URL', text: '', url: '' }]
+                                                })}
+                                            >
+                                                <Plus size={13} /> Buton Ekle
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {templateForm.buttons.map((btn, idx) => (
+                                        <div key={idx} className="tpl-btn-builder-row">
+                                            <select
+                                                className="tpl-select-input tpl-btn-type-select"
+                                                value={btn.type}
+                                                onChange={(e) => {
+                                                    const newBtns = [...templateForm.buttons];
+                                                    const newType = e.target.value;
+                                                    newBtns[idx] = { type: newType, text: btn.text || '' };
+                                                    if (newType === 'URL') newBtns[idx].url = '';
+                                                    if (newType === 'PHONE_NUMBER') newBtns[idx].phone_number = '';
+                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                }}
+                                            >
+                                                <option value="URL">🌐 Web Sitesi</option>
+                                                <option value="PHONE_NUMBER">📞 Telefon Arama</option>
+                                                <option value="QUICK_REPLY">💬 Hızlı Yanıt</option>
+                                            </select>
+
+                                            <input
+                                                className="tpl-input"
+                                                placeholder="Buton Yazısı"
+                                                value={btn.text}
+                                                onChange={(e) => {
+                                                    const newBtns = [...templateForm.buttons];
+                                                    newBtns[idx].text = e.target.value;
+                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                }}
+                                                maxLength={25}
+                                            />
+
+                                            {btn.type === 'URL' && (
+                                                <input
+                                                    className="tpl-input"
+                                                    placeholder="https://site.com"
+                                                    value={btn.url || ''}
+                                                    onChange={(e) => {
+                                                        const newBtns = [...templateForm.buttons];
+                                                        newBtns[idx].url = e.target.value;
+                                                        setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                    }}
+                                                />
+                                            )}
+
+                                            {btn.type === 'PHONE_NUMBER' && (
+                                                <input
+                                                    className="tpl-input"
+                                                    placeholder="+90555..."
+                                                    value={btn.phone_number || ''}
+                                                    onChange={(e) => {
+                                                        const newBtns = [...templateForm.buttons];
+                                                        newBtns[idx].phone_number = e.target.value;
+                                                        setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                    }}
+                                                />
+                                            )}
+
+                                            <button
+                                                type="button"
+                                                className="tpl-btn-remove"
+                                                onClick={() => {
+                                                    const newBtns = templateForm.buttons.filter((_, i) => i !== idx);
+                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                }}
+                                                title="Butonu Kaldır"
+                                            >
+                                                <Trash2 size={15} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Live Phone Preview Side */}
+                            <div className="tpl-modal-preview-col">
+                                <div className="tpl-preview-title">
+                                    <Smartphone size={16} /> WhatsApp Önizleme
+                                </div>
+                                <div className="tpl-phone-mockup">
+                                    <div className="tpl-phone-screen">
+                                        <div className="tpl-chat-bubble">
+                                            {/* Header Preview */}
+                                            {templateForm.headerType === 'TEXT' && templateForm.headerContent && (
+                                                <div className="tpl-preview-header-text">
+                                                    {templateForm.headerContent}
+                                                </div>
+                                            )}
+                                            {templateForm.headerType === 'IMAGE' && (
+                                                <div className="tpl-preview-media">
+                                                    {templateForm.headerMediaUrl ? (
+                                                        <img src={templateForm.headerMediaUrl} alt="Header" />
+                                                    ) : (
+                                                        <div className="tpl-preview-media-empty">
+                                                            <ImageIcon size={28} />
+                                                            <span>Resim Başlık</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {templateForm.headerType === 'VIDEO' && (
+                                                <div className="tpl-preview-media video">
+                                                    <Video size={28} />
+                                                    <span>Video Başlık</span>
+                                                </div>
+                                            )}
+                                            {templateForm.headerType === 'DOCUMENT' && (
+                                                <div className="tpl-preview-media doc">
+                                                    <File size={28} />
+                                                    <span>Döküman Başlık</span>
+                                                </div>
+                                            )}
+
+                                            {/* Body Preview */}
+                                            <div className="tpl-preview-body">
+                                                {templateForm.bodyText ? renderFormattedText(templateForm.bodyText) : 'Mesaj gövdesi buraya gelecek...'}
+                                            </div>
+
+                                            {/* Footer Preview */}
+                                            {templateForm.footerText && (
+                                                <div className="tpl-preview-footer">
+                                                    {templateForm.footerText}
+                                                </div>
+                                            )}
+
+                                            <div className="tpl-preview-time">
+                                                14:30 ✓✓
+                                            </div>
+                                        </div>
+
+                                        {/* Buttons in Preview */}
+                                        {templateForm.buttons.length > 0 && (
+                                            <div className="tpl-preview-buttons">
+                                                {templateForm.buttons.map((btn, idx) => (
+                                                    <div key={idx} className="tpl-preview-btn-item">
+                                                        {btn.type === 'URL' && <ExternalLink size={12} />}
+                                                        {btn.type === 'PHONE_NUMBER' && <PhoneCall size={12} />}
+                                                        {btn.type === 'QUICK_REPLY' && <Zap size={12} />}
+                                                        <span>{btn.text || 'Buton Yazısı'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="wa-modal-footer">
-                            <button className="btn-cancel" onClick={() => setShowTemplateModal(false)}>İptal</button>
-                            <button className="btn-save" onClick={handleSaveWaTemplate}>
-                                {editingTemplate ? 'Güncelle' : 'Kaydet'}
+
+                        <div className="tpl-modal-footer">
+                            <button className="tpl-btn tpl-btn-secondary" onClick={() => setShowTemplateModal(false)}>
+                                İptal
+                            </button>
+                            <button className="tpl-btn tpl-btn-primary" onClick={handleSaveWaTemplate}>
+                                {editingTemplate ? 'Değişiklikleri Kaydet' : 'Meta Onayına Gönder'}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* ==================== Send Template Modal ==================== */}
-            {showSendModal && sendingTemplate && (
-                <div className="modal-overlay" onClick={() => setShowSendModal(false)}>
-                    <div className="wa-modal send-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="wa-modal-header">
-                            <h2>📨 Şablon Gönder: {sendingTemplate.name}</h2>
-                            <button className="modal-close-btn" onClick={() => setShowSendModal(false)}>×</button>
+            {/* ==================== Simple Create/Edit Modal (EMAIL, SMS, QUICK_REPLY) ==================== */}
+            {showSimpleModal && (
+                <div className="tpl-modal-backdrop" onClick={() => setShowSimpleModal(false)}>
+                    <div className="tpl-modal-dialog" onClick={(e) => e.stopPropagation()}>
+                        <div className="tpl-modal-header">
+                            <div>
+                                <h2>
+                                    {editId ? 'Şablonu Düzenle' :
+                                     activeTab === 'EMAIL' ? 'Yeni E-Posta Şablonu' :
+                                     activeTab === 'SMS' ? 'Yeni SMS Şablonu' : 'Yeni Hızlı Yanıt'}
+                                </h2>
+                                <p className="tpl-modal-subtitle">
+                                    {activeTab === 'EMAIL' ? 'E-posta gönderimlerinde kullanılacak hazır şablon' :
+                                     activeTab === 'SMS' ? 'SMS bildirimlerinde kullanılacak şablon' : 'Sohbet içinde /kısayol ile gönderilecek hazır mesaj'}
+                                </p>
+                            </div>
+                            <button className="tpl-modal-close" onClick={() => setShowSimpleModal(false)}>
+                                <X size={20} />
+                            </button>
                         </div>
-                        <div className="wa-modal-body">
-                            <div className="template-body" style={{ marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
-                                <p>{sendingTemplate.bodyText}</p>
+
+                        <form onSubmit={handleSimpleSave}>
+                            <div className="tpl-modal-body">
+                                {activeTab === 'QUICK_REPLY' ? (
+                                    <>
+                                        <div className="tpl-form-group">
+                                            <label>Kısayol (/ ile başlar) *</label>
+                                            <input
+                                                required
+                                                type="text"
+                                                value={formData.shortcut}
+                                                onChange={e => setFormData({ ...formData, shortcut: e.target.value })}
+                                                className="tpl-input"
+                                                placeholder="/merhaba veya /fiyat"
+                                            />
+                                            <small className="tpl-field-hint">Sohbette bu komutu yazdığınızda mesaj otomatik önerilir.</small>
+                                        </div>
+                                        <div className="tpl-form-group">
+                                            <label>Mesaj İçeriği *</label>
+                                            <textarea
+                                                required
+                                                rows={5}
+                                                value={formData.message}
+                                                onChange={e => setFormData({ ...formData, message: e.target.value })}
+                                                className="tpl-textarea"
+                                                placeholder="Merhaba, size nasıl yardımcı olabilirim?"
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="tpl-form-group">
+                                            <label>Şablon Adı *</label>
+                                            <input
+                                                required
+                                                type="text"
+                                                value={formData.name}
+                                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                                className="tpl-input"
+                                                placeholder="Örn: Fırsat Hoşgeldin Mesajı"
+                                            />
+                                        </div>
+
+                                        {activeTab === 'EMAIL' && (
+                                            <div className="tpl-form-group">
+                                                <label>E-Posta Konusu *</label>
+                                                <input
+                                                    required
+                                                    type="text"
+                                                    value={formData.subject}
+                                                    onChange={e => setFormData({ ...formData, subject: e.target.value })}
+                                                    className="tpl-input"
+                                                    placeholder="Örn: Talebiniz Hakkında Bilgilendirme"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="tpl-form-group">
+                                            <div className="tpl-label-row">
+                                                <label>Mesaj İçeriği *</label>
+                                                <div className="tpl-var-suggestions">
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, bodyText: formData.bodyText + ' {{ad}}' })}
+                                                    >
+                                                        + {'{{ad}}'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, bodyText: formData.bodyText + ' {{firma}}' })}
+                                                    >
+                                                        + {'{{firma}}'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <textarea
+                                                required
+                                                rows={6}
+                                                value={formData.bodyText}
+                                                onChange={e => setFormData({ ...formData, bodyText: e.target.value })}
+                                                className="tpl-textarea"
+                                                placeholder="Merhaba {{ad}}, talebiniz tarafımıza ulaştı..."
+                                            />
+                                            {activeTab === 'SMS' && (
+                                                <div className="tpl-char-counter-row">
+                                                    <span>{formData.bodyText.length} karakter</span>
+                                                    <span>{Math.ceil((formData.bodyText.length || 1) / 160)} SMS</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="tpl-modal-footer">
+                                <button type="button" onClick={() => setShowSimpleModal(false)} className="tpl-btn tpl-btn-secondary">
+                                    İptal
+                                </button>
+                                <button type="submit" className="tpl-btn tpl-btn-primary">
+                                    {editId ? 'Değişiklikleri Kaydet' : 'Şablonu Kaydet'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ==================== Send / Test Template Modal ==================== */}
+            {showSendModal && sendingTemplate && (
+                <div className="tpl-modal-backdrop" onClick={() => setShowSendModal(false)}>
+                    <div className="tpl-modal-dialog" onClick={(e) => e.stopPropagation()}>
+                        <div className="tpl-modal-header">
+                            <div>
+                                <h2>📨 Şablon Gönder: {sendingTemplate.name}</h2>
+                                <p className="tpl-modal-subtitle">Kişiye doğrudan WhatsApp şablon mesajı iletin</p>
+                            </div>
+                            <button className="tpl-modal-close" onClick={() => setShowSendModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="tpl-modal-body">
+                            <div className="tpl-send-preview-card">
+                                <div className="tpl-send-preview-title">Şablon Metni:</div>
+                                <p>{renderFormattedText(sendingTemplate.bodyText)}</p>
                             </div>
 
                             {selectedContact ? (
-                                <div className="selected-contact">
+                                <div className="tpl-selected-contact-pill">
                                     <div>
-                                        <strong>{selectedContact.name}</strong>
-                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{selectedContact.phone}</div>
+                                        <strong>👤 {selectedContact.name || 'İsimsiz Kişi'}</strong>
+                                        <div className="tpl-contact-phone-sub">{selectedContact.phone}</div>
                                     </div>
-                                    <button className="btn-remove-button" onClick={() => setSelectedContact(null)}>
-                                        <X size={18} />
+                                    <button className="tpl-btn-remove-contact" onClick={() => setSelectedContact(null)} title="Kişiyi Değiştir">
+                                        <X size={16} />
                                     </button>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="form-field">
-                                        <label>Kişi Ara</label>
-                                        <div style={{ position: 'relative' }}>
-                                            <input type="text" className="form-input" value={contactSearch}
+                                    <div className="tpl-form-group">
+                                        <label>Kişi Seç (Rehberden Ara)</label>
+                                        <div className="tpl-contact-search-wrapper">
+                                            <input
+                                                type="text"
+                                                className="tpl-input"
+                                                value={contactSearch}
                                                 onChange={(e) => handleContactSearch(e.target.value)}
-                                                placeholder="İsim veya telefon ile ara..." />
+                                                placeholder="İsim veya telefon yazın..."
+                                            />
                                             {contactResults.length > 0 && (
-                                                <div className="contact-results">
+                                                <div className="tpl-contact-dropdown">
                                                     {contactResults.map(contact => (
-                                                        <div key={contact.id} className="contact-result-item"
-                                                            onClick={() => { setSelectedContact(contact); setContactSearch(''); setContactResults([]); }}>
-                                                            <span>{contact.name}</span>
-                                                            <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{contact.phone}</span>
+                                                        <div
+                                                            key={contact.id}
+                                                            className="tpl-contact-item"
+                                                            onClick={() => {
+                                                                setSelectedContact(contact);
+                                                                setContactSearch('');
+                                                                setContactResults([]);
+                                                            }}
+                                                        >
+                                                            <span>👤 {contact.name || 'İsimsiz Kişi'}</span>
+                                                            <span className="tpl-contact-item-phone">{contact.phone}</span>
                                                         </div>
                                                     ))}
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-                                    <div style={{ textAlign: 'center', color: '#94a3b8', margin: '16px 0' }}>veya</div>
-                                    <div className="form-field">
+
+                                    <div className="tpl-divider-text">veya doğrudan numara girin</div>
+
+                                    <div className="tpl-form-group">
                                         <label>Telefon Numarası</label>
-                                        <input type="text" className="form-input" value={phoneNumber}
+                                        <input
+                                            type="text"
+                                            className="tpl-input"
+                                            value={phoneNumber}
                                             onChange={(e) => setPhoneNumber(e.target.value)}
-                                            placeholder="905551234567" />
-                                        <small className="form-hint">Ülke kodu ile birlikte girin (+ işareti olmadan)</small>
+                                            placeholder="örn: 905551234567"
+                                        />
+                                        <small className="tpl-field-hint">Ülke kodu ile birlikte (+ olmadan) girin.</small>
                                     </div>
                                 </>
                             )}
 
                             {templateVariables.length > 0 && (
-                                <div className="variables-section">
-                                    <h4>Değişkenler</h4>
-                                    {templateVariables.map((v, idx) => (
-                                        <div key={idx} className="variable-input">
-                                            <label>{v.placeholder}</label>
-                                            <input type="text" className="form-input" value={v.value}
-                                                onChange={(e) => {
-                                                    const newVars = [...templateVariables];
-                                                    newVars[idx].value = e.target.value;
-                                                    setTemplateVariables(newVars);
-                                                }}
-                                                placeholder={`Değer ${idx + 1}`} />
-                                        </div>
-                                    ))}
+                                <div className="tpl-variables-box">
+                                    <h4>Dinamik Değişken Değerleri</h4>
+                                    <div className="tpl-var-inputs-grid">
+                                        {templateVariables.map((v, idx) => (
+                                            <div key={idx} className="tpl-var-field">
+                                                <label>{v.placeholder} Değeri</label>
+                                                <input
+                                                    type="text"
+                                                    className="tpl-input"
+                                                    value={v.value}
+                                                    onChange={(e) => {
+                                                        const newVars = [...templateVariables];
+                                                        newVars[idx].value = e.target.value;
+                                                        setTemplateVariables(newVars);
+                                                    }}
+                                                    placeholder={`Örn: Değer ${idx + 1}`}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
-                        <div className="wa-modal-footer">
-                            <button className="btn-cancel" onClick={() => setShowSendModal(false)}>İptal</button>
-                            <button className="btn-save" onClick={handleSendTemplate}
-                                disabled={sending || (!selectedContact && !phoneNumber)}>
-                                {sending ? 'Gönderiliyor...' : '📨 Gönder'}
+
+                        <div className="tpl-modal-footer">
+                            <button className="tpl-btn tpl-btn-secondary" onClick={() => setShowSendModal(false)}>
+                                İptal
+                            </button>
+                            <button
+                                className="tpl-btn tpl-btn-primary"
+                                onClick={handleSendTemplate}
+                                disabled={sending || (!selectedContact && !phoneNumber)}
+                            >
+                                {sending ? 'Gönderiliyor...' : '📨 Şablonu Gönder'}
                             </button>
                         </div>
                     </div>

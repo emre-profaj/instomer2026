@@ -580,6 +580,7 @@ model WebWidget {
   subtitle           String?   @default("Size nasıl yardımcı olabiliriz?")
   primaryColor       String    @default("#ef4444")
   greetingMessage    String?   @default("Merhaba! Size nasıl yardımcı olabilirim?")
+  quickReplies       Json? // List of quick reply prompts e.g. ["✨ Mutfak için parlak modeller", "📐 60x120 Ebatlı seramikler"]
   isActive           Boolean   @default(true)
   position           String    @default("RIGHT")
   width              Int       @default(350)
