@@ -737,7 +737,11 @@ export const webhookHandler = async (req, res) => {
                     const rawStatus = statusUpdate.status;
                     const status = rawStatus?.toUpperCase(); // sent, delivered, read, failed
 
-                    console.log(`📊 [WA STATUS] Message: ${messageId}, Raw: ${rawStatus}, Parsed: ${status}`);
+                    if (statusUpdate.errors && statusUpdate.errors.length > 0) {
+                        console.error(`❌ [WA STATUS FAILED] Message: ${messageId} | Recipient: ${statusUpdate.recipient_id} | Errors:`, JSON.stringify(statusUpdate.errors, null, 2));
+                    } else {
+                        console.log(`📊 [WA STATUS] Message: ${messageId}, Raw: ${rawStatus}, Parsed: ${status}`);
+                    }
 
                     if (messageId && status) {
                         // Skip 'SENT' status as we already set it when sending
