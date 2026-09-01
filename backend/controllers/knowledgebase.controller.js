@@ -35,19 +35,21 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
         }
 
         if (!retellKbId) {
-            // Yeni Retell KB oluştur
+            // Yeni Retell KB oluştur (Retell max name length: 40 chars)
+            const safeName = (kbEntry.title || 'Instomer KB').trim().substring(0, 35);
             const newKb = await client.knowledgeBase.create({
-                knowledge_base_name: `📄 ${kbEntry.title}`.substring(0, 80)
+                knowledge_base_name: safeName
             });
             retellKbId = newKb.knowledge_base_id;
             isNew = true;
         }
 
-        // İçeriği ekle
+        // İçeriği ekle (Retell boş içerik kabul etmez)
+        const textContent = (kbEntry.content || kbEntry.title || '').trim() || 'Instomer bilgi tabanı kaydı.';
         await client.knowledgeBase.addSources(retellKbId, {
             knowledge_base_texts: [{
-                title: kbEntry.title || 'Instomer KB',
-                text: kbEntry.content || ''
+                title: (kbEntry.title || 'Instomer KB').substring(0, 35),
+                text: textContent
             }]
         });
 
