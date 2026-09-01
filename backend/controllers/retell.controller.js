@@ -2079,7 +2079,20 @@ export const getAgents = async (req, res) => {
         }
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
-        const agents = await client.agent.list();
+        const rawAgents = await client.agent.list();
+        
+        // Retell SDK v4+ may return iterable/paginated response instead of plain array
+        let agents;
+        if (Array.isArray(rawAgents)) {
+            agents = rawAgents;
+        } else if (rawAgents?.data && Array.isArray(rawAgents.data)) {
+            agents = rawAgents.data;
+        } else if (rawAgents && typeof rawAgents[Symbol.iterator] === 'function') {
+            agents = [...rawAgents];
+        } else {
+            agents = [];
+            console.warn('⚠️ [Retell] Unexpected agent.list() response type:', typeof rawAgents, JSON.stringify(rawAgents)?.substring(0, 200));
+        }
 
         // Unique by agent_id, prioritizing latest version and published state
         const uniqueAgentsMap = new Map();
@@ -2109,6 +2122,7 @@ export const getAgents = async (req, res) => {
             if (publishedOnly.length > 0) uniqueAgents = publishedOnly;
         }
 
+        console.log(`📞 [Retell] getAgents: raw=${agents.length}, unique=${uniqueAgents.length}`);
         res.json({ agents: uniqueAgents });
     } catch (error) {
         console.error('❌ [Retell] Get agents error:', error);

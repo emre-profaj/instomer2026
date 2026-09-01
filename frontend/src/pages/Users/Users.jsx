@@ -867,7 +867,7 @@ const UsersTeams = () => {
                     <div className="ut-panel-header">
                         <UsersIcon size={16} />
                         <span>Temsilciler</span>
-                        <span className="ut-panel-count">{members.length + bots.length}</span>
+                        <span className="ut-panel-count">{members.length + bots.length + retellAgents.length}</span>
                     </div>
                     <div className="ut-panel-body">
                         {membersLoading ? (
