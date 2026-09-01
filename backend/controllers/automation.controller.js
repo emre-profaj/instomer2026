@@ -260,12 +260,21 @@ export const createTemplate = async (req, res) => {
             console.error('❌ [CREATE_TEMPLATE] Meta API Error:', JSON.stringify(metaErr.response?.data || metaErr.message, null, 2));
             const responseData = metaErr.response?.data;
             let errDetail = 'Meta API şablon oluşturmayı reddetti.';
-            if (responseData) {
-                errDetail = JSON.stringify(responseData);
+            if (responseData?.error) {
+                const metaError = responseData.error;
+                if (metaError.error_subcode === 2388024 || metaError.error_user_title === 'Content in this language already exists') {
+                    errDetail = `"${sanitizedName}" adında ve Türkçe dilinde Meta hesabınızda zaten kayıtlı bir şablon var. Lütfen farklı bir şablon adı girin.`;
+                } else if (metaError.error_user_msg) {
+                    errDetail = `${metaError.error_user_title ? metaError.error_user_title + ' - ' : ''}${metaError.error_user_msg}`;
+                } else if (metaError.message) {
+                    errDetail = metaError.message;
+                }
+            } else if (responseData) {
+                errDetail = typeof responseData === 'string' ? responseData : JSON.stringify(responseData);
             } else {
                 errDetail = metaErr.message;
             }
-            return res.status(400).json({ error: `Meta API Hatası: ${errDetail}` });
+            return res.status(400).json({ error: errDetail });
         }
 
         // 4. Save to Database
