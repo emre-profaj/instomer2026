@@ -407,11 +407,15 @@ export async function agentTakesOver(conversationId, agentId) {
     }
 }
 
+let isProcessingBotResponses = false;
+
 /**
  * Gecikme süresi dolan konuşmaları kontrol et ve bot'u tetikle
  * Bu fonksiyon periyodik olarak çalıştırılmalı (cron job gibi)
  */
 export async function processPendingBotResponses() {
+    if (isProcessingBotResponses) return;
+    isProcessingBotResponses = true;
     try {
         const now = new Date();
 
@@ -434,7 +438,8 @@ export async function processPendingBotResponses() {
                 workspace: true,
                 contact: true,
                 facebookPage: true,
-                whatsappPhoneNumber: true
+                whatsappPhoneNumber: true,
+                assignedBot: true
             }
         });
 
@@ -468,12 +473,11 @@ export async function processPendingBotResponses() {
             try {
                 const { getAutoReply } = await import('../controllers/ai.controller.js');
 
-                // Kanal tipini belirle
-                let channel = conversation.channel?.toLowerCase() || 'facebook';
-                if (channel === 'instagram') channel = 'instagram';
-                else if (channel === 'whatsapp') channel = 'whatsapp';
-                else channel = 'facebook';
+                // Bot adını ve kanal tipini belirle
+                const botName = conversation.assignedBot?.name || 'Instomer AI';
+                const channel = conversation.channel || 'WHATSAPP';
 
+                // Bot cevabını üret
                 const aiResponse = await getAutoReply(
                     conversation.workspaceId,
                     conversation.id,
@@ -547,6 +551,8 @@ export async function processPendingBotResponses() {
         }
     } catch (error) {
         console.error('❌ [Bot Scheduler] Process pending bot responses error:', error);
+    } finally {
+        isProcessingBotResponses = false;
     }
 }
 

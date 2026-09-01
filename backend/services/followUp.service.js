@@ -220,11 +220,15 @@ async function shouldSkipReminder(conversation) {
     return null; // No skip — send the reminder
 }
 
+let isProcessingSmartReminders = false;
+
 /**
  * Main processor: Process all smart reminders
  * Called every 60 seconds
  */
 export const processSmartReminders = async () => {
+    if (isProcessingSmartReminders) return;
+    isProcessingSmartReminders = true;
     try {
         const now = new Date();
         
@@ -261,7 +265,7 @@ export const processSmartReminders = async () => {
                 emailChannel: { include: { assignedBot: true } }
             },
             orderBy: { lastBotMessageAt: 'desc' }, // Process most recent first
-            take: 200 // Increased batch limit
+            take: 20 // Batch limit: Process up to 20 conversations per minute
         });
 
         if (conversations.length === 0) return;
@@ -328,6 +332,8 @@ export const processSmartReminders = async () => {
         }
     } catch (error) {
         console.error('❌ [SmartReminder] Error:', error.message);
+    } finally {
+        isProcessingSmartReminders = false;
     }
 };
 
