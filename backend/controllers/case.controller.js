@@ -1,5 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 
 // ─── Case Number Generator ───────────────────────────────────────────────

@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { changeFunnelStage } from './funnelStageManager.service.js';
-
-const prisma = new PrismaClient();
 
 /**
  * Funnel Aşama Giriş Kuralları Motoru

@@ -1,5 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 // ── List groups ──────────────────────────────────
 export const getGroups = async (req, res) => {

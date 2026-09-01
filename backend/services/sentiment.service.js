@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { analyzeSentimentForConversation } from '../controllers/ai.controller.js';
-
-const prisma = new PrismaClient();
 
 let isProcessing = false;
 
