@@ -1619,8 +1619,12 @@ async function checkOverdueAgentCalls() {
     }
 }
 
+let isProcessingScheduledCalls = false;
+
 // Cron: process due ScheduledCalls every 60 seconds (persistent across restarts)
 export const processScheduledCalls = async () => {
+    if (isProcessingScheduledCalls) return;
+    isProcessingScheduledCalls = true;
     try {
         // AI Fallback kontrolü aktif:
         await checkOverdueAgentCalls();

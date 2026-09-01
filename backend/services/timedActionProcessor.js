@@ -7,7 +7,11 @@ import { executeSingleAction } from './stageAutomation.service.js';
  * Call this from a cron job or setInterval.
  */
 
+let isProcessingTimedActions = false;
+
 export async function processTimedActions() {
+    if (isProcessingTimedActions) return { processed: 0 };
+    isProcessingTimedActions = true;
     const now = new Date();
     
     try {
@@ -213,5 +217,7 @@ export async function processTimedActions() {
     } catch (err) {
         console.error('[TimedActionProcessor] Fatal error:', err.message);
         return { processed: 0, errors: 1 };
+    } finally {
+        isProcessingTimedActions = false;
     }
 }

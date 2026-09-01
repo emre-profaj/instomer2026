@@ -81,10 +81,14 @@ export const cancelScheduledMessage = async (req, res) => {
     }
 };
 
+let isProcessingScheduledMessages = false;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cron Job: Her dakika çalışır ve PENDING mesajları gönderir
 // ─────────────────────────────────────────────────────────────────────────────
 export const processScheduledMessages = async () => {
+    if (isProcessingScheduledMessages) return;
+    isProcessingScheduledMessages = true;
     try {
         const now = new Date();
         const pendingMessages = await prisma.scheduledMessage.findMany({
@@ -139,5 +143,7 @@ export const processScheduledMessages = async () => {
         }
     } catch (error) {
         console.error('❌ [ScheduledMsg] processScheduledMessages error:', error.message);
+    } finally {
+        isProcessingScheduledMessages = false;
     }
 };

@@ -352,8 +352,11 @@ httpServer.listen(PORT, () => {
 
 // Email Polling System - checks for new emails every 2 minutes
 const EMAIL_POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
+let isProcessingEmails = false;
 
 async function pollEmails() {
+  if (isProcessingEmails) return;
+  isProcessingEmails = true;
   try {
     const channels = await prisma.emailChannel.findMany({
       where: { isActive: true }
@@ -372,6 +375,8 @@ async function pollEmails() {
     }
   } catch (error) {
     console.error('❌ [Email Poll] Error:', error.message);
+  } finally {
+    isProcessingEmails = false;
   }
 }
 
@@ -419,8 +424,11 @@ setTimeout(() => {
 // Appointment Reminder Notification Processor
 // Checks every 60 seconds for due appointments and creates notifications
 const APPOINTMENT_REMINDER_INTERVAL = 60 * 1000; // 1 dakika
+let isProcessingAppointmentReminders = false;
 
 async function processAppointmentReminders() {
+  if (isProcessingAppointmentReminders) return;
+  isProcessingAppointmentReminders = true;
   try {
     const now = new Date();
 
@@ -465,6 +473,8 @@ async function processAppointmentReminders() {
     }
   } catch (error) {
     console.error('❌ [Reminder] Processor error:', error.message);
+  } finally {
+    isProcessingAppointmentReminders = false;
   }
 }
 

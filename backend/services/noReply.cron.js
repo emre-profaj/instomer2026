@@ -12,7 +12,11 @@ import { executeFlowsByTrigger } from '../controllers/flow.controller.js';
 // Reset on server restart (intentional — re-check is safe)
 const recentlyFired = new Set();
 
+let isProcessingNoReply = false;
+
 export async function processNoReplyFlows() {
+    if (isProcessingNoReply) return;
+    isProcessingNoReply = true;
     try {
         // Get all workspaces that have at least one active NO_REPLY flow
         const noReplyFlows = await prisma.flow.findMany({
@@ -66,7 +70,7 @@ export async function processNoReplyFlows() {
                     if (!lastMsg || !lastMsg.isFromContact) continue;
 
                     // Dedup key: don't re-fire same conv+flow within same hour
-                    const dedupeKey = `${flow.id}:${conv.id}:${Math.floor(Date.now() / (60 * 60 * 1000))}`;
+                    const dedupeKey = `${flow.id}:${conv.id}:${lastMsg.id}`;
                     if (recentlyFired.has(dedupeKey)) continue;
                     recentlyFired.add(dedupeKey);
 
@@ -87,5 +91,7 @@ export async function processNoReplyFlows() {
         }
     } catch (err) {
         console.error('❌ [NO_REPLY CRON] Fatal error:', err.message);
+    } finally {
+        isProcessingNoReply = false;
     }
 }
