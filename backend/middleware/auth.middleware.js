@@ -55,6 +55,19 @@ export const requireRole = (...roles) => {
     };
 };
 
+// In-memory cache for workspace memberships (TTL: 60s) to eliminate DB query storms on parallel requests
+const memberCache = new Map();
+const MEMBER_CACHE_TTL = 60 * 1000;
+
+export const invalidateMemberCache = (userId, workspaceId) => {
+    if (userId && workspaceId) memberCache.delete(`${userId}:${workspaceId}`);
+    else if (userId) {
+        for (const k of memberCache.keys()) {
+            if (k.startsWith(`${userId}:`)) memberCache.delete(k);
+        }
+    } else memberCache.clear();
+};
+
 export const requireWorkspaceAccess = async (req, res, next) => {
     try {
         const workspaceId = req.params.workspaceId || req.body.workspaceId;
@@ -70,6 +83,14 @@ export const requireWorkspaceAccess = async (req, res, next) => {
                 workspaceId: workspaceId,
                 role: 'SUPER_ADMIN'
             };
+            return next();
+        }
+
+        // Check in-memory cache first
+        const cacheKey = `${req.user.id}:${workspaceId}`;
+        const cached = memberCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < MEMBER_CACHE_TTL) {
+            req.workspaceMember = cached.member;
             return next();
         }
 
@@ -93,14 +114,15 @@ export const requireWorkspaceAccess = async (req, res, next) => {
 
             if (workspace?.companyId && workspace?.company?.ownerId === req.user.id) {
                 // Company owner can access all workspaces within their company
-                console.log(`✅ [Auth] Company Owner Access: User ${req.user.id} accessing workspace ${workspaceId} via company ${workspace.companyId}`);
-                req.workspaceMember = {
+                const companyOwnerMember = {
                     userId: req.user.id,
                     workspaceId: workspaceId,
                     role: 'OWNER',
                     isCompanyOwner: true,
                     companyId: workspace.companyId
                 };
+                memberCache.set(cacheKey, { member: companyOwnerMember, timestamp: Date.now() });
+                req.workspaceMember = companyOwnerMember;
                 return next();
             }
 
@@ -108,11 +130,13 @@ export const requireWorkspaceAccess = async (req, res, next) => {
             return res.status(403).json({ error: 'Access denied to this workspace' });
         }
 
-        // Always use the workspace-specific member role for access control.
-        // SUPER_ADMIN bypass is already handled above (line 66-73).
-        // The workspace member role from DB is authoritative — never override it
-        // with the global user.role, otherwise AGENT users whose global role
-        // is still OWNER/ADMIN would bypass RBAC filters.
+        memberCache.set(cacheKey, { member, timestamp: Date.now() });
+        if (memberCache.size > 1000) {
+            const now = Date.now();
+            for (const [k, v] of memberCache.entries()) {
+                if (now - v.timestamp > MEMBER_CACHE_TTL) memberCache.delete(k);
+            }
+        }
 
         req.workspaceMember = member;
         next();

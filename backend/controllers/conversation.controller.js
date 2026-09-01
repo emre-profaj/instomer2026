@@ -292,11 +292,6 @@ export const getConversations = async (req, res) => {
                         isFromContact: true
                     }
                 },
-                _count: {
-                    select: {
-                        messages: true
-                    }
-                },
                 case: {
                     select: {
                         id: true,

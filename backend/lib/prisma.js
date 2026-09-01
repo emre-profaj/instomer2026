@@ -1,20 +1,23 @@
 import { PrismaClient } from '@prisma/client';
 
 function getDatabaseUrl() {
-    const raw = process.env.DATABASE_URL;
+    let raw = (process.env.DATABASE_URL || '').trim();
     if (!raw) return undefined;
-    try {
-        const u = new URL(raw);
-        if (!u.searchParams.has('connection_limit')) {
-            u.searchParams.set('connection_limit', '30');
-        }
-        if (!u.searchParams.has('pool_timeout')) {
-            u.searchParams.set('pool_timeout', '20');
-        }
-        return u.toString();
-    } catch {
-        return undefined;
+    // Strip wrapping quotes if any
+    raw = raw.replace(/^["']|["']$/g, '');
+
+    const hasLimit = /connection_limit=\d+/.test(raw);
+    const hasTimeout = /pool_timeout=\d+/.test(raw);
+
+    const separator = raw.includes('?') ? '&' : '?';
+    const params = [];
+    if (!hasLimit) params.push('connection_limit=30');
+    if (!hasTimeout) params.push('pool_timeout=20');
+
+    if (params.length > 0) {
+        raw = `${raw}${separator}${params.join('&')}`;
     }
+    return raw;
 }
 
 const dbUrl = getDatabaseUrl();
