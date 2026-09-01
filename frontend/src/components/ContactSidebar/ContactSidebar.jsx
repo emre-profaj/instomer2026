@@ -242,6 +242,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [callRefreshKey, setCallRefreshKey] = useState(0);
     const [retellAgents, setRetellAgents] = useState([]);
     const [selectedAgentId, setSelectedAgentId] = useState('');
+    const [selectedRetellTemplateId, setSelectedRetellTemplateId] = useState(null);
+    const [retellCallTemplates, setRetellCallTemplates] = useState([]);
     const [reminderForm, setReminderForm] = useState({
         reminderDate: '',
         assignedToId: '',
@@ -1678,6 +1680,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             setSelectedAgentId('');
                                                             setShowCallPopup(true);
                                                             retellAPI.getAgents(currentWorkspace.id).then(res => setRetellAgents(res.data.agents || [])).catch(() => { });
+                                                            retellAPI.getTemplates(currentWorkspace.id).then(res => setRetellCallTemplates(res.data?.templates || res.data || [])).catch(() => { });
+                                                            setSelectedRetellTemplateId(null);
                                                         }}
                                                     >
                                                         <PhoneCall size={14} />
@@ -1930,6 +1934,53 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </div>
                                             )}
 
+                                            {/* Lead Source — Düzenlenebilir */}
+                                            <div style={{
+                                                margin: '0 16px 12px 16px', padding: '12px 16px',
+                                                background: '#ffffff',
+                                                borderRadius: '12px', border: '1px solid #e2e8f0'
+                                            }}>
+                                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                                📍 Bizi Nereden Buldunuz?
+                                                </div>
+                                                <select
+                                                    value={profile?.leadSource || ''}
+                                                    onChange={async (e) => {
+                                                        const val = e.target.value;
+                                                        setProfile(prev => ({ ...prev, leadSource: val }));
+                                                        try {
+                                                            await contactAPI.update(conversationData?.workspaceId || profile?.workspaceId, profile.id, { leadSource: val || null });
+                                                        } catch (err) { console.error(err); }
+                                                    }}
+                                                    style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, color: '#334155', background: '#f8fafc' }}
+                                                >
+                                                    <option value="">Seçilmedi</option>
+                                                    <option value="INBOUND">📞 Gelen Arama</option>
+                                                    <option value="SOCIAL_MEDIA">📱 Sosyal Medya</option>
+                                                    <option value="FACEBOOK">📘 Facebook</option>
+                                                    <option value="INSTAGRAM">📸 Instagram</option>
+                                                    <option value="GOOGLE">🔍 Google</option>
+                                                    <option value="REFERRAL">🤝 Referans</option>
+                                                    <option value="WEBSITE">🌐 Web Sitesi</option>
+                                                    <option value="WALK_IN">🚶 Yüz Yüze</option>
+                                                    <option value="EVENT">🎪 Etkinlik/Fuar</option>
+                                                    <option value="OTHER">📋 Diğer</option>
+                                                </select>
+                                                {profile?.leadSource && (
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Detay (opsiyonel)"
+                                                        value={profile?.leadSourceDetail || ''}
+                                                        onChange={(e) => setProfile(prev => ({ ...prev, leadSourceDetail: e.target.value }))}
+                                                        onBlur={async (e) => {
+                                                            try {
+                                                                await contactAPI.update(conversationData?.workspaceId || profile?.workspaceId, profile.id, { leadSourceDetail: e.target.value || null });
+                                                            } catch (err) { console.error(err); }
+                                                        }}
+                                                        style={{ width: '100%', marginTop: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 11, color: '#475569' }}
+                                                    />
+                                                )}
+                                            </div>
                                             {/* Grup Seçimi */}
                                             {allGroups.length > 0 && (
                                                 <div style={{ padding: '6px 0 8px', borderBottom: '1px solid #f3f4f6' }}>
@@ -4966,6 +5017,25 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             </select>
                         </div>
 
+                        {/* Arama Şablonu Seçimi */}
+                        <div style={{ marginBottom: 10 }}>
+                            <label style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 4, display: 'block' }}>📋 Arama Şablonu (opsiyonel)</label>
+                            <select
+                                value={selectedRetellTemplateId || ''}
+                                onChange={e => setSelectedRetellTemplateId(e.target.value || null)}
+                                style={{
+                                    width: '100%', padding: '10px 12px', borderRadius: '10px',
+                                    border: '1px solid #e5e7eb', fontSize: '13px', background: '#f9fafb',
+                                    outline: 'none', cursor: 'pointer'
+                                }}
+                            >
+                                <option value="">Şablon Kullanma</option>
+                                {(retellCallTemplates || []).map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         {!callScheduleMode ? (
                             <div className="call-popup-options">
                                 <button
@@ -4977,7 +5047,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 contactId: profile.id,
                                                 contactName: profile.name,
                                                 conversationId: conversationId || null,
-                                                ...(selectedAgentId && { agentId: selectedAgentId })
+                                                ...(selectedAgentId && { agentId: selectedAgentId }),
+                                                ...(selectedRetellTemplateId && { retellTemplateId: selectedRetellTemplateId })
                                             });
                                             setShowCallPopup(false);
                                             alert('✅ Arama başlatıldı!');
@@ -5024,7 +5095,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     contactId: profile.id,
                                                     contactName: profile.name,
                                                     scheduledAt: new Date(scheduledDateTime).toISOString(),
-                                                    ...(selectedAgentId && { agentId: selectedAgentId })
+                                                    ...(selectedAgentId && { agentId: selectedAgentId }),
+                                                    ...(selectedRetellTemplateId && { retellTemplateId: selectedRetellTemplateId })
                                                 });
                                                 setShowCallPopup(false);
                                                 setCallScheduleMode(false);

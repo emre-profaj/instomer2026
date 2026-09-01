@@ -18,33 +18,33 @@ model GlobalSettings {
 }
 
 model User {
-  id                    String                 @id @default(uuid())
-  email                 String                 @unique
-  password              String?
-  name                  String
-  avatar                String?
-  role                  String                 @default("USER")
-  facebookId            String?                @unique
-  facebookAccessToken   String?
-  isOnline              Boolean                @default(false)
-  lastSeenAt            DateTime?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  transfersTo           ConversationTransfer[] @relation("TransfersTo")
-  transfersFrom         ConversationTransfer[] @relation("TransfersFrom")
-  assignedConversations Conversation[]
-  internalNotes         InternalNote[]
-  sentMessages          Message[]
-  teamMemberships       TeamMember[]
-  schedules             UserSchedule[]
-  workspaceMembers      WorkspaceMember[]
-  ownedCompanies        Company[]              @relation("CompanyOwner")
-  assignedDeals         Deal[]                 @relation("DealAssignee")
-  notifications         Notification[]
-  workingHours          Json?
-  assignedActivities    ContactActivity[]      @relation("ActivityAssignee")
-  createdActivities     ContactActivity[]      @relation("ActivityCreator")
-  assignedCases         Case[]                 @relation("CaseAssignee")
+  id                      String                 @id @default(uuid())
+  email                   String                 @unique
+  password                String?
+  name                    String
+  avatar                  String?
+  role                    String                 @default("USER")
+  facebookId              String?                @unique
+  facebookAccessToken     String?
+  isOnline                Boolean                @default(false)
+  lastSeenAt              DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  transfersTo             ConversationTransfer[] @relation("TransfersTo")
+  transfersFrom           ConversationTransfer[] @relation("TransfersFrom")
+  assignedConversations   Conversation[]
+  internalNotes           InternalNote[]
+  sentMessages            Message[]
+  teamMemberships         TeamMember[]
+  schedules               UserSchedule[]
+  workspaceMembers        WorkspaceMember[]
+  ownedCompanies          Company[]              @relation("CompanyOwner")
+  assignedDeals           Deal[]                 @relation("DealAssignee")
+  notifications           Notification[]
+  workingHours            Json?
+  assignedActivities      ContactActivity[]      @relation("ActivityAssignee")
+  createdActivities       ContactActivity[]      @relation("ActivityCreator")
+  assignedCases           Case[]                 @relation("CaseAssignee")
   notificationPreferences Json?
 
   @@map("users")
@@ -190,11 +190,13 @@ model Workspace {
 
   defaultFunnelId String? // Varsayılan satış akışı ID'si
 
-  agentDataVisibility String          @default("ALL") // SELF, TEAM, ALL
-  leadScoringTemplate String          @default("default") // default, sales, support, appointment
+  agentDataVisibility String             @default("ALL") // SELF, TEAM, ALL
+  leadScoringTemplate String             @default("default") // default, sales, support, appointment
   CaseType            CaseType[]
   EmailTemplate       EmailTemplate[]
   SmsTemplate         SmsTemplate[]
+  RetellTemplate      RetellTemplate[]
+  ScheduledMessage    ScheduledMessage[]
 
   @@index([companyId])
   @@map("workspaces")
@@ -211,7 +213,7 @@ model KnowledgeBase {
   lastSyncedAt DateTime? // Son güncelleme zamanı
   filename     String?
   fileType     String?
-  retellKbId   String?   // Retell KB ID — each Instomer KB maps to its own Retell KB
+  retellKbId   String? // Retell KB ID — each Instomer KB maps to its own Retell KB
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -375,6 +377,8 @@ model Contact {
   tags              String               @default("[]")
   status            String               @default("NEW")
   source            String               @default("MANUAL")
+  leadSource        String? // "Bizi nereden buldunuz?": INBOUND, SOCIAL_MEDIA, FACEBOOK, GOOGLE, REFERRAL, WALK_IN, EVENT, OTHER
+  leadSourceDetail  String? // Serbest metin: "Instagram reklamı", "Ahmet Bey referansı"
   category          String               @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
   funnelType        String? // Global stage category (e.g. Fırsat)
   funnelStageId     String? // Exact stage ID (e.g. Sıcak Fırsat)
@@ -407,8 +411,9 @@ model Contact {
   leadScore         Int                  @default(0)
   leadTemperature   String               @default("COLD") // COLD, COOL, WARM, HOT, FIRE
   attributions      ContactAttribution[]
-  automationLogs    AutomationLog[]      // Otomasyon çalışma logları
-  birthDate         DateTime?            // Doğum günü
+  automationLogs    AutomationLog[] // Otomasyon çalışma logları
+  scheduledMessages ScheduledMessage[] // Zamanlanmış mesajlar
+  birthDate         DateTime? // Doğum günü
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -498,6 +503,13 @@ model Conversation {
   events                ConversationEvent[]
   formSubmissions       FormSubmission[]
   deals                 Deal[]
+  scheduledMessages     ScheduledMessage[]
+
+  // Inbox & Marketing
+  isBulkSend           Boolean            @default(false)
+  campaignId           String?
+  campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  lastContactMessageAt DateTime?
 
   // Performance indexes for high-frequency cron queries
   @@index([workspaceId])
@@ -550,6 +562,7 @@ model Message {
   emailSubject      String?
   // Dahili mesajlar (ekip içi, müşteri görmez)
   isInternal        Boolean      @default(false)
+  isManual          Boolean      @default(false) // Agent elle mi girdi (AI arama kararını etkilemez)
   mentionedIds      String? // JSON: ["userId1", "userId2"]
   sender            User?        @relation(fields: [senderId], references: [id])
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -1860,6 +1873,10 @@ model Case {
   activities    ContactActivity[]
   deals         Deal[]
 
+  // Kampanya takibi
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+
   // Ürün / Kategori
   categoryId      String?
   category        TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -1939,8 +1956,10 @@ model MarketingCampaign {
   workspaceId    String
   name           String
   description    String?
-  templateId     String
-  status         String               @default("DRAFT") // DRAFT, SCHEDULED, RUNNING, COMPLETED, FAILED
+  templateId     String?
+  status         String               @default("DRAFT") // DRAFT, SCHEDULED, SENDING, RUNNING, COMPLETED, FAILED
+  type           String               @default("BULK") // BULK, AUTOMATION, CALL
+  automationId   String? // Hangi otomasyon kuralından oluşturuldu
   scheduledAt    DateTime?
   sentAt         DateTime?
   totalCount     Int                  @default(0)
@@ -1948,13 +1967,18 @@ model MarketingCampaign {
   deliveredCount Int                  @default(0)
   readCount      Int                  @default(0)
   failedCount    Int                  @default(0)
+  repliedCount   Int                  @default(0)
+  convertedCount Int                  @default(0)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  template       WhatsappTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template       WhatsappTemplate?    @relation(fields: [templateId], references: [id], onDelete: Cascade)
   recipients     MarketingRecipient[]
+  conversations  Conversation[]
+  cases          Case[]
 
   @@index([workspaceId])
+  @@index([workspaceId, type])
   @@map("marketing_campaigns")
 }
 
@@ -2136,7 +2160,7 @@ model TelsamCallLog {
 model AutomationLog {
   id          String   @id @default(uuid())
   workspaceId String
-  ruleType    String   // BIRTHDAY_GREETING, DRIP_DAY_1, CALL_SUCCESS_NOTIFY vs
+  ruleType    String // BIRTHDAY_GREETING, DRIP_DAY_1, CALL_SUCCESS_NOTIFY vs
   contactId   String
   executedAt  DateTime @default(now())
   result      String   @default("SUCCESS") // SUCCESS, FAILED, SKIPPED
@@ -2148,4 +2172,58 @@ model AutomationLog {
   @@index([workspaceId, ruleType, contactId])
   @@index([workspaceId, ruleType, executedAt])
   @@map("automation_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Retell Arama Şablonları
+// WhatsApp şablonları gibi, farklı amaçlara yönelik arama senaryoları.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RetellTemplate {
+  id           String    @id @default(uuid())
+  workspaceId  String
+  name         String // "Randevu Teyidi", "Urlaone Bilgilendirme"
+  description  String?
+  icon         String? // Emoji
+  agentId      String // Bağlı Retell agent ID
+  beginMessage String?   @db.Text // "Merhaba {{customer_name}}, randevunuzu teyit etmek için aradık."
+  promptSuffix String?   @db.Text // Agent prompt'unun sonuna eklenen ek talimat
+  dynamicVars  Json? // { "call_purpose": "randevu_teyit", "product": "Urlaone" }
+  isActive     Boolean   @default(true)
+  order        Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("retell_templates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zamanlanmış Mesajlar (Hatırlatıcılar)
+// Bot hatırlatıcıları ve otomasyon gecikmeli mesajları için DB tabanlı kuyruk.
+// Cron job her dakika kontrol eder ve gönderir.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ScheduledMessage {
+  id             String       @id @default(uuid())
+  workspaceId    String
+  conversationId String
+  contactId      String
+  botId          String? // Hangi bot tanımladı
+  automationId   String? // Hangi otomasyon kuralından
+  content        String       @db.Text
+  scheduledAt    DateTime // Ne zaman gönderilecek
+  sentAt         DateTime? // Gönderildi mi
+  status         String       @default("PENDING") // PENDING, SENT, FAILED, CANCELLED
+  failReason     String?
+  createdAt      DateTime     @default(now())
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt]) // Cron job: PENDING + scheduledAt <= now()
+  @@index([workspaceId])
+  @@index([workspaceId, botId])
+  @@map("scheduled_messages")
 }

@@ -169,12 +169,18 @@ export async function processIncoming(normalizedMsg) {
     });
 
     // ── 8. Konuşma güncelle ───────────────────────────────
+    const convUpdateData = {
+      lastMessageAt: new Date(),
+      lastContactMessageAt: new Date(),
+      unreadCount: { increment: 1 }
+    };
+    // Bulk gönderimden gelen sohbetleri müşteri cevap verince aktifleştir
+    if (conversation.isBulkSend) {
+      convUpdateData.isBulkSend = false;
+    }
     await prisma.conversation.update({
       where: { id: conversation.id },
-      data: {
-        lastMessageAt: new Date(),
-        unreadCount: { increment: 1 }
-      }
+      data: convUpdateData
     });
 
     // ── 9. Follow-up sıfırla ──────────────────────────────
@@ -183,6 +189,16 @@ export async function processIncoming(normalizedMsg) {
       const resetFlags = followUpModule.resetFollowUpFlags || followUpModule.default?.resetFollowUpFlags;
       if (resetFlags) await resetFlags(conversation.id);
     } catch (e) { /* opsiyonel */ }
+
+    // ── 9b. Kampanya cevap sayısını artır ────────────────
+    if (conversation.campaignId) {
+      try {
+        await prisma.marketingCampaign.update({
+          where: { id: conversation.campaignId },
+          data: { repliedCount: { increment: 1 } }
+        });
+      } catch (_) {}
+    }
 
     // ── 10. WebSocket bildirim ─────────────────────────────
     emitToWorkspace(workspaceId, 'new_message', {

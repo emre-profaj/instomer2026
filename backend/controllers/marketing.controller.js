@@ -536,6 +536,25 @@ export const bulkSendTemplate = async (req, res) => {
             startedAt: Date.now()
         });
 
+        // ── Kampanya kaydı oluştur ──
+        let campaign = null;
+        try {
+            campaign = await prisma.marketingCampaign.create({
+                data: {
+                    workspaceId,
+                    name: `${template.name} - ${new Date().toLocaleDateString('tr-TR')}`,
+                    templateId: template.id,
+                    type: 'BULK',
+                    status: 'SENDING',
+                    totalCount: dedupedContacts.length
+                }
+            });
+            // campaignId'yi job tracker'a da ekle (sonradan conversation'lara bağlamak için)
+            bulkSendJobs.get(jobId).campaignId = campaign.id;
+        } catch (campErr) {
+            console.error('❌ [BulkSend] Campaign creation failed:', campErr.message);
+        }
+
         // Respond immediately with jobId — send in background
         res.json({
             success: true,
@@ -644,7 +663,7 @@ export const bulkSendTemplate = async (req, res) => {
                     });
                     if (!conversation) {
                         conversation = await prisma.conversation.create({
-                            data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN' }
+                            data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN', isBulkSend: true, ...(campaign?.id && { campaignId: campaign.id }) }
                         });
                     }
                     await prisma.message.create({
@@ -779,7 +798,7 @@ export const bulkSendTemplate = async (req, res) => {
                         });
                         if (!conversation) {
                             conversation = await prisma.conversation.create({
-                                data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN' }
+                                data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN', isBulkSend: true, ...(campaign?.id && { campaignId: campaign.id }) }
                             });
                         }
                         await prisma.message.create({
@@ -804,12 +823,74 @@ export const bulkSendTemplate = async (req, res) => {
 
             // Mark job as done
             if (job) { job.done = true; job.sent = sent; job.failed = failed; }
+            // Kampanya kaydını güncelle
+            if (campaign?.id) {
+                try {
+                    await prisma.marketingCampaign.update({
+                        where: { id: campaign.id },
+                        data: { status: 'COMPLETED', sentCount: sent, failedCount: failed, sentAt: new Date() }
+                    });
+                } catch (_) {}
+            }
             console.log(`✅ [BulkSend] Done. Sent: ${sent}, Failed: ${failed}, Template: ${template.name}`);
         });
 
     } catch (error) {
         console.error('❌ [bulkSendTemplate]', error);
         res.status(500).json({ error: 'Toplu gönderim başlatılamadı' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /marketing/:workspaceId/campaigns
+// Birleşik kampanya listesi — Bulk, Otomasyon, Arama
+// ─────────────────────────────────────────────────────────────────────────────
+export const getCampaigns = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { type, days = 30, page = 1, limit = 50 } = req.query;
+
+        const where = { workspaceId };
+        if (type) where.type = type;
+        where.createdAt = { gte: new Date(Date.now() - parseInt(days) * 86400000) };
+
+        const [campaigns, total] = await Promise.all([
+            prisma.marketingCampaign.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip: (parseInt(page) - 1) * parseInt(limit),
+                take: parseInt(limit),
+                include: {
+                    template: { select: { name: true } },
+                    _count: { select: { conversations: true, cases: true } }
+                }
+            }),
+            prisma.marketingCampaign.count({ where })
+        ]);
+
+        // Özet istatistikler
+        const stats = await prisma.marketingCampaign.aggregate({
+            where: { workspaceId, createdAt: { gte: new Date(Date.now() - 30 * 86400000) } },
+            _sum: { totalCount: true, sentCount: true, deliveredCount: true, readCount: true, repliedCount: true, convertedCount: true }
+        });
+
+        res.json({
+            success: true,
+            data: campaigns,
+            stats: {
+                totalSent: stats._sum.sentCount || 0,
+                totalDelivered: stats._sum.deliveredCount || 0,
+                totalRead: stats._sum.readCount || 0,
+                totalReplied: stats._sum.repliedCount || 0,
+                totalConverted: stats._sum.convertedCount || 0,
+                replyRate: stats._sum.sentCount ? ((stats._sum.repliedCount || 0) / stats._sum.sentCount * 100).toFixed(1) : '0',
+                conversionRate: stats._sum.sentCount ? ((stats._sum.convertedCount || 0) / stats._sum.sentCount * 100).toFixed(1) : '0'
+            },
+            pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) }
+        });
+    } catch (error) {
+        console.error('❌ [getCampaigns]', error);
+        res.status(500).json({ error: 'Kampanyalar alınamadı' });
     }
 };
 
@@ -871,39 +952,7 @@ async function uploadMediaToMeta(mediaUrl, mediaType, phoneNumberId, accessToken
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /marketing/:workspaceId/campaigns
-// ─────────────────────────────────────────────────────────────────────────────
-export const getCampaigns = async (req, res) => {
-    try {
-        const { workspaceId } = req.params;
-        const campaigns = await prisma.marketingCampaign.findMany({
-            where: { workspaceId },
-            orderBy: { createdAt: 'desc' },
-            include: {
-                template: { select: { name: true, headerType: true, bodyText: true } },
-                recipients: { select: { status: true } }
-            }
-        });
-
-        // Enrich with stats
-        const enriched = campaigns.map(c => ({
-            ...c,
-            totalCount: c.recipients.length,
-            sentCount: c.recipients.filter(r => ['SENT', 'DELIVERED', 'READ'].includes(r.status)).length,
-            deliveredCount: c.recipients.filter(r => ['DELIVERED', 'READ'].includes(r.status)).length,
-            readCount: c.recipients.filter(r => r.status === 'READ').length,
-            failedCount: c.recipients.filter(r => r.status === 'FAILED').length,
-            recipients: undefined
-        }));
-
-        res.json({ campaigns: enriched });
-    } catch (error) {
-        console.error('❌ [getCampaigns]', error);
-        res.status(500).json({ error: 'Kampanyalar yüklenemedi' });
-    }
-};
-
+// (getCampaigns is now defined earlier in the file with type/date filters + stats)
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /marketing/:workspaceId/campaigns/:id
 // ─────────────────────────────────────────────────────────────────────────────

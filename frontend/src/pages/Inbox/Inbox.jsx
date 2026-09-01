@@ -420,6 +420,11 @@ const Inbox = () => {
     useEffect(() => {
         localStorage.setItem('inbox_hideUnanswered', hideUnanswered);
     }, [hideUnanswered]);
+    // Toplu gönderimlerden gelen sohbetleri göster/gizle
+    const [showBulk, setShowBulk] = useState(false);
+    useEffect(() => {
+        localStorage.setItem('inbox_showBulk', showBulk);
+    }, [showBulk]);
     // Resolved post IDs (Facebook/Instagram comments) — persisted in localStorage per workspace
     const [resolvedPostIds, setResolvedPostIds] = useState(() => {
         try {
@@ -829,7 +834,7 @@ const Inbox = () => {
         setCurrentPage(1);
         currentPageRef.current = 1;
         loadInboxItems(true);
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered]);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered, showBulk]);
 
     // Debounced server-side search: when searchTerm changes, reload from API after 400ms
     useEffect(() => {
@@ -1713,6 +1718,7 @@ const Inbox = () => {
             }
             if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
             if (hideUnanswered) params.hideUnanswered = 'true';
+            if (showBulk) params.showBulk = 'true';
 
             const response = await conversationAPI.getAll(currentWorkspace.id, params);
             const moreConversations = response.data.conversations || [];
@@ -1854,7 +1860,7 @@ const Inbox = () => {
         } finally {
             setLoadingMore(false);
         }
-    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered]);
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered, showBulk]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -2002,6 +2008,7 @@ const Inbox = () => {
                 }
                 if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
                 if (hideUnanswered) params.hideUnanswered = 'true';
+                if (showBulk) params.showBulk = 'true';
 
                 // Advanced Single-Channel Push to Backend (Prevents Filter Pagination Paradox)
                 if (activeChannel) {
@@ -3532,6 +3539,10 @@ const Inbox = () => {
                                         <label className="fp-toggle-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
                                             <input type="checkbox" checked={hideUnanswered} onChange={(e) => setHideUnanswered(e.target.checked)} />
                                             <span>🔇 Cevapsızları Gizle</span>
+                                        </label>
+                                        <label className="fp-toggle-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
+                                            <input type="checkbox" checked={showBulk} onChange={(e) => setShowBulk(e.target.checked)} />
+                                            <span>📢 Toplu Gönderimler</span>
                                         </label>
                                     </div>
                                 </div>

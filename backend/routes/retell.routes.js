@@ -45,7 +45,11 @@ import {
     addRetellKBSource,
     uploadRetellKBFile,
     deleteRetellKBSource,
-    listInstomerKnowledgeBases
+    listInstomerKnowledgeBases,
+    getRetellTemplates,
+    createRetellTemplate,
+    updateRetellTemplate,
+    deleteRetellTemplate
 } from '../controllers/retell.controller.js';
 
 const router = express.Router();
@@ -117,5 +121,11 @@ router.delete('/:workspaceId/knowledge-bases/retell/:kbId', requireWorkspaceAcce
 router.post('/:workspaceId/knowledge-bases/retell/:kbId/sources', requireWorkspaceAccess, addRetellKBSource);
 router.post('/:workspaceId/knowledge-bases/retell/:kbId/upload', requireWorkspaceAccess, upload.single('file'), uploadRetellKBFile);
 router.delete('/:workspaceId/knowledge-bases/retell/:kbId/sources/:sourceId', requireWorkspaceAccess, deleteRetellKBSource);
+
+// Retell Arama Şablonları
+router.get('/:workspaceId/templates', requireWorkspaceAccess, getRetellTemplates);
+router.post('/:workspaceId/templates', requireWorkspaceAccess, createRetellTemplate);
+router.patch('/:workspaceId/templates/:id', requireWorkspaceAccess, updateRetellTemplate);
+router.delete('/:workspaceId/templates/:id', requireWorkspaceAccess, deleteRetellTemplate);
 
 export default router;

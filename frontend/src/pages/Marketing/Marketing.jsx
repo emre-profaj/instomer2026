@@ -839,6 +839,131 @@ function BulkSendModal({ count, templates, sending, sentMsg, bulkJob, onSend, on
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGNS TAB — Kampanya Takibi
+// ─────────────────────────────────────────────────────────────────────────────
+function CampaignsTab({ wsId }) {
+    const [campaigns, setCampaigns] = useState([]);
+    const [stats, setStats] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [typeFilter, setTypeFilter] = useState('');
+    const [days, setDays] = useState(30);
+
+    const fetchCampaigns = useCallback(async () => {
+        if (!wsId) return;
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({ days });
+            if (typeFilter) params.set('type', typeFilter);
+            const res = await api.get(`/marketing/${wsId}/campaigns?${params}`);
+            setCampaigns(res.data?.data || []);
+            setStats(res.data?.stats || null);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId, typeFilter, days]);
+
+    useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+    const TYPE_LABELS = { BULK: '📤 Toplu', AUTOMATION: '⚡ Otomasyon', CALL: '📞 Arama' };
+    const STATUS_COLORS = {
+        SENDING: { bg: '#fef9c3', text: '#a16207' },
+        COMPLETED: { bg: '#dcfce7', text: '#16a34a' },
+        DRAFT: { bg: '#f1f5f9', text: '#64748b' },
+        SCHEDULED: { bg: '#dbeafe', text: '#2563eb' }
+    };
+
+    return (
+        <div>
+            {/* Stats */}
+            {stats && (
+                <div className="mkt-stats-row" style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                    <StatBig icon="📤" label="Gönderildi" value={stats.totalSent} color="#3b82f6" />
+                    <StatBig icon="💬" label="Cevap Verdi" value={stats.totalReplied} sub={`%${stats.replyRate}`} color="#10b981" />
+                    <StatBig icon="🎯" label="Dönüşüm" value={stats.totalConverted} sub={`%${stats.conversionRate}`} color="#8b5cf6" />
+                    <StatBig icon="📖" label="Okundu" value={stats.totalRead} color="#f59e0b" />
+                </div>
+            )}
+
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
+                    style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                    <option value="">Tüm Tipler</option>
+                    <option value="BULK">📤 Toplu Gönderim</option>
+                    <option value="AUTOMATION">⚡ Otomasyon</option>
+                    <option value="CALL">📞 Arama</option>
+                </select>
+                <select value={days} onChange={(e) => setDays(parseInt(e.target.value))}
+                    style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                    {DAY_OPTIONS.map(d => <option key={d} value={d}>Son {d} gün</option>)}
+                </select>
+            </div>
+
+            {/* Campaign List */}
+            {loading ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>
+            ) : campaigns.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>📭</div>
+                    <div>Henüz kampanya yok</div>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {campaigns.map(c => {
+                        const sc = STATUS_COLORS[c.status] || STATUS_COLORS.DRAFT;
+                        const replyRate = c.sentCount > 0 ? ((c.repliedCount || 0) / c.sentCount * 100).toFixed(0) : 0;
+                        return (
+                            <div key={c.id} style={{
+                                background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0',
+                                padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16
+                            }}>
+                                {/* Type + Name */}
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                        <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, background: sc.bg, color: sc.text, fontWeight: 600 }}>
+                                            {c.status}
+                                        </span>
+                                        <span style={{ fontSize: 11, color: '#94a3b8' }}>{TYPE_LABELS[c.type] || c.type}</span>
+                                    </div>
+                                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{c.name}</div>
+                                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                        {new Date(c.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        {c.template?.name && <span> • Şablon: {c.template.name}</span>}
+                                    </div>
+                                </div>
+
+                                {/* Stats mini */}
+                                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#475569' }}>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontWeight: 700, fontSize: 16, color: '#3b82f6' }}>{c.totalCount || 0}</div>
+                                        <div>Toplam</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontWeight: 700, fontSize: 16, color: '#10b981' }}>{c.sentCount || 0}</div>
+                                        <div>Gönderildi</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontWeight: 700, fontSize: 16, color: '#f59e0b' }}>{c.repliedCount || 0}</div>
+                                        <div>Cevap</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontWeight: 700, fontSize: 16, color: '#8b5cf6' }}>{replyRate}%</div>
+                                        <div>Oran</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{ fontWeight: 700, fontSize: 16, color: '#dc2626' }}>{c.failedCount || 0}</div>
+                                        <div>Başarısız</div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ANALYTICS TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function AnalyticsTab({ wsId }) {
@@ -2280,6 +2405,7 @@ export default function Marketing() {
 
     const TABS = [
         { key: 'bulk',      label: 'Toplu Gönderim',      Icon: Send },
+        { key: 'campaigns', label: 'Kampanyalar',          Icon: Megaphone },
         { key: 'analytics', label: 'WhatsApp Şablon Analiz', Icon: BarChart2 },
         { key: 'calls',     label: 'Arama Analizi',        Icon: Phone },
     ];
@@ -2318,6 +2444,7 @@ export default function Marketing() {
             {/* Tab content */}
             <div className="mkt-tab-content">
                 {activeTab === 'bulk'      && <BulkSendTab wsId={wsId} />}
+                {activeTab === 'campaigns' && <CampaignsTab wsId={wsId} />}
                 {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
                 {activeTab === 'calls'     && <CallAnalyticsTab wsId={wsId} />}
             </div>

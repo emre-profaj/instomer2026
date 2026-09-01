@@ -1231,12 +1231,18 @@ export const webhookHandler = async (req, res) => {
                     } catch (e) { /* pipeline opsiyonel */ }
 
                     // Update conversation last message time and unread count
+                    const waConvUpdate = {
+                        lastMessageAt: new Date(),
+                        lastContactMessageAt: new Date(),
+                        unreadCount: { increment: 1 }
+                    };
+                    // Bulk gönderimden gelen sohbetleri müşteri cevap verince aktifleştir
+                    if (conversation.isBulkSend) {
+                        waConvUpdate.isBulkSend = false;
+                    }
                     await prisma.conversation.update({
                         where: { id: conversation.id },
-                        data: {
-                            lastMessageAt: new Date(),
-                            unreadCount: { increment: 1 }
-                        }
+                        data: waConvUpdate
                     });
 
                     // Reset follow-up flags when customer responds

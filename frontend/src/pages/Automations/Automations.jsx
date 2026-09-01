@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import api, { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI } from '../../services/api';
+import api, { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI, scheduledMessageAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, Search, X,
-    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp, GitBranch
+    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp, GitBranch, Phone
 } from 'lucide-react';
 import './Automations.css';
 import FlowBuilder from './FlowBuilder';
@@ -582,6 +582,20 @@ const Automations = () => {
                     <GitBranch size={18} />
                     Dinamik Otomasyonlar
                 </button>
+                <button
+                    className={`tab-btn ${activeTab === 'unified' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('unified')}
+                >
+                    <Settings size={18} />
+                    Tüm Otomasyonlar
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'retellTemplates' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('retellTemplates')}
+                >
+                    <Phone size={18} />
+                    Arama Şablonları
+                </button>
             </div>
 
             {/* Content */}
@@ -1009,6 +1023,15 @@ const Automations = () => {
                     <FlowBuilder workspaceId={currentWorkspace?.id} />
                 )}
 
+                {/* Birleşik Otomasyon Paneli */}
+                {activeTab === 'unified' && (
+                    <UnifiedPanelTab wsId={currentWorkspace?.id} />
+                )}
+
+                {/* Arama Şablonları */}
+                {activeTab === 'retellTemplates' && (
+                    <RetellTemplatesTab wsId={currentWorkspace?.id} />
+                )}
 
                 {/* Template Modal */}
                 {showTemplateModal && (
@@ -1914,3 +1937,334 @@ const Automations = () => {
 };
 
 export default Automations;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Birleşik Otomasyon Paneli
+// ─────────────────────────────────────────────────────────────────────────────
+function UnifiedPanelTab({ wsId }) {
+    const [data, setData] = React.useState(null);
+    const [loading, setLoading] = React.useState(true);
+    const [sourceFilter, setSourceFilter] = React.useState('');
+
+    React.useEffect(() => {
+        if (!wsId) return;
+        setLoading(true);
+        automationAPI.getUnifiedPanel(wsId)
+            .then(res => setData(res.data))
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, [wsId]);
+
+    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>;
+    if (!data) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Veri alınamadı</div>;
+
+    const SOURCE_META = {
+        AUTOMATION: { icon: '⚡', label: 'Otomasyon', color: '#f59e0b' },
+        FLOW: { icon: '🔀', label: 'Akış', color: '#3b82f6' },
+        RULE: { icon: '📏', label: 'Kural', color: '#8b5cf6' },
+        RETELL_TEMPLATE: { icon: '📞', label: 'Arama Şablonu', color: '#10b981' },
+    };
+
+    const filteredItems = sourceFilter
+        ? data.unified.filter(u => u.source === sourceFilter)
+        : data.unified;
+
+    return (
+        <div>
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                <div style={{ padding: '12px 20px', background: '#f0fdf4', borderRadius: 12, border: '1px solid #bbf7d0', textAlign: 'center', minWidth: 100 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>{data.stats.active}</div>
+                    <div style={{ fontSize: 11, color: '#15803d' }}>Aktif</div>
+                </div>
+                <div style={{ padding: '12px 20px', background: '#fef2f2', borderRadius: 12, border: '1px solid #fecaca', textAlign: 'center', minWidth: 100 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>{data.stats.inactive}</div>
+                    <div style={{ fontSize: 11, color: '#b91c1c' }}>Pasif</div>
+                </div>
+                <div style={{ padding: '12px 20px', background: '#eff6ff', borderRadius: 12, border: '1px solid #bfdbfe', textAlign: 'center', minWidth: 100 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb' }}>{data.stats.automationCount}</div>
+                    <div style={{ fontSize: 11, color: '#1d4ed8' }}>Otomasyon</div>
+                </div>
+                <div style={{ padding: '12px 20px', background: '#faf5ff', borderRadius: 12, border: '1px solid #e9d5ff', textAlign: 'center', minWidth: 100 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#7c3aed' }}>{data.stats.flowCount}</div>
+                    <div style={{ fontSize: 11, color: '#6d28d9' }}>Akış</div>
+                </div>
+                <div style={{ padding: '12px 20px', background: '#f0fdf4', borderRadius: 12, border: '1px solid #bbf7d0', textAlign: 'center', minWidth: 100 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: '#059669' }}>{data.stats.retellTemplateCount}</div>
+                    <div style={{ fontSize: 11, color: '#047857' }}>Arama Şablonu</div>
+                </div>
+                {data.stats.pendingScheduled > 0 && (
+                    <div style={{ padding: '12px 20px', background: '#fefce8', borderRadius: 12, border: '1px solid #fde68a', textAlign: 'center', minWidth: 100 }}>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: '#ca8a04' }}>{data.stats.pendingScheduled}</div>
+                        <div style={{ fontSize: 11, color: '#a16207' }}>Bekleyen Mesaj</div>
+                    </div>
+                )}
+            </div>
+
+            {/* Filter */}
+            <div style={{ marginBottom: 12 }}>
+                <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
+                    style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                    <option value="">Tüm Kaynaklar ({data.unified.length})</option>
+                    <option value="AUTOMATION">⚡ Otomasyonlar ({data.stats.automationCount})</option>
+                    <option value="FLOW">🔀 Akışlar ({data.stats.flowCount})</option>
+                    <option value="RULE">📏 Kurallar ({data.stats.ruleCount})</option>
+                    <option value="RETELL_TEMPLATE">📞 Arama Şablonları ({data.stats.retellTemplateCount})</option>
+                </select>
+            </div>
+
+            {/* List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {filteredItems.length === 0 && (
+                    <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>Bu kategoride otomasyon yok</div>
+                )}
+                {filteredItems.map(item => {
+                    const meta = SOURCE_META[item.source] || { icon: '📋', label: item.source, color: '#64748b' };
+                    return (
+                        <div key={`${item.source}-${item.id}`} style={{
+                            background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0',
+                            padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12
+                        }}>
+                            {/* Toggle */}
+                            <button
+                                onClick={async () => {
+                                    const newState = !item.isActive;
+                                    // Optimistic update
+                                    setData(prev => ({
+                                        ...prev,
+                                        unified: prev.unified.map(u =>
+                                            u.id === item.id && u.source === item.source
+                                                ? { ...u, isActive: newState }
+                                                : u
+                                        ),
+                                        stats: {
+                                            ...prev.stats,
+                                            active: prev.stats.active + (newState ? 1 : -1),
+                                            inactive: prev.stats.inactive + (newState ? -1 : 1)
+                                        }
+                                    }));
+                                    try {
+                                        await automationAPI.toggleUnified(wsId, item.source, item.id, newState);
+                                    } catch (e) {
+                                        console.error(e);
+                                        // Rollback
+                                        setData(prev => ({
+                                            ...prev,
+                                            unified: prev.unified.map(u =>
+                                                u.id === item.id && u.source === item.source
+                                                    ? { ...u, isActive: !newState }
+                                                    : u
+                                            )
+                                        }));
+                                    }
+                                }}
+                                style={{
+                                    width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
+                                    background: item.isActive ? '#22c55e' : '#d1d5db', position: 'relative',
+                                    transition: 'background 0.2s', flexShrink: 0, padding: 0
+                                }}
+                            >
+                                <div style={{
+                                    width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                                    position: 'absolute', top: 2,
+                                    left: item.isActive ? 18 : 2,
+                                    transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                }} />
+                            </button>
+                            {/* Icon */}
+                            <span style={{ fontSize: 20 }}>{meta.icon}</span>
+                            {/* Info */}
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{item.name}</div>
+                                {item.description && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{item.description}</div>}
+                            </div>
+                            {/* Source badge */}
+                            <span style={{
+                                fontSize: 10, padding: '3px 8px', borderRadius: 6,
+                                background: meta.color + '18', color: meta.color, fontWeight: 600
+                            }}>
+                                {meta.label}
+                            </span>
+                            {/* Trigger info */}
+                            {item.trigger && (
+                                <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                                    {item.trigger}
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Scheduled Messages Summary */}
+            {data.scheduledMessages?.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
+                        ⏰ Son Zamanlanmış Mesajlar ({data.scheduledMessages.length})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {data.scheduledMessages.slice(0, 10).map(msg => (
+                            <div key={msg.id} style={{
+                                background: '#f8fafc', borderRadius: 8, padding: '8px 12px',
+                                fontSize: 12, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9'
+                            }}>
+                                <span style={{
+                                    padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                                    background: msg.status === 'SENT' ? '#dcfce7' : msg.status === 'PENDING' ? '#fef9c3' : msg.status === 'FAILED' ? '#fef2f2' : '#f1f5f9',
+                                    color: msg.status === 'SENT' ? '#16a34a' : msg.status === 'PENDING' ? '#a16207' : msg.status === 'FAILED' ? '#dc2626' : '#64748b'
+                                }}>
+                                    {msg.status}
+                                </span>
+                                <span style={{ flex: 1, color: '#475569' }}>{msg.content?.substring(0, 60)}...</span>
+                                <span style={{ color: '#94a3b8' }}>
+                                    {new Date(msg.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Retell Arama Şablonları CRUD Paneli
+// ─────────────────────────────────────────────────────────────────────────────
+function RetellTemplatesTab({ wsId }) {
+    const [templates, setTemplates] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [showForm, setShowForm] = React.useState(false);
+    const [editing, setEditing] = React.useState(null);
+    const [form, setForm] = React.useState({ name: '', description: '', agentId: '', beginMessage: '', promptSuffix: '', isActive: true });
+
+    const loadTemplates = React.useCallback(async () => {
+        if (!wsId) return;
+        setLoading(true);
+        try {
+            const res = await retellAPI.getTemplates(wsId);
+            setTemplates(res.data?.templates || res.data || []);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId]);
+
+    React.useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+    const resetForm = () => {
+        setForm({ name: '', description: '', agentId: '', beginMessage: '', promptSuffix: '', isActive: true });
+        setEditing(null);
+        setShowForm(false);
+    };
+
+    const handleSave = async () => {
+        if (!form.name || !form.agentId) return alert('Şablon adı ve Agent ID zorunludur');
+        try {
+            if (editing) {
+                await retellAPI.updateTemplate(wsId, editing.id, form);
+            } else {
+                await retellAPI.createTemplate(wsId, form);
+            }
+            resetForm();
+            loadTemplates();
+        } catch (e) { console.error(e); alert('Kaydetme hatası'); }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm('Bu şablonu silmek istediğinize emin misiniz?')) return;
+        try {
+            await retellAPI.deleteTemplate(wsId, id);
+            loadTemplates();
+        } catch (e) { console.error(e); }
+    };
+
+    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>;
+
+    return (
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>📞 Arama Şablonları ({templates.length})</div>
+                <button onClick={() => { resetForm(); setShowForm(true); }}
+                    style={{ padding: '8px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                    + Yeni Şablon
+                </button>
+            </div>
+
+            {/* Form */}
+            {showForm && (
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: '#334155' }}>
+                        {editing ? 'Şablon Düzenle' : 'Yeni Şablon'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                        <div>
+                            <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Şablon Adı *</label>
+                            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Agent ID *</label>
+                            <input value={form.agentId} onChange={e => setForm(f => ({ ...f, agentId: e.target.value }))}
+                                placeholder="agent_..." style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                        </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Açıklama</label>
+                        <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                            Başlangıç Mesajı <span style={{ color: '#94a3b8' }}>(opsiyonel, {'{{customer_name}}'} gibi değişkenler kullanılabilir)</span>
+                        </label>
+                        <textarea value={form.beginMessage} onChange={e => setForm(f => ({ ...f, beginMessage: e.target.value }))}
+                            rows={3} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical' }} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Ek Prompt Talimatı</label>
+                        <textarea value={form.promptSuffix} onChange={e => setForm(f => ({ ...f, promptSuffix: e.target.value }))}
+                            rows={3} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={handleSave}
+                            style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                            {editing ? 'Güncelle' : 'Kaydet'}
+                        </button>
+                        <button onClick={resetForm}
+                            style={{ padding: '8px 20px', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                            İptal
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* List */}
+            {templates.length === 0 && !showForm && (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Henüz arama şablonu yok</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {templates.map(tpl => (
+                    <div key={tpl.id} style={{
+                        background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0',
+                        padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12
+                    }}>
+                        <div style={{
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: tpl.isActive ? '#22c55e' : '#e2e8f0', flexShrink: 0
+                        }} />
+                        <span style={{ fontSize: 20 }}>📞</span>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{tpl.name}</div>
+                            {tpl.description && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{tpl.description}</div>}
+                            {tpl.beginMessage && <div style={{ fontSize: 10, color: '#64748b', marginTop: 4, fontStyle: 'italic' }}>"{tpl.beginMessage.substring(0, 80)}..."</div>}
+                        </div>
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{tpl.agentId?.substring(0, 12)}...</span>
+                        <button onClick={() => { setForm({ name: tpl.name, description: tpl.description || '', agentId: tpl.agentId, beginMessage: tpl.beginMessage || '', promptSuffix: tpl.promptSuffix || '', isActive: tpl.isActive }); setEditing(tpl); setShowForm(true); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>✏️</button>
+                        <button onClick={() => handleDelete(tpl.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>🗑️</button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}

@@ -2311,7 +2311,7 @@ export const makeCall = async (req, res) => {
     try {
         console.log(`🚨 [DEBUG-MAKE-CALL] makeCall API CALLED for ${req.body.toNumber} by user ${req.user?.id} from IP ${req.ip} !! THIS MEANS AN HTTP REQUEST WAS MADE (Likely old frontend code)`);
         const { workspaceId } = req.params;
-        const { toNumber, contactId, contactName, conversationId: sourceConversationId, agentId } = req.body;
+        const { toNumber, contactId, contactName, conversationId: sourceConversationId, agentId, retellTemplateId } = req.body;
         const userId = req.user.id;
 
         if (!toNumber) {
@@ -2354,6 +2354,24 @@ export const makeCall = async (req, res) => {
         const dynVars = await buildRetellDynamicVariables(workspaceId, contactId, contactName);
         if (Object.keys(dynVars).length > 0) {
             callParams.retell_llm_dynamic_variables = dynVars;
+        }
+
+        // Retell Template override: beginMessage + dynamicVars
+        if (retellTemplateId) {
+            try {
+                const tpl = await prisma.retellTemplate.findUnique({ where: { id: retellTemplateId, workspaceId } });
+                if (tpl) {
+                    if (tpl.agentId) callParams.override_agent_id = tpl.agentId;
+                    if (!callParams.retell_llm_dynamic_variables) callParams.retell_llm_dynamic_variables = {};
+                    if (tpl.beginMessage) callParams.retell_llm_dynamic_variables.begin_message_override = tpl.beginMessage;
+                    if (tpl.dynamicVars && typeof tpl.dynamicVars === 'object') {
+                        Object.assign(callParams.retell_llm_dynamic_variables, tpl.dynamicVars);
+                    }
+                    console.log(`📋 [Retell] Template applied: ${tpl.name}`);
+                }
+            } catch (tplErr) {
+                console.warn(`⚠️ [Retell] Template override failed:`, tplErr.message);
+            }
         }
 
         const callResponse = await client.call.createPhoneCall(callParams);
@@ -5418,5 +5436,76 @@ export const deleteRetellKBSource = async (req, res) => {
     } catch (error) {
         console.error('❌ [RetellKB] deleteRetellKBSource error:', error.message);
         res.status(500).json({ error: error.message || 'Kaynak silinemedi' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Retell Arama Şablonları CRUD
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getRetellTemplates = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const templates = await prisma.retellTemplate.findMany({
+            where: { workspaceId },
+            orderBy: { order: 'asc' }
+        });
+        res.json({ success: true, data: templates });
+    } catch (error) {
+        console.error('❌ [RetellTemplate] getAll:', error.message);
+        res.status(500).json({ error: 'Şablonlar alınamadı' });
+    }
+};
+
+export const createRetellTemplate = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { name, description, icon, agentId, beginMessage, promptSuffix, dynamicVars } = req.body;
+        if (!name || !agentId) return res.status(400).json({ error: 'İsim ve Agent ID zorunludur' });
+
+        const count = await prisma.retellTemplate.count({ where: { workspaceId } });
+        const template = await prisma.retellTemplate.create({
+            data: { workspaceId, name, description, icon, agentId, beginMessage, promptSuffix, dynamicVars, order: count }
+        });
+        res.status(201).json({ success: true, data: template });
+    } catch (error) {
+        console.error('❌ [RetellTemplate] create:', error.message);
+        res.status(500).json({ error: 'Şablon oluşturulamadı' });
+    }
+};
+
+export const updateRetellTemplate = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const { name, description, icon, agentId, beginMessage, promptSuffix, dynamicVars, isActive, order } = req.body;
+        const template = await prisma.retellTemplate.update({
+            where: { id, workspaceId },
+            data: {
+                ...(name !== undefined && { name }),
+                ...(description !== undefined && { description }),
+                ...(icon !== undefined && { icon }),
+                ...(agentId !== undefined && { agentId }),
+                ...(beginMessage !== undefined && { beginMessage }),
+                ...(promptSuffix !== undefined && { promptSuffix }),
+                ...(dynamicVars !== undefined && { dynamicVars }),
+                ...(isActive !== undefined && { isActive }),
+                ...(order !== undefined && { order })
+            }
+        });
+        res.json({ success: true, data: template });
+    } catch (error) {
+        console.error('❌ [RetellTemplate] update:', error.message);
+        res.status(500).json({ error: 'Şablon güncellenemedi' });
+    }
+};
+
+export const deleteRetellTemplate = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        await prisma.retellTemplate.delete({ where: { id, workspaceId } });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [RetellTemplate] delete:', error.message);
+        res.status(500).json({ error: 'Şablon silinemedi' });
     }
 };

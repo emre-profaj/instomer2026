@@ -563,7 +563,10 @@ export const automationAPI = {
     createAutomation: (workspaceId, data) => api.post(`/automations/${workspaceId}/automations`, data),
     updateAutomation: (workspaceId, automationId, data) => api.put(`/automations/${workspaceId}/automations/${automationId}`, data),
     deleteAutomation: (workspaceId, automationId) => api.delete(`/automations/${workspaceId}/automations/${automationId}`),
-    toggleAutomation: (workspaceId, automationId, isActive) => api.patch(`/automations/${workspaceId}/automations/${automationId}/toggle`, { isActive })
+    toggleAutomation: (workspaceId, automationId, isActive) => api.patch(`/automations/${workspaceId}/automations/${automationId}/toggle`, { isActive }),
+    // Birleşik Panel
+    getUnifiedPanel: (workspaceId) => api.get(`/automations/${workspaceId}/unified-panel`),
+    toggleUnified: (workspaceId, source, id, isActive) => api.patch(`/automations/${workspaceId}/unified-toggle`, { source, id, isActive }),
 };
 
 // Form Webhook API
@@ -689,6 +692,18 @@ export const retellAPI = {
     },
     // Push overdue call tasks to AI agent
     pushCallTasks: (workspaceId, data) => api.post(`/retell/${workspaceId}/push-calls`, data),
+    // Arama Şablonları
+    getTemplates: (workspaceId) => api.get(`/retell/${workspaceId}/templates`),
+    createTemplate: (workspaceId, data) => api.post(`/retell/${workspaceId}/templates`, data),
+    updateTemplate: (workspaceId, id, data) => api.patch(`/retell/${workspaceId}/templates/${id}`, data),
+    deleteTemplate: (workspaceId, id) => api.delete(`/retell/${workspaceId}/templates/${id}`),
+};
+
+// Zamanlanmış Mesajlar API
+export const scheduledMessageAPI = {
+    getAll: (workspaceId, params) => api.get(`/scheduled-messages/${workspaceId}`, { params }),
+    create: (workspaceId, data) => api.post(`/scheduled-messages/${workspaceId}`, data),
+    cancel: (workspaceId, id) => api.patch(`/scheduled-messages/${workspaceId}/${id}/cancel`),
 };
 
 export const telsamAPI = {

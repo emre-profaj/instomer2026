@@ -16,11 +16,27 @@ const NewConversationModal = ({
     const [newConversationFunnelStage, setNewConversationFunnelStage] = useState('');
     const [newConversationDate, setNewConversationDate] = useState('');
     const [newConversationMessage, setNewConversationMessage] = useState('');
+    const [meetingType, setMeetingType] = useState('PHONE'); // PHONE veya WALK_IN
+    const [leadSource, setLeadSource] = useState('');
+    const [leadSourceDetail, setLeadSourceDetail] = useState('');
     
     const [creatingConversation, setCreatingConversation] = useState(false);
     const [isSearchingPhone, setIsSearchingPhone] = useState(false);
     const [phoneSearchResults, setPhoneSearchResults] = useState([]);
     const [funnelOptions, setFunnelOptions] = useState([]);
+
+    const LEAD_SOURCES = [
+        { value: 'INBOUND', label: '📞 Gelen Arama' },
+        { value: 'SOCIAL_MEDIA', label: '📱 Sosyal Medya' },
+        { value: 'FACEBOOK', label: '📘 Facebook' },
+        { value: 'INSTAGRAM', label: '📸 Instagram' },
+        { value: 'GOOGLE', label: '🔍 Google' },
+        { value: 'REFERRAL', label: '🤝 Referans' },
+        { value: 'WEBSITE', label: '🌐 Web Sitesi' },
+        { value: 'WALK_IN', label: '🚶 Yüz Yüze' },
+        { value: 'EVENT', label: '🎪 Etkinlik/Fuar' },
+        { value: 'OTHER', label: '📋 Diğer' },
+    ];
 
     // Reset state when modal opens
     useEffect(() => {
@@ -33,6 +49,9 @@ const NewConversationModal = ({
             setNewConversationFunnelStage('');
             setNewConversationDate('');
             setNewConversationMessage('');
+            setMeetingType('PHONE');
+            setLeadSource('');
+            setLeadSourceDetail('');
             setPhoneSearchResults([]);
         }
     }, [isOpen]);
@@ -110,6 +129,9 @@ const NewConversationModal = ({
                 phone,
                 name: newConversationName || `Müşteri ${phone.slice(-4)}`,
                 description: newConversationMessage || null,
+                meetingType,
+                ...(leadSource && { leadSource }),
+                ...(leadSourceDetail && { leadSourceDetail }),
                 ...(newConversationTopic && { aiTopic: newConversationTopic }),
                 ...(newConversationFunnel && { funnelType: newConversationFunnel }),
                 ...(newConversationFunnelStage && { funnelStageId: newConversationFunnelStage }),
@@ -239,6 +261,66 @@ const NewConversationModal = ({
                         />
                     </div>
                     
+                    {/* Görüşme Tipi */}
+                    <div className="form-group">
+                        <label style={{ marginBottom: 8 }}>
+                            📋 Görüşme Tipi
+                        </label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                                type="button"
+                                onClick={() => setMeetingType('PHONE')}
+                                style={{
+                                    flex: 1, padding: '10px 16px', borderRadius: 8, border: '2px solid',
+                                    borderColor: meetingType === 'PHONE' ? '#3b82f6' : '#e2e8f0',
+                                    backgroundColor: meetingType === 'PHONE' ? '#eff6ff' : '#fff',
+                                    cursor: 'pointer', fontSize: 14, fontWeight: 500,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                }}
+                            >
+                                📞 Arama
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMeetingType('WALK_IN')}
+                                style={{
+                                    flex: 1, padding: '10px 16px', borderRadius: 8, border: '2px solid',
+                                    borderColor: meetingType === 'WALK_IN' ? '#3b82f6' : '#e2e8f0',
+                                    backgroundColor: meetingType === 'WALK_IN' ? '#eff6ff' : '#fff',
+                                    cursor: 'pointer', fontSize: 14, fontWeight: 500,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                                }}
+                            >
+                                🤝 Yüz Yüze
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Kaynak */}
+                    <div className="form-group">
+                        <label>
+                            📍 Bizi Nereden Buldunuz?
+                        </label>
+                        <select
+                            value={leadSource}
+                            onChange={(e) => setLeadSource(e.target.value)}
+                        >
+                            <option value="">-- Kaynak Seç --</option>
+                            {LEAD_SOURCES.map(s => (
+                                <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                        </select>
+                        {leadSource && (
+                            <input
+                                type="text"
+                                placeholder="Detay (opsiyonel): Instagram reklamı, Ahmet Bey referansı..."
+                                value={leadSourceDetail}
+                                onChange={(e) => setLeadSourceDetail(e.target.value)}
+                                style={{ marginTop: 6 }}
+                            />
+                        )}
+                    </div>
+
                     <div className="form-group">
                         <label>
                             <Filter size={18} />

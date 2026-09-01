@@ -1594,10 +1594,12 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                         console.log(`⏱️ [AUTOMATION] Scheduling template send in ${automation.delayMinutes} minutes`);
                         setTimeout(async () => {
                             await sendTemplateToContact(workspaceId, automation.templateId, contact);
+                            await trackAutomationCampaign(workspaceId, automation);
                         }, automation.delayMinutes * 60 * 1000);
                     } else {
                         console.log(`📤 [AUTOMATION] Sending template immediately...`);
                         await sendTemplateToContact(workspaceId, automation.templateId, contact);
+                        await trackAutomationCampaign(workspaceId, automation);
                     }
                 }
 
@@ -2192,3 +2194,175 @@ export const executeWebFormAutomation = async (workspaceId, contact, formData = 
     }
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: Otomasyon mesajı gönderildiğinde günlük kampanya kaydı oluştur/güncelle
+// ─────────────────────────────────────────────────────────────────────────────
+async function trackAutomationCampaign(workspaceId, automation) {
+    try {
+        const today = new Date().toISOString().slice(0, 10);
+        const startOfDay = new Date(today + 'T00:00:00.000Z');
+
+        // Bugün bu otomasyon için kampanya var mı?
+        let campaign = await prisma.marketingCampaign.findFirst({
+            where: {
+                workspaceId,
+                automationId: automation.id,
+                createdAt: { gte: startOfDay }
+            }
+        });
+
+        if (campaign) {
+            await prisma.marketingCampaign.update({
+                where: { id: campaign.id },
+                data: {
+                    totalCount: { increment: 1 },
+                    sentCount: { increment: 1 }
+                }
+            });
+        } else {
+            await prisma.marketingCampaign.create({
+                data: {
+                    workspaceId,
+                    name: `${automation.name || 'Otomasyon'} — ${today}`,
+                    type: 'AUTOMATION',
+                    automationId: automation.id,
+                    status: 'ACTIVE',
+                    totalCount: 1,
+                    sentCount: 1
+                }
+            });
+        }
+    } catch (err) {
+        console.warn('⚠️ [trackAutomationCampaign]', err.message);
+    }
+}
+
+// GET /automations/:workspaceId/unified-panel
+// Tüm otomasyon kaynaklarını birleşik tek liste halinde döner
+// ─────────────────────────────────────────────────────────────────────────────
+export const getUnifiedAutomationPanel = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        const [automations, flows, rules, scheduledMessages, retellTemplates] = await Promise.all([
+            // 1. Basit Otomasyonlar
+            prisma.automation.findMany({
+                where: { workspaceId },
+                select: { id: true, name: true, description: true, trigger: true, action: true, isActive: true, createdAt: true },
+                orderBy: { createdAt: 'desc' }
+            }),
+            // 2. Akış Otomasyonları
+            prisma.flow.findMany({
+                where: { workspaceId },
+                select: { id: true, name: true, description: true, isActive: true, triggerType: true, createdAt: true },
+                orderBy: { createdAt: 'desc' }
+            }),
+            // 3. Kurallar
+            prisma.workspaceRule.findMany({
+                where: { workspaceId },
+                select: { id: true, ruleType: true, config: true, isActive: true, updatedAt: true },
+                orderBy: { updatedAt: 'desc' }
+            }),
+            // 4. Zamanlanmış Mesajlar (son 100)
+            prisma.scheduledMessage.findMany({
+                where: { workspaceId },
+                select: { id: true, content: true, scheduledAt: true, status: true, botId: true, createdAt: true },
+                orderBy: { createdAt: 'desc' },
+                take: 100
+            }),
+            // 5. Retell Arama Şablonları
+            prisma.retellTemplate.findMany({
+                where: { workspaceId },
+                select: { id: true, name: true, description: true, isActive: true, agentId: true, createdAt: true },
+                orderBy: { order: 'asc' }
+            })
+        ]);
+
+        // Hepsini birleşik formata çevir
+        const unified = [
+            ...automations.map(a => ({
+                id: a.id, source: 'AUTOMATION', name: a.name, description: a.description,
+                isActive: a.isActive, trigger: a.trigger, action: a.action, createdAt: a.createdAt
+            })),
+            ...flows.map(f => ({
+                id: f.id, source: 'FLOW', name: f.name, description: f.description,
+                isActive: f.isActive, trigger: f.triggerType, createdAt: f.createdAt
+            })),
+            ...rules.map(r => ({
+                id: r.id, source: 'RULE', name: r.ruleType, description: `Kural: ${r.ruleType}`,
+                isActive: r.isActive, createdAt: r.updatedAt
+            })),
+            ...retellTemplates.map(t => ({
+                id: t.id, source: 'RETELL_TEMPLATE', name: t.name, description: t.description,
+                isActive: t.isActive, createdAt: t.createdAt
+            }))
+        ];
+
+        // Aktif/pasif sayıları
+        const activeCount = unified.filter(u => u.isActive).length;
+        const inactiveCount = unified.filter(u => !u.isActive).length;
+
+        // Zamanlanmış mesaj özet
+        const pendingScheduled = scheduledMessages.filter(m => m.status === 'PENDING').length;
+        const failedScheduled = scheduledMessages.filter(m => m.status === 'FAILED').length;
+
+        res.json({
+            success: true,
+            unified,
+            scheduledMessages,
+            stats: {
+                totalAutomations: unified.length,
+                active: activeCount,
+                inactive: inactiveCount,
+                automationCount: automations.length,
+                flowCount: flows.length,
+                ruleCount: rules.length,
+                retellTemplateCount: retellTemplates.length,
+                pendingScheduled,
+                failedScheduled
+            }
+        });
+    } catch (error) {
+        console.error('❌ [UnifiedPanel]', error);
+        res.status(500).json({ error: 'Birleşik panel yüklenemedi' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /automations/:workspaceId/unified-toggle
+// Birleşik panelden her türlü otomasyon için tek tıkla aç/kapat
+// ─────────────────────────────────────────────────────────────────────────────
+export const toggleUnifiedAutomation = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { source, id, isActive } = req.body;
+
+        if (!source || !id || isActive === undefined) {
+            return res.status(400).json({ error: 'source, id ve isActive zorunludur' });
+        }
+
+        switch (source) {
+            case 'AUTOMATION':
+                await prisma.automation.update({ where: { id, workspaceId }, data: { isActive } });
+                break;
+            case 'FLOW':
+                await prisma.flow.update({ where: { id, workspaceId }, data: { isActive } });
+                break;
+            case 'RULE':
+                await prisma.workspaceRule.update({ where: { id, workspaceId }, data: { isActive } });
+                break;
+            case 'RETELL_TEMPLATE':
+                await prisma.retellTemplate.update({ where: { id, workspaceId }, data: { isActive } });
+                break;
+            default:
+                return res.status(400).json({ error: `Bilinmeyen kaynak: ${source}` });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [UnifiedToggle]', error.message);
+        res.status(500).json({ error: 'Durum değiştirilemedi' });
+    }
+};

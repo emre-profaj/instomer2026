@@ -68,6 +68,7 @@ import apiIntegrationRoutes from './routes/apiIntegration.routes.js';
 
 import notificationRoutes from './routes/notification.routes.js';
 import retellRoutes from './routes/retell.routes.js';
+import scheduledMessageRoutes from './routes/scheduledMessage.routes.js';
 import quickReplyRoutes from './routes/quickReply.routes.js';
 import rulesRoutes from './routes/rules.routes.js';
 import funnelRoutes from './routes/funnel.routes.js';
@@ -216,6 +217,7 @@ app.use('/api/integrations', apiIntegrationRoutes);
 
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/retell', retellRoutes);
+app.use('/api/scheduled-messages', scheduledMessageRoutes);
 app.use('/api', quickReplyRoutes);
 app.use('/api/rules', rulesRoutes);
 app.use('/api/funnels', funnelRoutes);
@@ -489,6 +491,14 @@ setTimeout(() => {
   
   startHealthSystemCron();
 }, 60000);
+
+// Scheduled Messages Cron: check every 60 seconds for pending messages
+import { processScheduledMessages } from './controllers/scheduledMessage.controller.js';
+setTimeout(() => {
+  console.log('⏰ [ScheduledMsg] Starting scheduled message processor (every 60 seconds)');
+  processScheduledMessages();
+  setInterval(processScheduledMessages, 60 * 1000);
+}, 15000);
 
 // Knowledge Base URL/Feed Sync Cron
 import { initKnowledgeCron } from './services/knowledgeSync.service.js';

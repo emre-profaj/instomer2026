@@ -1849,7 +1849,7 @@ export const getContactById = async (req, res) => {
 export const updateContact = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city, marketingOptOut, marketingOptOutAt, consentChannels } = req.body;
+        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city, marketingOptOut, marketingOptOutAt, consentChannels, leadSource, leadSourceDetail } = req.body;
 
         // Verify contact belongs to this workspace (either directly or via conversation)
         const existing = await prisma.contact.findFirst({
@@ -1897,6 +1897,8 @@ export const updateContact = async (req, res) => {
         if (consentChannels !== undefined) {
             updateData.consentChannels = typeof consentChannels === 'string' ? consentChannels : JSON.stringify(consentChannels);
         }
+        if (leadSource !== undefined) updateData.leadSource = leadSource;
+        if (leadSourceDetail !== undefined) updateData.leadSourceDetail = leadSourceDetail;
 
         // Handle phones and emails arrays
         const { phones, emails } = req.body;
@@ -2169,7 +2171,7 @@ export const updateContact = async (req, res) => {
 export const createContact = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone: rawPhone, email, notes, company, funnelType, funnelStageId } = req.body;
+        const { name, phone: rawPhone, email, notes, company, funnelType, funnelStageId, leadSource, leadSourceDetail } = req.body;
         const phone = normalizePhone(rawPhone);
 
         // Validation
@@ -2215,6 +2217,8 @@ export const createContact = async (req, res) => {
                 status: initialStatus,
                 funnelType: funnelType || null,
                 funnelStageId: funnelStageId || null,
+                leadSource: leadSource || null,
+                leadSourceDetail: leadSourceDetail || null,
                 tags: '[]'
             }
         });

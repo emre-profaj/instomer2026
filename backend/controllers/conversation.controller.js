@@ -49,6 +49,8 @@ export const getConversations = async (req, res) => {
             // Keep contactStatus check just in case legacy calls use it
             ...(contactStatus && { contact: { status: contactStatus } }),
             ...(req.query.showArchived !== 'true' && { isArchived: false }),
+            // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle
+            ...(req.query.showBulk !== 'true' && { isBulkSend: false }),
             // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
             ...(req.query.hideUnanswered === 'true' && {
                 messages: { some: { isFromContact: true } }
@@ -317,7 +319,10 @@ export const getConversations = async (req, res) => {
                     }
                 }
             },
-            orderBy: { lastMessageAt: 'desc' },
+            orderBy: [
+                { lastContactMessageAt: 'desc' }, // Müşterinin son yazdığı zamana göre sırala
+                { lastMessageAt: 'desc' }          // Fallback (lastContactMessageAt null ise)
+            ],
             skip: (parseInt(page) - 1) * parseInt(limit),
             take: parseInt(limit)
         });
@@ -2335,7 +2340,7 @@ export const getPendingTransfers = async (req, res) => {
 export const createManualConversation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone, email, description, channel, funnelType, funnelStageId, date, aiTopic, utmSource, utmMedium, utmCampaign, utmTerm, utmContent } = req.body;
+        const { name, phone, email, description, channel, funnelType, funnelStageId, date, aiTopic, utmSource, utmMedium, utmCampaign, utmTerm, utmContent, leadSource, leadSourceDetail, meetingType } = req.body;
 
         console.log(`📝 [Manual Conversation] Creating for workspace: ${workspaceId}`);
 
@@ -2399,6 +2404,8 @@ export const createManualConversation = async (req, res) => {
                     email: email?.trim() || null,
                     status: 'NEW',
                     tags: '[]',
+                    ...(leadSource && { leadSource }),
+                    ...(leadSourceDetail && { leadSourceDetail }),
                     ...(funnelType && { funnelType }),
                     ...(funnelStageId && { funnelStageId })
                 }
@@ -2451,9 +2458,10 @@ export const createManualConversation = async (req, res) => {
                 workspaceId: workspaceId,
                 contactId: contact.id,
                 caseId: newCase.id,
-                channel: 'MANUAL',
+                channel: meetingType === 'WALK_IN' ? 'WALK_IN' : meetingType === 'PHONE' ? 'PHONE' : 'MANUAL',
                 status: 'OPEN',
                 lastMessageAt: date ? new Date(date) : new Date(),
+                lastContactMessageAt: date ? new Date(date) : new Date(),
                 teamIds: '[]',
                 assignedToId: req.user.id,
                 ...(funnelType && { funnelType }),
@@ -2497,6 +2505,7 @@ export const createManualConversation = async (req, res) => {
                 content: structuredContent,
                 senderId: req.user.id,
                 isFromContact: true, // Show as incoming (like lead form)
+                isManual: true,      // Agent elle girdi — AI arama kararını etkilemez
                 messageType: 'TEXT',
                 ...(date && { createdAt: new Date(date) })
             }
