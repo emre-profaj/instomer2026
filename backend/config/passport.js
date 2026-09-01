@@ -16,14 +16,35 @@ const jwtOptions = {
     }
 };
 
+// In-memory cache for authenticated users (TTL: 30s) to prevent DB connection pool exhaustion on concurrent requests
+const userAuthCache = new Map();
+const USER_CACHE_TTL = 30 * 1000;
+
+export const invalidateUserCache = (userId) => {
+    if (userId) userAuthCache.delete(userId);
+    else userAuthCache.clear();
+};
+
 passport.use(
     new JwtStrategy(jwtOptions, async (payload, done) => {
         try {
+            const cached = userAuthCache.get(payload.id);
+            if (cached && Date.now() - cached.timestamp < USER_CACHE_TTL) {
+                return done(null, cached.user);
+            }
+
             const user = await prisma.user.findUnique({
                 where: { id: payload.id }
             });
 
             if (user) {
+                userAuthCache.set(payload.id, { user, timestamp: Date.now() });
+                if (userAuthCache.size > 500) {
+                    const now = Date.now();
+                    for (const [k, v] of userAuthCache.entries()) {
+                        if (now - v.timestamp > USER_CACHE_TTL) userAuthCache.delete(k);
+                    }
+                }
                 return done(null, user);
             }
             return done(null, false);

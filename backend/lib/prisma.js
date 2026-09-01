@@ -1,6 +1,25 @@
 import { PrismaClient } from '@prisma/client';
 
+function getDatabaseUrl() {
+    const raw = process.env.DATABASE_URL;
+    if (!raw) return undefined;
+    try {
+        const u = new URL(raw);
+        if (!u.searchParams.has('connection_limit')) {
+            u.searchParams.set('connection_limit', '30');
+        }
+        if (!u.searchParams.has('pool_timeout')) {
+            u.searchParams.set('pool_timeout', '20');
+        }
+        return u.toString();
+    } catch {
+        return undefined;
+    }
+}
+
+const dbUrl = getDatabaseUrl();
 const prisma = new PrismaClient({
+    ...(dbUrl ? { datasources: { db: { url: dbUrl } } } : {}),
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error']
 });
 
