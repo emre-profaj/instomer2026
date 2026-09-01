@@ -7,19 +7,79 @@ export const getResources = async (req, res) => {
         const { workspaceId } = req.params;
         const { type, isActive } = req.query;
 
+        // 🏥 Probel / HBYS bağlantısı varsa doktorları senkronize et
+        try {
+            const hasHealth = await prisma.apiIntegration.findFirst({
+                where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true }
+            });
+            if (hasHealth) {
+                const { syncProbelDoctorsToResources } = await import('../services/probel_appointment.service.js');
+                const personCount = await prisma.calendarResource.count({
+                    where: { workspaceId, type: 'PERSON' }
+                });
+                if (personCount === 0) {
+                    // İlk yüklemede senkronize etmeyi bekle
+                    await syncProbelDoctorsToResources(workspaceId, true).catch(e => console.warn('Probel auto sync:', e.message));
+                } else {
+                    // Zaten varsa throttle kontrollü arkada senkronize et
+                    syncProbelDoctorsToResources(workspaceId).catch(e => console.warn('Probel bg sync:', e.message));
+                }
+            } else {
+                // Probel yoksa ama AppointmentDoctor kayıtları varsa onları da kontrol et
+                const apptDoctors = await prisma.appointmentDoctor.findMany({
+                    where: { branch: { workspaceId }, isActive: true },
+                    include: { branch: true }
+                });
+                if (apptDoctors.length > 0) {
+                    for (const d of apptDoctors) {
+                        const exists = await prisma.calendarResource.findFirst({
+                            where: { workspaceId, name: { equals: d.name, mode: 'insensitive' } }
+                        });
+                        if (!exists) {
+                            await prisma.calendarResource.create({
+                                data: {
+                                    workspaceId,
+                                    name: d.name,
+                                    description: d.branch?.name || null,
+                                    type: 'PERSON',
+                                    color: '#3b82f6',
+                                    isActive: true
+                                }
+                            }).catch(() => {});
+                        }
+                    }
+                }
+            }
+        } catch (syncErr) {
+            console.warn('⚠️ [Resources] Doctor auto-sync error (non-critical):', syncErr.message);
+        }
+
         let where = { workspaceId };
         if (type) where.type = type;
         if (isActive !== undefined) where.isActive = isActive === 'true';
 
         const resources = await prisma.calendarResource.findMany({
             where,
-            orderBy: { name: 'asc' }
+            orderBy: [{ description: 'asc' }, { name: 'asc' }]
         });
 
         res.json({ resources });
     } catch (error) {
         console.error('Get resources error:', error);
         res.status(500).json({ error: 'Kaynaklar yüklenirken hata oluştu' });
+    }
+};
+
+// Manuel doktor senkronizasyonu tetikleme
+export const syncHealthDoctors = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { syncProbelDoctorsToResources } = await import('../services/probel_appointment.service.js');
+        const result = await syncProbelDoctorsToResources(workspaceId, true);
+        res.json(result);
+    } catch (error) {
+        console.error('syncHealthDoctors error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 

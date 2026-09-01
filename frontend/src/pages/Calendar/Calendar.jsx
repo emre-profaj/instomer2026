@@ -103,12 +103,32 @@ const Calendar = () => {
         endTime: '',
         assignedToId: '',
         resourceId: '',
+        doctorName: '',
+        branch: '',
         contactName: '',
         contactPhone: '',
         contactEmail: '',
         notes: '',
         status: 'SCHEDULED'
     });
+
+    // Group resources by branch (description) or unassigned
+    const groupedResources = useMemo(() => {
+        const groups = {};
+        const unassigned = [];
+
+        resources.forEach(r => {
+            const branchName = r.description?.trim();
+            if (branchName) {
+                if (!groups[branchName]) groups[branchName] = [];
+                groups[branchName].push(r);
+            } else {
+                unassigned.push(r);
+            }
+        });
+
+        return { groups, unassigned };
+    }, [resources]);
 
     // Conflict state
     const [conflict, setConflict] = useState(null);
@@ -626,6 +646,8 @@ const Calendar = () => {
         const endTime = new Date(startTime);
         endTime.setMinutes(endTime.getMinutes() + 30);
 
+        const initialRes = selectedResource ? resources.find(r => r.id === selectedResource) : null;
+
         setFormData({
             title: '',
             description: '',
@@ -633,6 +655,8 @@ const Calendar = () => {
             endTime: formatDateTimeLocal(endTime),
             assignedToId: agents[0]?.id || '',
             resourceId: selectedResource || '',
+            doctorName: initialRes?.type === 'PERSON' ? initialRes.name : '',
+            branch: initialRes?.description || '',
             contactName: contact?.name || '',
             contactPhone: contact?.phone || contact?.phoneNumber || '',
             contactEmail: contact?.email || '',
@@ -693,13 +717,62 @@ const Calendar = () => {
     };
 
     const openEditModal = (appointment) => {
+        // En uygun doktor / kaynak eşleştirmesi
+        let resolvedResId = appointment.resourceId || '';
+        let resolvedDoctor = appointment.doctorName || '';
+        let resolvedBranch = appointment.branch || '';
+
+        // 1. Eğer resourceId yoksa ama doctorName varsa isme göre eşleştir
+        if (!resolvedResId && resolvedDoctor) {
+            const docMatch = resources.find(r => 
+                r.name.toLowerCase().trim() === resolvedDoctor.toLowerCase().trim() ||
+                r.name.toLowerCase().includes(resolvedDoctor.toLowerCase()) ||
+                resolvedDoctor.toLowerCase().includes(r.name.toLowerCase())
+            );
+            if (docMatch) {
+                resolvedResId = docMatch.id;
+                resolvedDoctor = docMatch.name;
+                if (!resolvedBranch && docMatch.description) resolvedBranch = docMatch.description;
+            }
+        }
+
+        // 2. Eğer hâlâ resourceId yoksa branşa göre (description) eşleştir
+        if (!resolvedResId) {
+            const titleBranch = appointment.branch || appointment.title?.split('—')[0]?.trim();
+            if (titleBranch) {
+                const branchMatch = resources.find(r => 
+                    r.description && (
+                        r.description.toLowerCase().trim() === titleBranch.toLowerCase().trim() ||
+                        r.description.toLowerCase().includes(titleBranch.toLowerCase()) ||
+                        titleBranch.toLowerCase().includes(r.description.toLowerCase())
+                    )
+                );
+                if (branchMatch) {
+                    resolvedResId = branchMatch.id;
+                    if (!resolvedDoctor && branchMatch.type === 'PERSON') resolvedDoctor = branchMatch.name;
+                    if (!resolvedBranch) resolvedBranch = branchMatch.description;
+                }
+            }
+        }
+
+        // 3. Eğer resourceId varsa ama doctorName boşsa resource'dan al
+        if (resolvedResId && !resolvedDoctor) {
+            const foundRes = resources.find(r => r.id === resolvedResId);
+            if (foundRes) {
+                if (foundRes.type === 'PERSON') resolvedDoctor = foundRes.name;
+                if (!resolvedBranch && foundRes.description) resolvedBranch = foundRes.description;
+            }
+        }
+
         setFormData({
             title: appointment.title,
             description: appointment.description || '',
             startTime: formatDateTimeLocal(new Date(appointment.startTime)),
             endTime: formatDateTimeLocal(new Date(appointment.endTime)),
-            assignedToId: appointment.assignedToId,
-            resourceId: appointment.resourceId || '',
+            assignedToId: appointment.assignedToId || '',
+            resourceId: resolvedResId,
+            doctorName: resolvedDoctor,
+            branch: resolvedBranch,
             contactName: appointment.contactName || '',
             contactPhone: appointment.contactPhone || '',
             contactEmail: appointment.contactEmail || '',
@@ -733,10 +806,14 @@ const Calendar = () => {
         try {
             // Auto-assign color based on status
             const statusColor = APPOINTMENT_STATUSES.find(s => s.value === formData.status)?.color || '#3b82f6';
+            const selectedRes = resources.find(r => r.id === formData.resourceId);
+
             const data = {
                 ...formData,
                 assignedToId: formData.assignedToId || null,
                 resourceId: formData.resourceId || null,
+                doctorName: selectedRes?.type === 'PERSON' ? selectedRes.name : (formData.doctorName || null),
+                branch: selectedRes?.description || (formData.branch || null),
                 color: statusColor,
                 startTime: new Date(formData.startTime).toISOString(),
                 endTime: new Date(formData.endTime).toISOString()
@@ -1063,18 +1140,31 @@ const Calendar = () => {
                             })()}
                         </div>
 
-                        {/* Kaynak seçimi */}
+                        {/* Kaynak / Doktor seçimi */}
                         <select
                             className="resource-filter"
                             value={selectedResource}
                             onChange={(e) => setSelectedResource(e.target.value)}
                         >
-                            <option value="">{t('common.all')} Kaynaklar</option>
-                            {resources.map(resource => (
-                                <option key={resource.id} value={resource.id}>
-                                    {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
-                                </option>
+                            <option value="">{t('common.all')} Kaynaklar / Doktorlar</option>
+                            {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
+                                <optgroup key={branchName} label={`🏥 ${branchName}`}>
+                                    {branchDocs.map(resource => (
+                                        <option key={resource.id} value={resource.id}>
+                                            {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.name}
+                                        </option>
+                                    ))}
+                                </optgroup>
                             ))}
+                            {groupedResources.unassigned.length > 0 && (
+                                <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
+                                    {groupedResources.unassigned.map(resource => (
+                                        <option key={resource.id} value={resource.id}>
+                                            {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            )}
                         </select>
 
                         {/* Filtreleri Kaldır */}
@@ -1251,6 +1341,7 @@ const Calendar = () => {
                                             <span className="todo-title">{apt.title}</span>
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && <span className="todo-agent">👤 {apt.assignedTo.name}</span>}
+                                            {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {apt.doctorName}</span>}
                                         </div>
                                         <div className="todo-time">{formatTime(apt.startTime)}</div>
                                     </div>
@@ -1718,7 +1809,11 @@ const Calendar = () => {
                                                     <td>
                                                         {aptResource ? (
                                                             <span className="activities-resource-badge" style={{ borderLeftColor: aptResource.color }}>
-                                                                {aptResource.name}
+                                                                {aptResource.type === 'PERSON' ? `👨‍⚕️ ${aptResource.name}` : aptResource.name}
+                                                            </span>
+                                                        ) : item.doctorName ? (
+                                                            <span className="activities-resource-badge" style={{ borderLeftColor: '#10b981' }}>
+                                                                👨‍⚕️ {item.doctorName}
                                                             </span>
                                                         ) : (
                                                             <span className="activities-empty">—</span>
@@ -1835,19 +1930,49 @@ const Calendar = () => {
                                     </div>
 
                                     <div className={`apt-assign-card ${formData.resourceId ? 'selected' : ''}`}>
-                                        <div className="apt-assign-icon resource"><Building2 size={16} /></div>
+                                        <div className="apt-assign-icon resource">
+                                            {(() => {
+                                                const currentRes = resources.find(r => r.id === formData.resourceId);
+                                                if (currentRes?.type === 'PERSON') return <User size={16} />;
+                                                return <Building2 size={16} />;
+                                            })()}
+                                        </div>
                                         <div className="apt-assign-content">
-                                            <span className="apt-assign-type">Kaynak</span>
+                                            <span className="apt-assign-type">
+                                                {resources.some(r => r.type === 'PERSON') ? 'Doktor / Kaynak' : 'Kaynak'}
+                                            </span>
                                             <select
                                                 value={formData.resourceId}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, resourceId: e.target.value }))}
+                                                onChange={(e) => {
+                                                    const resId = e.target.value;
+                                                    const selectedRes = resources.find(r => r.id === resId);
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        resourceId: resId,
+                                                        doctorName: selectedRes ? selectedRes.name : '',
+                                                        branch: selectedRes?.description || prev.branch
+                                                    }));
+                                                }}
                                             >
                                                 <option value="">{t("channels.selectOption")}</option>
-                                                {resources.map(resource => (
-                                                    <option key={resource.id} value={resource.id}>
-                                                        {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
-                                                    </option>
+                                                {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
+                                                    <optgroup key={branchName} label={`🏥 ${branchName}`}>
+                                                        {branchDocs.map(resource => (
+                                                            <option key={resource.id} value={resource.id}>
+                                                                {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.name}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
                                                 ))}
+                                                {groupedResources.unassigned.length > 0 && (
+                                                    <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
+                                                        {groupedResources.unassigned.map(resource => (
+                                                            <option key={resource.id} value={resource.id}>
+                                                                {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
                                             </select>
                                         </div>
                                     </div>

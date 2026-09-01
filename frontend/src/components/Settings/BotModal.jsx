@@ -4,6 +4,7 @@ import { aiAPI, workspaceAPI, automationAPI, retellAPI, facebookAPI, whatsappAPI
 import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic, Wand2, ChevronRight, ChevronLeft, Languages, MessageSquare, Shield, Eye, Sparkles, ClipboardList, Key, Loader, CheckCircle, RefreshCw, PhoneCall, Calendar, BookOpen, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import AppointmentBotConfig from '../../components/Settings/AppointmentBotConfig';
+import BotRoutingSettings from './BotRoutingSettings';
 
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import './BotModal.css';
@@ -838,6 +839,14 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                         ))}
                     </div>
                 </div>
+            </div>
+
+            {/* Routing Settings Section */}
+            <div className="bot-settings-section" style={{ marginTop: '15px' }}>
+                <BotRoutingSettings
+                    routingConfig={routingConfig}
+                    onChange={setRoutingConfig}
+                />
             </div>
 
             {/* Appointment Bot Config — Branş & Doktor Yönetimi */}

@@ -78,11 +78,49 @@ export const getAppointments = async (req, res) => {
         });
         const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
-        const enrichedAppointments = appointments.map(appointment => ({
-            ...appointment,
-            assignedTo: userMap[appointment.assignedToId] || null,
-            createdBy: userMap[appointment.createdById] || null
-        }));
+        // Get all workspace resources to enrich appointments with doctor / resource details
+        const allResources = await prisma.calendarResource.findMany({
+            where: { workspaceId }
+        });
+        const resourceMap = Object.fromEntries(allResources.map(r => [r.id, r]));
+        const resourceByName = new Map();
+        const resourceByBranch = new Map();
+        for (const r of allResources) {
+            resourceByName.set(r.name.toLowerCase().trim(), r);
+            if (r.description) {
+                resourceByBranch.set(r.description.toLowerCase().trim(), r);
+            }
+        }
+
+        const enrichedAppointments = appointments.map(appointment => {
+            let matchedResource = appointment.resourceId ? resourceMap[appointment.resourceId] : null;
+            
+            // Eğer resourceId yoksa ama doctorName varsa isme göre eşleştir
+            if (!matchedResource && appointment.doctorName) {
+                const docKey = appointment.doctorName.toLowerCase().trim();
+                matchedResource = resourceByName.get(docKey) || 
+                    allResources.find(r => r.name.toLowerCase().includes(docKey) || docKey.includes(r.name.toLowerCase()));
+            }
+
+            // Eğer hâlâ yoksa branşa göre eşleştir
+            if (!matchedResource && (appointment.branch || appointment.title)) {
+                const branchKey = (appointment.branch || appointment.title.split('—')[0] || '').toLowerCase().trim();
+                if (branchKey) {
+                    matchedResource = resourceByBranch.get(branchKey) ||
+                        allResources.find(r => r.description && (r.description.toLowerCase().includes(branchKey) || branchKey.includes(r.description.toLowerCase())));
+                }
+            }
+
+            return {
+                ...appointment,
+                resourceId: appointment.resourceId || matchedResource?.id || null,
+                resource: matchedResource || null,
+                doctorName: appointment.doctorName || (matchedResource?.type === 'PERSON' ? matchedResource.name : ''),
+                branch: appointment.branch || matchedResource?.description || '',
+                assignedTo: userMap[appointment.assignedToId] || null,
+                createdBy: userMap[appointment.createdById] || null
+            };
+        });
 
         res.json({ appointments: enrichedAppointments });
     } catch (error) {
@@ -105,12 +143,44 @@ export const getAppointment = async (req, res) => {
         }
 
         // Get agent details
-        const agent = await prisma.user.findUnique({
+        const agent = appointment.assignedToId ? await prisma.user.findUnique({
             where: { id: appointment.assignedToId },
             select: { id: true, name: true, avatar: true }
-        });
+        }) : null;
 
-        res.json({ appointment: { ...appointment, assignedTo: agent } });
+        // Resource details
+        let resource = appointment.resourceId ? await prisma.calendarResource.findUnique({
+            where: { id: appointment.resourceId }
+        }) : null;
+
+        if (!resource && appointment.doctorName) {
+            resource = await prisma.calendarResource.findFirst({
+                where: {
+                    workspaceId,
+                    name: { contains: appointment.doctorName, mode: 'insensitive' }
+                }
+            });
+        }
+
+        if (!resource && appointment.branch) {
+            resource = await prisma.calendarResource.findFirst({
+                where: {
+                    workspaceId,
+                    description: { contains: appointment.branch, mode: 'insensitive' }
+                }
+            });
+        }
+
+        res.json({ 
+            appointment: { 
+                ...appointment, 
+                assignedTo: agent,
+                resource,
+                resourceId: appointment.resourceId || resource?.id || null,
+                doctorName: appointment.doctorName || resource?.name || '',
+                branch: appointment.branch || resource?.description || ''
+            } 
+        });
     } catch (error) {
         console.error('Get appointment error:', error);
         res.status(500).json({ error: 'Randevu yüklenirken hata oluştu' });
@@ -124,7 +194,7 @@ export const createAppointment = async (req, res) => {
         const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
-            color, notes, resourceId
+            color, notes, resourceId, doctorName, branch, procedure
         } = req.body;
 
         if (!title || !startTime || !endTime) {
@@ -161,6 +231,17 @@ export const createAppointment = async (req, res) => {
             });
         }
 
+        // Auto-extract doctorName / branch from resource if selected
+        let resolvedDoctorName = doctorName || '';
+        let resolvedBranch = branch || '';
+        if (resourceId) {
+            const resObj = await prisma.calendarResource.findUnique({ where: { id: resourceId } });
+            if (resObj) {
+                if (!resolvedDoctorName && resObj.type === 'PERSON') resolvedDoctorName = resObj.name;
+                if (!resolvedBranch && resObj.description) resolvedBranch = resObj.description;
+            }
+        }
+
         const appointment = await prisma.appointment.create({
             data: {
                 workspaceId,
@@ -168,11 +249,14 @@ export const createAppointment = async (req, res) => {
                 description,
                 startTime: start,
                 endTime: end,
-                assignedToId,
-                contactId,
-                contactName,
+                assignedToId: assignedToId || null,
+                contactId: contactId || null,
+                contactName: contactName || '',
                 contactPhone: normalizePhone(contactPhone),
-                contactEmail,
+                contactEmail: contactEmail || null,
+                doctorName: resolvedDoctorName || null,
+                branch: resolvedBranch || null,
+                procedure: procedure || null,
                 color: color || '#3b82f6',
                 notes,
                 resourceId: resourceId || null,
@@ -186,13 +270,17 @@ export const createAppointment = async (req, res) => {
         }
 
         // Get agent details
-        const agent = await prisma.user.findUnique({
+        const agent = assignedToId ? await prisma.user.findUnique({
             where: { id: assignedToId },
             select: { id: true, name: true, avatar: true }
-        });
+        }) : null;
+
+        const resource = resourceId ? await prisma.calendarResource.findUnique({
+            where: { id: resourceId }
+        }) : null;
 
         res.status(201).json({
-            appointment: { ...appointment, assignedTo: agent }
+            appointment: { ...appointment, assignedTo: agent, resource }
         });
     } catch (error) {
         console.error('Create appointment error:', error);
@@ -207,7 +295,7 @@ export const updateAppointment = async (req, res) => {
         const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
-            status, color, notes, resourceId
+            status, color, notes, resourceId, doctorName, branch, procedure
         } = req.body;
 
         const existing = await prisma.appointment.findFirst({ where: { id, workspaceId } });
@@ -228,7 +316,19 @@ export const updateAppointment = async (req, res) => {
         if (status !== undefined) updateData.status = status;
         if (color !== undefined) updateData.color = color;
         if (notes !== undefined) updateData.notes = notes;
-        if (resourceId !== undefined) updateData.resourceId = resourceId || null;
+        if (doctorName !== undefined) updateData.doctorName = doctorName;
+        if (branch !== undefined) updateData.branch = branch;
+        if (procedure !== undefined) updateData.procedure = procedure;
+        if (resourceId !== undefined) {
+            updateData.resourceId = resourceId || null;
+            if (resourceId) {
+                const resObj = await prisma.calendarResource.findUnique({ where: { id: resourceId } });
+                if (resObj) {
+                    if (doctorName === undefined && resObj.type === 'PERSON') updateData.doctorName = resObj.name;
+                    if (branch === undefined && resObj.description) updateData.branch = resObj.description;
+                }
+            }
+        }
 
         // Check for time conflicts if time/agent is changing
         if (startTime || endTime || assignedToId) {
@@ -258,12 +358,16 @@ export const updateAppointment = async (req, res) => {
             executeRule(workspaceId, 'APPOINTMENT_CANCEL_NOTIFY', { contactId: appointment.contactId }).catch(e => console.error('[AutoHook] APPOINTMENT_CANCEL_NOTIFY error:', e.message));
         }
 
-        const agent = await prisma.user.findUnique({
+        const agent = appointment.assignedToId ? await prisma.user.findUnique({
             where: { id: appointment.assignedToId },
             select: { id: true, name: true, avatar: true }
-        });
+        }) : null;
 
-        res.json({ appointment: { ...appointment, assignedTo: agent } });
+        const resource = appointment.resourceId ? await prisma.calendarResource.findUnique({
+            where: { id: appointment.resourceId }
+        }) : null;
+
+        res.json({ appointment: { ...appointment, assignedTo: agent, resource } });
     } catch (error) {
         console.error('Update appointment error:', error);
         res.status(500).json({ error: 'Randevu güncellenirken hata oluştu' });

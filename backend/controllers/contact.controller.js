@@ -414,11 +414,12 @@ export const getContacts = async (req, res) => {
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
-            myTeamIds = userTeams.map(t => t.teamId);
+            myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
             // Filter: assigned to me OR (in my team AND not assigned to anyone)
             conversationFilter = {
                 workspaceId: workspaceId,
+                channel: { notIn: ['FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT'] },
                 OR: [
                     { assignedToId: req.user.id },
                     ...myTeamIds.map(tid => ({
@@ -436,10 +437,14 @@ export const getContacts = async (req, res) => {
         let where;
         if (role === 'AGENT') {
             // AGENT: see contacts that have conversations OR active cases assigned to them or their teams
+            const caseOrConditions = [{ assignedToId: req.user.id }];
+            if (myTeamIds.length > 0) {
+                caseOrConditions.push({ assignedTeamId: { in: myTeamIds } });
+            }
             where = {
                 OR: [
                     { conversations: { some: conversationFilter } },
-                    { cases: { some: { workspaceId, status: 'ACTIVE', OR: [ { assignedToId: req.user.id }, { assignedTeamId: { in: myTeamIds } } ] } } }
+                    { cases: { some: { workspaceId, status: 'ACTIVE', OR: caseOrConditions } } }
                 ]
             };
         } else {
@@ -634,7 +639,7 @@ export const getContacts = async (req, res) => {
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
-            const myTeamIds = userTeams.map(t => t.teamId);
+            const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
             if (assignmentFilter === 'mine') {
                 // Contacts with active case assigned to me OR (no active case AND conversation assigned to me)
@@ -696,6 +701,14 @@ export const getContacts = async (req, res) => {
                     teamIds: { contains: `"${tid}"` }
                 }));
 
+                const poolCaseOr = [
+                    { assignedToId: req.user.id },
+                    { assignedToId: null }
+                ];
+                if (myTeamIds.length > 0) {
+                    poolCaseOr.push({ assignedTeamId: { in: myTeamIds } });
+                }
+
                 where = {
                     AND: [
                         where,
@@ -706,11 +719,7 @@ export const getContacts = async (req, res) => {
                                         some: {
                                             workspaceId,
                                             status: 'ACTIVE',
-                                            OR: [
-                                                { assignedToId: req.user.id },
-                                                { assignedToId: null },
-                                                { assignedTeamId: { in: myTeamIds } }
-                                            ]
+                                            OR: poolCaseOr
                                         }
                                     }
                                 },

@@ -1423,6 +1423,10 @@ const Inbox = () => {
         socket.on('conversation_assigned', (data) => {
             console.log('📋 Conversation assigned:', data);
             const { conversationId, assignedToId, assignedToName, botEnabled, teamIds, funnelType, funnelStageId, status } = data;
+            let firstTeamId = null;
+            try {
+                if (teamIds) firstTeamId = JSON.parse(teamIds)[0] || null;
+            } catch {}
 
             // Update local state instead of reloading to preserve pagination
             setInboxItems(prev => prev.map(item =>
@@ -1430,9 +1434,15 @@ const Inbox = () => {
                     ? {
                         ...item,
                         assignedToId,
-                        teamIds: teamIds || item.teamIds,
+                        teamIds: teamIds !== undefined ? teamIds : item.teamIds,
                         assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
-                        botEnabled,
+                        case: item.case ? {
+                            ...item.case,
+                            assignedToId,
+                            assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
+                            ...(firstTeamId !== null ? { assignedTeamId: firstTeamId } : {})
+                        } : item.case,
+                        ...(botEnabled !== undefined ? { botEnabled } : {}),
                         ...(funnelType !== undefined ? { funnelType } : {}),
                         ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {}),
                         ...(status !== undefined ? { status } : {})
@@ -1445,15 +1455,26 @@ const Inbox = () => {
                 setSelectedItem(prev => ({
                     ...prev,
                     assignedToId,
-                    teamIds: teamIds || prev.teamIds,
+                    teamIds: teamIds !== undefined ? teamIds : prev.teamIds,
                     assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
-                    botEnabled,
+                    case: prev.case ? {
+                        ...prev.case,
+                        assignedToId,
+                        assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
+                        ...(firstTeamId !== null ? { assignedTeamId: firstTeamId } : {})
+                    } : prev.case,
+                    ...(botEnabled !== undefined ? { botEnabled } : {}),
                     ...(funnelType !== undefined ? { funnelType } : {}),
                     ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {}),
                     ...(status !== undefined ? { status } : {})
                 }));
-                setBotEnabled(botEnabled);
+                if (botEnabled !== undefined) setBotEnabled(botEnabled);
             }
+        });
+
+        socket.on('case_assignment_updated', (data) => {
+            console.log('📋 Case assignment updated via socket:', data);
+            window.dispatchEvent(new CustomEvent('websocket:case_assignment_updated', { detail: data }));
         });
 
 
@@ -4115,8 +4136,8 @@ const Inbox = () => {
                                 );
                             })}
 
-                            {/* Load More Button - hide when filters reduce visible items */}
-                            {hasMore && activeFilters.length === allFilters.length && !showOnlyAssigned && inboxItems.length >= 50 && (
+                            {/* Load More Button */}
+                            {hasMore && inboxItems.length > 0 && (
                                 <button
                                     className="load-more-btn"
                                     onClick={loadMoreItems}

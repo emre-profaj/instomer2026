@@ -126,6 +126,11 @@ export const connectHealthSystem = async (req, res) => {
             console.log(`✅ [HealthSystem] Created new integration: ${integration.id}`);
         }
 
+        // Arka planda doktorları senkronize et
+        import('../services/probel_appointment.service.js')
+            .then(({ syncProbelDoctorsToResources }) => syncProbelDoctorsToResources(workspaceId, true))
+            .catch(e => console.warn('🏥 [HealthSystem] Doctor sync after connect error:', e.message));
+
         res.json({
             success: true,
             integration: {
@@ -216,6 +221,11 @@ export const testConnection = async (req, res) => {
                 })
             }
         });
+
+        // Arka planda doktorları senkronize et
+        import('../services/probel_appointment.service.js')
+            .then(({ syncProbelDoctorsToResources }) => syncProbelDoctorsToResources(workspaceId, true))
+            .catch(e => console.warn('🏥 [HealthSystem] Doctor sync after test error:', e.message));
 
         res.json({
             success: true,

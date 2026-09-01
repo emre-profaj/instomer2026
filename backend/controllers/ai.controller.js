@@ -1585,7 +1585,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                                 botType: 'CHATS',
                                 ...channelFilter
                             },
-                            include: { documents: { where: { isActive: true } } },
+                            include: { documents: true },
                             orderBy: { createdAt: 'asc' }
                         });
 
@@ -1602,7 +1602,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                                     instagramEnabled: false,
                                     widgetEnabled: false
                                 },
-                                include: { documents: { where: { isActive: true } } },
+                                include: { documents: true },
                                 orderBy: { createdAt: 'asc' }
                             });
                             if (fallbackBot) {
@@ -2030,6 +2030,7 @@ ${documentContext || "Knowledge base is empty."}
 9. **CRITICAL**: If the CUSTOMER INFORMATION section above has "Customer Name" and/or "Phone" filled in, NEVER ask the customer for name or phone! This info is already available.
 10. **CRITICAL**: If the user EXPLICITLY asks to speak to a representative, agent, or human (e.g. "connect me to an agent", "I want to talk to a person"), you MUST write [HANDOFF] at the beginning of your response.
 11. **CRITICAL - LANGUAGE RULES**: NEVER use first-person language ("I", "I'm", "I think", "I'm not sure"). NEVER express uncertainty ("I'm not sure", "I don't know", "I believe"). Always speak on behalf of the establishment using "we/our" (e.g. "Our team will assist you"). If you don't have the answer, directly redirect to the website or email — never say you are unsure.
+12. **MULTI-BRANCH CLARIFICATION**: If your knowledge base or documents contain information for multiple separate branches/locations and the customer asks a general question without specifying their preferred branch (e.g. "Can I get more info?", "What are the prices?"), do NOT assume or dump information for only one branch. Instead, politely ask which branch they are interested in. Once the customer specifies the branch, provide the relevant details for that branch.
 
 ### ⭐ PRIMARY SYSTEM INSTRUCTION (HIGHEST PRIORITY) ⭐ ###
 The following instruction was written by the business owner and OVERRIDES any conflicting default rules above. Always follow these instructions first:
@@ -2058,6 +2059,7 @@ ${documentContext || "Bilgi bankası boş."}
 9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
 10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.
 11. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım", "düşünüyorum"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum", "tam olarak bilemiyorum", "şu an bilgi sahibi değilim"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş (örn. "Ekibimiz size yardımcı olacaktır"). Cevabını bilmediğin sorularda "emin değilim" DEME, doğrudan web sitesine veya e-posta adresine yönlendir.
+12. **ÇOKLU ŞUBE KURALI**: Eğer bilgi bankanızda veya dökümanlarınızda birden fazla ayrı şube/lokasyon bilgisi varsa ve müşteri belirli bir şube belirtmeden genel bir hizmet/fiyat sorduysa, doğrudan tek bir şubenin fiyatını vermek yerine müşteriye hangi şube için bilgi almak istediğini sor. Müşteri şubesini belirttikten sonra o şubenin detaylarını ver.
 
 ### ⭐ ANA SİSTEM TALİMATI (EN YÜKSEK ÖNCELİK) ⭐ ###
 Aşağıdaki talimat işletme sahibi tarafından yazılmıştır ve yukarıdaki varsayılan kurallarla çeliştiğinde BU TALİMAT GEÇERLİDİR. Her zaman önce bu talimata uy:

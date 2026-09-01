@@ -474,3 +474,160 @@ export async function hasHealthSystemConnection(workspaceId) {
     });
     return !!integration;
 }
+
+// ─── PROBEL DOKTORLARINI TAKVİM KAYNAKLARINA SENKRONİZE ET ─────────────────
+
+const DOCTOR_COLORS = [
+    '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4',
+    '#ec4899', '#84cc16', '#f97316', '#6366f1', '#14b8a6'
+];
+
+const lastSyncTimes = new Map(); // workspaceId -> timestamp
+const SYNC_THROTTLE_MS = 5 * 60 * 1000; // 5 dakika
+
+/**
+ * Probel'deki tüm branşları ve doktorları çeker,
+ * calendar_resources tablosuna PERSON kaynağı olarak upsert eder.
+ * 
+ * @param {string} workspaceId
+ * @param {boolean} force - true ise throttle süresini yoksayar
+ */
+export async function syncProbelDoctorsToResources(workspaceId, force = false) {
+    try {
+        const hasConn = await hasHealthSystemConnection(workspaceId);
+        if (!hasConn) {
+            return { success: false, message: 'Aktif sağlık sistemi bağlantısı bulunamadı.' };
+        }
+
+        const now = Date.now();
+        const lastSync = lastSyncTimes.get(workspaceId) || 0;
+        if (!force && (now - lastSync < SYNC_THROTTLE_MS)) {
+            console.log(`🏥 [ProbelSync] Throttle: Workspace ${workspaceId} için son 5 dk içinde senkron yapıldı.`);
+            return { success: true, message: 'Zaten güncel', throttled: true };
+        }
+
+        console.log(`🏥 [ProbelSync] Doktor senkronizasyonu başlatılıyor: workspace ${workspaceId}`);
+
+        // 1. Tüm branşları çek
+        const branchRes = await getBranches(workspaceId, 1, '');
+        if (!branchRes.success || !branchRes.branches?.length) {
+            console.warn(`⚠️ [ProbelSync] Branş listesi alınamadı:`, branchRes.message);
+            return { success: false, message: branchRes.message || 'Branşlar alınamadı.' };
+        }
+
+        const branches = branchRes.branches;
+        let totalDoctorCount = 0;
+        const syncedList = [];
+
+        // 2. Her branş için doktorları paralel çek
+        await Promise.all(
+            branches.map(async (branch, bIdx) => {
+                try {
+                    const docRes = await getDoctors(workspaceId, branch.brans_kodu);
+                    if (!docRes.success || !docRes.doctors?.length) return;
+
+                    const branchColor = DOCTOR_COLORS[bIdx % DOCTOR_COLORS.length];
+
+                    // Branşı appointment_branches tablosuna da kaydet/güncelle
+                    let apptBranch = await prisma.appointmentBranch.findFirst({
+                        where: { workspaceId, name: branch.brans_adi }
+                    });
+                    if (!apptBranch) {
+                        apptBranch = await prisma.appointmentBranch.create({
+                            data: {
+                                workspaceId,
+                                name: branch.brans_adi,
+                                order: branch.sira || bIdx + 1,
+                                isActive: true
+                            }
+                        });
+                    }
+
+                    for (let dIdx = 0; dIdx < docRes.doctors.length; dIdx++) {
+                        const doc = docRes.doctors[dIdx];
+                        const docName = doc.doktor_adi.trim();
+                        if (!docName) continue;
+
+                        // 3. CalendarResource tablosunda var mı?
+                        const existingResource = await prisma.calendarResource.findFirst({
+                            where: {
+                                workspaceId,
+                                name: { equals: docName, mode: 'insensitive' }
+                            }
+                        });
+
+                        const resourceData = {
+                            name: docName,
+                            description: branch.brans_adi, // Branş adı
+                            type: 'PERSON',
+                            color: existingResource?.color || branchColor,
+                            isActive: true
+                        };
+
+                        let savedResource;
+                        if (existingResource) {
+                            savedResource = await prisma.calendarResource.update({
+                                where: { id: existingResource.id },
+                                data: {
+                                    description: branch.brans_adi,
+                                    type: 'PERSON',
+                                    isActive: true
+                                }
+                            });
+                        } else {
+                            savedResource = await prisma.calendarResource.create({
+                                data: {
+                                    workspaceId,
+                                    ...resourceData
+                                }
+                            });
+                        }
+
+                        // 4. AppointmentDoctor tablosunda da var mı?
+                        if (apptBranch) {
+                            const existingDoctor = await prisma.appointmentDoctor.findFirst({
+                                where: {
+                                    branchId: apptBranch.id,
+                                    name: { equals: docName, mode: 'insensitive' }
+                                }
+                            });
+                            if (!existingDoctor) {
+                                await prisma.appointmentDoctor.create({
+                                    data: {
+                                        branchId: apptBranch.id,
+                                        name: docName,
+                                        isActive: true
+                                    }
+                                });
+                            }
+                        }
+
+                        totalDoctorCount++;
+                        syncedList.push({
+                            id: savedResource.id,
+                            name: docName,
+                            branch: branch.brans_adi,
+                            doktor_kodu: doc.doktor_kodu
+                        });
+                    }
+                } catch (bErr) {
+                    console.warn(`⚠️ [ProbelSync] Branş ${branch.brans_adi} doktorları alınamadı:`, bErr.message);
+                }
+            })
+        );
+
+        lastSyncTimes.set(workspaceId, now);
+        console.log(`✅ [ProbelSync] ${totalDoctorCount} doktor CalendarResource olarak senkronize edildi.`);
+
+        return {
+            success: true,
+            count: totalDoctorCount,
+            doctors: syncedList,
+            message: `${totalDoctorCount} doktor başarıyla senkronize edildi.`
+        };
+    } catch (err) {
+        console.error('❌ [ProbelSync] Hata:', err);
+        return { success: false, message: err.message };
+    }
+}
+

@@ -188,7 +188,8 @@ ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşa
    - company: Firma/şirket adı (konuşmada söylendiyse)
    - source: Nereden geldiği (örn: "Instagram reklamı", "arkadaş tavsiyesi" — konuşmada geçtiyse)
 
-3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz. Hiçbirine uymuyorsa null yaz ama emin değilsen en yakın olanı seç.
+3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz.
+   ⚠️ KRİTİK ŞUBE KURALI: Şube bazlı akışları (örn: "Bornova Kadın", "Gaziemir Erkek") SADECE MÜŞTERİ o şubeyi açıkça belirtmişse veya sormuşsa eşleştir! Eğer müşteri henüz şube adı ("Bornova", "Gaziemir") söylememişse, botun/temsilcinin tek taraflı fiyat yazmış olması müşterinin tercihi sayılmaz → matchedFunnelId için null yaz (Genel kalsın).
 
 4. topicCategoryId: Yukarıdaki KONU KATEGORİLERİ bölümünden konuşmaya en uygun kategorinin ID'sini yaz. Yoksa null.
 5. matchedProductIds: Yukarıdaki ürünler bölümünden müşterinin ilgilendiği ürünlerin ID'lerini dizi olarak yaz. Konuşmada belirli bir ürün/hizmet geçiyorsa eşleştir. Yoksa boş dizi [].
@@ -228,7 +229,15 @@ SADECE JSON döndür, başka bir şey yazma:
         let responseText = result.response.text();
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-        const parsed = JSON.parse(responseText);
+        // Safely extract JSON between first { and last }
+        let jsonStr = responseText;
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+            jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+        }
+
+        const parsed = JSON.parse(jsonStr);
 
         // Kategori ID doğrulaması (LLM halüsinasyonlarını engellemek için)
         if (parsed.topicCategoryId && !categoryMap.has(parsed.topicCategoryId)) {
@@ -282,12 +291,96 @@ SADECE JSON döndür, başka bir şey yazma:
         // matchedProductIds yoksa boş dizi yap
         if (!parsed.matchedProductIds) parsed.matchedProductIds = [];
 
+        // 🎯 Deterministic Funnel Matcher: AI matchedFunnelId bulamadıysa veya emin olamadıysa
+        if (!parsed.matchedFunnelId && funnels.length > 0) {
+            // SADECE müşteriden gelen mesajları ve kişi adını baz al (Botun tek taraflı fiyat metinlerini değil!)
+            const customerOnlyText = (messages || []).filter(m => m.isFromContact).map(m => m.content || '').join(' ') + ' ' + (contact?.name || '');
+            const fallbackFunnelId = findBestMatchingFunnel(funnels, customerOnlyText);
+            if (fallbackFunnelId) {
+                parsed.matchedFunnelId = fallbackFunnelId;
+                console.log(`🎯 [Classifier] Keyword/Criteria ile Akış Eşleşti: ${fallbackFunnelId}`);
+            }
+        }
+
         return parsed;
     } catch (error) {
         console.error('❌ [Classifier] Sınıflandırma hatası:', error.message);
+        try {
+            const customerOnlyText = (messages || []).filter(m => m.isFromContact).map(m => m.content || '').join(' ') + ' ' + (contact?.name || '');
+            const fallbackFunnelId = findBestMatchingFunnel(funnels, customerOnlyText);
+            if (fallbackFunnelId) {
+                defaultResult.matchedFunnelId = fallbackFunnelId;
+                defaultResult.classification = 'FIRSAT';
+                defaultResult.isQualifiedLead = true;
+                console.log(`🎯 [Classifier Catch Fallback] Akış Eşleşti: ${fallbackFunnelId}`);
+            }
+        } catch (_) {}
         return defaultResult;
     }
 };
+
+/**
+ * Akış kriterleri ve isimlerine göre en uygun akış ID'sini bulur (Deterministic Matcher)
+ */
+export function findBestMatchingFunnel(funnels, searchText) {
+    if (!funnels || funnels.length === 0 || !searchText) return null;
+    const lower = searchText.toLowerCase();
+    let bestFunnelId = null;
+    let bestScore = 0;
+
+    for (const f of funnels) {
+        if (f.name === 'Genel' || f.name === 'Genel CRM') continue;
+        let score = 0;
+
+        // 1. Akış ismindeki her bir kelimeyi kontrol et (örn: "Bornova", "Erkek")
+        const nameWords = f.name.toLowerCase().split(/[\s\-_/]+/).filter(w => w.length >= 2);
+        let nameMatchCount = 0;
+        for (const nw of nameWords) {
+            if (lower.includes(nw)) {
+                score += 4;
+                nameMatchCount++;
+            }
+        }
+        if (nameMatchCount === nameWords.length && nameWords.length > 1) {
+            score += 15;
+        }
+
+        // 2. classificationCriteria kontrolü
+        if (f.classificationCriteria) {
+            let critText = '';
+            try {
+                const parsedCrit = typeof f.classificationCriteria === 'string' ? JSON.parse(f.classificationCriteria) : f.classificationCriteria;
+                if (typeof parsedCrit === 'string') critText = parsedCrit;
+                else if (parsedCrit && typeof parsedCrit === 'object') {
+                    critText = [parsedCrit.aiDescription, parsedCrit.description, parsedCrit.keywords].filter(Boolean).join(' ');
+                }
+            } catch {
+                critText = String(f.classificationCriteria);
+            }
+
+            if (critText) {
+                const keywords = critText.toLowerCase().replace(/[.,;:]/g, ' ').split(/\s+/).filter(w => w.length >= 2 && !['içeriyorsa', 'içeren', 'olan', 'veya', 'varsa', 'kelimelerini', 'kelimesini', 'için', 'hakkında'].includes(w));
+                let kwMatchCount = 0;
+                for (const kw of keywords) {
+                    if (lower.includes(kw)) {
+                        score += 3;
+                        kwMatchCount++;
+                    }
+                }
+                if (kwMatchCount >= 2) {
+                    score += 10;
+                }
+            }
+        }
+
+        if (score > bestScore && score >= 4) {
+            bestScore = score;
+            bestFunnelId = f.id;
+        }
+    }
+
+    return bestFunnelId;
+}
 
 // =============================================
 // 2. TRANSKRİPT ANALİZİ (Retell aramaları için)
@@ -342,7 +435,15 @@ SADECE JSON döndür:
         let responseText = result.response.text();
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-        const parsed = JSON.parse(responseText);
+        // Safely extract JSON between first { and last }
+        let jsonStr = responseText;
+        const firstBrace = jsonStr.indexOf('{');
+        const lastBrace = jsonStr.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+            jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+        }
+
+        const parsed = JSON.parse(jsonStr);
         if (parsed.requestedAction && parsed.requestedAction !== 'null') {
             console.log(`🎯 [Transcript Analysis] Action: ${parsed.requestedAction}, Date: ${parsed.requestedDate}, Raw: "${parsed.rawRequest}"`);
         }
@@ -640,78 +741,6 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 extractedData
             });
         } catch (wsErr) { /* WebSocket hatası kritik değil */ }
-
-        // --- 📋 YAPILANDIRILMIŞ ONAY MESAJI ---
-        // Bot aktifse onay mesajı gönderme (bot kendi yanıtını veriyor, duplicate olur)
-        const convCheck = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { assignedBotId: true, botEnabled: true }
-        });
-        const botIsHandling = convCheck?.assignedBotId && convCheck?.botEnabled !== false;
-
-        if (extractedData && !botIsHandling) {
-            try {
-                const ed = extractedData;
-
-                // Sınıflandırmaya göre başlık ve emoji
-                const templates = {
-                    'FIRSAT': { emoji: '📋', header: 'Bilgilerinizi aldım, şu şekilde not ettim:', footer: 'Ekibimiz en kısa sürede sizinle iletişime geçecektir. 😊' },
-                    'RANDEVU': { emoji: '📅', header: 'Randevu talebinizi aldım, şu şekilde not ettim:', footer: 'Randevu ekibimiz sizinle iletişime geçerek uygun zamanı belirleyecektir. 😊' },
-                    'DESTEK': { emoji: '🛠️', header: 'Destek talebinizi aldım, şu şekilde kaydettim:', footer: 'Destek ekibimiz en kısa sürede sizinle ilgilenecektir. 🙏' },
-                    'SIKAYET': { emoji: '📝', header: 'Şikayet kaydınızı aldım, şu şekilde not ettim:', footer: 'İlgili birim en kısa sürede konuyu değerlendirecektir. Anlayışınız için teşekkürler. 🙏' },
-                    'IS_BASVURUSU': { emoji: '💼', header: 'İş başvurunuzu aldık, şu şekilde kaydettik:', footer: 'İnsan kaynakları ekibimiz başvurunuzu değerlendirecektir. Teşekkürler! 🤝' },
-                    'GENEL': { emoji: '💬', header: 'Bilgilerinizi aldım:', footer: 'Talebinizi daha detaylı anlamak için ilgili ekibimiz sizi arayacaktır. 😊' }
-                };
-
-                const tpl = templates[classification];
-                if (!tpl) return;
-
-                const lines = [`${tpl.emoji} *${tpl.header}*`, ''];
-                if (ed.name) lines.push(`👤 *İsim:* ${ed.name}`);
-                if (ed.phone) lines.push(`📱 *Telefon:* ${ed.phone}`);
-                if (ed.topic) lines.push(`📌 *Konu:* ${ed.topic}`);
-                if (classification === 'FIRSAT' || classification === 'DESTEK' || classification === 'RANDEVU') {
-                    lines.push(`🕐 *Geri Aranma:* ${ed.preferredCallTime || 'En kısa sürede'}`);
-                }
-                if (classification === 'RANDEVU' && ed.requestedDate) {
-                    lines.push(`📆 *Tercih Edilen Tarih:* ${ed.requestedDate}`);
-                }
-                if (ed.branchInfo) lines.push(`🏢 *Şube:* ${ed.branchInfo}`);
-                lines.push('');
-                lines.push(tpl.footer);
-
-                const confirmationText = lines.join('\n');
-
-                const confirmMsg = await prisma.message.create({
-                    data: {
-                        content: confirmationText,
-                        conversationId,
-                        isFromContact: false
-                    }
-                });
-
-                // Conversation lastMessageAt güncelle
-                const updatedConv = await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { lastMessageAt: new Date() },
-                    include: { contact: true }
-                });
-
-                // Socket ile gönder (real-time görünsün)
-                emitToWorkspace(workspaceId, 'new_message', {
-                    workspaceId,
-                    conversationId,
-                    message: confirmMsg,
-                    conversation: updatedConv,
-                    contact: updatedConv.contact,
-                    channel: updatedConv.channel
-                });
-
-                console.log(`📋 [Classifier] ${classification} onay mesajı gönderildi: ${conversationId}`);
-            } catch (msgErr) {
-                console.error('⚠️ [Classifier] Onay mesajı hatası:', msgErr.message);
-            }
-        }
 
         // --- Niyet algılama → Görev oluşturma (TEK MERKEZ) ---
         // createIntentActivity: CALL niyeti → triggerAutoCall, VISIT/MEETING → aktivite oluşturma
