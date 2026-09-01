@@ -24,6 +24,27 @@ const getEffectiveAiApiKey = async (workspaceId) => {
     return globalSettings?.globalAiApiKey || null;
 };
 
+// Robust JSON parsing with multi-stage fallback
+function safeParseJson(text, fallback = null) {
+    if (!text || typeof text !== 'string') return fallback;
+    let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    try {
+        return JSON.parse(clean);
+    } catch (_) {}
+
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const slice = clean.substring(firstBrace, lastBrace + 1);
+        try {
+            return JSON.parse(slice);
+        } catch (_) {}
+    }
+
+    return fallback;
+}
+
 // =============================================
 // 1. SINIFLANDIR + VERİ ÇIKAR
 // =============================================
@@ -226,18 +247,13 @@ SADECE JSON döndür, başka bir şey yazma:
         });
 
         const result = await model.generateContent(prompt);
-        let responseText = result.response.text();
-        responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        // Safely extract JSON between first { and last }
-        let jsonStr = responseText;
-        const firstBrace = jsonStr.indexOf('{');
-        const lastBrace = jsonStr.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
-            jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+        const responseText = result.response.text();
+        
+        let parsed = safeParseJson(responseText);
+        if (!parsed) {
+            console.warn('⚠️ [Classifier] JSON parse failed, using fallback empty result');
+            parsed = { classification: 'DIGER', confidence: 0, extractedData: {} };
         }
-
-        const parsed = JSON.parse(jsonStr);
 
         // Kategori ID doğrulaması (LLM halüsinasyonlarını engellemek için)
         if (parsed.topicCategoryId && !categoryMap.has(parsed.topicCategoryId)) {
@@ -432,19 +448,10 @@ SADECE JSON döndür:
         });
 
         const result = await model.generateContent(prompt);
-        let responseText = result.response.text();
-        responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const responseText = result.response.text();
+        const parsed = safeParseJson(responseText, defaultResult);
 
-        // Safely extract JSON between first { and last }
-        let jsonStr = responseText;
-        const firstBrace = jsonStr.indexOf('{');
-        const lastBrace = jsonStr.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
-            jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-        }
-
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.requestedAction && parsed.requestedAction !== 'null') {
+        if (parsed?.requestedAction && parsed.requestedAction !== 'null') {
             console.log(`🎯 [Transcript Analysis] Action: ${parsed.requestedAction}, Date: ${parsed.requestedDate}, Raw: "${parsed.rawRequest}"`);
         }
 

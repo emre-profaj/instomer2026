@@ -34,24 +34,29 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
             }
         }
 
+        const textContent = (kbEntry.content || kbEntry.title || '').trim() || 'Instomer bilgi tabanı kaydı.';
+        const safeTitle = (kbEntry.title || 'Instomer KB').trim().substring(0, 35);
+
         if (!retellKbId) {
-            // Yeni Retell KB oluştur (Retell max name length: 40 chars)
-            const safeName = (kbEntry.title || 'Instomer KB').trim().substring(0, 35);
+            // Yeni Retell KB oluştur (Retell max name length: 40 chars, text ile birlikte)
             const newKb = await client.knowledgeBase.create({
-                knowledge_base_name: safeName
+                knowledge_base_name: safeTitle,
+                knowledge_base_texts: [{
+                    title: safeTitle,
+                    text: textContent
+                }]
             });
             retellKbId = newKb.knowledge_base_id;
             isNew = true;
+        } else {
+            // Mevcut KB'ye kaynak ekle
+            await client.knowledgeBase.addSources(retellKbId, {
+                knowledge_base_texts: [{
+                    title: safeTitle,
+                    text: textContent
+                }]
+            });
         }
-
-        // İçeriği ekle (Retell boş içerik kabul etmez)
-        const textContent = (kbEntry.content || kbEntry.title || '').trim() || 'Instomer bilgi tabanı kaydı.';
-        await client.knowledgeBase.addSources(retellKbId, {
-            knowledge_base_texts: [{
-                title: (kbEntry.title || 'Instomer KB').substring(0, 35),
-                text: textContent
-            }]
-        });
 
         // retellKbId'yi kaydet
         await prisma.knowledgeBase.update({
