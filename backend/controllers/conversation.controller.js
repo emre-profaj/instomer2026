@@ -131,23 +131,59 @@ export const getConversations = async (req, res) => {
             }
         }
 
-        // 🔍 DEBUG: WhatsApp görünürlük sorunu tespiti
-        console.log('🔍 [getConversations] role:', role, 'assignedToId:', assignedToId, 'teamId:', teamId, 'channel:', channel);
-        console.log('🔍 [getConversations] WHERE:', JSON.stringify(where, null, 2));
-        
-        // WhatsApp konuşma sayısını filtre OLMADAN kontrol et
-        const waDebugCount = await prisma.conversation.count({
-            where: { workspaceId, channel: 'WHATSAPP' }
-        });
-        const waDebugWithFilter = await prisma.conversation.count({ where: { ...where, channel: 'WHATSAPP' } });
-        // WhatsApp konuşmalarının status dağılımını kontrol et
-        const waStatusDebug = await prisma.conversation.groupBy({
-            by: ['status'],
-            where: { ...where, channel: 'WHATSAPP' },
-            _count: true
-        });
-        console.log(`🔍 [getConversations] WhatsApp: toplam=${waDebugCount}, filtre sonrası=${waDebugWithFilter}`);
-        console.log(`🔍 [getConversations] WhatsApp status dağılımı:`, JSON.stringify(waStatusDebug));
+        // --- Internal Chat Visibility Rules ---
+        const internalChatCondition = { 
+            isInternalChat: true, 
+            participantIds: { contains: `"${req.user.id}"` } 
+        };
+
+        const assignmentRules = {};
+        if (where.assignedToId !== undefined) assignmentRules.assignedToId = where.assignedToId;
+        if (where.teamIds !== undefined) assignmentRules.teamIds = where.teamIds;
+        if (where.AND !== undefined) assignmentRules.AND = where.AND;
+        if (where.OR !== undefined) assignmentRules.OR = where.OR;
+
+        delete where.assignedToId;
+        delete where.teamIds;
+        delete where.AND;
+        delete where.OR;
+
+        const externalChatCondition = {
+            AND: [
+                {
+                    OR: [
+                        { isInternalChat: false },
+                        { isInternalChat: null }
+                    ]
+                },
+                ...(Object.keys(assignmentRules).length > 0 ? [assignmentRules] : [])
+            ]
+        };
+
+        if (assignedToId === 'mine' || assignedToId === 'mine_or_unassigned' || assignedToId === 'my_teams' || (!assignedToId && !teamId)) {
+            where.AND = [
+                {
+                    OR: [
+                        externalChatCondition,
+                        internalChatCondition
+                    ]
+                }
+            ];
+        } else if (assignedToId === 'unassigned' || (assignedToId && assignedToId.startsWith('team:'))) {
+             where.AND = [
+                 externalChatCondition
+             ];
+        } else {
+             where.AND = [
+                 {
+                     OR: [
+                         externalChatCondition,
+                         internalChatCondition
+                     ]
+                 }
+             ];
+        }
+        // --- End Internal Chat ---
 
         const conversations = await prisma.conversation.findMany({
             where,
@@ -238,14 +274,7 @@ export const getConversations = async (req, res) => {
 
         const total = await prisma.conversation.count({ where });
 
-        // 🔍 DEBUG: Dönen konuşmaların kanal dağılımı
-        const channelDist = {};
-        conversations.forEach(c => { channelDist[c.channel] = (channelDist[c.channel] || 0) + 1; });
-        console.log(`📋 [getConversations] Found ${conversations.length} conversations (total: ${total}), filter: assignedToId=${req.query.assignedToId}`);
-        console.log(`📋 [getConversations] Kanal dağılımı:`, JSON.stringify(channelDist));
-        if (req.query.assignedToId === 'mine') {
-            console.log(`📋 [MINE] Where clause:`, JSON.stringify(where, null, 2));
-        }
+
 
         // Mask sensitive info in preview messages
         // + Planlanan aktivite bilgisini ekle
