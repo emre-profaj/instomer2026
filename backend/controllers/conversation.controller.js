@@ -21,8 +21,6 @@ export const getConversations = async (req, res) => {
 
         const where = {
             workspaceId,
-            // Hide conversations from soft-deleted contacts (handle NULL safely)
-            contact: { isDeleted: { not: true } },
             ...(channel === 'WHATSAPP' && {
                 OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }]
             }),
@@ -36,18 +34,18 @@ export const getConversations = async (req, res) => {
             ...(channel === 'WIDGET' && { channel: 'WIDGET' }),
             ...(channel === 'PHONE' && { channel: 'PHONE' }),
             ...(channel === 'LEAD' && { channel: 'LEAD' }),
-            ...(channel === 'INTERNAL' && { channel: 'INTERNAL' }),
             ...(channel === 'FORM' && { channel: 'FORM' }),
             ...(status && { status }),
             ...(contactId && { contactId }),
             ...(funnelType && { funnelType }),
-            // Direct conversation funnelStageId filter (no fallback to contact)
             ...(funnelStageId && { funnelStageId }),
-            // Keep contactStatus check just in case legacy calls use it
             ...(contactStatus && { contact: { status: contactStatus } }),
-            ...(req.query.showArchived !== 'true' && { isArchived: { not: true } }),
-            // isBulkSend filtresi devre dışı
-            // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
+            ...(req.query.showArchived === 'true' ? { isArchived: true } : {
+                OR: [
+                    { isArchived: false },
+                    { isArchived: null }
+                ]
+            }),
             ...(req.query.hideUnanswered === 'true' && {
                 messages: { some: { isFromContact: true } }
             })
@@ -75,170 +73,63 @@ export const getConversations = async (req, res) => {
 
         // Role-based visibility and explicit assignment filtering
         if (role === 'AGENT') {
-            // Agents see conversations assigned to them OR their teams (but NOT assigned to someone else)
-            // Agent'lar için sosyal medya post / yorum konuşmalarını gizle
             const userTeams = await prisma.teamMember.findMany({
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
             const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
-            // Post/yorum konuşmalarını Agent'lar görmez
-            where.channel = { notIn: ['FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT'] };
-
-            // 🚀 LEAD Kanalı için özel kural:
-            // LEAD'ler için agent sadece kendisine atanmış olanları görebilir
-            // Diğer kanallar için: kendisine atanmış VEYA takımında atanmamış olanlar
-            const isLeadChannel = channel === 'LEAD';
-
-            let accessCondition;
-            if (isLeadChannel) {
-                // LEAD: Sadece kendisine atanmış lead'ler
-                accessCondition = {
-                    assignedToId: req.user.id
-                };
-                console.log(`🔒 [LEAD Filter] Agent ${req.user.id} can only see assigned leads`);
-            } else {
-                // Diğer kanallar (WhatsApp, Instagram, Facebook vb.):
-                // Kendisine atanmış VEYA kendisinin atadığı VEYA takımında VEYA atanmamış (havuz)
-                accessCondition = {
-                    OR: [
-                        { assignedToId: req.user.id }, // Kendisine atanmış
-                        { assignedById: req.user.id }, // Kendisinin atadığı
-                        { assignedToId: null },        // Genel havuzdaki atanmamış konuşmalar
-                        ...myTeamIds.map(tid => ({
-                            teamIds: { contains: `"${tid}"` }
-                        }))
-                    ]
-                };
-            }
-
-            // Combine access control with requested filters
-            if (assignedToId) {
-                if (assignedToId === 'mine') {
-                    where.assignedToId = req.user.id;
-                    console.log(`🔍 [MINE Filter - AGENT] User ${req.user.id} looking for their assigned conversations`);
-                } else if (assignedToId === 'mine_or_unassigned') {
-                    // Havuzum: Bana atananlar + Atanmamışlar
-                    where.OR = [
-                        { assignedToId: req.user.id },
-                        { assignedToId: null }
-                    ];
-                    console.log(`🔍 [MINE_OR_UNASSIGNED - AGENT] User ${req.user.id}`);
-                } else if (assignedToId === 'my_teams') {
-                    // Takımındaki tüm konuşmalar (kimseye atanmamış olanlar)
-                    if (isLeadChannel) {
-                        where.assignedToId = req.user.id;
-                    } else {
-                        where.AND = [
-                            { OR: myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } })) },
-                            { assignedToId: null }
-                        ];
-                    }
-                } else if (assignedToId === 'unassigned') {
-                    // LEAD için atanmamışları gösterme
-                    if (isLeadChannel) {
-                        where.AND = [{ assignedToId: req.user.id }, { id: 'impossible' }]; // Boş sonuç
-                    } else {
-                        where.assignedToId = null;
-                    }
-                } else if (assignedToId.startsWith('team:')) {
-                    const tid = assignedToId.split(':')[1];
-                    where.teamIds = { contains: `"${tid}"` };
-                } else {
-                    where.assignedToId = assignedToId;
-                }
+            if (channel === 'LEAD') {
+                where.assignedToId = req.user.id;
+            } else if (assignedToId === 'mine') {
+                where.assignedToId = req.user.id;
+            } else if (assignedToId === 'unassigned') {
+                where.assignedToId = null;
+            } else if (assignedToId === 'mine_or_unassigned') {
+                where.OR = [
+                    { assignedToId: req.user.id },
+                    { assignedToId: null }
+                ];
+            } else if (assignedToId && assignedToId.startsWith('team:')) {
+                const tid = assignedToId.split(':')[1];
+                where.teamIds = { contains: `"${tid}"` };
+            } else if (assignedToId) {
+                where.assignedToId = assignedToId;
             } else if (!teamId) {
-                // No specific filter, show everything available to agent
-                where.AND = [accessCondition];
-            } else if (teamId) {
-                where.teamIds = { contains: `"${teamId}"` };
+                where.OR = [
+                    { assignedToId: req.user.id },
+                    { assignedById: req.user.id },
+                    { assignedToId: null },
+                    ...myTeamIds.map(tid => ({
+                        teamIds: { contains: `"${tid}"` }
+                    }))
+                ];
             }
         } else {
-            // ADMIN/OWNER logic
-            if (assignedToId) {
-                if (assignedToId === 'unassigned') {
-                    where.assignedToId = null;
-                    where.teamIds = { equals: '[]' };
-                } else if (assignedToId === 'mine') {
-                    where.assignedToId = req.user.id;
-                    console.log(`🔍 [MINE Filter - OWNER] User ${req.user.id} looking for their assigned conversations`);
-                } else if (assignedToId === 'mine_or_unassigned') {
-                    // Havuzum: Bana atananlar + Atanmamışlar
-                    where.OR = [
-                        { assignedToId: req.user.id },
-                        { assignedToId: null }
-                    ];
-                    console.log(`🔍 [MINE_OR_UNASSIGNED - OWNER] User ${req.user.id}`);
-                } else if (assignedToId === 'my_teams') {
-                    const userTeams = await prisma.teamMember.findMany({
-                        where: { userId: req.user.id },
-                        select: { teamId: true }
-                    });
-                    const myTeamIds = userTeams.map(t => t.teamId);
-                    where.OR = myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } }));
-                } else if (assignedToId.startsWith('team:')) {
-                    const tid = assignedToId.split(':')[1];
-                    where.teamIds = { contains: `"${tid}"` };
-                } else {
-                    where.assignedToId = assignedToId;
-                }
+            // ADMIN / OWNER / SUPER_ADMIN
+            if (assignedToId === 'mine') {
+                where.assignedToId = req.user.id;
+            } else if (assignedToId === 'unassigned') {
+                where.assignedToId = null;
+            } else if (assignedToId === 'mine_or_unassigned') {
+                where.OR = [
+                    { assignedToId: req.user.id },
+                    { assignedToId: null }
+                ];
+            } else if (assignedToId === 'my_teams') {
+                const userTeams = await prisma.teamMember.findMany({
+                    where: { userId: req.user.id },
+                    select: { teamId: true }
+                });
+                const myTeamIds = userTeams.map(t => t.teamId);
+                where.OR = myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } }));
+            } else if (assignedToId && assignedToId.startsWith('team:')) {
+                const tid = assignedToId.split(':')[1];
+                where.teamIds = { contains: `"${tid}"` };
+            } else if (assignedToId) {
+                where.assignedToId = assignedToId;
             }
         }
-
-        // --- Internal Chat Visibility Rules ---
-        const internalChatCondition = { 
-            isInternalChat: true, 
-            participantIds: { contains: `"${req.user.id}"` } 
-        };
-
-        const assignmentRules = {};
-        if (where.assignedToId !== undefined) assignmentRules.assignedToId = where.assignedToId;
-        if (where.teamIds !== undefined) assignmentRules.teamIds = where.teamIds;
-        if (where.AND !== undefined) assignmentRules.AND = where.AND;
-        if (where.OR !== undefined) assignmentRules.OR = where.OR;
-
-        delete where.assignedToId;
-        delete where.teamIds;
-        delete where.AND;
-        delete where.OR;
-
-        const externalChatCondition = {
-            AND: [
-                {
-                    OR: [
-                        { isInternalChat: false },
-                        { isInternalChat: null }
-                    ]
-                },
-                ...(Object.keys(assignmentRules).length > 0 ? [assignmentRules] : [])
-            ]
-        };
-
-        if (assignedToId === 'mine' || assignedToId === 'mine_or_unassigned' || assignedToId === 'my_teams' || (!assignedToId && !teamId)) {
-            where.AND = [
-                {
-                    OR: [
-                        externalChatCondition,
-                        internalChatCondition
-                    ]
-                }
-            ];
-        } else if (assignedToId === 'unassigned' || (assignedToId && assignedToId.startsWith('team:'))) {
-             where.AND = [
-                 externalChatCondition
-             ];
-        } else {
-             where.AND = [
-                 {
-                     OR: [
-                         externalChatCondition,
-                         internalChatCondition
-                     ]
-                 }
-             ];
-        }
-        // --------------------------------------
 
         // 🔍 DEBUG: WhatsApp görünürlük sorunu tespiti
         console.log('🔍 [getConversations] role:', role, 'assignedToId:', assignedToId, 'teamId:', teamId, 'channel:', channel);
