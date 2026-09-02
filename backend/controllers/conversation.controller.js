@@ -338,10 +338,9 @@ export const getConversations = async (req, res) => {
                     }
                 }
             },
-            orderBy: [
-                { lastContactMessageAt: 'desc' }, // Müşterinin son yazdığı zamana göre sırala
-                { lastMessageAt: 'desc' }          // Fallback (lastContactMessageAt null ise)
-            ],
+            orderBy: {
+                lastMessageAt: 'desc'
+            },
             skip: (parseInt(page) - 1) * parseInt(limit),
             take: parseInt(limit)
         });
