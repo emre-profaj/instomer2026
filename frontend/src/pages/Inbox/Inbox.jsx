@@ -1255,6 +1255,15 @@ const Inbox = () => {
             }
         });
 
+        const handleWsEvent = (event) => {
+            const data = event.detail;
+            if (currentWorkspace && data?.workspaceId === currentWorkspace.id) {
+                if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
+            }
+        };
+        window.addEventListener('websocket:new_message', handleWsEvent);
+        window.addEventListener('websocket:new_conversation', handleWsEvent);
+
         socket.on('new_message', (data) => {
             console.log('📥 new_message event received:', data);
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
@@ -1278,10 +1287,6 @@ const Inbox = () => {
                         }
                     }
                 }
-
-                // Browser notifications are now handled globally in ToastProvider (Toast.jsx)
-
-
             } else {
                 console.log('⚠️ new_message - workspace mismatch:', data.workspaceId, 'vs', currentWorkspace?.id);
             }
@@ -1592,6 +1597,8 @@ const Inbox = () => {
         });
 
         return () => {
+            window.removeEventListener('websocket:new_message', handleWsEvent);
+            window.removeEventListener('websocket:new_conversation', handleWsEvent);
             socket.off('activity_created');
             socket.off('activity_assigned');
             socket.off('activity_completed');
@@ -1750,8 +1757,9 @@ const Inbox = () => {
                     }
 
                     // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
-                    if (activeChannel && conv.channel !== activeChannel) {
-                        return false;
+                    if (activeChannel) {
+                        const isWa = activeChannel === 'WHATSAPP' && (conv.channel === 'WHATSAPP' || conv.whatsappPhoneNumberId);
+                        if (!isWa && conv.channel !== activeChannel) return false;
                     }
 
 
@@ -2116,8 +2124,9 @@ const Inbox = () => {
                     }
 
                     // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
-                    if (activeChannel && conv.channel !== activeChannel) {
-                        return; // Skip if channel doesn't match the active channel button
+                    if (activeChannel) {
+                        const isWa = activeChannel === 'WHATSAPP' && (conv.channel === 'WHATSAPP' || conv.whatsappPhoneNumberId);
+                        if (!isWa && conv.channel !== activeChannel) return;
                     }
 
                     // Check dropdown channel filter

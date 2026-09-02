@@ -99,16 +99,15 @@ export const getConversations = async (req, res) => {
                 };
                 console.log(`🔒 [LEAD Filter] Agent ${req.user.id} can only see assigned leads`);
             } else {
-                // Diğer kanallar: Kendisine atanmış VEYA kendisinin atadığı VEYA takımında atanmamış
+                // Diğer kanallar (WhatsApp, Instagram, Facebook vb.):
+                // Kendisine atanmış VEYA kendisinin atadığı VEYA takımında VEYA atanmamış (havuz)
                 accessCondition = {
                     OR: [
                         { assignedToId: req.user.id }, // Kendisine atanmış
                         { assignedById: req.user.id }, // Kendisinin atadığı
+                        { assignedToId: null },        // Genel havuzdaki atanmamış konuşmalar
                         ...myTeamIds.map(tid => ({
-                            AND: [
-                                { teamIds: { contains: `"${tid}"` } },
-                                { assignedToId: null } // Takımında VE kimseye atanmamış
-                            ]
+                            teamIds: { contains: `"${tid}"` }
                         }))
                     ]
                 };
@@ -121,14 +120,13 @@ export const getConversations = async (req, res) => {
                     console.log(`🔍 [MINE Filter - AGENT] User ${req.user.id} looking for their assigned conversations`);
                 } else if (assignedToId === 'mine_or_unassigned') {
                     // Havuzum: Bana atananlar + Atanmamışlar
-                    where.AND = [accessCondition, { OR: [
+                    where.OR = [
                         { assignedToId: req.user.id },
                         { assignedToId: null }
-                    ]}];
+                    ];
                     console.log(`🔍 [MINE_OR_UNASSIGNED - AGENT] User ${req.user.id}`);
                 } else if (assignedToId === 'my_teams') {
                     // Takımındaki tüm konuşmalar (kimseye atanmamış olanlar)
-                    // LEAD için bu filtre çalışmaz - sadece atanmış lead'ler
                     if (isLeadChannel) {
                         where.assignedToId = req.user.id;
                     } else {
@@ -142,19 +140,19 @@ export const getConversations = async (req, res) => {
                     if (isLeadChannel) {
                         where.AND = [{ assignedToId: req.user.id }, { id: 'impossible' }]; // Boş sonuç
                     } else {
-                        where.AND = [accessCondition, { assignedToId: null, teamIds: { equals: '[]' } }];
+                        where.assignedToId = null;
                     }
                 } else if (assignedToId.startsWith('team:')) {
                     const tid = assignedToId.split(':')[1];
-                    where.AND = [accessCondition, { teamIds: { contains: `"${tid}"` } }];
+                    where.teamIds = { contains: `"${tid}"` };
                 } else {
-                    where.AND = [accessCondition, { assignedToId }];
+                    where.assignedToId = assignedToId;
                 }
             } else if (!teamId) {
                 // No specific filter, show everything available to agent
                 where.AND = [accessCondition];
             } else if (teamId) {
-                where.AND = [accessCondition, { teamIds: { contains: `"${teamId}"` } }];
+                where.teamIds = { contains: `"${teamId}"` };
             }
         } else {
             // ADMIN/OWNER logic
@@ -206,8 +204,15 @@ export const getConversations = async (req, res) => {
         delete where.OR;
 
         const externalChatCondition = {
-            isInternalChat: { not: true },
-            ...assignmentRules
+            AND: [
+                {
+                    OR: [
+                        { isInternalChat: false },
+                        { isInternalChat: null }
+                    ]
+                },
+                ...(Object.keys(assignmentRules).length > 0 ? [assignmentRules] : [])
+            ]
         };
 
         if (assignedToId === 'mine' || assignedToId === 'mine_or_unassigned' || assignedToId === 'my_teams' || (!assignedToId && !teamId)) {
