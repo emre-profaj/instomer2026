@@ -627,7 +627,9 @@ const Inbox = () => {
                     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
                     return itemDate >= start && itemDate <= end;
                 } else if (quickFilter === 'unread') {
-                    return item.unreadCount > 0;
+                    return (item.unreadCount || 0) > 0;
+                } else if (quickFilter === 'starred') {
+                    return Boolean(item.isStarred);
                 } else if (quickFilter === 'custom') {
                     if (customDateStart) {
                         const start = new Date(customDateStart); start.setHours(0, 0, 0, 0);
@@ -644,27 +646,47 @@ const Inbox = () => {
         }
 
         // Apply search term filter
-        if (!searchTerm) return items;
-        const term = searchTerm.toLocaleLowerCase('tr-TR');
-        const trLower = (str) => (str || '').toLocaleLowerCase('tr-TR');
-        return items.filter(item => {
-            if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
-                return trLower(item.contact?.name).includes(term) ||
-                    trLower(item.contact?.fullName).includes(term) ||
-                    trLower(item.contact?.email).includes(term) ||
-                    (item.contact?.phone || '').includes(term) ||
-                    trLower(item.contact?.instagramUsername).includes(term) ||
-                    trLower(item.contact?.company).includes(term) ||
-                    trLower(item.messages?.[0]?.content).includes(term);
-            } else if (item.inboxType === INBOX_TYPES.COMMENT) {
-                return trLower(item.message).includes(term) ||
-                    trLower(item.from?.name).includes(term);
-            } else if (item.inboxType === INBOX_TYPES.LEAD) {
-                return trLower(item.name).includes(term) ||
-                    trLower(item.email).includes(term) ||
-                    (item.phone || '').includes(term);
+        let filtered = items;
+        if (searchTerm) {
+            const term = searchTerm.toLocaleLowerCase('tr-TR');
+            const trLower = (str) => (str || '').toLocaleLowerCase('tr-TR');
+            filtered = items.filter(item => {
+                if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
+                    return trLower(item.contact?.name).includes(term) ||
+                        trLower(item.contact?.fullName).includes(term) ||
+                        trLower(item.contact?.email).includes(term) ||
+                        (item.contact?.phone || '').includes(term) ||
+                        trLower(item.contact?.instagramUsername).includes(term) ||
+                        trLower(item.contact?.company).includes(term) ||
+                        trLower(item.messages?.[0]?.content).includes(term);
+                } else if (item.inboxType === INBOX_TYPES.COMMENT) {
+                    return trLower(item.message).includes(term) ||
+                        trLower(item.from?.name).includes(term);
+                } else if (item.inboxType === INBOX_TYPES.LEAD) {
+                    return trLower(item.name).includes(term) ||
+                        trLower(item.email).includes(term) ||
+                        (item.phone || '').includes(term);
+                }
+                return true;
+            });
+        }
+
+        // Starred items ALWAYS pinned at the very top
+        return [...filtered].sort((a, b) => {
+            const aStarred = Boolean(a.isStarred);
+            const bStarred = Boolean(b.isStarred);
+            if (aStarred && !bStarred) return -1;
+            if (!aStarred && bStarred) return 1;
+
+            if (aStarred && bStarred) {
+                const aStarTime = new Date(a.starredAt || a.lastMessageAt || a.sortDate || a.createdAt).getTime();
+                const bStarTime = new Date(b.starredAt || b.lastMessageAt || b.sortDate || b.createdAt).getTime();
+                if (bStarTime !== aStarTime) return bStarTime - aStarTime;
             }
-            return true;
+
+            const aDate = new Date(a.lastMessageAt || a.sortDate || a.createdAt).getTime();
+            const bDate = new Date(b.lastMessageAt || b.sortDate || b.createdAt).getTime();
+            return bDate - aDate;
         });
     }, [inboxItems, searchTerm, quickFilter, customDateStart, customDateEnd]);
 
@@ -693,6 +715,9 @@ const Inbox = () => {
     const [messages, setMessages] = useState([]);
     const [selectedActivityPopup, setSelectedActivityPopup] = useState(null);
     const [newMessage, setNewMessage] = useState('');
+    const [quickReplySuggestions, setQuickReplySuggestions] = useState([]);
+    const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+    const [showQuickReplySuggestions, setShowQuickReplySuggestions] = useState(false);
     const [mentionQuery, setMentionQuery] = useState('');
     const [showMentionDropdown, setShowMentionDropdown] = useState(false);
     const [mentionCursorPos, setMentionCursorPos] = useState(0);
@@ -1014,6 +1039,29 @@ const Inbox = () => {
             window.removeEventListener('websocket:case_assignment_updated', handleCaseAssignment);
         };
     }, []);
+
+    // WebSocket reconnect recovery: silently refresh inbox items and current conversation without page reload
+    useEffect(() => {
+        const handleReconnected = async () => {
+            console.log('🔄 [Inbox] WebSocket reconnected: refreshing inbox items and active conversation...');
+            if (loadInboxItemsRef.current) {
+                loadInboxItemsRef.current(false);
+            }
+            if (selectedItemRef.current?.id && currentWorkspace?.id) {
+                try {
+                    const res = await conversationAPI.getById(currentWorkspace.id, selectedItemRef.current.id);
+                    if (res?.data?.conversation) {
+                        setSelectedItem(prev => prev?.id === selectedItemRef.current?.id ? { ...prev, ...res.data.conversation } : prev);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ [Inbox] Failed to refresh active conversation after reconnect:', e.message);
+                }
+            }
+        };
+
+        window.addEventListener('websocket:reconnected', handleReconnected);
+        return () => window.removeEventListener('websocket:reconnected', handleReconnected);
+    }, [currentWorkspace?.id]);
 
     // URL ?tab= parametresinden assignment tab'ı oku ve set et
     useEffect(() => {
@@ -1582,6 +1630,18 @@ const Inbox = () => {
             loadInboxItems(false);
         });
 
+        socket.on('conversation_starred', (data) => {
+            const { conversationId, isStarred, starredAt } = data;
+            setInboxItems(prev => prev.map(item => 
+                item.id === conversationId 
+                    ? { ...item, isStarred, starredAt } 
+                    : item
+            ));
+            if (selectedItemRef.current?.id === conversationId) {
+                setSelectedItem(prev => prev ? { ...prev, isStarred, starredAt } : prev);
+            }
+        });
+
         // Listen for contact deletion - remove from inbox immediately (no page refresh needed)
         socket.on('contact_deleted', (data) => {
             const { contactId } = data;
@@ -1611,6 +1671,7 @@ const Inbox = () => {
             socket.off('activity_completed');
             socket.off('conversation_archived');
             socket.off('conversation_unarchived');
+            socket.off('conversation_starred');
             socket.disconnect();
         };
     }, [currentWorkspace, user, showArchived]); // NOTE: selectedItem/selectedItemType are accessed via refs to prevent socket reconnection on every conversation change
@@ -2982,6 +3043,7 @@ const Inbox = () => {
         setNewMessage(value);
         
         if (isInternalNoteMode) {
+            setShowQuickReplySuggestions(false);
             const cursorPos = e.target.selectionStart;
             const textBeforeCursor = value.substring(0, cursorPos);
             const atMatch = textBeforeCursor.match(/@(\w*)$/);
@@ -2994,6 +3056,57 @@ const Inbox = () => {
             }
         } else {
             setShowMentionDropdown(false);
+
+            // Quick reply auto-suggestions (e.g. typing "T" suggests "Tesisimize...")
+            const trLower = (str) => (str || '').toLocaleLowerCase('tr-TR').trim();
+            const query = trLower(value);
+
+            if (query.length >= 1 && quickReplies && quickReplies.length > 0) {
+                const cleanQuery = query.startsWith('/') ? query.substring(1) : query;
+                
+                if (cleanQuery.length >= 1) {
+                    const matches = quickReplies.filter(qr => {
+                        const title = trLower(qr.title);
+                        const content = trLower(qr.content);
+                        const shortcut = trLower(qr.shortcut);
+                        
+                        return (
+                            title.startsWith(cleanQuery) ||
+                            content.startsWith(cleanQuery) ||
+                            (shortcut && (shortcut.startsWith(cleanQuery) || shortcut.startsWith(query))) ||
+                            title.includes(cleanQuery) ||
+                            content.includes(cleanQuery)
+                        );
+                    }).sort((a, b) => {
+                        const aTitle = trLower(a.title);
+                        const bTitle = trLower(b.title);
+                        const aContent = trLower(a.content);
+                        const bContent = trLower(b.content);
+                        const aShort = trLower(a.shortcut);
+                        const bShort = trLower(b.shortcut);
+
+                        // Exact start of word / title / shortcut gets highest priority
+                        const aStarts = aTitle.startsWith(cleanQuery) || aContent.startsWith(cleanQuery) || (aShort && aShort.startsWith(cleanQuery));
+                        const bStarts = bTitle.startsWith(cleanQuery) || bContent.startsWith(cleanQuery) || (bShort && bShort.startsWith(cleanQuery));
+
+                        if (aStarts && !bStarts) return -1;
+                        if (!aStarts && bStarts) return 1;
+                        return 0;
+                    }).slice(0, 5);
+
+                    if (matches.length > 0) {
+                        setQuickReplySuggestions(matches);
+                        setSelectedSuggestionIndex(0);
+                        setShowQuickReplySuggestions(true);
+                    } else {
+                        setShowQuickReplySuggestions(false);
+                    }
+                } else {
+                    setShowQuickReplySuggestions(false);
+                }
+            } else {
+                setShowQuickReplySuggestions(false);
+            }
         }
     };
 
@@ -3286,6 +3399,42 @@ const Inbox = () => {
             if (typeof setContextMenu === 'function') setContextMenu(null);
         } catch (error) {
             console.error('Archive error:', error);
+        }
+    };
+
+    const handleToggleStar = async (item, e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (!item?.id || !currentWorkspace?.id) return;
+
+        const newStarred = !item.isStarred;
+        const nowIso = new Date().toISOString();
+
+        // Optimistic UI update
+        setInboxItems(prev => prev.map(conv => 
+            conv.id === item.id 
+                ? { ...conv, isStarred: newStarred, starredAt: newStarred ? nowIso : null } 
+                : conv
+        ));
+        if (selectedItemRef.current?.id === item.id) {
+            setSelectedItem(prev => prev ? { ...prev, isStarred: newStarred, starredAt: newStarred ? nowIso : null } : prev);
+        }
+
+        try {
+            await conversationAPI.toggleStar(currentWorkspace.id, item.id, newStarred);
+        } catch (error) {
+            console.error('Toggle star error:', error);
+            // Revert on error
+            setInboxItems(prev => prev.map(conv => 
+                conv.id === item.id 
+                    ? { ...conv, isStarred: item.isStarred, starredAt: item.starredAt } 
+                    : conv
+            ));
+            if (selectedItemRef.current?.id === item.id) {
+                setSelectedItem(prev => prev ? { ...prev, isStarred: item.isStarred, starredAt: item.starredAt } : prev);
+            }
         }
     };
 
@@ -3608,6 +3757,7 @@ const Inbox = () => {
                                     <div className="fp-chips">
                                         {[
                                             { key: null, label: 'Tümü' },
+                                            { key: 'starred', label: '⭐ Yıldızlılar' },
                                             { key: 'today', label: 'Bugün' },
                                             { key: 'yesterday', label: 'Dün' },
                                             { key: 'week', label: 'Bu Hafta' },
@@ -3964,7 +4114,7 @@ const Inbox = () => {
                                 return (
                                 <div
                                     key={`${item.inboxType}-${item.id}`}
-                                    className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
+                                    className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${item.isStarred ? 'starred-pinned' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
                                     onClick={() => bulkSelectMode ? handleToggleSelect(item.id, !selectedItems.includes(item.id)) : handleSelectItem(item)}
                                 >
                                     {bulkSelectMode && (
@@ -3996,13 +4146,28 @@ const Inbox = () => {
                                         )}
                                     </div>
                                     <div className="inbox-item-content">
-                                        {/* ── Row 1: Name + Time + Unread Count ── */}
+                                        {/* ── Row 1: Name + Time + Unread Count + Star ── */}
                                         <div className="inbox-item-header">
                                             <span className="inbox-item-name">
+                                                {item.isStarred && <span style={{ color: '#f59e0b', marginRight: 4 }} title="Sabitlenmiş">⭐</span>}
                                                 {getItemName(item)}
                                                 {item.isArchived && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>📥</span>}
                                             </span>
                                             <div className="inbox-item-header-right">
+                                                {(item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) && (
+                                                    <button
+                                                        type="button"
+                                                        className={`inbox-star-btn ${item.isStarred ? 'starred' : ''}`}
+                                                        onClick={(e) => handleToggleStar(item, e)}
+                                                        title={item.isStarred ? 'Yıldızı Kaldır' : 'Yıldızla ve Başa Sabitle'}
+                                                    >
+                                                        <Star
+                                                            size={13}
+                                                            fill={item.isStarred ? '#f59e0b' : 'none'}
+                                                            color={item.isStarred ? '#f59e0b' : '#94a3b8'}
+                                                        />
+                                                    </button>
+                                                )}
                                                 {(item.unreadCount || 0) > 0 && (
                                                     <span className="unread-badge">{item.unreadCount}</span>
                                                 )}
@@ -4806,6 +4971,22 @@ const Inbox = () => {
                                                             );
                                                         })()}
                                                     </div>
+                                                    <button
+                                                        className={`profile-action-btn star-btn ${selectedItem.isStarred ? 'starred' : ''}`}
+                                                        onClick={(e) => handleToggleStar(selectedItem, e)}
+                                                        title={selectedItem.isStarred ? "Yıldızı Kaldır" : "Yıldızla ve En Üste Sabitle"}
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
+                                                        }}
+                                                    >
+                                                        <Star
+                                                            size={15}
+                                                            fill={selectedItem.isStarred ? '#f59e0b' : 'none'}
+                                                            color={selectedItem.isStarred ? '#f59e0b' : '#64748b'}
+                                                        />
+                                                    </button>
                                                     <button
                                                         className="profile-action-btn archive"
                                                         onClick={() => handleArchiveConversation(selectedItem.id, !selectedItem.isArchived)}
@@ -5952,6 +6133,57 @@ const Inbox = () => {
                                                         })}
                                                     </div>
                                                 )}
+                                                {/* ⚡ Hazır Mesaj Otomatik Tamamlama & Öneri Paneli */}
+                                                {showQuickReplySuggestions && quickReplySuggestions.length > 0 && !isInternalNoteMode && (
+                                                    <div className="qr-autocomplete-panel">
+                                                        <div className="qr-autocomplete-header">
+                                                            <span className="qr-autocomplete-title">
+                                                                <Zap size={13} color="#f59e0b" /> Önerilen Hazır Mesajlar
+                                                            </span>
+                                                            <span className="qr-autocomplete-hint">
+                                                                <kbd>Tab</kbd> veya <kbd>↵</kbd> Tamamla &bull; <kbd>↑</kbd><kbd>↓</kbd> Gezin &bull; <kbd>Esc</kbd> Kapat
+                                                            </span>
+                                                        </div>
+                                                        <div className="qr-autocomplete-list">
+                                                            {quickReplySuggestions.map((qr, index) => {
+                                                                const isSelected = index === selectedSuggestionIndex;
+                                                                const titleText = qr.title || qr.content.substring(0, 35);
+                                                                const previewText = qr.content.length > 90 ? qr.content.substring(0, 90) + '...' : qr.content;
+                                                                return (
+                                                                    <div
+                                                                        key={qr.id}
+                                                                        className={`qr-autocomplete-item ${isSelected ? 'selected' : ''}`}
+                                                                        onClick={() => {
+                                                                            setNewMessage(qr.content);
+                                                                            setShowQuickReplySuggestions(false);
+                                                                            setTimeout(() => textareaRef.current?.focus(), 10);
+                                                                        }}
+                                                                        onMouseEnter={() => setSelectedSuggestionIndex(index)}
+                                                                    >
+                                                                        <div className="qr-autocomplete-item-left">
+                                                                            <span className="qr-autocomplete-badge">
+                                                                                {qr.shortcut ? `/${qr.shortcut.replace(/^\//, '')}` : '💬'}
+                                                                            </span>
+                                                                            <div className="qr-autocomplete-item-content">
+                                                                                <div className="qr-autocomplete-item-title">
+                                                                                    {titleText}
+                                                                                </div>
+                                                                                <div className="qr-autocomplete-item-preview">
+                                                                                    {previewText}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        {isSelected && (
+                                                                            <span className="qr-autocomplete-enter-key">
+                                                                                Seç ↵
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 {/* 📎 Dosya Önizleme Bandı */}
                                                 {pendingFile && (
                                                     <div style={{
@@ -5979,6 +6211,34 @@ const Inbox = () => {
                                                     onChange={handleMessageChange}
                                                     placeholder={pendingFile ? '📎 Dosya seçildi, mesaj ekleyebilirsiniz...' : (isInternalNoteMode ? '📝 Dahili not yazın...' : 'Yanıtınızı yazın...')}
                                                     onKeyDown={(e) => {
+                                                        // Quick Reply Suggestions keyboard navigation
+                                                        if (showQuickReplySuggestions && quickReplySuggestions.length > 0) {
+                                                            if (e.key === 'ArrowDown') {
+                                                                e.preventDefault();
+                                                                setSelectedSuggestionIndex(prev => (prev + 1) % quickReplySuggestions.length);
+                                                                return;
+                                                            }
+                                                            if (e.key === 'ArrowUp') {
+                                                                e.preventDefault();
+                                                                setSelectedSuggestionIndex(prev => (prev - 1 + quickReplySuggestions.length) % quickReplySuggestions.length);
+                                                                return;
+                                                            }
+                                                            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                                                                e.preventDefault();
+                                                                const chosen = quickReplySuggestions[selectedSuggestionIndex] || quickReplySuggestions[0];
+                                                                if (chosen) {
+                                                                    setNewMessage(chosen.content);
+                                                                    setShowQuickReplySuggestions(false);
+                                                                }
+                                                                return;
+                                                            }
+                                                            if (e.key === 'Escape') {
+                                                                e.preventDefault();
+                                                                setShowQuickReplySuggestions(false);
+                                                                return;
+                                                            }
+                                                        }
+
                                                         if (e.key === 'Enter' && !e.shiftKey) {
                                                             e.preventDefault();
                                                             handleSendMessage(e);

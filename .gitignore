@@ -24,8 +24,8 @@ build/
 
 # Backup & misc
 instomer_backup/
-healthmodule/
 *.cjs
+!backend/ecosystem.config.cjs
 check_*.js
 debug_*.js
 debug_*.cjs

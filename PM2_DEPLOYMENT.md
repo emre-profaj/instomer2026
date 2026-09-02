@@ -1,103 +1,88 @@
-# PM2 ile Deployment
+# PM2 ile Sıfır Kesinti (Zero-Downtime) Deployment
 
-## Ecosystem Dosyası
+Bu doküman, Instomer ChatCRM backend'ini canlı sunucuda **0 saniye kesinti** ile çalıştırmak ve güncellemek için gerekli adımları içerir.
 
-`backend/ecosystem.config.js` dosyası oluşturuldu.
+---
 
-## Kullanım
+## 1. Sunucu Ön Hazırlığı (Redis & PM2)
 
-### 1. PM2 Kurulumu (Sunucuda)
+Sunucunuza SSH ile bağlanın ve şu komutları çalıştırın:
+
 ```bash
+# Redis Kurulumu (Cluster modunda kopya senkronizasyonu için)
+sudo apt update && sudo apt install -y redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+# Redis Testi (PONG cevabı dönmelidir)
+redis-cli ping
+
+# PM2 Kurulumu (Daha önce kurulmadıysa)
 npm install -g pm2
 ```
 
-### 2. Ecosystem Dosyasını Düzenle
+---
 
-`backend/ecosystem.config.js` dosyasında `cwd` yolunu güncelle:
-```javascript
-cwd: '/home/your-username/chatinstomer/backend',
-```
-
-Gerçek sunucu yolunu yaz, örneğin:
-```javascript
-cwd: '/home/emre/chatinstomer/backend',
-```
-
-### 3. Backend'i Başlat
+## 2. İlk Kurulum ve Başlatma
 
 ```bash
 cd /home/emre/chatinstomer/backend
 
-# Ecosystem ile başlat
-pm2 start ecosystem.config.js
-
-# veya direkt
-pm2 start server.js --name chatcrm-api
-```
-
-### 4. PM2 Komutları
-
-```bash
-# Status kontrol
-pm2 status
-
-# Logları görüntüle
-pm2 logs chatcrm-api
-
-# Yeniden başlat
-pm2 restart chatcrm-api
-
-# Durdur
-pm2 stop chatcrm-api
-
-# Sil
-pm2 delete chatcrm-api
-
-# Otomatik başlatma (sunucu reboot)
-pm2 startup
-pm2 save
-```
-
-### 5. Log Klasörü Oluştur
-
-```bash
-cd /home/emre/chatinstomer/backend
-mkdir -p logs
-```
-
-### 6. Monitoring
-
-```bash
-# Real-time monitoring
-pm2 monit
-
-# Web dashboard
-pm2 plus
-```
-
-## Ecosystem Özellikleri
-
-- ✅ **Auto-restart**: Crash durumunda otomatik yeniden başlar
-- ✅ **Memory limit**: 500MB üzerinde restart
-- ✅ **Logs**: Ayrı error, output ve combined loglar
-- ✅ **Production mode**: NODE_ENV=production
-- ✅ **Port**: 5008
-
-## Güncelleme Sonrası
-
-```bash
-# Kodu güncelle (git pull vb.)
-cd /home/emre/chatinstomer/backend
-git pull
-
-# Dependencies güncelle
+# Paketleri yükle (@socket.io/redis-adapter ve redis dahil)
 npm install
 
-# Prisma migrate
+# Prisma şemalarını senkronize et
+npx prisma generate
 npx prisma migrate deploy
 
-# PM2 restart
-pm2 restart chatcrm-api
+# Log klasörünü oluştur
+mkdir -p logs
+
+# PM2 Cluster ile başlat
+pm2 delete chatcrm-api || true
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+```
+
+---
+
+## 3. Güncellemeler Nasıl Yapılır? (Sıfır Kesinti / Zero-Downtime)
+
+Kodlarda değişiklik yapıp sunucuya attıktan sonra **kesintisiz** güncellemek için:
+
+```bash
+cd /home/emre/chatinstomer/backend
+
+# Kodu çek
+git pull
+
+# Yeni paketler varsa yükle
+npm install --omit=dev
+
+# SIFIR KESİNTİ İLE YENİLE (pm2 restart DEĞİL, pm2 reload kullanılır!)
+pm2 reload ecosystem.config.js --update-env
+```
+
+> 💡 **İpucu:** Tüm bu adımları tek komutta yapmak için `backend/deploy.sh` scriptini de çalıştırabilirsiniz:
+> ```bash
+> chmod +x deploy.sh
+> ./deploy.sh
+> ```
+
+---
+
+## 4. PM2 Komutları
+
+```bash
+# Durum kontrolü (2 adet online kopya görünmelidir)
+pm2 status
+
+# Canlı log takibi
+pm2 logs chatcrm-api
+
+# Sıfır kesintili yenileme
+pm2 reload chatcrm-api --update-env
 ```
 
 ## Sorun Giderme

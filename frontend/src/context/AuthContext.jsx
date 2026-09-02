@@ -119,9 +119,16 @@ export const AuthProvider = ({ children }) => {
 
         console.log('🔌 [AuthContext] Connecting to WebSocket:', SOCKET_URL);
         const socket = io(SOCKET_URL, {
-            transports: ['websocket', 'polling']
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
         });
         socketRef.current = socket;
+
+        let wasDisconnected = false;
 
         socket.on('connect', () => {
             console.log('✅ [AuthContext] WebSocket connected:', socket.id);
@@ -134,6 +141,13 @@ export const AuthProvider = ({ children }) => {
             if (currentWorkspace?.id) {
                 socket.emit('join_workspace', currentWorkspace.id);
                 console.log(`📦 [AuthContext] Joined workspace room: ${currentWorkspace.id}`);
+            }
+
+            // If reconnecting after a disconnect, trigger global reconnected event so views refresh data
+            if (wasDisconnected) {
+                console.log('🔄 [AuthContext] WebSocket reconnected after disconnect, dispatching reconnected event...');
+                window.dispatchEvent(new CustomEvent('websocket:reconnected'));
+                wasDisconnected = false;
             }
         });
 
@@ -219,12 +233,14 @@ export const AuthProvider = ({ children }) => {
             window.dispatchEvent(new CustomEvent('websocket:user_status_changed', { detail: data }));
         });
 
-        socket.on('disconnect', () => {
-            console.log('❌ [AuthContext] WebSocket disconnected');
+        socket.on('disconnect', (reason) => {
+            console.log('❌ [AuthContext] WebSocket disconnected, reason:', reason);
+            wasDisconnected = true;
         });
 
         socket.on('connect_error', (error) => {
             console.error('❌ [AuthContext] WebSocket connection error:', error);
+            wasDisconnected = true;
         });
 
         return () => {

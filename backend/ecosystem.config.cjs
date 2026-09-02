@@ -3,12 +3,14 @@ module.exports = {
         {
             name: 'chatcrm-api',
             script: './server.js',
-            cwd: '/home/your-username/chatinstomer/backend',
-            instances: 1,
-            exec_mode: 'fork',
+            instances: 2,
+            exec_mode: 'cluster',
             autorestart: true,
             watch: false,
-            max_memory_restart: '500M',
+            max_memory_restart: '800M',
+            wait_ready: true,
+            listen_timeout: 10000,
+            kill_timeout: 5000,
             env: {
                 NODE_ENV: 'production',
                 PORT: 5008
@@ -22,3 +24,4 @@ module.exports = {
         }
     ]
 };
+

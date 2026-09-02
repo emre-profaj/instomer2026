@@ -30,7 +30,8 @@ import {
     getContactGroupedConversations,
     archiveConversation,
     unarchiveConversation,
-    createInternalConversation
+    createInternalConversation,
+    toggleStarConversation
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -139,5 +140,9 @@ router.post('/:workspaceId/:conversationId/smart-assign', requireWorkspaceAccess
 
 router.patch('/:workspaceId/:conversationId/archive', requireWorkspaceAccess, archiveConversation);
 router.patch('/:workspaceId/:conversationId/unarchive', requireWorkspaceAccess, unarchiveConversation);
+
+// Star / Pin conversation (keep pinned to top)
+router.patch('/:workspaceId/:conversationId/star', requireWorkspaceAccess, toggleStarConversation);
+router.put('/:workspaceId/:conversationId/star', requireWorkspaceAccess, toggleStarConversation);
 
 export default router;

@@ -345,6 +345,10 @@ export const conversationAPI = {
         api.patch(`/conversations/${workspaceId}/${conversationId}/archive`),
     unarchive: (workspaceId, conversationId) =>
         api.patch(`/conversations/${workspaceId}/${conversationId}/unarchive`),
+
+    // Star / Pin to top
+    toggleStar: (workspaceId, conversationId, isStarred) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/star`, { isStarred }),
 };
 
 // Funnel API (user-defined pipeline categories)

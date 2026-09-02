@@ -314,9 +314,10 @@ export const getConversations = async (req, res) => {
                     }
                 }
             },
-            orderBy: {
-                lastMessageAt: 'desc'
-            },
+            orderBy: [
+                { isStarred: 'desc' },
+                { lastMessageAt: 'desc' }
+            ],
             skip: (parseInt(page) - 1) * parseInt(limit),
             take: parseInt(limit)
         });
@@ -3655,26 +3656,36 @@ export const getContactGroupedConversations = async (req, res) => {
                 ...convWhere,
                 ...(contactWhere ? { contact: contactWhere } : {})
             },
-            select: { contactId: true, lastMessageAt: true },
-            orderBy: { lastMessageAt: 'desc' }
+            select: { contactId: true, lastMessageAt: true, isStarred: true, starredAt: true },
+            orderBy: [
+                { isStarred: 'desc' },
+                { lastMessageAt: 'desc' }
+            ]
         });
 
-        // Unique contact'ları grupla ve son mesaj tarihini belirle
+        // Unique contact'ları grupla ve yıldız/son mesaj tarihini belirle
         const contactMap = new Map();
         for (const conv of matchingConversations) {
             if (!contactMap.has(conv.contactId)) {
-                contactMap.set(conv.contactId, conv.lastMessageAt);
+                contactMap.set(conv.contactId, { lastMessageAt: conv.lastMessageAt, isStarred: Boolean(conv.isStarred) });
             } else {
                 const existing = contactMap.get(conv.contactId);
-                if (conv.lastMessageAt > existing) {
-                    contactMap.set(conv.contactId, conv.lastMessageAt);
+                if (conv.isStarred && !existing.isStarred) {
+                    existing.isStarred = true;
+                }
+                if (conv.lastMessageAt > existing.lastMessageAt) {
+                    existing.lastMessageAt = conv.lastMessageAt;
                 }
             }
         }
 
-        // Son mesaj tarihine göre sırala ve sayfalama
+        // Yıldızlı ve son mesaj tarihine göre sırala ve sayfalama
         const sortedContactIds = [...contactMap.entries()]
-            .sort((a, b) => b[1] - a[1])
+            .sort((a, b) => {
+                if (a[1].isStarred && !b[1].isStarred) return -1;
+                if (!a[1].isStarred && b[1].isStarred) return 1;
+                return b[1].lastMessageAt - a[1].lastMessageAt;
+            })
             .map(([id]) => id);
 
         const totalContacts = sortedContactIds.length;
@@ -3690,11 +3701,15 @@ export const getContactGroupedConversations = async (req, res) => {
                         id: true, channel: true, status: true, unreadCount: true,
                         lastMessageAt: true, assignedToId: true, assignedTeamId: true,
                         funnelType: true, funnelStageId: true, botEnabled: true,
+                        isStarred: true, starredAt: true,
                         teamIds: true,
                         assignedTo: { select: { id: true, name: true, avatar: true } },
                         messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { content: true, createdAt: true, isFromContact: true, messageType: true } }
                     },
-                    orderBy: { lastMessageAt: 'desc' }
+                    orderBy: [
+                        { isStarred: 'desc' },
+                        { lastMessageAt: 'desc' }
+                    ]
                 }
             }
         });
@@ -3886,5 +3901,53 @@ export const createInternalConversation = async (req, res) => {
     } catch (error) {
         console.error('Create internal conversation error:', error);
         res.status(500).json({ error: 'İç sohbet oluşturulamadı' });
+    }
+};
+
+/**
+ * Toggle star / pin status of a conversation
+ */
+export const toggleStarConversation = async (req, res) => {
+    try {
+        const { workspaceId, conversationId } = req.params;
+        const { isStarred } = req.body;
+
+        const existing = await prisma.conversation.findFirst({
+            where: { id: conversationId, workspaceId },
+            select: { id: true, isStarred: true }
+        });
+
+        if (!existing) {
+            return res.status(404).json({ error: 'Sohbet bulunamadı' });
+        }
+
+        const newStarred = isStarred !== undefined ? Boolean(isStarred) : !existing.isStarred;
+
+        const updated = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: {
+                isStarred: newStarred,
+                starredAt: newStarred ? new Date() : null,
+                starredById: newStarred ? req.user.id : null
+            }
+        });
+
+        // Broadcast to workspace for real-time sync across agents
+        emitToWorkspace(workspaceId, 'conversation_starred', {
+            conversationId,
+            isStarred: newStarred,
+            starredAt: updated.starredAt,
+            starredById: updated.starredById
+        });
+
+        return res.json({
+            success: true,
+            conversationId,
+            isStarred: newStarred,
+            starredAt: updated.starredAt
+        });
+    } catch (error) {
+        console.error('Toggle star conversation error:', error);
+        res.status(500).json({ error: 'Yıldız durumu güncellenirken hata oluştu' });
     }
 };

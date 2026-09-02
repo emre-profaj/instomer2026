@@ -2089,6 +2089,8 @@ export const getAgents = async (req, res) => {
         let agents;
         if (Array.isArray(rawAgents)) {
             agents = rawAgents;
+        } else if (rawAgents?.items && Array.isArray(rawAgents.items)) {
+            agents = rawAgents.items;
         } else if (rawAgents?.data && Array.isArray(rawAgents.data)) {
             agents = rawAgents.data;
         } else if (rawAgents && typeof rawAgents[Symbol.iterator] === 'function') {
@@ -2914,10 +2916,11 @@ async function handleCallStarted(call) {
 
                         // Step 1: wait 10s then get real call_id by matching phone numbers
                         await new Promise(r => setTimeout(r, 10000));
-                        const recentCalls = await retellClient.call.list({ limit: 10 }) || [];
-                        const realCall = recentCalls.find(c =>
-                            (c.from_number === fromNumber || c.to_number === fromNumber) &&
-                            (c.call_status === 'ongoing' || c.call_status === 'registered' || c.call_status === 'ended')
+                        const rawCalls = await retellClient.call.list({ limit: 10 }).catch(() => []);
+                        const callArray = Array.isArray(rawCalls) ? rawCalls : (Array.isArray(rawCalls?.data) ? rawCalls.data : (Array.isArray(rawCalls?.calls) ? rawCalls.calls : []));
+                        const realCall = callArray.find(c =>
+                            (c?.from_number === fromNumber || c?.to_number === fromNumber) &&
+                            (c?.call_status === 'ongoing' || c?.call_status === 'registered' || c?.call_status === 'ended')
                         );
                         if (!realCall) {
                             console.log(`📞 [Watcher] Could not find real call for ${fromNumber}`);

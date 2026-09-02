@@ -67,8 +67,9 @@ const autoSyncToRetell = async (workspaceId, kbEntry) => {
         // Yeni KB oluşturulduysa → workspace'in TÜM agent'larına otomatik bağla
         if (isNew) {
             try {
-                const allAgents = await client.agent.list();
-                for (const ag of (allAgents || [])) {
+                const rawAgents = await client.agent.list().catch(() => []);
+                const allAgents = Array.isArray(rawAgents) ? rawAgents : (Array.isArray(rawAgents?.items) ? rawAgents.items : (Array.isArray(rawAgents?.data) ? rawAgents.data : []));
+                for (const ag of allAgents) {
                     const currentKbIds = ag.knowledge_base_ids || [];
                     if (!currentKbIds.includes(retellKbId)) {
                         await client.agent.update(ag.agent_id, {

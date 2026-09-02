@@ -1,4 +1,6 @@
 import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
 import prisma from './lib/prisma.js';
 
 let io;
@@ -45,6 +47,33 @@ export const initializeSocket = (server) => {
         },
         transports: ['websocket', 'polling']
     });
+
+    // Redis Adapter for Zero-Downtime Multi-Instance PM2 Cluster
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    try {
+        const pubClient = createClient({ url: redisUrl });
+        const subClient = pubClient.duplicate();
+
+        let redisLogged = false;
+        pubClient.on('error', (err) => {
+            if (!redisLogged) {
+                console.warn('⚠️ [Socket.IO] Redis connection warning (falling back to memory):', err.message);
+                redisLogged = true;
+            }
+        });
+        subClient.on('error', () => {});
+
+        Promise.all([pubClient.connect(), subClient.connect()])
+            .then(() => {
+                io.adapter(createAdapter(pubClient, subClient));
+                console.log('🔴 [Socket.IO] Redis Adapter connected successfully (Cluster mode sync active)');
+            })
+            .catch((err) => {
+                console.log('ℹ️ [Socket.IO] Redis not active, using default in-memory adapter');
+            });
+    } catch (err) {
+        console.warn('ℹ️ [Socket.IO] Redis adapter init skipped:', err.message);
+    }
 
     io.on('connection', (socket) => {
         log('✅ Client connected:', socket.id);

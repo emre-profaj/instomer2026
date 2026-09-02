@@ -105,6 +105,9 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5008;
 
+// Trust reverse proxy (Nginx) so req.ip reflects actual client IP
+app.set('trust proxy', 1);
+
 // Initialize Socket.IO
 initializeSocket(httpServer);
 
@@ -131,20 +134,23 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 dakika
-  max: isDev ? 0 : 5000, // Development: sınırsız, Production: 15 dakikada max 5000 istek
+  max: isDev ? 0 : 50000, // 15 dakikada 50.000 istek
   message: { error: 'Çok fazla istek gönderildi, lütfen daha sonra tekrar deneyin.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Webhook'ları atla (Facebook, WhatsApp, vb.)
-    return req.path.includes('/webhook') || req.path.includes('/public/');
+    // Webhook'ları, public endpointleri, health check ve authenticated istekleri atla
+    return req.path.includes('/webhook') || 
+           req.path.includes('/public/') || 
+           req.path === '/health' ||
+           !!req.headers.authorization;
   }
 });
 
-// Login için daha sıkı rate limiting
+// Login için brute force koruması
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 dakika
-  max: isDev ? 0 : 50, // Development: sınırsız, Production: 15 dakikada max 50 login denemesi
+  max: isDev ? 0 : 50, // 15 dakikada max 50 login denemesi
   message: { error: 'Çok fazla giriş denemesi, lütfen 15 dakika sonra tekrar deneyin.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -281,73 +287,109 @@ app.use((err, req, res, next) => {
   });
 });
 
+const instanceId = process.env.NODE_APP_INSTANCE !== undefined ? `Instance #${process.env.NODE_APP_INSTANCE}` : 'Standalone';
+const isMasterInstance = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
+
 httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT} [${instanceId}]`);
   console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);
   if (process.env.NODE_ENV !== 'production') {
     console.log(`🔌 WebSocket server initialized`);
   }
 
-  // ─── ONE-TIME STARTUP CLEANUP ────────────────────────────────────────────
-  // 1) "Randevu Veriliyor" stage'i tüm workspace'lerden kaldır (gereksiz / kafa karıştırıcı)
-  prisma.funnelStage.deleteMany({ where: { name: 'Randevu Veriliyor' } })
-    .then(r => {
-      if (r.count > 0) console.log(`🗑️  [Startup] "Randevu Veriliyor" stage silindi: ${r.count} kayıt`);
-    })
-    .catch(e => console.warn('⚠️ [Startup] Stage cleanup error:', e.message));
+  // PM2 Zero-Downtime ready signal
+  if (process.send) {
+    process.send('ready');
+    console.log(`✅ [PM2] Ready signal sent for ${instanceId}`);
+  }
 
-  // 2) funnelType var ama funnelStageId yok olan contact/conversation'ları temizle
-  (async () => {
-    try {
-      // Contacts: funnelType set, funnelStageId null → clear funnelType
-      const orphanContacts = await prisma.contact.updateMany({
-        where: { funnelType: { not: null }, funnelStageId: null },
-        data: { funnelType: null }
-      });
-      if (orphanContacts.count > 0) console.log(`🔧 [Startup] Cleared ${orphanContacts.count} contacts with funnelType but no stage`);
+  if (isMasterInstance) {
+    // ─── ONE-TIME STARTUP CLEANUP ────────────────────────────────────────────
+    // 1) "Randevu Veriliyor" stage'i tüm workspace'lerden kaldır (gereksiz / kafa karıştırıcı)
+    prisma.funnelStage.deleteMany({ where: { name: 'Randevu Veriliyor' } })
+      .then(r => {
+        if (r.count > 0) console.log(`🗑️  [Startup] "Randevu Veriliyor" stage silindi: ${r.count} kayıt`);
+      })
+      .catch(e => console.warn('⚠️ [Startup] Stage cleanup error:', e.message));
 
-      // Conversations: funnelType set, funnelStageId null → clear funnelType
-      const orphanConvs = await prisma.conversation.updateMany({
-        where: { funnelType: { not: null }, funnelStageId: null },
-        data: { funnelType: null }
-      });
-      if (orphanConvs.count > 0) console.log(`🔧 [Startup] Cleared ${orphanConvs.count} conversations with funnelType but no stage`);
+    // 2) funnelType var ama funnelStageId yok olan contact/conversation'ları temizle
+    (async () => {
+      try {
+        // Contacts: funnelType set, funnelStageId null → clear funnelType
+        const orphanContacts = await prisma.contact.updateMany({
+          where: { funnelType: { not: null }, funnelStageId: null },
+          data: { funnelType: null }
+        });
+        if (orphanContacts.count > 0) console.log(`🔧 [Startup] Cleared ${orphanContacts.count} contacts with funnelType but no stage`);
 
-      // Contacts: funnelStageId set, funnelType null → resolve from stage's parent funnel
-      const stageOrphans = await prisma.contact.findMany({
-        where: { funnelStageId: { not: null }, funnelType: null },
-        select: { id: true, funnelStageId: true }
-      });
-      for (const c of stageOrphans) {
-        const stage = await prisma.funnelStage.findUnique({
-          where: { id: c.funnelStageId },
-          select: { funnelId: true }
-        }).catch(() => null);
-        if (stage?.funnelId) {
-          await prisma.contact.update({
-            where: { id: c.id },
-            data: { funnelType: stage.funnelId }
-          });
-        } else {
-          // Stage doesn't exist → clear
-          await prisma.contact.update({
-            where: { id: c.id },
-            data: { funnelStageId: null }
-          });
+        // Conversations: funnelType set, funnelStageId null → clear funnelType
+        const orphanConvs = await prisma.conversation.updateMany({
+          where: { funnelType: { not: null }, funnelStageId: null },
+          data: { funnelType: null }
+        });
+        if (orphanConvs.count > 0) console.log(`🔧 [Startup] Cleared ${orphanConvs.count} conversations with funnelType but no stage`);
+
+        // Contacts: funnelStageId set, funnelType null → resolve from stage's parent funnel
+        const stageOrphans = await prisma.contact.findMany({
+          where: { funnelStageId: { not: null }, funnelType: null },
+          select: { id: true, funnelStageId: true }
+        });
+        for (const c of stageOrphans) {
+          const stage = await prisma.funnelStage.findUnique({
+            where: { id: c.funnelStageId },
+            select: { funnelId: true }
+          }).catch(() => null);
+          if (stage?.funnelId) {
+            await prisma.contact.update({
+              where: { id: c.id },
+              data: { funnelType: stage.funnelId }
+            });
+          } else {
+            // Stage doesn't exist → clear
+            await prisma.contact.update({
+              where: { id: c.id },
+              data: { funnelStageId: null }
+            });
+          }
         }
+        if (stageOrphans.length > 0) console.log(`🔧 [Startup] Fixed ${stageOrphans.length} contacts with stage but no funnelType`);
+
+      } catch (e) {
+        console.warn('⚠️ [Startup] Funnel orphan cleanup error:', e.message);
       }
-      if (stageOrphans.length > 0) console.log(`🔧 [Startup] Fixed ${stageOrphans.length} contacts with stage but no funnelType`);
+    })();
+    // ─────────────────────────────────────────────────────────────────────────
 
-    } catch (e) {
-      console.warn('⚠️ [Startup] Funnel orphan cleanup error:', e.message);
-    }
-  })();
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // Start email polling after server starts
-  startEmailPolling();
-
+    // Start email polling after server starts
+    startEmailPolling();
+  } else {
+    console.log(`ℹ️ [Cluster Worker] ${instanceId} active for HTTP/Sockets. Background crons managed by Instance #0.`);
+  }
 });
+
+// Graceful shutdown handler for zero-downtime reloads
+const gracefulShutdown = (signal) => {
+  console.log(`🛑 [${signal}] Graceful shutdown initiated for ${instanceId}. Closing HTTP server...`);
+  httpServer.close(async () => {
+    console.log('✅ [Shutdown] HTTP server closed gracefully.');
+    try {
+      await prisma.$disconnect();
+      console.log('✅ [Shutdown] Prisma disconnected.');
+    } catch (e) {
+      console.error('⚠️ [Shutdown] Error disconnecting Prisma:', e.message);
+    }
+    process.exit(0);
+  });
+
+  // Force close after 8 seconds if connections do not drain
+  setTimeout(() => {
+    console.error('⚠️ [Shutdown] Force exit timeout reached.');
+    process.exit(1);
+  }, 8000);
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 
 // Email Polling System - checks for new emails every 2 minutes
@@ -388,204 +430,205 @@ function startEmailPolling() {
   }, 30000);
 }
 
-// Bot Delay Processor - gecikme süresi dolan konuşmalar için bot cevabını tetikle
-import { processPendingBotResponses } from './services/conversationRouting.service.js';
+// ═══════════════════════════════════════════════════════════════
+// BACKGROUND CRON & TIMER SERVICES (Only active on Master Instance #0)
+// ═══════════════════════════════════════════════════════════════
+if (isMasterInstance) {
+  // Bot Delay Processor - gecikme süresi dolan konuşmalar için bot cevabını tetikle
+  import('./services/conversationRouting.service.js').then(({ processPendingBotResponses }) => {
+    const BOT_DELAY_CHECK_INTERVAL = 30000;
+    setTimeout(() => {
+      console.log('🤖 [Bot Delay] Starting bot delay processor (every 30 seconds)');
+      setInterval(async () => {
+        try {
+          await processPendingBotResponses();
+        } catch (error) {
+          console.error('❌ [Bot Delay] Processor error:', error.message);
+        }
+      }, BOT_DELAY_CHECK_INTERVAL);
+    }, 35000);
+  });
 
-const BOT_DELAY_CHECK_INTERVAL = 30000; // 30 saniyede bir kontrol (CPU optimizasyonu: 10s → 30s)
+  // Smart Reminder System — 5-step cascading follow-up
+  import('./services/followUp.service.js').then(({ processSmartReminders }) => {
+    const SMART_REMINDER_INTERVAL = 60000;
+    setTimeout(() => {
+      console.log('📩 [SmartReminder] Starting 5-step smart reminder processor (every 60 seconds)');
+      processSmartReminders();
+      setInterval(async () => {
+        try {
+          await processSmartReminders();
+        } catch (error) {
+          console.error('❌ [SmartReminder] Processor error:', error.message);
+        }
+      }, SMART_REMINDER_INTERVAL);
+    }, 40000);
+  });
 
-setTimeout(() => {
-  console.log('🤖 [Bot Delay] Starting bot delay processor (every 10 seconds)');
-  setInterval(async () => {
+  // Appointment Reminder Notification Processor
+  const APPOINTMENT_REMINDER_INTERVAL = 60 * 1000;
+  let isProcessingAppointmentReminders = false;
+
+  async function processAppointmentReminders() {
+    if (isProcessingAppointmentReminders) return;
+    isProcessingAppointmentReminders = true;
     try {
-      await processPendingBotResponses();
-    } catch (error) {
-      console.error('❌ [Bot Delay] Processor error:', error.message);
-    }
-  }, BOT_DELAY_CHECK_INTERVAL);
-}, 35000); // Email polling'den 5 saniye sonra başla
-
-// Smart Reminder System — 5-step cascading follow-up (replaces old 2-cron system)
-import { processSmartReminders, resetFollowUpFlags } from './services/followUp.service.js';
-
-const SMART_REMINDER_INTERVAL = 60000; // 60 saniyede bir kontrol
-
-setTimeout(() => {
-  console.log('📩 [SmartReminder] Starting 5-step smart reminder processor (every 60 seconds)');
-  processSmartReminders(); // İlk çalıştırmayı hemen yap
-  setInterval(async () => {
-    try {
-      await processSmartReminders();
-    } catch (error) {
-      console.error('❌ [SmartReminder] Processor error:', error.message);
-    }
-  }, SMART_REMINDER_INTERVAL);
-}, 40000);
-
-// Appointment Reminder Notification Processor
-// Checks every 60 seconds for due appointments and creates notifications
-const APPOINTMENT_REMINDER_INTERVAL = 60 * 1000; // 1 dakika
-let isProcessingAppointmentReminders = false;
-
-async function processAppointmentReminders() {
-  if (isProcessingAppointmentReminders) return;
-  isProcessingAppointmentReminders = true;
-  try {
-    const now = new Date();
-
-    const dueAppointments = await prisma.appointment.findMany({
-      where: {
-        startTime: { lte: now },
-        reminderSent: false,
-        status: 'SCHEDULED'
-      },
-      take: 50
-    });
-
-    if (dueAppointments.length === 0) return;
-
-    console.log(`🔔 [Reminder] Found ${dueAppointments.length} due appointment(s)`);
-
-    for (const apt of dueAppointments) {
-      try {
-        const conversationIdMatch = apt.notes?.match(/Conversation ID: (.+)/);
-        const conversationId = conversationIdMatch ? conversationIdMatch[1].trim() : null;
-        const aptTime = new Date(apt.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
-        const aptDate = new Date(apt.startTime).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', timeZone: 'Europe/Istanbul' });
-
-        await createNotification(
-          apt.workspaceId,
-          apt.assignedToId,
-          'REMINDER',
-          `⏰ Hatırlatıcı: ${apt.title}`,
-          apt.description || `${apt.contactName || 'Müşteri'} için ${aptDate} ${aptTime} randevusu.`,
-          conversationId ? { conversationId, appointmentId: apt.id } : { appointmentId: apt.id }
-        );
-
-        await prisma.appointment.update({
-          where: { id: apt.id },
-          data: { reminderSent: true }
-        });
-
-        console.log(`🔔 [Reminder] Notification sent for appointment: ${apt.title} -> user ${apt.assignedToId}`);
-      } catch (aptError) {
-        console.error(`❌ [Reminder] Error processing appointment ${apt.id}:`, aptError.message);
-      }
-    }
-  } catch (error) {
-    console.error('❌ [Reminder] Processor error:', error.message);
-  } finally {
-    isProcessingAppointmentReminders = false;
-  }
-}
-
-setTimeout(() => {
-  console.log('🔔 [Reminder] Starting appointment reminder processor (every 60 seconds)');
-  processAppointmentReminders();
-  setInterval(processAppointmentReminders, APPOINTMENT_REMINDER_INTERVAL);
-}, 50000);
-
-// Scheduled calls cron: check every 60s for due auto-calls (persistent across restarts)
-setTimeout(() => {
-  console.log('📅 [ScheduledCall] Starting scheduled call processor (every 60 seconds)');
-  processScheduledCalls();
-  setInterval(processScheduledCalls, 60 * 1000);
-}, 10000);
-
-// NO_REPLY Flow Cron: check every 5 minutes for silent conversations
-import { processNoReplyFlows } from './services/noReply.cron.js';
-import { startHealthSystemCron } from './services/healthSystem.cron.js';
-setTimeout(() => {
-  console.log('⏰ [NO_REPLY] Starting no-reply flow cron (every 5 minutes)');
-  processNoReplyFlows();
-  setInterval(processNoReplyFlows, 5 * 60 * 1000);
-  
-  startHealthSystemCron();
-}, 60000);
-
-// Scheduled Messages Cron: check every 60 seconds for pending messages
-import { processScheduledMessages } from './controllers/scheduledMessage.controller.js';
-setTimeout(() => {
-  console.log('⏰ [ScheduledMsg] Starting scheduled message processor (every 60 seconds)');
-  processScheduledMessages();
-  setInterval(processScheduledMessages, 60 * 1000);
-}, 15000);
-
-// Knowledge Base URL/Feed Sync Cron
-import { initKnowledgeCron } from './services/knowledgeSync.service.js';
-setTimeout(() => {
-  initKnowledgeCron();
-}, 65000);
-
-// WhatsApp Appointment Reminder Cron (1 gün önce hatırlatma)
-import { checkAndSendReminders } from './services/appointmentFunctions.service.js';
-setTimeout(() => {
-  console.log('📅 [WhatsApp Reminder] Starting appointment WhatsApp reminder (every 30 minutes)');
-  setInterval(async () => {
-    try {
-      await checkAndSendReminders();
-    } catch (error) {
-      console.error('❌ [WhatsApp Reminder] Error:', error.message);
-    }
-  }, 30 * 60 * 1000); // 30 dakikada bir kontrol
-}, 70000);
-
-// Timed Action Processor Cron: aşama bazlı zamanlı aksiyonları işle (her 5 dk)
-import { processTimedActions } from './services/timedActionProcessor.js';
-setTimeout(() => {
-  console.log('⏱️ [TimedAction] Starting timed action processor (every 5 minutes)');
-  processTimedActions();
-  setInterval(async () => {
-    try {
-      await processTimedActions();
-    } catch (err) {
-      console.error('❌ [TimedAction] Processor error:', err.message);
-    }
-  }, 5 * 60 * 1000); // 5 dakikada bir
-}, 75000);
-
-// Sentiment Analyzer Cron Kapatıldı
-// import { startSentimentAnalyzer } from './services/sentiment.service.js';
-// setTimeout(() => {
-//   startSentimentAnalyzer();
-// }, 70000);
-
-// Automation Rules Cron: tüm zaman-bazlı otomasyon kurallarını işle (her 5 dk)
-import { runAutomationCron } from './services/automationCron.service.js';
-setTimeout(() => {
-  console.log('🤖 [AutomationCron] Starting automation rules processor (every 5 minutes)');
-  runAutomationCron();
-  setInterval(async () => {
-    try {
-      await runAutomationCron();
-    } catch (err) {
-      console.error('❌ [AutomationCron] Processor error:', err.message);
-    }
-  }, 5 * 60 * 1000); // 5 dakikada bir
-}, 80000);
-
-// KB → Retell otomatik startup sync: sunucu açılınca sync olmamış KB'leri Retell'e aktar
-import { bulkSyncAllToRetell as startupKbSync } from './controllers/knowledgebase.controller.js';
-setTimeout(async () => {
-  try {
-    const workspaces = await prisma.workspace.findMany({
-      where: { retellApiKey: { not: null } },
-      select: { id: true }
-    });
-    for (const ws of workspaces) {
-      const unsyncedCount = await prisma.knowledgeBase.count({
-        where: { workspaceId: ws.id, retellKbId: null }
+      const now = new Date();
+      const dueAppointments = await prisma.appointment.findMany({
+        where: {
+          startTime: { lte: now },
+          reminderSent: false,
+          status: 'SCHEDULED'
+        },
+        take: 50
       });
-      if (unsyncedCount > 0) {
-        console.log(`📚 [KBSync] ${unsyncedCount} unsynced KB found for workspace ${ws.id}, syncing...`);
-        // Simulate req/res for the bulk sync handler
-        await startupKbSync(
-          { params: { workspaceId: ws.id } },
-          { json: (data) => console.log(`📚 [KBSync] Result:`, data) }
-        );
+
+      if (dueAppointments.length === 0) return;
+      console.log(`🔔 [Reminder] Found ${dueAppointments.length} due appointment(s)`);
+
+      for (const apt of dueAppointments) {
+        try {
+          const conversationIdMatch = apt.notes?.match(/Conversation ID: (.+)/);
+          const conversationId = conversationIdMatch ? conversationIdMatch[1].trim() : null;
+          const aptTime = new Date(apt.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+          const aptDate = new Date(apt.startTime).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', timeZone: 'Europe/Istanbul' });
+
+          await createNotification(
+            apt.workspaceId,
+            apt.assignedToId,
+            'REMINDER',
+            `⏰ Hatırlatıcı: ${apt.title}`,
+            apt.description || `${apt.contactName || 'Müşteri'} için ${aptDate} ${aptTime} randevusu.`,
+            conversationId ? { conversationId, appointmentId: apt.id } : { appointmentId: apt.id }
+          );
+
+          await prisma.appointment.update({
+            where: { id: apt.id },
+            data: { reminderSent: true }
+          });
+
+          console.log(`🔔 [Reminder] Notification sent for appointment: ${apt.title} -> user ${apt.assignedToId}`);
+        } catch (aptError) {
+          console.error(`❌ [Reminder] Error processing appointment ${apt.id}:`, aptError.message);
+        }
       }
+    } catch (error) {
+      console.error('❌ [Reminder] Processor error:', error.message);
+    } finally {
+      isProcessingAppointmentReminders = false;
     }
-    console.log('📚 [KBSync] Startup KB sync complete');
-  } catch (err) {
-    console.error('❌ [KBSync] Startup sync error:', err.message);
   }
-}, 30000); // 30 saniye sonra çalıştır
+
+  setTimeout(() => {
+    console.log('🔔 [Reminder] Starting appointment reminder processor (every 60 seconds)');
+    processAppointmentReminders();
+    setInterval(processAppointmentReminders, APPOINTMENT_REMINDER_INTERVAL);
+  }, 50000);
+
+  // Scheduled calls cron: check every 60s for due auto-calls
+  setTimeout(() => {
+    console.log('📅 [ScheduledCall] Starting scheduled call processor (every 60 seconds)');
+    processScheduledCalls();
+    setInterval(processScheduledCalls, 60 * 1000);
+  }, 10000);
+
+  // NO_REPLY Flow & Health System Cron
+  Promise.all([
+    import('./services/noReply.cron.js'),
+    import('./services/healthSystem.cron.js')
+  ]).then(([{ processNoReplyFlows }, { startHealthSystemCron }]) => {
+    setTimeout(() => {
+      console.log('⏰ [NO_REPLY] Starting no-reply flow cron (every 5 minutes)');
+      processNoReplyFlows();
+      setInterval(processNoReplyFlows, 5 * 60 * 1000);
+      startHealthSystemCron();
+    }, 60000);
+  });
+
+  // Scheduled Messages Cron
+  import('./controllers/scheduledMessage.controller.js').then(({ processScheduledMessages }) => {
+    setTimeout(() => {
+      console.log('⏰ [ScheduledMsg] Starting scheduled message processor (every 60 seconds)');
+      processScheduledMessages();
+      setInterval(processScheduledMessages, 60 * 1000);
+    }, 15000);
+  });
+
+  // Knowledge Base URL/Feed Sync Cron
+  import('./services/knowledgeSync.service.js').then(({ initKnowledgeCron }) => {
+    setTimeout(() => {
+      initKnowledgeCron();
+    }, 65000);
+  });
+
+  // WhatsApp Appointment Reminder Cron (1 gün önce hatırlatma)
+  import('./services/appointmentFunctions.service.js').then(({ checkAndSendReminders }) => {
+    setTimeout(() => {
+      console.log('📅 [WhatsApp Reminder] Starting appointment WhatsApp reminder (every 30 minutes)');
+      setInterval(async () => {
+        try {
+          await checkAndSendReminders();
+        } catch (error) {
+          console.error('❌ [WhatsApp Reminder] Error:', error.message);
+        }
+      }, 30 * 60 * 1000);
+    }, 70000);
+  });
+
+  // Timed Action Processor Cron (her 5 dk)
+  import('./services/timedActionProcessor.js').then(({ processTimedActions }) => {
+    setTimeout(() => {
+      console.log('⏱️ [TimedAction] Starting timed action processor (every 5 minutes)');
+      processTimedActions();
+      setInterval(async () => {
+        try {
+          await processTimedActions();
+        } catch (err) {
+          console.error('❌ [TimedAction] Processor error:', err.message);
+        }
+      }, 5 * 60 * 1000);
+    }, 75000);
+  });
+
+  // Automation Rules Cron (her 5 dk)
+  import('./services/automationCron.service.js').then(({ runAutomationCron }) => {
+    setTimeout(() => {
+      console.log('🤖 [AutomationCron] Starting automation rules processor (every 5 minutes)');
+      runAutomationCron();
+      setInterval(async () => {
+        try {
+          await runAutomationCron();
+        } catch (err) {
+          console.error('❌ [AutomationCron] Processor error:', err.message);
+        }
+      }, 5 * 60 * 1000);
+    }, 80000);
+  });
+
+  // KB → Retell otomatik startup sync
+  import('./controllers/knowledgebase.controller.js').then(({ bulkSyncAllToRetell: startupKbSync }) => {
+    setTimeout(async () => {
+      try {
+        const workspaces = await prisma.workspace.findMany({
+          where: { retellApiKey: { not: null } },
+          select: { id: true }
+        });
+        for (const ws of workspaces) {
+          const unsyncedCount = await prisma.knowledgeBase.count({
+            where: { workspaceId: ws.id, retellKbId: null }
+          });
+          if (unsyncedCount > 0) {
+            console.log(`📚 [KBSync] ${unsyncedCount} unsynced KB found for workspace ${ws.id}, syncing...`);
+            await startupKbSync(
+              { params: { workspaceId: ws.id } },
+              { json: (data) => console.log(`📚 [KBSync] Result:`, data) }
+            );
+          }
+        }
+        console.log('📚 [KBSync] Startup KB sync complete');
+      } catch (err) {
+        console.error('❌ [KBSync] Startup sync error:', err.message);
+      }
+    }, 30000);
+  });
+}

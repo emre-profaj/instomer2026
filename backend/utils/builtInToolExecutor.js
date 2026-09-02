@@ -405,7 +405,12 @@ export const executeBuiltInTool = async (functionName, args, context) => {
             try {
                 const where = { workspaceId, isActive: true };
                 if (category) {
-                    where.category = { contains: category, mode: 'insensitive' };
+                    where.OR = [
+                        { groupName: { contains: category, mode: 'insensitive' } },
+                        { category: { name: { contains: category, mode: 'insensitive' } } },
+                        { name: { contains: category, mode: 'insensitive' } },
+                        { description: { contains: category, mode: 'insensitive' } }
+                    ];
                 }
 
                 const products = await prisma.product.findMany({

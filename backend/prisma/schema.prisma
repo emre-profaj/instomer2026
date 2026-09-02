@@ -485,6 +485,11 @@ model Conversation {
   // Case (talep akışı) bağlantısı
   caseId                String?
   case                  Case?                  @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  // Yıldızlama / Sabitleme (Pin/Star to top)
+  isStarred             Boolean                @default(false)
+  starredAt             DateTime?
+  starredById           String?
+
   // Arşivleme
   isArchived            Boolean                @default(false)
   archivedAt            DateTime?
@@ -513,6 +518,7 @@ model Conversation {
 
   // Performance indexes for high-frequency cron queries
   @@index([workspaceId])
+  @@index([workspaceId, isStarred])
   @@index([status, botEnabled, assignedToId]) // processPendingBotResponses (every 30s)
   @@index([status, inactivityWarningSent, channel]) // processInactivityWarnings (every 30s)
   @@index([workspaceId, status, lastMessageAt]) // processNoReplyFlows (every 5m)

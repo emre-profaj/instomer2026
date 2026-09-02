@@ -902,8 +902,54 @@ export const webhookHandler = async (req, res) => {
                     if (mediaObj?.id) {
                         mediaUrl = mediaObj.id; // Store media ID temporarily, will be resolved below
                     }
+                } else if (message.type === 'interactive') {
+                    // WhatsApp Buton / Liste / Form Yanıtları (Reklamlar ve Hızlı Yanıtlar)
+                    const interactive = message.interactive || {};
+                    if (interactive.type === 'button_reply') {
+                        msg_body = interactive.button_reply?.title || interactive.button_reply?.id || '[Buton Seçimi]';
+                    } else if (interactive.type === 'list_reply') {
+                        const title = interactive.list_reply?.title || '';
+                        const desc = interactive.list_reply?.description ? ` (${interactive.list_reply.description})` : '';
+                        msg_body = `${title}${desc}`.trim() || interactive.list_reply?.id || '[Liste Seçimi]';
+                    } else if (interactive.type === 'nfm_reply') {
+                        try {
+                            const flowData = JSON.parse(interactive.nfm_reply?.response_json || '{}');
+                            const entries = Object.entries(flowData).map(([k, v]) => `${k}: ${v}`).join(', ');
+                            msg_body = entries || interactive.nfm_reply?.body || '[Form Yanıtı]';
+                        } catch (_) {
+                            msg_body = interactive.nfm_reply?.body || '[Form Yanıtı]';
+                        }
+                    } else {
+                        msg_body = interactive[interactive.type]?.title || interactive[interactive.type]?.text || interactive.header?.text || '[Etkileşimli Mesaj]';
+                    }
+                } else if (message.type === 'button') {
+                    // Şablon hızlı yanıt butonu tıklaması
+                    msg_body = message.button?.text || message.button?.payload || '[Buton Yanıtı]';
+                } else if (message.type === 'location') {
+                    const loc = message.location || {};
+                    const locName = [loc.name, loc.address].filter(Boolean).join(' - ');
+                    msg_body = locName ? `📍 Konum: ${locName}` : `📍 Konum: https://maps.google.com/?q=${loc.latitude},${loc.longitude}`;
+                } else if (message.type === 'contacts') {
+                    const contactCards = (message.contacts || []).map(c => `${c.name?.formatted_name || 'İsimsiz'} (${c.phones?.[0]?.phone || ''})`).join(', ');
+                    msg_body = `👤 Kişi Kartı: ${contactCards || 'Paylaşılan Kişi'}`;
+                } else if (message.type === 'order') {
+                    msg_body = `🛍️ Sipariş: ${message.order?.text || 'Sipariş Detayı'}`;
                 } else {
-                    msg_body = `[${message.type} message]`;
+                    // Fallback
+                    if (message.referral) {
+                        msg_body = message.referral.headline || message.referral.body || '[Reklam Mesajı]';
+                    } else {
+                        msg_body = message[message.type]?.text || message[message.type]?.title || `[${message.type} message]`;
+                    }
+                }
+
+                // Reklamdan (Click-to-WhatsApp) gelen ilk mesaj ise ve referral bilgisi varsa
+                if (message.referral && (!msg_body || msg_body.startsWith('['))) {
+                    const refHeadline = message.referral.headline ? `📢 ${message.referral.headline}` : '';
+                    const refBody = message.referral.body || '';
+                    if (refHeadline || refBody) {
+                        msg_body = [refHeadline, refBody].filter(Boolean).join('\n') || msg_body;
+                    }
                 }
 
                 // Find connected phone number in DB
