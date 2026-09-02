@@ -38,20 +38,13 @@ export const getConversations = async (req, res) => {
             andConditions.push({ isInternalChat: true });
         } else if (channel) {
             andConditions.push({ channel });
-        } else {
-            // Normal inbox: exclude internal 1-on-1 team chats
-            andConditions.push({
-                OR: [{ isInternalChat: false }, { isInternalChat: null }]
-            });
         }
 
         // 2. Archived Filter
         if (req.query.showArchived === 'true') {
             andConditions.push({ isArchived: true });
-        } else {
-            andConditions.push({
-                OR: [{ isArchived: false }, { isArchived: null }]
-            });
+        } else if (req.query.showArchived === 'false') {
+            andConditions.push({ isArchived: false });
         }
 
         // 3. Status & Funnel Filters

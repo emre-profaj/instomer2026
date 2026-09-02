@@ -1733,10 +1733,6 @@ const Inbox = () => {
             // Filter and add new conversations to existing items
             const newItems = moreConversations
                 .filter(conv => {
-                    // Suppress dummy leads if the contact has a real channel
-                    if (conv.channel === 'LEAD' && !conv.facebookPageId && realContactIds.has(conv.contactId)) {
-                        return false;
-                    }
                     // Check if resolved filter applies
                     if (!showResolved && conv.status === 'RESOLVED') {
                         return false;
@@ -2091,25 +2087,8 @@ const Inbox = () => {
                     setTotalItems(pagination.total || 0);
                 }
 
-                // --- Ghost Lead Suppression (Deduplication) ---
-                const realContactIds = new Set();
-                allConversations.forEach(c => {
-                    if (c.channel !== 'LEAD' || c.facebookPageId) {
-                        realContactIds.add(c.contactId);
-                    }
-                });
-
-                // 🔍 DEBUG: WhatsApp frontend filtering
-                const waConvs = allConversations.filter(c => c.channel === 'WHATSAPP');
-                console.warn(`🔍 [Inbox] API: ${allConversations.length} total, ${waConvs.length} WA, loadAll=${loadAll}`);
-
                 // Filter conversations based on channel and resolved status
                 allConversations.forEach(conv => {
-                    // Suppress dummy leads if the contact has a real channel
-                    if (conv.channel === 'LEAD' && !conv.facebookPageId && realContactIds.has(conv.contactId)) {
-                        return; // Skip this duplicate artifact
-                    }
-
                     // Check if resolved filter applies
                     if (!showResolved && conv.status === 'RESOLVED') {
                         return; // Skip resolved conversations if showResolved is false
