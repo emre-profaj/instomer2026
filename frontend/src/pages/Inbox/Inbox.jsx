@@ -134,7 +134,7 @@ const renderFormMessage = (msg, onSchedule, schedulingId) => {
             {/* Footer */}
             <div className="lead-card-footer">
                 <span className="lead-card-footer-time">
-                    🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                    🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' })}
                 </span>
                 {parseFormPreferredTime(msg.content) && (
                     <button
@@ -3442,12 +3442,12 @@ const Inbox = () => {
         if (!date) return '';
         const d = new Date(date);
         const now = new Date();
-        const isToday = d.toDateString() === now.toDateString();
+        const isToday = d.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' }) === now.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' });
 
         if (isToday) {
-            return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' });
         } else {
-            return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' });
         }
     };
 
@@ -5514,7 +5514,7 @@ const Inbox = () => {
                                     {messages.map((msg) => {
                                         // ── System Event (inline log) ──
                                         if (msg.isSystemEvent) {
-                                            const evtTime = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
+                                            const evtTime = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' }) : '';
                                             const actorName = (() => {
                                                 if (msg.actorType === 'SYSTEM') return 'Sistem';
                                                 if (msg.actorType === 'BOT') return 'Bot';
@@ -5717,7 +5717,7 @@ const Inbox = () => {
                                                                     )}
                                                                     <div className="lead-card-footer">
                                                                         <span className="lead-card-footer-time">
-                                                                            🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                                            🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' })}
                                                                         </span>
                                                                     </div>
                                                                 </div>
