@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { stripAiThinking } from './ai.controller.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -1374,7 +1375,7 @@ KURALLAR:
             response = result.response;
         }
 
-        const textResponse = response.text();
+        const textResponse = stripAiThinking(response.text());
         console.log(`🤖 [İnsto Bot] ✅ Done (${iterations} fn calls)`);
 
         res.json({ reply: textResponse, timestamp: new Date().toISOString() });

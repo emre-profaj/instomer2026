@@ -30,6 +30,55 @@ const releaseAiReplyLock = (conversationId) => {
     aiReplyLocks.delete(conversationId);
 };
 
+/**
+ * Strips internal thinking, thought process, and CoT tokens from AI model output.
+ * Prevents reasoning deliberations like "thought Now, write the final message..." or "<thought>...</thought>" from leaking to users.
+ */
+export function stripAiThinking(text) {
+    if (!text || typeof text !== 'string') return '';
+    let cleaned = text.trim();
+
+    // 1. Remove XML/HTML thought tags: <thought>...</thought>, <think>...</think>, <reasoning>...</reasoning>, etc.
+    cleaned = cleaned.replace(/<(thought|think|reasoning|internal_monologue|cot)[^>]*>[\s\S]*?<\/\1>/gi, '');
+
+    // 2. Remove unclosed tags at the beginning: <thought>...
+    cleaned = cleaned.replace(/^<(thought|think|reasoning|internal_monologue|cot)[^>]*>[\s\S]*?(?=\n\n|\n[A-ZÇĞİÖŞÜ]|$)/gi, '');
+
+    // 3. Remove markdown fenced blocks: ```thought ... ``` or ```think ... ```
+    cleaned = cleaned.replace(/```(?:thought|think|reasoning)[\s\S]*?```/gi, '');
+
+    // 4. Remove bracketed blocks: [Thought: ...], [Thinking: ...]
+    cleaned = cleaned.replace(/\[(?:thought|thinking|reasoning):?[\s\S]*?\]/gi, '');
+
+    // 5. Remove prefix labels: "Thinking Process: ...", "Düşünce: ..."
+    cleaned = cleaned.replace(/^(?:\*{0,2}(?:Thinking Process|Düşünce Süreci|İç Düşünce|Internal Monologue|Reasoning)\*{0,2}:?[\s\S]*?)(?=\n\n|\n(?=[A-ZÇĞİÖŞÜ])|$)/gi, '');
+
+    // 6. Remove plain "thought ..." stream (Gemini/DeepSeek CoT output leaking into text)
+    // E.g. "thought Now, write the final message. Wait, Rule 10 says... Tabii ki, ..."
+    if (/^thought\b/i.test(cleaned)) {
+        // If there is a double newline after the thought block, take what comes after
+        const parts = cleaned.split(/\n\s*\n/);
+        if (parts.length > 1) {
+            const validPart = parts.find(p => !/^thought\b/i.test(p.trim()));
+            if (validPart) {
+                cleaned = parts.slice(parts.indexOf(validPart)).join('\n\n');
+            }
+        }
+        
+        // If still starts with "thought", look for common Turkish greeting/response starters or quotes
+        if (/^thought\b/i.test(cleaned)) {
+            const match = cleaned.match(/(?:Tabii|Merhaba|Selam|Değerli|Sayın|İyi günler|İyi akşamlar|Günaydın|Size|Evet|Hayır|Anladım|Bilgi|Randevu|Görüşmek|Talebiniz|İletişim|Harika|Memnuniyetle|Rica ederim|Öncelikle|Şu an|Bizimle|Hoş geldiniz)[^]*$/i);
+            if (match) {
+                cleaned = match[0];
+            } else {
+                cleaned = cleaned.replace(/^thought\s+/i, '');
+            }
+        }
+    }
+
+    return cleaned.trim();
+}
+
 // ─── DYNAMIC HEALTH CONTEXT CACHE (Probel branş + doktor listesi) ───────────
 // Workspace başına 1 saat cache'lenir. Sadece Probel bağlantısı olan workspace'ler için çalışır.
 const healthContextCache = new Map(); // key: workspaceId, value: { data, expiry }
@@ -2635,7 +2684,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
 
         let responseText = "";
         try {
-            responseText = result.response.text();
+            responseText = stripAiThinking(result.response.text());
             console.log(`✅ [AI] Final Response Text length: ${responseText.length}`);
             if (!responseText || responseText.trim() === '') {
                 console.warn(`⚠️ [AI] Response text is empty! Candidates:`, JSON.stringify(result.response.candidates));
@@ -2644,7 +2693,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 try {
                     console.log(`🔄 [AI] Retrying with same message due to empty response...`);
                     result = await tryGenerate("gemini-3.5-flash");
-                    responseText = result.response.text();
+                    responseText = stripAiThinking(result.response.text());
                     console.log(`✅ [AI] Retry Response Text length: ${responseText.length}`);
                 } catch (retryErr) {
                     console.error(`❌ [AI] Retry also failed:`, retryErr.message);
@@ -3202,7 +3251,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
             }
         }
 
-        return responseText;
+        return stripAiThinking(responseText);
 
     } catch (error) {
         console.error('Auto-reply error:', error);
