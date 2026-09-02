@@ -383,7 +383,9 @@ export const handleWidgetChat = async (req, res) => {
                 message: { ...visitorMessage, content: maskSensitiveInfo(visitorMessage.content) },
                 conversation: updatedConversation,
                 contact: updatedConversation.contact,
-                channel: 'WIDGET'
+                channel: 'WIDGET',
+                assignedToId: updatedConversation.assignedToId || null,
+                assignedTeamId: updatedConversation.assignedTeamId || null
             });
             console.log(`📡 [Widget] new_message emitted for conversation ${conversation.id}`);
         } catch (socketError) {
@@ -445,7 +447,9 @@ export const handleWidgetChat = async (req, res) => {
                     message: botMessage,
                     conversation: updatedConversation,
                     contact: updatedConversation.contact,
-                    channel: 'WIDGET'
+                    channel: 'WIDGET',
+                    assignedToId: updatedConversation.assignedToId || null,
+                    assignedTeamId: updatedConversation.assignedTeamId || null
                 });
                 console.log(`📡 [Widget] Bot message emitted for conversation ${conversation.id}`);
             } catch (socketError) {
@@ -640,7 +644,9 @@ export const handlePrechat = async (req, res) => {
                 message: formDataMessage,
                 conversation: updatedConversation,
                 contact: updatedConversation.contact,
-                channel: 'WIDGET'
+                channel: 'WIDGET',
+                assignedToId: updatedConversation.assignedToId || null,
+                assignedTeamId: updatedConversation.assignedTeamId || null
             });
         } catch (socketError) {
             console.error('❌ [Widget Prechat] Socket emit error:', socketError);

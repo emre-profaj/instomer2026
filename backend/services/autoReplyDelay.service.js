@@ -431,7 +431,8 @@ const processBatchedMessages = async (conversationId) => {
                 conversationId,
                 message: botMessage,
                 contact: meta.contact,
-                channel: 'WHATSAPP'
+                channel: 'WHATSAPP',
+                assignedToId: meta.conversation?.assignedToId || null
             });
 
         } else if (channel === 'facebook' || channel === 'instagram') {
@@ -509,7 +510,8 @@ const processBatchedMessages = async (conversationId) => {
                 conversationId,
                 message: botMessage,
                 contact: meta.contact,
-                channel: meta.isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
+                channel: meta.isInstagram ? 'INSTAGRAM' : 'FACEBOOK',
+                assignedToId: meta.conversation?.assignedToId || null
             });
         }
 

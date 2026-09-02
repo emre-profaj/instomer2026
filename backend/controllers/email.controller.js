@@ -547,7 +547,9 @@ export const syncEmailsInternal = async (channelId) => {
                 conversationId: conversation.id,
                 message: newMessage,
                 contact: contact,
-                channel: 'EMAIL'
+                channel: 'EMAIL',
+                assignedToId: conversation.assignedToId || null,
+                assignedTeamId: conversation.assignedTeamId || null
             });
 
             // --- AUTOMATION RULES (same as WhatsApp/Facebook/Instagram/Widget) ---
@@ -1500,7 +1502,9 @@ export const syncEmailsImap = async (channelId) => {
                                             conversationId: conversation.id,
                                             message: newMessage,
                                             contact: contact,
-                                            channel: 'EMAIL'
+                                            channel: 'EMAIL',
+                                            assignedToId: conversation.assignedToId || null,
+                                            assignedTeamId: conversation.assignedTeamId || null
                                         });
 
                                         // --- AUTOMATION RULES (same as other channels) ---

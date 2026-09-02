@@ -202,9 +202,13 @@ export async function processIncoming(normalizedMsg) {
 
     // ── 10. WebSocket bildirim ─────────────────────────────
     emitToWorkspace(workspaceId, 'new_message', {
+      workspaceId,
       conversationId: conversation.id,
       message: savedMessage,
       contact,
+      channel: channelType,
+      assignedToId: conversation.assignedToId || null,
+      assignedTeamId: conversation.assignedTeamId || null
     });
 
     // ── 11-14. Arka plan işlemleri (async, beklemeden) ─────

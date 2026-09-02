@@ -100,6 +100,16 @@ export const AuthProvider = ({ children }) => {
 
     // WebSocket connection - Global level with workspace room support
     const socketRef = useRef(null);
+    const userRef = useRef(user);
+    const currentWorkspaceRef = useRef(currentWorkspace);
+
+    useEffect(() => {
+        userRef.current = user;
+    }, [user]);
+
+    useEffect(() => {
+        currentWorkspaceRef.current = currentWorkspace;
+    }, [currentWorkspace]);
 
     useEffect(() => {
         if (!user) return; // Only connect if user is logged in
@@ -134,7 +144,17 @@ export const AuthProvider = ({ children }) => {
             // Exclude: WIDGET, LEAD, EMAIL, COMMENT channels
             const messageChannels = ['FACEBOOK', 'INSTAGRAM', 'WHATSAPP'];
             if (data.message?.isFromContact && messageChannels.includes(data.channel)) {
-                setUnreadCount(prev => prev + 1);
+                const currentUser = userRef.current;
+                const ws = currentWorkspaceRef.current;
+                const member = ws?.members?.find(m => m.userId === currentUser?.id);
+                const role = member?.role || currentUser?.role || 'AGENT';
+                const isAdmin = ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(role) || currentUser?.role === 'SUPER_ADMIN';
+
+                const assignedToId = data.assignedToId || data.conversation?.assignedToId;
+                // Only increment if assigned to current user, or unassigned for admin/owner
+                if (assignedToId === currentUser?.id || (isAdmin && !assignedToId)) {
+                    setUnreadCount(prev => prev + 1);
+                }
             }
 
             // Dispatch custom event for components to listen
@@ -144,6 +164,18 @@ export const AuthProvider = ({ children }) => {
         socket.on('new_conversation', (data) => {
             console.log('📨 [AuthContext] New conversation received:', data);
             window.dispatchEvent(new CustomEvent('websocket:new_conversation', { detail: data }));
+        });
+
+        socket.on('conversation_assigned_to_you', (data) => {
+            console.log('📬 [AuthContext] Conversation assigned to you:', data);
+            setUnreadCount(prev => prev + 1);
+            window.dispatchEvent(new CustomEvent('websocket:conversation_assigned_to_you', { detail: data }));
+        });
+
+        socket.on('new_conversation_assigned', (data) => {
+            console.log('📥 [AuthContext] New conversation assigned:', data);
+            setUnreadCount(prev => prev + 1);
+            window.dispatchEvent(new CustomEvent('websocket:new_conversation_assigned', { detail: data }));
         });
 
         socket.on('contact_updated', (data) => {

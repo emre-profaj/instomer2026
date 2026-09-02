@@ -4754,7 +4754,9 @@ export const addNoteToConversation = async (req, res) => {
             workspaceId,
             conversationId: conversation.id,
             message,
-            channel: 'INTERNAL'
+            channel: 'INTERNAL',
+            assignedToId: conversation.assignedToId || null,
+            assignedTeamId: conversation.assignedTeamId || null
         });
 
         console.log(`✅ [Add Note] SUCCESS - Message: ${message.id}`);

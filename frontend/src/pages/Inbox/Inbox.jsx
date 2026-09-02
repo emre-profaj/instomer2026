@@ -1288,12 +1288,12 @@ const Inbox = () => {
         });
 
         socket.on('new_comment', (data) => {
-
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
                 if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
 
-                // Show browser notification for new comments
-                if (document.hidden) {
+                // Show browser notification for new comments (only for admins/owners)
+                const isManager = ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(workspaceMemberRole) || user?.role === 'SUPER_ADMIN';
+                if (document.hidden && isManager) {
                     notificationService.showNotification('💬 Yeni Yorum', {
                         body: data.comment?.message?.substring(0, 100) || 'Yeni bir yorum geldi',
                         tag: `comment-${data.comment?.id}`,
@@ -1307,8 +1307,10 @@ const Inbox = () => {
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
                 if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
 
-                // Show browser notification for new leads
-                if (document.hidden) {
+                // Show browser notification for new leads (only for admins/owners or assigned agent)
+                const isManager = ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(workspaceMemberRole) || user?.role === 'SUPER_ADMIN';
+                const isAssigned = data.assignedToId === user?.id;
+                if (document.hidden && (isManager || isAssigned)) {
                     notificationService.showNotification('🎯 Yeni Lead', {
                         body: data.lead?.name || 'Yeni bir potansiyel müşteri',
                         tag: `lead-${data.lead?.id}`,
@@ -1322,8 +1324,10 @@ const Inbox = () => {
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
                 if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
 
-                // Show browser notification for new emails
-                if (document.hidden) {
+                // Show browser notification for new emails (only for admins/owners or assigned agent)
+                const isManager = ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(workspaceMemberRole) || user?.role === 'SUPER_ADMIN';
+                const isAssigned = data.assignedToId === user?.id;
+                if (document.hidden && (isManager || isAssigned)) {
                     notificationService.showNotification('📧 Yeni E-posta', {
                         body: data.email?.subject || 'Yeni bir e-posta geldi',
                         tag: `email-${data.email?.id}`,
@@ -1396,32 +1400,12 @@ const Inbox = () => {
             if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
         });
 
-        // Listen for conversation assigned to current user - show notification
+        // Listen for conversation assigned to current user - refresh inbox
         socket.on('conversation_assigned_to_you', (data) => {
             console.log('📬 Conversation assigned to you:', data);
-            const { conversationId, contact, assignedBy, message } = data;
-
             // Inbox'ı yenile ama tab değiştirme — kullanıcı hangi tab'taysa orda kalsın
+            // (Toast ve browser bildirimleri ToastProvider tarafından merkezi yönetilir)
             if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
-
-            // Sağ alt köşede popup toast göster
-            showAssignment(
-                '📋 Yeni Atama',
-                message || `${assignedBy} size bir konuşma atadı`,
-                {
-                    onClick: () => {
-                        // Konuşmaya git
-                        setSearchParams({ conversationId });
-                    }
-                }
-            );
-
-            // Browser notification da göster (sekme arka plandaysa)
-            notificationService.showNotification('📋 Yeni Konuşma Atandı', {
-                body: message || `${assignedBy} size bir konuşma atadı`,
-                tag: `assign-${conversationId}`,
-                data: { url: `/inbox?conversationId=${conversationId}` }
-            });
         });
 
         // Listen for general conversation assignment updates
@@ -1504,10 +1488,12 @@ const Inbox = () => {
                 setBotEnabled(false);
             }
 
-            // Show notification (browser notification if permitted)
-            if (Notification.permission === 'granted') {
+            // Show notification only if assigned to current user, or if admin/owner
+            const isAssignedToMe = data.assignedToId === user?.id;
+            const isManager = ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(workspaceMemberRole) || user?.role === 'SUPER_ADMIN';
+            if ((isAssignedToMe || (isManager && !data.assignedToId)) && Notification.permission === 'granted') {
                 new Notification('Bot Yönlendirmesi', {
-                    body: `${botName} müşteriye yardımcı olamadı. Sohbet takıma aktarıldı.`,
+                    body: data.message || `${botName} müşteriye yardımcı olamadı. Sohbet aktarıldı.`,
                     icon: '/favicon.ico'
                 });
             }
@@ -1775,18 +1761,16 @@ const Inbox = () => {
                         channelMatch = true;
                     } else if (hasChannelFilter) {
                         channelMatch =
-                            (activeFilters.includes('whatsapp') && conv.channel === 'WHATSAPP') ||
+                            (activeFilters.includes('whatsapp') && (conv.channel === 'WHATSAPP' || conv.whatsappPhoneNumberId)) ||
                             (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
                             (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
                             (activeFilters.includes('web_widget') && conv.channel === 'WIDGET') ||
                             (activeFilters.includes('web_form') && conv.channel === 'FORM') ||
                             (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
-                            (activeFilters.includes('leads') && conv.channel === 'LEAD' && conv.facebookPageId) ||
+                            (activeFilters.includes('leads') && conv.channel === 'LEAD') ||
                             (activeFilters.includes('phone_calls') && conv.channel === 'PHONE') ||
                             (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
                     }
-                    if (!channelMatch) return false;
-
                     if (!channelMatch) return false;
 
                     // Apply quick filter
@@ -2009,6 +1993,7 @@ const Inbox = () => {
                 if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
                 if (hideUnanswered) params.hideUnanswered = 'true';
                 if (showBulk) params.showBulk = 'true';
+                if (showArchived) params.showArchived = 'true';
 
                 // Advanced Single-Channel Push to Backend (Prevents Filter Pagination Paradox)
                 if (activeChannel) {
@@ -2102,6 +2087,10 @@ const Inbox = () => {
                     }
                 });
 
+                // 🔍 DEBUG: WhatsApp frontend filtering
+                const waConvs = allConversations.filter(c => c.channel === 'WHATSAPP');
+                console.warn(`🔍 [Inbox] API: ${allConversations.length} total, ${waConvs.length} WA, loadAll=${loadAll}`);
+
                 // Filter conversations based on channel and resolved status
                 allConversations.forEach(conv => {
                     // Suppress dummy leads if the contact has a real channel
@@ -2142,19 +2131,22 @@ const Inbox = () => {
                         channelMatch = true;
                     } else if (hasChannelFilter) {
                         channelMatch =
-                            (activeFilters.includes('whatsapp') && conv.channel === 'WHATSAPP') ||
+                            (activeFilters.includes('whatsapp') && (conv.channel === 'WHATSAPP' || conv.whatsappPhoneNumberId)) ||
                             (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
                             (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
                             (activeFilters.includes('web_widget') && conv.channel === 'WIDGET') ||
                             (activeFilters.includes('web_form') && conv.channel === 'FORM') ||
                             (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
-                            (activeFilters.includes('leads') &&
-                                conv.channel === 'LEAD' &&
-                                conv.facebookPageId) ||
+                            (activeFilters.includes('leads') && conv.channel === 'LEAD') ||
                             (activeFilters.includes('phone_calls') && conv.channel === 'PHONE') ||
                             (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
                     } else {
                         channelMatch = false;
+                    }
+
+                    // 🔍 DEBUG: WhatsApp channelMatch
+                    if (conv.channel === 'WHATSAPP' && !channelMatch) {
+                        console.log(`🔍 [Inbox Frontend] WA conv FILTERED OUT: id=${conv.id}, loadAll=${loadAll}, hasChannelFilter=${hasChannelFilter}, whatsappInFilters=${activeFilters.includes('whatsapp')}`);
                     }
 
                     if (channelMatch) {
@@ -3797,6 +3789,11 @@ const Inbox = () => {
                     </div>
                 </div>
 
+                {/* 🔍 DEBUG BANNER - WhatsApp visibility test */}
+                <div style={{background:'#fef3c7',padding:'4px 8px',fontSize:11,borderBottom:'1px solid #f59e0b',color:'#92400e'}}>
+                    🔍 DEBUG: inboxItems={inboxItems.length} | WA={inboxItems.filter(i=>i.channel==='WHATSAPP').length} | displayed={displayedItems.length} | loading={String(loading)}
+                </div>
+
                 {/* Inbox Items List */}
                 <div className={`inbox-items${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                     {loading ? (
@@ -3965,6 +3962,7 @@ const Inbox = () => {
                                 <div
                                     key={`${item.inboxType}-${item.id}`}
                                     className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
+                                    style={item.channel === 'WHATSAPP' ? {background:'#dcfce7',border:'3px solid #22c55e'} : undefined}
                                     onClick={() => bulkSelectMode ? handleToggleSelect(item.id, !selectedItems.includes(item.id)) : handleSelectItem(item)}
                                 >
                                     {bulkSelectMode && (

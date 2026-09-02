@@ -1066,7 +1066,9 @@ async function processWebhookAsync(body) {
                                         conversationId: conversation.id,
                                         message: newMessage,
                                         contact: contact,
-                                        channel: isInstagram ? 'INSTAGRAM_COMMENT' : 'FACEBOOK_COMMENT'
+                                        channel: isInstagram ? 'INSTAGRAM_COMMENT' : 'FACEBOOK_COMMENT',
+                                        assignedToId: conversation.assignedToId || null,
+                                        assignedTeamId: conversation.assignedTeamId || null
                                     });
                                     console.log(`✅ WebSocket new_message event emitted for comment message`);
                                 } catch (socketError) {
@@ -1905,7 +1907,9 @@ async function processWebhookAsync(body) {
                             conversationId: conversation.id,
                             message: newMessage,
                             contact: contact,
-                            channel: messageChannel
+                            channel: messageChannel,
+                            assignedToId: conversation.assignedToId || null,
+                            assignedTeamId: conversation.assignedTeamId || null
                         });
                         console.log(`✅ WebSocket event emitted for new ${messageChannel} message to workspace ${facebookPage.workspaceId}`);
                     } catch (error) {
@@ -1949,7 +1953,9 @@ async function processWebhookAsync(body) {
                                 conversationId: conversation.id,
                                 message: botMessage,
                                 contact: contact,
-                                channel: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
+                                channel: isInstagram ? 'INSTAGRAM' : 'FACEBOOK',
+                                assignedToId: conversation.assignedToId || null,
+                                assignedTeamId: conversation.assignedTeamId || null
                             });
                         } catch (warningError) {
                             console.error('❌ Error sending profanity warning message:', warningError.response?.data || warningError.message);
@@ -2104,7 +2110,9 @@ async function processWebhookAsync(body) {
                                                 conversationId: conversation.id,
                                                 message: systemNote,
                                                 contact: contact,
-                                                channel: 'INSTAGRAM'
+                                                channel: 'INSTAGRAM',
+                                                assignedToId: conversation.assignedToId || null,
+                                                assignedTeamId: conversation.assignedTeamId || null
                                             });
                                             console.log(`📝 [Instagram] 2534037 Conversation Routing uyarısı eklendi → conv: ${conversation.id}`);
                                         }
@@ -2132,7 +2140,9 @@ async function processWebhookAsync(body) {
                                             conversationId: conversation.id,
                                             message: systemNote,
                                             contact: contact,
-                                            channel: 'INSTAGRAM'
+                                            channel: 'INSTAGRAM',
+                                            assignedToId: conversation.assignedToId || null,
+                                            assignedTeamId: conversation.assignedTeamId || null
                                         });
                                         console.log(`📝 [Instagram] 2534038 sistem notu eklendi → conv: ${conversation.id}`);
                                     } catch (noteErr) {
@@ -3485,7 +3495,9 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 conversationId: conversation.id,
                 message,
                 contact,
-                channel: 'LEAD'
+                channel: 'LEAD',
+                assignedToId: conversation.assignedToId || null,
+                assignedTeamId: conversation.assignedTeamId || null
             });
 
             emitToWorkspace(facebookPage.workspaceId, 'new_lead', {

@@ -21,8 +21,8 @@ export const getConversations = async (req, res) => {
 
         const where = {
             workspaceId,
-            // Hide conversations from soft-deleted contacts
-            contact: { isDeleted: false },
+            // Hide conversations from soft-deleted contacts (handle NULL safely)
+            contact: { isDeleted: { not: true } },
             ...(channel === 'WHATSAPP' && {
                 OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }]
             }),
@@ -32,15 +32,12 @@ export const getConversations = async (req, res) => {
             ...(channel === 'INSTAGRAM' && {
                 OR: [{ channel: 'INSTAGRAM' }, { instagramBusinessId: { not: null } }]
             }),
-            ...(channel === 'EMAIL' && {
-                channel: 'EMAIL'
-            }),
-            ...(channel === 'WIDGET' && {
-                channel: 'WIDGET'
-            }),
-            ...(channel === 'PHONE' && {
-                channel: 'PHONE'
-            }),
+            ...(channel === 'EMAIL' && { channel: 'EMAIL' }),
+            ...(channel === 'WIDGET' && { channel: 'WIDGET' }),
+            ...(channel === 'PHONE' && { channel: 'PHONE' }),
+            ...(channel === 'LEAD' && { channel: 'LEAD' }),
+            ...(channel === 'INTERNAL' && { channel: 'INTERNAL' }),
+            ...(channel === 'FORM' && { channel: 'FORM' }),
             ...(status && { status }),
             ...(contactId && { contactId }),
             ...(funnelType && { funnelType }),
@@ -48,9 +45,8 @@ export const getConversations = async (req, res) => {
             ...(funnelStageId && { funnelStageId }),
             // Keep contactStatus check just in case legacy calls use it
             ...(contactStatus && { contact: { status: contactStatus } }),
-            ...(req.query.showArchived !== 'true' && { isArchived: false }),
-            // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle
-            ...(req.query.showBulk !== 'true' && { isBulkSend: false }),
+            ...(req.query.showArchived !== 'true' && { isArchived: { not: true } }),
+            // isBulkSend filtresi devre dışı
             // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
             ...(req.query.hideUnanswered === 'true' && {
                 messages: { some: { isFromContact: true } }
@@ -209,30 +205,53 @@ export const getConversations = async (req, res) => {
         delete where.AND;
         delete where.OR;
 
+        const externalChatCondition = {
+            isInternalChat: { not: true },
+            ...assignmentRules
+        };
+
         if (assignedToId === 'mine' || assignedToId === 'mine_or_unassigned' || assignedToId === 'my_teams' || (!assignedToId && !teamId)) {
             where.AND = [
                 {
                     OR: [
-                        { isInternalChat: false, ...assignmentRules },
+                        externalChatCondition,
                         internalChatCondition
                     ]
                 }
             ];
         } else if (assignedToId === 'unassigned' || (assignedToId && assignedToId.startsWith('team:'))) {
              where.AND = [
-                 { isInternalChat: false, ...assignmentRules }
+                 externalChatCondition
              ];
         } else {
              where.AND = [
                  {
                      OR: [
-                         { isInternalChat: false, ...assignmentRules },
+                         externalChatCondition,
                          internalChatCondition
                      ]
                  }
              ];
         }
         // --------------------------------------
+
+        // 🔍 DEBUG: WhatsApp görünürlük sorunu tespiti
+        console.log('🔍 [getConversations] role:', role, 'assignedToId:', assignedToId, 'teamId:', teamId, 'channel:', channel);
+        console.log('🔍 [getConversations] WHERE:', JSON.stringify(where, null, 2));
+        
+        // WhatsApp konuşma sayısını filtre OLMADAN kontrol et
+        const waDebugCount = await prisma.conversation.count({
+            where: { workspaceId, channel: 'WHATSAPP' }
+        });
+        const waDebugWithFilter = await prisma.conversation.count({ where: { ...where, channel: 'WHATSAPP' } });
+        // WhatsApp konuşmalarının status dağılımını kontrol et
+        const waStatusDebug = await prisma.conversation.groupBy({
+            by: ['status'],
+            where: { ...where, channel: 'WHATSAPP' },
+            _count: true
+        });
+        console.log(`🔍 [getConversations] WhatsApp: toplam=${waDebugCount}, filtre sonrası=${waDebugWithFilter}`);
+        console.log(`🔍 [getConversations] WhatsApp status dağılımı:`, JSON.stringify(waStatusDebug));
 
         const conversations = await prisma.conversation.findMany({
             where,
@@ -324,7 +343,11 @@ export const getConversations = async (req, res) => {
 
         const total = await prisma.conversation.count({ where });
 
+        // 🔍 DEBUG: Dönen konuşmaların kanal dağılımı
+        const channelDist = {};
+        conversations.forEach(c => { channelDist[c.channel] = (channelDist[c.channel] || 0) + 1; });
         console.log(`📋 [getConversations] Found ${conversations.length} conversations (total: ${total}), filter: assignedToId=${req.query.assignedToId}`);
+        console.log(`📋 [getConversations] Kanal dağılımı:`, JSON.stringify(channelDist));
         if (req.query.assignedToId === 'mine') {
             console.log(`📋 [MINE] Where clause:`, JSON.stringify(where, null, 2));
         }
@@ -927,7 +950,9 @@ export const sendMessage = async (req, res) => {
                 conversationId: conversationId,
                 message: updatedMessage,
                 contact: conversation.contact,
-                channel: conversation.channel
+                channel: conversation.channel,
+                assignedToId: conversation.assignedToId || null,
+                assignedTeamId: conversation.assignedTeamId || null
             });
             console.log(`📡 [SendMessage] WebSocket event emitted for conversation ${conversationId}`);
         } catch (socketError) {

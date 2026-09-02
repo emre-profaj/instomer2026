@@ -1131,7 +1131,8 @@ export const webhookHandler = async (req, res) => {
                                 status: 'OPEN',
                                 channel: 'WHATSAPP',
                                 assignedBotId: waNumber.assignedBotId,
-                                botEnabled: true // Varsayılan olarak bot aktif
+                                botEnabled: true, // Varsayılan olarak bot aktif
+                                isInternalChat: false
                             }
                         });
 
@@ -1150,6 +1151,18 @@ export const webhookHandler = async (req, res) => {
                                 include: { contact: true }
                             });
                             console.log(`📡 [Webhook] ✅ Routing applied: Team=${routingResult.teamName}, BotDelay=${routingResult.botDelayedUntil}`);
+                        }
+
+                        // Emit new_conversation event
+                        try {
+                            emitToWorkspace(waNumber.workspaceId, 'new_conversation', {
+                                workspaceId: waNumber.workspaceId,
+                                conversationId: conversation.id,
+                                conversation: { ...conversation, contact },
+                                channel: 'WHATSAPP'
+                            });
+                        } catch (socketErr) {
+                            console.error('⚠️ [WA Webhook] new_conversation socket error:', socketErr.message);
                         }
 
                         // 🔄 Flow Engine: FIRST_MSG trigger for new WhatsApp conversations
@@ -1261,7 +1274,9 @@ export const webhookHandler = async (req, res) => {
                         conversationId: conversation.id,
                         message: newMessage,
                         contact: contact,
-                        channel: 'WHATSAPP'
+                        channel: 'WHATSAPP',
+                        assignedToId: conversation.assignedToId || null,
+                        assignedTeamId: conversation.assignedTeamId || null
                     });
 
                     // If profanity was detected, send warning, save warning to DB, and skip AI auto-reply/rules
@@ -1302,7 +1317,9 @@ export const webhookHandler = async (req, res) => {
                                 conversationId: conversation.id,
                                 message: botMessage,
                                 contact: contact,
-                                channel: 'WHATSAPP'
+                                channel: 'WHATSAPP',
+                                assignedToId: conversation.assignedToId || null,
+                                assignedTeamId: conversation.assignedTeamId || null
                             });
                         } catch (warningError) {
                             console.error('❌ Error sending WhatsApp profanity warning message:', warningError.response?.data || warningError.message);

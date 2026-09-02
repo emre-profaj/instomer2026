@@ -538,7 +538,9 @@ export async function processPendingBotResponses() {
                                 conversationId: conversation.id,
                                 message: botMessage,
                                 contact: conversation.contact,
-                                channel: conversation.channel
+                                channel: conversation.channel,
+                                assignedToId: conversation.assignedToId || null,
+                                assignedTeamId: conversation.assignedTeamId || null
                             });
 
                             console.log(`✅ [Bot Scheduler] Bot response sent for conversation ${conversation.id}`);

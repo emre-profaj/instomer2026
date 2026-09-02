@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import { X, CheckCircle, AlertCircle, Info, UserPlus, MessageSquare, Bell } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import notificationService from '../../services/notificationService';
 import './Toast.css';
 
@@ -8,7 +9,19 @@ const ToastContext = createContext(null);
 
 // Toast Provider Component
 export const ToastProvider = ({ children }) => {
+    const { user, currentWorkspace } = useAuth() || {};
     const [toasts, setToasts] = useState([]);
+
+    const userRef = useRef(user);
+    const currentWorkspaceRef = useRef(currentWorkspace);
+
+    useEffect(() => {
+        userRef.current = user;
+    }, [user]);
+
+    useEffect(() => {
+        currentWorkspaceRef.current = currentWorkspace;
+    }, [currentWorkspace]);
 
     const addToast = useCallback((toast) => {
         const id = Date.now() + Math.random();
@@ -64,13 +77,35 @@ export const ToastProvider = ({ children }) => {
             // Only show toast for incoming contact messages
             if (!data?.message?.isFromContact) return;
 
-            const senderName = data.contactName || data.message?.contactName || 'Yeni Mesaj';
+            const currentUser = userRef.current;
+            const ws = currentWorkspaceRef.current;
+            const member = ws?.members?.find(m => m.userId === currentUser?.id);
+            const role = member?.role || currentUser?.role || 'AGENT';
+            const isAdminOrOwner = ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(role) || currentUser?.role === 'SUPER_ADMIN';
+
+            const assignedToId = data.assignedToId || data.conversation?.assignedToId;
+
+            // Agent: strictly only receive notifications if conversation is assigned to this user
+            if (!isAdminOrOwner) {
+                if (!assignedToId || assignedToId !== currentUser?.id) {
+                    return;
+                }
+            } else {
+                // Admin / Owner: do not show if assigned to another agent
+                if (assignedToId && assignedToId !== currentUser?.id) {
+                    return;
+                }
+            }
+
+            const senderName = data.contactName || data.message?.contactName || data.contact?.name || 'Yeni Mesaj';
             const messageText = data.message?.content || '';
             const preview = messageText.length > 60 ? messageText.substring(0, 60) + '...' : messageText;
 
             const channelLabels = {
                 'FACEBOOK': 'Facebook',
+                'FACEBOOK_COMMENT': 'Facebook Yorum',
                 'INSTAGRAM': 'Instagram',
+                'INSTAGRAM_COMMENT': 'Instagram Yorum',
                 'WHATSAPP': 'WhatsApp',
                 'WIDGET': 'Widget',
                 'LEAD': 'Lead',
@@ -81,10 +116,10 @@ export const ToastProvider = ({ children }) => {
             addToastRef.current({
                 type: 'message',
                 title: `📨 ${senderName}`,
-                message: `${channelLabel}: ${preview}`,
+                message: `${channelLabel ? channelLabel + ': ' : ''}${preview}`,
                 duration: 5000,
                 onClick: () => {
-                    const convId = data.conversationId || data.message?.conversationId;
+                    const convId = data.conversationId || data.message?.conversationId || data.conversation?.id;
                     if (convId) {
                         window.location.href = `/inbox?conversationId=${convId}`;
                     } else {
@@ -97,8 +132,8 @@ export const ToastProvider = ({ children }) => {
             if (document.hidden) {
                 notificationService.showNewMessageNotification(
                     data.message,
-                    { id: data.conversationId, channel: data.channel },
-                    { name: senderName, id: data.contactId || data.message?.contactId }
+                    { id: data.conversationId || data.conversation?.id, channel: data.channel },
+                    { name: senderName, id: data.contactId || data.message?.contactId || data.contact?.id }
                 );
             }
         };
@@ -107,11 +142,64 @@ export const ToastProvider = ({ children }) => {
         return () => window.removeEventListener('websocket:new_message', handleNewMessage);
     }, []);
 
+    // Listen for real-time conversation assignment events and show toast + browser notification
+    useEffect(() => {
+        const handleAssignment = (event) => {
+            const data = event.detail;
+            if (!data) return;
+
+            const currentUser = userRef.current;
+            const targetUserId = data.assignedToId || data.targetUserId || data.userId;
+            if (targetUserId && currentUser?.id && targetUserId !== currentUser.id) return;
+
+            const senderName = data.contact?.name || data.contact?.fullName || data.contactName || 'Müşteri';
+            const assignedBy = data.assignedBy || 'Yönetici';
+            const message = data.message || `${assignedBy} size yeni bir sohbet atadı (${senderName})`;
+            const conversationId = data.conversationId || data.conversation?.id;
+
+            addToastRef.current({
+                type: 'assignment',
+                title: '📋 Yeni Sohbet Atandı',
+                message: message,
+                duration: 8000,
+                onClick: () => {
+                    if (conversationId) {
+                        window.location.href = `/inbox?conversationId=${conversationId}`;
+                    } else {
+                        window.location.href = '/inbox';
+                    }
+                }
+            });
+
+            if (document.hidden) {
+                notificationService.showNotification('📋 Yeni Sohbet Atandı', {
+                    body: message,
+                    tag: `assign-${conversationId || Date.now()}`,
+                    renotify: true,
+                    data: {
+                        url: conversationId ? `/inbox?conversationId=${conversationId}` : '/inbox',
+                        conversationId
+                    }
+                });
+            }
+        };
+
+        window.addEventListener('websocket:conversation_assigned_to_you', handleAssignment);
+        window.addEventListener('websocket:new_conversation_assigned', handleAssignment);
+        return () => {
+            window.removeEventListener('websocket:conversation_assigned_to_you', handleAssignment);
+            window.removeEventListener('websocket:new_conversation_assigned', handleAssignment);
+        };
+    }, []);
+
     // Listen for real-time reminder notifications and show toast popup
     useEffect(() => {
         const handleNewNotification = (event) => {
             const data = event.detail;
             if (!data?.notification) return;
+
+            const currentUser = userRef.current;
+            if (data.targetUserId && currentUser?.id && data.targetUserId !== currentUser.id) return;
 
             const notif = data.notification;
             // Only show popup for REMINDER type

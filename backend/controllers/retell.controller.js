@@ -2842,7 +2842,9 @@ async function handleCallStarted(call) {
                 emitToWorkspace(workspaceId, 'new_message', {
                     workspaceId,
                     conversationId: recentConv.id,
-                    message: mergeMsg
+                    message: mergeMsg,
+                    assignedToId: recentConv.assignedToId || null,
+                    assignedTeamId: recentConv.assignedTeamId || null
                 });
 
                 console.log(`📞 [Retell] ${isInboundCall ? '24H-MERGE' : 'DEDUP'}: Reusing conversation ${recentConv.id} (${recentConv.channel}) for ${call.call_id}, message created`);
@@ -2892,7 +2894,13 @@ async function handleCallStarted(call) {
                     }
                 });
 
-                emitToWorkspace(workspaceId, 'new_message', { workspaceId, conversationId: conversation.id, message: msg });
+                emitToWorkspace(workspaceId, 'new_message', {
+                    workspaceId,
+                    conversationId: conversation.id,
+                    message: msg,
+                    assignedToId: conversation.assignedToId || null,
+                    assignedTeamId: conversation.assignedTeamId || null
+                });
                 emitToWorkspace(workspaceId, 'new_conversation', { workspaceId, conversation: fullConversation || conversation });
                 console.log(`📞 [Retell] Inbound: new conversation ${conversation.id} created for ${fromNumber}`);
 
