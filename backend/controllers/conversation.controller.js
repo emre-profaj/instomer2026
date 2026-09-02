@@ -19,59 +19,76 @@ export const getConversations = async (req, res) => {
 
         const { role } = req.workspaceMember; // Available from requireWorkspaceAccess middleware
 
-        const where = {
-            workspaceId,
-            ...(channel === 'WHATSAPP' && {
-                OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }]
-            }),
-            ...(channel === 'FACEBOOK' && {
-                OR: [{ channel: 'FACEBOOK' }, { facebookPageId: { not: null }, instagramBusinessId: null }]
-            }),
-            ...(channel === 'INSTAGRAM' && {
-                OR: [{ channel: 'INSTAGRAM' }, { instagramBusinessId: { not: null } }]
-            }),
-            ...(channel === 'EMAIL' && { channel: 'EMAIL' }),
-            ...(channel === 'WIDGET' && { channel: 'WIDGET' }),
-            ...(channel === 'PHONE' && { channel: 'PHONE' }),
-            ...(channel === 'LEAD' && { channel: 'LEAD' }),
-            ...(channel === 'FORM' && { channel: 'FORM' }),
-            ...(status && { status }),
-            ...(contactId && { contactId }),
-            ...(funnelType && { funnelType }),
-            ...(funnelStageId && { funnelStageId }),
-            ...(contactStatus && { contact: { status: contactStatus } }),
-            ...(req.query.showArchived === 'true' ? { isArchived: true } : {
-                OR: [
-                    { isArchived: false },
-                    { isArchived: null }
-                ]
-            }),
-            ...(req.query.hideUnanswered === 'true' && {
-                messages: { some: { isFromContact: true } }
-            })
-        };
+        const andConditions = [{ workspaceId }];
 
-        // Server-side search: filter by contact name/email/phone
+        // 1. Channel Filter
+        if (channel === 'WHATSAPP') {
+            andConditions.push({
+                OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }]
+            });
+        } else if (channel === 'FACEBOOK') {
+            andConditions.push({
+                OR: [{ channel: 'FACEBOOK' }, { facebookPageId: { not: null }, instagramBusinessId: null }]
+            });
+        } else if (channel === 'INSTAGRAM') {
+            andConditions.push({
+                OR: [{ channel: 'INSTAGRAM' }, { instagramBusinessId: { not: null } }]
+            });
+        } else if (channel === 'INTERNAL') {
+            andConditions.push({ isInternalChat: true });
+        } else if (channel) {
+            andConditions.push({ channel });
+        } else {
+            // Normal inbox: exclude internal 1-on-1 team chats
+            andConditions.push({
+                OR: [{ isInternalChat: false }, { isInternalChat: null }]
+            });
+        }
+
+        // 2. Archived Filter
+        if (req.query.showArchived === 'true') {
+            andConditions.push({ isArchived: true });
+        } else {
+            andConditions.push({
+                OR: [{ isArchived: false }, { isArchived: null }]
+            });
+        }
+
+        // 3. Status & Funnel Filters
+        if (status) andConditions.push({ status });
+        if (contactId) andConditions.push({ contactId });
+        if (funnelType) andConditions.push({ funnelType });
+        if (funnelStageId) andConditions.push({ funnelStageId });
+        if (contactStatus) andConditions.push({ contact: { status: contactStatus } });
+
+        // 4. Hide Unanswered Filter
+        if (req.query.hideUnanswered === 'true') {
+            andConditions.push({ messages: { some: { isFromContact: true } } });
+        }
+
+        // 5. Server-side search
         if (search && search.trim()) {
             const term = search.trim();
-            where.contact = {
-                OR: [
-                    { name: { contains: term, mode: 'insensitive' } },
-                    { fullName: { contains: term, mode: 'insensitive' } },
-                    { email: { contains: term, mode: 'insensitive' } },
-                    { phone: { contains: term } },
-                    { instagramUsername: { contains: term, mode: 'insensitive' } },
-                    { company: { contains: term, mode: 'insensitive' } }
-                ]
-            };
+            andConditions.push({
+                contact: {
+                    OR: [
+                        { name: { contains: term, mode: 'insensitive' } },
+                        { fullName: { contains: term, mode: 'insensitive' } },
+                        { email: { contains: term, mode: 'insensitive' } },
+                        { phone: { contains: term } },
+                        { instagramUsername: { contains: term, mode: 'insensitive' } },
+                        { company: { contains: term, mode: 'insensitive' } }
+                    ]
+                }
+            });
         }
 
-        // Handle teamId if explicitly provided
+        // 6. Explicit Team Filter
         if (teamId) {
-            where.teamIds = { contains: `"${teamId}"` };
+            andConditions.push({ teamIds: { contains: `"${teamId}"` } });
         }
 
-        // Role-based visibility and explicit assignment filtering
+        // 7. Role-based visibility and assignment filtering
         if (role === 'AGENT') {
             const userTeams = await prisma.teamMember.findMany({
                 where: { userId: req.user.id },
@@ -80,110 +97,66 @@ export const getConversations = async (req, res) => {
             const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
             if (channel === 'LEAD') {
-                where.assignedToId = req.user.id;
+                andConditions.push({ assignedToId: req.user.id });
             } else if (assignedToId === 'mine') {
-                where.assignedToId = req.user.id;
+                andConditions.push({ assignedToId: req.user.id });
             } else if (assignedToId === 'unassigned') {
-                where.assignedToId = null;
+                andConditions.push({ assignedToId: null });
             } else if (assignedToId === 'mine_or_unassigned') {
-                where.OR = [
-                    { assignedToId: req.user.id },
-                    { assignedToId: null }
-                ];
+                andConditions.push({
+                    OR: [
+                        { assignedToId: req.user.id },
+                        { assignedToId: null }
+                    ]
+                });
             } else if (assignedToId && assignedToId.startsWith('team:')) {
                 const tid = assignedToId.split(':')[1];
-                where.teamIds = { contains: `"${tid}"` };
+                andConditions.push({ teamIds: { contains: `"${tid}"` } });
             } else if (assignedToId) {
-                where.assignedToId = assignedToId;
+                andConditions.push({ assignedToId });
             } else if (!teamId) {
-                where.OR = [
-                    { assignedToId: req.user.id },
-                    { assignedById: req.user.id },
-                    { assignedToId: null },
-                    ...myTeamIds.map(tid => ({
-                        teamIds: { contains: `"${tid}"` }
-                    }))
-                ];
+                andConditions.push({
+                    OR: [
+                        { assignedToId: req.user.id },
+                        { assignedById: req.user.id },
+                        { assignedToId: null },
+                        ...myTeamIds.map(tid => ({
+                            teamIds: { contains: `"${tid}"` }
+                        }))
+                    ]
+                });
             }
         } else {
             // ADMIN / OWNER / SUPER_ADMIN
             if (assignedToId === 'mine') {
-                where.assignedToId = req.user.id;
+                andConditions.push({ assignedToId: req.user.id });
             } else if (assignedToId === 'unassigned') {
-                where.assignedToId = null;
+                andConditions.push({ assignedToId: null });
             } else if (assignedToId === 'mine_or_unassigned') {
-                where.OR = [
-                    { assignedToId: req.user.id },
-                    { assignedToId: null }
-                ];
+                andConditions.push({
+                    OR: [
+                        { assignedToId: req.user.id },
+                        { assignedToId: null }
+                    ]
+                });
             } else if (assignedToId === 'my_teams') {
                 const userTeams = await prisma.teamMember.findMany({
                     where: { userId: req.user.id },
                     select: { teamId: true }
                 });
                 const myTeamIds = userTeams.map(t => t.teamId);
-                where.OR = myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } }));
+                andConditions.push({
+                    OR: myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } }))
+                });
             } else if (assignedToId && assignedToId.startsWith('team:')) {
                 const tid = assignedToId.split(':')[1];
-                where.teamIds = { contains: `"${tid}"` };
+                andConditions.push({ teamIds: { contains: `"${tid}"` } });
             } else if (assignedToId) {
-                where.assignedToId = assignedToId;
+                andConditions.push({ assignedToId });
             }
         }
 
-        // --- Internal Chat Visibility Rules ---
-        const internalChatCondition = { 
-            isInternalChat: true, 
-            participantIds: { contains: `"${req.user.id}"` } 
-        };
-
-        const assignmentRules = {};
-        if (where.assignedToId !== undefined) assignmentRules.assignedToId = where.assignedToId;
-        if (where.teamIds !== undefined) assignmentRules.teamIds = where.teamIds;
-        if (where.AND !== undefined) assignmentRules.AND = where.AND;
-        if (where.OR !== undefined) assignmentRules.OR = where.OR;
-
-        delete where.assignedToId;
-        delete where.teamIds;
-        delete where.AND;
-        delete where.OR;
-
-        const externalChatCondition = {
-            AND: [
-                {
-                    OR: [
-                        { isInternalChat: false },
-                        { isInternalChat: null }
-                    ]
-                },
-                ...(Object.keys(assignmentRules).length > 0 ? [assignmentRules] : [])
-            ]
-        };
-
-        if (assignedToId === 'mine' || assignedToId === 'mine_or_unassigned' || assignedToId === 'my_teams' || (!assignedToId && !teamId)) {
-            where.AND = [
-                {
-                    OR: [
-                        externalChatCondition,
-                        internalChatCondition
-                    ]
-                }
-            ];
-        } else if (assignedToId === 'unassigned' || (assignedToId && assignedToId.startsWith('team:'))) {
-             where.AND = [
-                 externalChatCondition
-             ];
-        } else {
-             where.AND = [
-                 {
-                     OR: [
-                         externalChatCondition,
-                         internalChatCondition
-                     ]
-                 }
-             ];
-        }
-        // --- End Internal Chat ---
+        const where = andConditions.length === 1 ? andConditions[0] : { AND: andConditions };
 
         const conversations = await prisma.conversation.findMany({
             where,
