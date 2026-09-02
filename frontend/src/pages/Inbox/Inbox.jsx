@@ -3314,17 +3314,15 @@ const Inbox = () => {
             return <Instagram size={14} className="item-type-icon instagram" />;
         } else if (item.inboxType === INBOX_TYPES.COMMENT) {
             return <Facebook size={14} className="item-type-icon facebook" />;
-        } else if (item.instagramBusinessId || item.channel === 'INSTAGRAM') {
-            return <Instagram size={14} className="item-type-icon instagram" />;
-        } else if (item.whatsappPhoneNumberId || item.channel === 'WHATSAPP') {
+        } else if (item.channel === 'WHATSAPP' || item.whatsappPhoneNumberId) {
             return <MessageCircle size={14} className="item-type-icon whatsapp" />;
+        } else if (item.channel === 'INSTAGRAM' || item.instagramBusinessId) {
+            return <Instagram size={14} className="item-type-icon instagram" />;
         } else if (item.channel === 'WIDGET' || item.channel === 'FORM') {
             return <Globe size={14} className="item-type-icon widget" />;
-        } else if (item.facebookPageId || item.channel === 'FACEBOOK' || item.channel === 'LEAD') {
-            // Lead conversations also show Facebook icon since they come from Facebook Lead Ads
+        } else if (item.channel === 'FACEBOOK' || item.facebookPageId || item.channel === 'LEAD') {
             return <Facebook size={14} className="item-type-icon facebook" />;
         } else {
-            // Fallback - unknown channel
             return <MessageSquare size={14} className="item-type-icon" />;
         }
     };
@@ -3789,11 +3787,6 @@ const Inbox = () => {
                     </div>
                 </div>
 
-                {/* 🔍 DEBUG BANNER - WhatsApp visibility test */}
-                <div style={{background:'#fef3c7',padding:'4px 8px',fontSize:11,borderBottom:'1px solid #f59e0b',color:'#92400e'}}>
-                    🔍 DEBUG: inboxItems={inboxItems.length} | WA={inboxItems.filter(i=>i.channel==='WHATSAPP').length} | displayed={displayedItems.length} | loading={String(loading)}
-                </div>
-
                 {/* Inbox Items List */}
                 <div className={`inbox-items${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                     {loading ? (
@@ -3962,7 +3955,6 @@ const Inbox = () => {
                                 <div
                                     key={`${item.inboxType}-${item.id}`}
                                     className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
-                                    style={item.channel === 'WHATSAPP' ? {background:'#dcfce7',border:'3px solid #22c55e'} : undefined}
                                     onClick={() => bulkSelectMode ? handleToggleSelect(item.id, !selectedItems.includes(item.id)) : handleSelectItem(item)}
                                 >
                                     {bulkSelectMode && (
