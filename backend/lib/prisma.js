@@ -57,23 +57,6 @@ prisma.$connect()
                 WHERE "status" = 'PENDING'
             `;
             if (cleared > 0) console.log(`🧹 [Startup] ${cleared} eski PENDING arama iptal edildi`);
-
-            // 4) NULL boolean alanları varsayılan false yap (görünürlük sorunlarını önler)
-            await prisma.$executeRaw`
-                UPDATE "conversations"
-                SET "isInternalChat" = false
-                WHERE "isInternalChat" IS NULL
-            `;
-            await prisma.$executeRaw`
-                UPDATE "conversations"
-                SET "isArchived" = false
-                WHERE "isArchived" IS NULL
-            `;
-            await prisma.$executeRaw`
-                UPDATE "contacts"
-                SET "isDeleted" = false
-                WHERE "isDeleted" IS NULL
-            `;
         } catch (initErr) {
             console.error('⚠️ [Startup Init] Non-fatal init error:', initErr.message);
         }
