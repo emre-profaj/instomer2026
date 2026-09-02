@@ -1768,16 +1768,20 @@ const Inbox = () => {
                     if (loadAll) {
                         channelMatch = true;
                     } else if (hasChannelFilter) {
+                        const ch = (conv.channel || '').toUpperCase();
                         channelMatch =
-                            (activeFilters.includes('whatsapp') && (conv.channel === 'WHATSAPP' || conv.whatsappPhoneNumberId)) ||
-                            (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
-                            (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
-                            (activeFilters.includes('web_widget') && conv.channel === 'WIDGET') ||
-                            (activeFilters.includes('web_form') && conv.channel === 'FORM') ||
-                            (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
-                            (activeFilters.includes('leads') && conv.channel === 'LEAD') ||
-                            (activeFilters.includes('phone_calls') && conv.channel === 'PHONE') ||
-                            (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
+                            (activeFilters.includes('whatsapp') && (ch === 'WHATSAPP' || conv.whatsappPhoneNumberId)) ||
+                            (activeFilters.includes('facebook') && (ch === 'FACEBOOK' || ch === 'MESSENGER')) ||
+                            (activeFilters.includes('instagram') && (ch === 'INSTAGRAM' || ch === 'DIRECT')) ||
+                            (activeFilters.includes('web_widget') && ch === 'WIDGET') ||
+                            (activeFilters.includes('web_form') && ch === 'FORM') ||
+                            (activeFilters.includes('emails') && ch === 'EMAIL') ||
+                            (activeFilters.includes('leads') && ch === 'LEAD') ||
+                            (activeFilters.includes('phone_calls') && ch === 'PHONE') ||
+                            (activeFilters.includes('notes') && (ch === 'INTERNAL' || ch === 'MANUAL')) ||
+                            (!ch);
+                    } else {
+                        channelMatch = true;
                     }
                     if (!channelMatch) return false;
 
@@ -2139,18 +2143,20 @@ const Inbox = () => {
                     if (loadAll) {
                         channelMatch = true;
                     } else if (hasChannelFilter) {
+                        const ch = (conv.channel || '').toUpperCase();
                         channelMatch =
-                            (activeFilters.includes('whatsapp') && (conv.channel === 'WHATSAPP' || conv.whatsappPhoneNumberId)) ||
-                            (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
-                            (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
-                            (activeFilters.includes('web_widget') && conv.channel === 'WIDGET') ||
-                            (activeFilters.includes('web_form') && conv.channel === 'FORM') ||
-                            (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
-                            (activeFilters.includes('leads') && conv.channel === 'LEAD') ||
-                            (activeFilters.includes('phone_calls') && conv.channel === 'PHONE') ||
-                            (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
+                            (activeFilters.includes('whatsapp') && (ch === 'WHATSAPP' || conv.whatsappPhoneNumberId)) ||
+                            (activeFilters.includes('facebook') && (ch === 'FACEBOOK' || ch === 'MESSENGER')) ||
+                            (activeFilters.includes('instagram') && (ch === 'INSTAGRAM' || ch === 'DIRECT')) ||
+                            (activeFilters.includes('web_widget') && ch === 'WIDGET') ||
+                            (activeFilters.includes('web_form') && ch === 'FORM') ||
+                            (activeFilters.includes('emails') && ch === 'EMAIL') ||
+                            (activeFilters.includes('leads') && ch === 'LEAD') ||
+                            (activeFilters.includes('phone_calls') && ch === 'PHONE') ||
+                            (activeFilters.includes('notes') && (ch === 'INTERNAL' || ch === 'MANUAL')) ||
+                            (!ch);
                     } else {
-                        channelMatch = false;
+                        channelMatch = true;
                     }
 
                     // 🔍 DEBUG: WhatsApp channelMatch
