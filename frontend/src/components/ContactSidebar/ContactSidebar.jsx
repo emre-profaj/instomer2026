@@ -2600,51 +2600,31 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     }}
                                                                     onClick={e => e.stopPropagation()}
                                                                 >
-                                                                    <div style={{ padding: '8px 14px 4px', fontSize: '0.65rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                        {isClosed ? 'Tekrar Aç' : 'Nasıl kapandı?'}
-                                                                    </div>
-                                                                    <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+                                                                    {currentWorkspace?.id === 'd2f62dfb-36ba-4b8c-a4b8-938be2ad3a6f' ? (
+                                                                        <div>
+                                                                            <div style={{ padding: '6px 12px 3px', fontSize: '0.65rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                                DURUM
+                                                                            </div>
+                                                                            <div style={{ height: 1, background: '#f3f4f6', margin: '3px 0' }} />
 
-                                                                    {isClosed ? (
-                                                                        openStages.length > 0 ? openStages.map((stage) => (
+                                                                            {/* Açık seçeneği */}
                                                                             <div
-                                                                                key={stage.id}
                                                                                 onClick={async () => {
+                                                                                    if (!isClosed) {
+                                                                                        setCaseStatusDropdownOpenCaseId(null);
+                                                                                        return;
+                                                                                    }
                                                                                     try {
+                                                                                        const targetOpenStage = openStages.length > 0 ? openStages[0].id : null;
                                                                                         await caseAPI.update(currentWorkspace.id, c.id, {
                                                                                             status: 'ACTIVE',
-                                                                                            funnelStageId: stage.id
+                                                                                            ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
                                                                                         });
-                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: 'ACTIVE', funnelStageId: stage.id }));
-                                                                                        window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: c.id, changes: { status: 'ACTIVE', funnelStageId: stage.id } }
+                                                                                        setActiveCaseInfo(prev => ({
+                                                                                            ...prev,
+                                                                                            status: 'ACTIVE',
+                                                                                            ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
                                                                                         }));
-                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                        if (onConversationStatusChange && conversationId) {
-                                                                                            onConversationStatusChange(conversationId, 'OPEN');
-                                                                                        }
-                                                                                    } catch (err) { console.error('Status update error:', err); }
-                                                                                    setCaseStatusDropdownOpenCaseId(null);
-                                                                                }}
-                                                                                style={{
-                                                                                    padding: '8px 14px', cursor: 'pointer',
-                                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                                    fontSize: '0.78rem', fontWeight: 500,
-                                                                                    color: '#374151', background: 'transparent',
-                                                                                    transition: 'background 0.1s'
-                                                                                }}
-                                                                                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                                                            >
-                                                                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: stage.color || '#22c55e', flexShrink: 0 }} />
-                                                                                {stage.name}
-                                                                            </div>
-                                                                        )) : (
-                                                                            <div
-                                                                                onClick={async () => {
-                                                                                    try {
-                                                                                        await caseAPI.update(currentWorkspace.id, c.id, { status: 'ACTIVE' });
-                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: 'ACTIVE' }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
                                                                                             detail: { caseId: c.id, changes: { status: 'ACTIVE' } }
                                                                                         }));
@@ -2656,60 +2636,40 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                     setCaseStatusDropdownOpenCaseId(null);
                                                                                 }}
                                                                                 style={{
-                                                                                    padding: '8px 14px', cursor: 'pointer',
-                                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                                    fontSize: '0.78rem', fontWeight: 500,
-                                                                                    color: '#16a34a', background: 'transparent',
+                                                                                    padding: '8px 12px', cursor: 'pointer',
+                                                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                                    fontSize: '0.78rem', fontWeight: !isClosed ? 700 : 500,
+                                                                                    color: '#16a34a', background: !isClosed ? '#f0fdf4' : 'transparent',
                                                                                     transition: 'background 0.1s'
                                                                                 }}
-                                                                                onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
-                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                onMouseEnter={e => { if (isClosed) e.currentTarget.style.background = '#f0fdf4'; }}
+                                                                                onMouseLeave={e => { if (isClosed) e.currentTarget.style.background = 'transparent'; }}
                                                                             >
-                                                                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                                                                                Tekrar Aç
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                                                                                    Açık
+                                                                                </div>
+                                                                                {!isClosed && <span style={{ fontSize: '0.65rem', color: '#16a34a', fontWeight: 600 }}>✓ Aktif</span>}
                                                                             </div>
-                                                                        )
-                                                                    ) : (
-                                                                        closingStages.length > 0 ? closingStages.map((cs) => (
+
+                                                                            {/* Kapat seçeneği */}
                                                                             <div
-                                                                                key={cs.id}
                                                                                 onClick={async () => {
+                                                                                    if (isClosed) {
+                                                                                        setCaseStatusDropdownOpenCaseId(null);
+                                                                                        return;
+                                                                                    }
                                                                                     try {
-                                                                                        const statusType = cs.statusType || 'CLOSED';
+                                                                                        const targetClosingStage = closingStages.length > 0 ? closingStages[0].id : null;
                                                                                         await caseAPI.update(currentWorkspace.id, c.id, {
-                                                                                            status: statusType,
-                                                                                            funnelStageId: cs.id
+                                                                                            status: 'CLOSED',
+                                                                                            ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
                                                                                         });
-                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: statusType, funnelStageId: cs.id }));
-                                                                                        window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: c.id, changes: { status: statusType, funnelStageId: cs.id } }
+                                                                                        setActiveCaseInfo(prev => ({
+                                                                                            ...prev,
+                                                                                            status: 'CLOSED',
+                                                                                            ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
                                                                                         }));
-                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                        if (onConversationStatusChange && conversationId) {
-                                                                                            onConversationStatusChange(conversationId, 'RESOLVED');
-                                                                                        }
-                                                                                    } catch (err) { console.error('Status update error:', err); }
-                                                                                    setCaseStatusDropdownOpenCaseId(null);
-                                                                                }}
-                                                                                style={{
-                                                                                    padding: '8px 14px', cursor: 'pointer',
-                                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                                    fontSize: '0.78rem', fontWeight: 500,
-                                                                                    color: cs.color || '#ef4444', background: 'transparent',
-                                                                                    transition: 'background 0.1s'
-                                                                                }}
-                                                                                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                                                            >
-                                                                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cs.color || '#ef4444', flexShrink: 0 }} />
-                                                                                {cs.name}
-                                                                            </div>
-                                                                        )) : (
-                                                                            <div
-                                                                                onClick={async () => {
-                                                                                    try {
-                                                                                        await caseAPI.update(currentWorkspace.id, c.id, { status: 'CLOSED' });
-                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: 'CLOSED' }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
                                                                                             detail: { caseId: c.id, changes: { status: 'CLOSED' } }
                                                                                         }));
@@ -2721,19 +2681,160 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                     setCaseStatusDropdownOpenCaseId(null);
                                                                                 }}
                                                                                 style={{
-                                                                                    padding: '8px 14px', cursor: 'pointer',
-                                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                                    fontSize: '0.78rem', fontWeight: 500,
-                                                                                    color: '#ef4444', background: 'transparent',
+                                                                                    padding: '8px 12px', cursor: 'pointer',
+                                                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                                    fontSize: '0.78rem', fontWeight: isClosed ? 700 : 500,
+                                                                                    color: '#ef4444', background: isClosed ? '#fef2f2' : 'transparent',
                                                                                     transition: 'background 0.1s'
                                                                                 }}
-                                                                                onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
-                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                onMouseEnter={e => { if (!isClosed) e.currentTarget.style.background = '#fef2f2'; }}
+                                                                                onMouseLeave={e => { if (!isClosed) e.currentTarget.style.background = 'transparent'; }}
                                                                             >
-                                                                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
-                                                                                Kapat
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                                                                    Kapat
+                                                                                </div>
+                                                                                {isClosed && <span style={{ fontSize: '0.65rem', color: '#ef4444', fontWeight: 600 }}>✓ Kapalı</span>}
                                                                             </div>
-                                                                        )
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div style={{ padding: '8px 14px 4px', fontSize: '0.65rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                                {isClosed ? 'Tekrar Aç' : 'Nasıl kapandı?'}
+                                                                            </div>
+                                                                            <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+
+                                                                            {isClosed ? (
+                                                                                openStages.length > 0 ? openStages.map((stage) => (
+                                                                                    <div
+                                                                                        key={stage.id}
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                await caseAPI.update(currentWorkspace.id, c.id, {
+                                                                                                    status: 'ACTIVE',
+                                                                                                    funnelStageId: stage.id
+                                                                                                });
+                                                                                                setActiveCaseInfo(prev => ({ ...prev, status: 'ACTIVE', funnelStageId: stage.id }));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: c.id, changes: { status: 'ACTIVE', funnelStageId: stage.id } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                if (onConversationStatusChange && conversationId) {
+                                                                                                    onConversationStatusChange(conversationId, 'OPEN');
+                                                                                                }
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setCaseStatusDropdownOpenCaseId(null);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '8px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.78rem', fontWeight: 500,
+                                                                                            color: '#374151', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: stage.color || '#22c55e', flexShrink: 0 }} />
+                                                                                        {stage.name}
+                                                                                    </div>
+                                                                                )) : (
+                                                                                    <div
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                await caseAPI.update(currentWorkspace.id, c.id, { status: 'ACTIVE' });
+                                                                                                setActiveCaseInfo(prev => ({ ...prev, status: 'ACTIVE' }));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: c.id, changes: { status: 'ACTIVE' } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                if (onConversationStatusChange && conversationId) {
+                                                                                                    onConversationStatusChange(conversationId, 'OPEN');
+                                                                                                }
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setCaseStatusDropdownOpenCaseId(null);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '8px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.78rem', fontWeight: 500,
+                                                                                            color: '#16a34a', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                                                                                        Tekrar Aç
+                                                                                    </div>
+                                                                                )
+                                                                            ) : (
+                                                                                closingStages.length > 0 ? closingStages.map((cs) => (
+                                                                                    <div
+                                                                                        key={cs.id}
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                const statusType = cs.statusType || 'CLOSED';
+                                                                                                await caseAPI.update(currentWorkspace.id, c.id, {
+                                                                                                    status: statusType,
+                                                                                                    funnelStageId: cs.id
+                                                                                                });
+                                                                                                setActiveCaseInfo(prev => ({ ...prev, status: statusType, funnelStageId: cs.id }));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: c.id, changes: { status: statusType, funnelStageId: cs.id } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                if (onConversationStatusChange && conversationId) {
+                                                                                                    onConversationStatusChange(conversationId, 'RESOLVED');
+                                                                                                }
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setCaseStatusDropdownOpenCaseId(null);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '8px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.78rem', fontWeight: 500,
+                                                                                            color: cs.color || '#ef4444', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: cs.color || '#ef4444', flexShrink: 0 }} />
+                                                                                        {cs.name}
+                                                                                    </div>
+                                                                                )) : (
+                                                                                    <div
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                await caseAPI.update(currentWorkspace.id, c.id, { status: 'CLOSED' });
+                                                                                                setActiveCaseInfo(prev => ({ ...prev, status: 'CLOSED' }));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: c.id, changes: { status: 'CLOSED' } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                if (onConversationStatusChange && conversationId) {
+                                                                                                    onConversationStatusChange(conversationId, 'RESOLVED');
+                                                                                                }
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setCaseStatusDropdownOpenCaseId(null);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '8px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.78rem', fontWeight: 500,
+                                                                                            color: '#ef4444', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                                                                        Kapat
+                                                                                    </div>
+                                                                                )
+                                                                            )}
+                                                                        </>
                                                                     )}
                                                                 </div>
                                                                 </>

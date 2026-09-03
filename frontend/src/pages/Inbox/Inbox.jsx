@@ -4833,192 +4833,333 @@ const Inbox = () => {
                                                                             }}
                                                                             onClick={e => e.stopPropagation()}
                                                                         >
-                                                                            {/* Başlık */}
-                                                                            <div style={{ padding: '8px 14px 4px', fontSize: '0.72rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                                {isClosed ? 'Tekrar Aç' : 'Nasıl kapandı?'}
-                                                                            </div>
-                                                                            <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+                                                                            {currentWorkspace?.id === 'd2f62dfb-36ba-4b8c-a4b8-938be2ad3a6f' ? (
+                                                                                <div>
+                                                                                    <div style={{ padding: '8px 14px 4px', fontSize: '0.72rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                                        DURUM
+                                                                                    </div>
+                                                                                    <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
 
-                                                                            {isClosed ? (
-                                                                                /* KAPALI → Açık aşamaları göster */
-                                                                                openStages.length > 0 ? openStages.map(stage => (
+                                                                                    {/* Açık seçeneği */}
                                                                                     <div
-                                                                                        key={stage.value}
                                                                                         onClick={async () => {
+                                                                                            if (!isClosed) {
+                                                                                                setClosingDropdownOpen(false);
+                                                                                                return;
+                                                                                            }
                                                                                             try {
-                                                                                                // Case'i güncelle: ACTIVE + seçilen açık aşama
+                                                                                                const targetOpenStage = openStages.length > 0 ? openStages[0].value : null;
                                                                                                 if (selectedItem.caseId) {
                                                                                                     await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
                                                                                                         status: 'ACTIVE',
-                                                                                                        funnelStageId: stage.value
+                                                                                                        ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
                                                                                                     });
                                                                                                 }
-                                                                                                // Conversation'ı aç
                                                                                                 await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
-                                                                                                // Conversation funnelStageId güncelle
-                                                                                                await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
-                                                                                                    funnelStageId: stage.value,
-                                                                                                    funnelType: currentFunnelId,
-                                                                                                    confirmAssignmentUpdate: false
-                                                                                                }).catch(() => {});
-                                                                                                // Local state güncelle
-                                                                                                setSelectedItem(prev => ({ ...prev, status: 'OPEN', closingStatus: null, funnelStageId: stage.value }));
-                                                                                                setInboxItems(prev => prev.map(i =>
-                                                                                                    i.id === selectedItem.id ? { ...i, status: 'OPEN', closingStatus: null, funnelStageId: stage.value } : i
-                                                                                                ));
-                                                                                                // Senkron event'ler
-                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE', funnelStageId: stage.value } }
-                                                                                                }));
-                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                                window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
-                                                                                                    detail: { conversationId: selectedItem.id, funnelStageId: stage.value, stageName: stage.label, stageColor: stage.color }
-                                                                                                }));
-                                                                                            } catch (err) { console.error('Status update error:', err); }
-                                                                                            setClosingDropdownOpen(false);
-                                                                                        }}
-                                                                                        style={{
-                                                                                            padding: '10px 14px', cursor: 'pointer',
-                                                                                            display: 'flex', alignItems: 'center', gap: 8,
-                                                                                            fontSize: '0.82rem', fontWeight: 600,
-                                                                                            color: '#374151', background: 'transparent',
-                                                                                            transition: 'background 0.1s'
-                                                                                        }}
-                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                                                                    >
-                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#22c55e', flexShrink: 0 }} />
-                                                                                        {stage.label}
-                                                                                    </div>
-                                                                                )) : (
-                                                                                    <div
-                                                                                        onClick={async () => {
-                                                                                            try {
-                                                                                                if (selectedItem.caseId) {
-                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { status: 'ACTIVE' });
+                                                                                                if (targetOpenStage) {
+                                                                                                    await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                                                        funnelStageId: targetOpenStage,
+                                                                                                        funnelType: currentFunnelId,
+                                                                                                        confirmAssignmentUpdate: false
+                                                                                                    }).catch(() => {});
                                                                                                 }
-                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
-                                                                                                setSelectedItem(prev => ({ ...prev, status: 'OPEN', closingStatus: null }));
+                                                                                                setSelectedItem(prev => ({
+                                                                                                    ...prev,
+                                                                                                    status: 'OPEN',
+                                                                                                    closingStatus: null,
+                                                                                                    ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
+                                                                                                }));
                                                                                                 setInboxItems(prev => prev.map(i =>
-                                                                                                    i.id === selectedItem.id ? { ...i, status: 'OPEN', closingStatus: null } : i
+                                                                                                    i.id === selectedItem.id ? {
+                                                                                                        ...i,
+                                                                                                        status: 'OPEN',
+                                                                                                        closingStatus: null,
+                                                                                                        ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
+                                                                                                    } : i
                                                                                                 ));
                                                                                                 window.dispatchEvent(new CustomEvent('websocket:case_updated', {
                                                                                                     detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE' } }
                                                                                                 }));
                                                                                                 window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            } catch (err) {
+                                                                                                console.error('Status update error:', err);
+                                                                                            }
                                                                                             setClosingDropdownOpen(false);
                                                                                         }}
                                                                                         style={{
                                                                                             padding: '10px 14px', cursor: 'pointer',
-                                                                                            display: 'flex', alignItems: 'center', gap: 8,
-                                                                                            fontSize: '0.82rem', fontWeight: 600,
-                                                                                            color: '#16a34a', background: 'transparent',
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                                            fontSize: '0.82rem', fontWeight: !isClosed ? 700 : 500,
+                                                                                            color: '#16a34a', background: !isClosed ? '#f0fdf4' : 'transparent',
                                                                                             transition: 'background 0.1s'
                                                                                         }}
-                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
-                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                        onMouseEnter={e => { if (isClosed) e.currentTarget.style.background = '#f0fdf4'; }}
+                                                                                        onMouseLeave={e => { if (isClosed) e.currentTarget.style.background = 'transparent'; }}
                                                                                     >
-                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                                                                                        Tekrar Aç
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                                                                                            Açık
+                                                                                        </div>
+                                                                                        {!isClosed && <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>✓ Aktif</span>}
                                                                                     </div>
-                                                                                )
-                                                                            ) : (
-                                                                                /* AÇIK → Kapanış aşamalarını göster */
-                                                                                closingStages.length > 0 ? closingStages.map(stage => (
+
+                                                                                    {/* Kapat seçeneği */}
                                                                                     <div
-                                                                                        key={stage.value}
                                                                                         onClick={async () => {
+                                                                                            if (isClosed) {
+                                                                                                setClosingDropdownOpen(false);
+                                                                                                return;
+                                                                                            }
                                                                                             try {
-                                                                                                const newCaseStatus = stage.statusType || 'CLOSED';
-                                                                                                // Case'i güncelle: kapanış status + kapanış aşaması
+                                                                                                const targetClosingStage = closingStages.length > 0 ? closingStages[0].value : null;
                                                                                                 if (selectedItem.caseId) {
                                                                                                     await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
-                                                                                                        status: newCaseStatus,
-                                                                                                        funnelStageId: stage.value
+                                                                                                        status: 'CLOSED',
+                                                                                                        ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
                                                                                                     });
                                                                                                 }
-                                                                                                // Conversation'ı kapat
                                                                                                 await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, {
                                                                                                     status: 'RESOLVED',
-                                                                                                    closingStageId: stage.value
+                                                                                                    closingStageId: targetClosingStage || 'CLOSED'
                                                                                                 });
-                                                                                                // Conversation funnelStageId güncelle
-                                                                                                await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
-                                                                                                    funnelStageId: stage.value,
-                                                                                                    funnelType: currentFunnelId,
-                                                                                                    confirmAssignmentUpdate: false
-                                                                                                }).catch(() => {});
-                                                                                                // Local state güncelle
+                                                                                                if (targetClosingStage) {
+                                                                                                    await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                                                        funnelStageId: targetClosingStage,
+                                                                                                        funnelType: currentFunnelId,
+                                                                                                        confirmAssignmentUpdate: false
+                                                                                                    }).catch(() => {});
+                                                                                                }
                                                                                                 setSelectedItem(prev => ({
                                                                                                     ...prev,
                                                                                                     status: 'RESOLVED',
-                                                                                                    closingStatus: newCaseStatus,
-                                                                                                    funnelStageId: stage.value
+                                                                                                    closingStatus: 'CLOSED',
+                                                                                                    ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
                                                                                                 }));
                                                                                                 setInboxItems(prev => prev.map(i =>
-                                                                                                    i.id === selectedItem.id ? { ...i, status: 'RESOLVED', closingStatus: newCaseStatus, funnelStageId: stage.value } : i
-                                                                                                ));
-                                                                                                // Senkron event'ler
-                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: newCaseStatus, funnelStageId: stage.value } }
-                                                                                                }));
-                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                                window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
-                                                                                                    detail: { conversationId: selectedItem.id, funnelStageId: stage.value, stageName: stage.label, stageColor: stage.color }
-                                                                                                }));
-                                                                                                loadInboxItems(false);
-                                                                                            } catch (err) { console.error('Status update error:', err); }
-                                                                                            setClosingDropdownOpen(false);
-                                                                                        }}
-                                                                                        style={{
-                                                                                            padding: '10px 14px', cursor: 'pointer',
-                                                                                            display: 'flex', alignItems: 'center', gap: 8,
-                                                                                            fontSize: '0.82rem', fontWeight: 600,
-                                                                                            color: stage.color || '#ef4444', background: 'transparent',
-                                                                                            transition: 'background 0.1s'
-                                                                                        }}
-                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                                                                    >
-                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#ef4444', flexShrink: 0 }} />
-                                                                                        {stage.label}
-                                                                                    </div>
-                                                                                )) : (
-                                                                                    /* Kapanış aşaması tanımlı değilse fallback */
-                                                                                    <div
-                                                                                        onClick={async () => {
-                                                                                            try {
-                                                                                                if (selectedItem.caseId) {
-                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { status: 'CLOSED' });
-                                                                                                }
-                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'RESOLVED' });
-                                                                                                setSelectedItem(prev => ({ ...prev, status: 'RESOLVED', closingStatus: 'CLOSED' }));
-                                                                                                setInboxItems(prev => prev.map(i =>
-                                                                                                    i.id === selectedItem.id ? { ...i, status: 'RESOLVED', closingStatus: 'CLOSED' } : i
+                                                                                                    i.id === selectedItem.id ? {
+                                                                                                        ...i,
+                                                                                                        status: 'RESOLVED',
+                                                                                                        closingStatus: 'CLOSED',
+                                                                                                        ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
+                                                                                                    } : i
                                                                                                 ));
                                                                                                 window.dispatchEvent(new CustomEvent('websocket:case_updated', {
                                                                                                     detail: { caseId: selectedItem.caseId, changes: { status: 'CLOSED' } }
                                                                                                 }));
                                                                                                 window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                                 loadInboxItems(false);
-                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            } catch (err) {
+                                                                                                console.error('Status update error:', err);
+                                                                                            }
                                                                                             setClosingDropdownOpen(false);
                                                                                         }}
                                                                                         style={{
                                                                                             padding: '10px 14px', cursor: 'pointer',
-                                                                                            display: 'flex', alignItems: 'center', gap: 8,
-                                                                                            fontSize: '0.82rem', fontWeight: 600,
-                                                                                            color: '#ef4444', background: 'transparent',
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                                            fontSize: '0.82rem', fontWeight: isClosed ? 700 : 500,
+                                                                                            color: '#ef4444', background: isClosed ? '#fef2f2' : 'transparent',
                                                                                             transition: 'background 0.1s'
                                                                                         }}
-                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
-                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                        onMouseEnter={e => { if (!isClosed) e.currentTarget.style.background = '#fef2f2'; }}
+                                                                                        onMouseLeave={e => { if (!isClosed) e.currentTarget.style.background = 'transparent'; }}
                                                                                     >
-                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
-                                                                                        Kapat
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                                                                            Kapat
+                                                                                        </div>
+                                                                                        {isClosed && <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>✓ Kapalı</span>}
                                                                                     </div>
-                                                                                )
+                                                                                </div>
+                                                                            ) : (
+                                                                                <>
+                                                                                    {/* Başlık */}
+                                                                                    <div style={{ padding: '8px 14px 4px', fontSize: '0.72rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                                        {isClosed ? 'Tekrar Aç' : 'Nasıl kapandı?'}
+                                                                                    </div>
+                                                                                    <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+
+                                                                                    {isClosed ? (
+                                                                                        /* KAPALI → Açık aşamaları göster */
+                                                                                        openStages.length > 0 ? openStages.map(stage => (
+                                                                                            <div
+                                                                                                key={stage.value}
+                                                                                                onClick={async () => {
+                                                                                                    try {
+                                                                                                        // Case'i güncelle: ACTIVE + seçilen açık aşama
+                                                                                                        if (selectedItem.caseId) {
+                                                                                                            await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                                                                status: 'ACTIVE',
+                                                                                                                funnelStageId: stage.value
+                                                                                                            });
+                                                                                                        }
+                                                                                                        // Conversation'ı aç
+                                                                                                        await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
+                                                                                                        // Conversation funnelStageId güncelle
+                                                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                                                            funnelStageId: stage.value,
+                                                                                                            funnelType: currentFunnelId,
+                                                                                                            confirmAssignmentUpdate: false
+                                                                                                        }).catch(() => {});
+                                                                                                        // Local state güncelle
+                                                                                                        setSelectedItem(prev => ({ ...prev, status: 'OPEN', closingStatus: null, funnelStageId: stage.value }));
+                                                                                                        setInboxItems(prev => prev.map(i =>
+                                                                                                            i.id === selectedItem.id ? { ...i, status: 'OPEN', closingStatus: null, funnelStageId: stage.value } : i
+                                                                                                        ));
+                                                                                                        // Senkron event'ler
+                                                                                                        window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                            detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE', funnelStageId: stage.value } }
+                                                                                                        }));
+                                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                        window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                                                                            detail: { conversationId: selectedItem.id, funnelStageId: stage.value, stageName: stage.label, stageColor: stage.color }
+                                                                                                        }));
+                                                                                                    } catch (err) { console.error('Status update error:', err); }
+                                                                                                    setClosingDropdownOpen(false);
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    padding: '10px 14px', cursor: 'pointer',
+                                                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                                                    fontSize: '0.82rem', fontWeight: 600,
+                                                                                                    color: '#374151', background: 'transparent',
+                                                                                                    transition: 'background 0.1s'
+                                                                                                }}
+                                                                                                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                            >
+                                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#22c55e', flexShrink: 0 }} />
+                                                                                                {stage.label}
+                                                                                            </div>
+                                                                                        )) : (
+                                                                                            <div
+                                                                                                onClick={async () => {
+                                                                                                    try {
+                                                                                                        if (selectedItem.caseId) {
+                                                                                                            await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { status: 'ACTIVE' });
+                                                                                                        }
+                                                                                                        await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
+                                                                                                        setSelectedItem(prev => ({ ...prev, status: 'OPEN', closingStatus: null }));
+                                                                                                        setInboxItems(prev => prev.map(i =>
+                                                                                                            i.id === selectedItem.id ? { ...i, status: 'OPEN', closingStatus: null } : i
+                                                                                                        ));
+                                                                                                        window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                            detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE' } }
+                                                                                                        }));
+                                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                    } catch (err) { console.error('Status update error:', err); }
+                                                                                                    setClosingDropdownOpen(false);
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    padding: '10px 14px', cursor: 'pointer',
+                                                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                                                    fontSize: '0.82rem', fontWeight: 600,
+                                                                                                    color: '#16a34a', background: 'transparent',
+                                                                                                    transition: 'background 0.1s'
+                                                                                                }}
+                                                                                                onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                            >
+                                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                                                                                                Tekrar Aç
+                                                                                            </div>
+                                                                                        )
+                                                                                    ) : (
+                                                                                        /* AÇIK → Kapanış aşamalarını göster */
+                                                                                        closingStages.length > 0 ? closingStages.map(stage => (
+                                                                                            <div
+                                                                                                key={stage.value}
+                                                                                                onClick={async () => {
+                                                                                                    try {
+                                                                                                        const newCaseStatus = stage.statusType || 'CLOSED';
+                                                                                                        // Case'i güncelle: kapanış status + kapanış aşaması
+                                                                                                        if (selectedItem.caseId) {
+                                                                                                            await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                                                                status: newCaseStatus,
+                                                                                                                funnelStageId: stage.value
+                                                                                                            });
+                                                                                                        }
+                                                                                                        // Conversation'ı kapat
+                                                                                                        await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, {
+                                                                                                            status: 'RESOLVED',
+                                                                                                            closingStageId: stage.value
+                                                                                                        });
+                                                                                                        // Conversation funnelStageId güncelle
+                                                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                                                            funnelStageId: stage.value,
+                                                                                                            funnelType: currentFunnelId,
+                                                                                                            confirmAssignmentUpdate: false
+                                                                                                        }).catch(() => {});
+                                                                                                        // Local state güncelle
+                                                                                                        setSelectedItem(prev => ({
+                                                                                                            ...prev,
+                                                                                                            status: 'RESOLVED',
+                                                                                                            closingStatus: newCaseStatus,
+                                                                                                            funnelStageId: stage.value
+                                                                                                        }));
+                                                                                                        setInboxItems(prev => prev.map(i =>
+                                                                                                            i.id === selectedItem.id ? { ...i, status: 'RESOLVED', closingStatus: newCaseStatus, funnelStageId: stage.value } : i
+                                                                                                        ));
+                                                                                                        // Senkron event'ler
+                                                                                                        window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                            detail: { caseId: selectedItem.caseId, changes: { status: newCaseStatus, funnelStageId: stage.value } }
+                                                                                                        }));
+                                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                        window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                                                                            detail: { conversationId: selectedItem.id, funnelStageId: stage.value, stageName: stage.label, stageColor: stage.color }
+                                                                                                        }));
+                                                                                                        loadInboxItems(false);
+                                                                                                    } catch (err) { console.error('Status update error:', err); }
+                                                                                                    setClosingDropdownOpen(false);
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    padding: '10px 14px', cursor: 'pointer',
+                                                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                                                    fontSize: '0.82rem', fontWeight: 600,
+                                                                                                    color: stage.color || '#ef4444', background: 'transparent',
+                                                                                                    transition: 'background 0.1s'
+                                                                                                }}
+                                                                                                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                            >
+                                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#ef4444', flexShrink: 0 }} />
+                                                                                                {stage.label}
+                                                                                            </div>
+                                                                                        )) : (
+                                                                                            /* Kapanış aşaması tanımlı değilse fallback */
+                                                                                            <div
+                                                                                                onClick={async () => {
+                                                                                                    try {
+                                                                                                        if (selectedItem.caseId) {
+                                                                                                            await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { status: 'CLOSED' });
+                                                                                                        }
+                                                                                                        await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'RESOLVED' });
+                                                                                                        setSelectedItem(prev => ({ ...prev, status: 'RESOLVED', closingStatus: 'CLOSED' }));
+                                                                                                        setInboxItems(prev => prev.map(i =>
+                                                                                                            i.id === selectedItem.id ? { ...i, status: 'RESOLVED', closingStatus: 'CLOSED' } : i
+                                                                                                        ));
+                                                                                                        window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                            detail: { caseId: selectedItem.caseId, changes: { status: 'CLOSED' } }
+                                                                                                        }));
+                                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                        loadInboxItems(false);
+                                                                                                    } catch (err) { console.error('Status update error:', err); }
+                                                                                                    setClosingDropdownOpen(false);
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    padding: '10px 14px', cursor: 'pointer',
+                                                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                                                    fontSize: '0.82rem', fontWeight: 600,
+                                                                                                    color: '#ef4444', background: 'transparent',
+                                                                                                    transition: 'background 0.1s'
+                                                                                                }}
+                                                                                                onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                                                                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                            >
+                                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                                                                                Kapat
+                                                                                            </div>
+                                                                                        )
+                                                                                    )}
+                                                                                </>
                                                                             )}
                                                                         </div>,
                                                                         document.body
