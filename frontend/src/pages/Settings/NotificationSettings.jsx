@@ -5,7 +5,7 @@ import { Bell, UserCheck, MessageSquarePlus, TrendingUp, Loader2, Smartphone, Ma
 import './NotificationSettings.css';
 
 const NotificationSettings = () => {
-    const { currentWorkspace } = useAuth();
+    const { user, currentWorkspace } = useAuth();
     const [preferences, setPreferences] = useState({
         assignment: true,
         newRequest: true,
@@ -13,7 +13,8 @@ const NotificationSettings = () => {
         fbLead: true,
         whatsappEnabled: false,
         whatsappPhone: '',
-        emailEnabled: false
+        emailEnabled: false,
+        notificationEmail: ''
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -60,6 +61,12 @@ const NotificationSettings = () => {
 
     const handlePhoneSave = async () => {
         setSavedKey('whatsappPhone');
+        await savePreferences(preferences);
+        setTimeout(() => setSavedKey(null), 1500);
+    };
+
+    const handleEmailSave = async () => {
+        setSavedKey('notificationEmail');
         await savePreferences(preferences);
         setTimeout(() => setSavedKey(null), 1500);
     };
@@ -166,7 +173,13 @@ const NotificationSettings = () => {
                                         </div>
                                         <div className="ws-settings-card-info">
                                             <div className="ws-settings-card-name">E-posta Bildirimi</div>
-                                            <div className="ws-settings-card-desc">Bildirimler hesabınızdaki e-posta adresine gönderilir</div>
+                                            <div className="ws-settings-card-desc">
+                                                {user?.email ? (
+                                                    <>Bildirimler hesabınızdaki e-posta adresine <strong>({user.email})</strong> gönderilir</>
+                                                ) : (
+                                                    'Bildirimler hesabınızdaki e-posta adresine gönderilir'
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="ws-settings-card-right">
@@ -180,6 +193,33 @@ const NotificationSettings = () => {
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Ek / Manuel E-posta Yazma Alanı */}
+                                {preferences.emailEnabled && (
+                                    <div className="notif-email-card">
+                                        <label>Manuel E-posta Adresi (Opsiyonel)</label>
+                                        <div className="notif-email-row">
+                                            <input
+                                                type="text"
+                                                placeholder="Örn: bildirim@sirketiniz.com (birden fazla ise virgülle ayırın)"
+                                                value={preferences.notificationEmail || ''}
+                                                onChange={(e) => setPreferences(prev => ({ ...prev, notificationEmail: e.target.value }))}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') handleEmailSave(); }}
+                                            />
+                                            <button
+                                                className="notif-email-save"
+                                                onClick={handleEmailSave}
+                                                disabled={saving}
+                                            >
+                                                <Save size={14} />
+                                                {savedKey === 'notificationEmail' ? 'Kaydedildi!' : 'Kaydet'}
+                                            </button>
+                                        </div>
+                                        <span className="notif-email-hint">
+                                            Varsayılan olarak bildirimler hesap e-postanıza{user?.email ? ` (${user.email})` : ''} gider. Buraya manuel e-posta yazarsanız, bildirimler bu adrese de eşzamanlı olarak gönderilir.
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </section>
                     </div>

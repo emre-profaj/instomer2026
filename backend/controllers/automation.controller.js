@@ -1661,19 +1661,31 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                     members: {
                         where: { role: 'OWNER' },
                         include: {
-                            user: { select: { email: true, name: true } }
+                            user: { select: { email: true, name: true, notificationPreferences: true } }
                         }
                     }
                 }
             });
 
-            // Find connected email channel for this workspace
-            // NOT: Email kanalına göndermek YANLIŞ — IMAP geri çekip CRM'de sahte konuşma oluşturur
-            // Lead bildirimlerini workspace owner'ın kişisel e-postasına gönder
-            const targetEmail = workspace?.members?.[0]?.user?.email;
-            const ownerName = workspace?.members?.[0]?.user?.name || 'Değerli Kullanıcı';
+            const ownerUser = workspace?.members?.[0]?.user;
+            const targetEmails = new Set();
+            if (ownerUser?.email && ownerUser.email.includes('@')) {
+                targetEmails.add(ownerUser.email.trim().toLowerCase());
+            }
 
-            if (targetEmail) {
+            const ownerPrefs = ownerUser?.notificationPreferences;
+            if (ownerPrefs?.notificationEmail) {
+                String(ownerPrefs.notificationEmail)
+                    .split(/[,;]+/)
+                    .map(e => e.trim().toLowerCase())
+                    .filter(e => e && e.includes('@'))
+                    .forEach(e => targetEmails.add(e));
+            }
+
+            const recipientList = Array.from(targetEmails);
+            const ownerName = ownerUser?.name || 'Değerli Kullanıcı';
+
+            if (recipientList.length > 0) {
                 const leadName = lead?.name || contact?.name || 'Bilinmeyen';
                 const leadPhone = contact?.phone || lead?.phone || '-';
                 const leadEmail = contact?.email || lead?.email || '-';
@@ -1709,8 +1721,8 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                     </div>
                 `;
 
-                await sendSystemEmail(targetEmail, emailSubject, emailBody);
-                console.log(`📧 [AUTOMATION] Lead notification sent to workspace owner: ${targetEmail}`);
+                await sendSystemEmail(recipientList, emailSubject, emailBody);
+                console.log(`📧 [AUTOMATION] Lead notification sent to recipients: [${recipientList.join(', ')}]`);
             }
         } catch (notifyError) {
             console.error('⚠️ [AUTOMATION] Owner notification email error:', notifyError.message);

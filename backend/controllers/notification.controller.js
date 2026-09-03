@@ -140,20 +140,43 @@ export const createNotification = async (workspaceId, userId, type, title, body,
         });
 
         // E-posta bildirim gönder (isteğe bağlı)
-        if (prefs.emailEnabled && user?.email) {
+        if (prefs.emailEnabled) {
             try {
-                const { sendSystemEmail } = await import('../services/systemEmail.service.js');
-                const emailBody = `
-                    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;border:1px solid #eaeaea;border-radius:10px;">
-                        <h2 style="color:#1a1a2e;font-size:18px;margin-top:0;">🔔 ${title}</h2>
-                        <p style="color:#4b5563;font-size:15px;line-height:1.6;">${body}</p>
-                        <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0;">
-                        <p style="color:#9ca3af;font-size:12px;margin-bottom:0;">Bu bildirimi Instomer panelindeki <strong>Ayarlar → Bildirim Ayarları</strong> menüsünden kapatabilirsiniz.</p>
-                    </div>
-                `;
-                // Instomer sistem mailinden kullanıcının mailine gönder
-                await sendSystemEmail(user.email, `Instomer Bildirimi: ${title}`, emailBody, { isHtml: true });
-                console.log(`📧 [Notification] System email sent to ${user.email}: ${title}`);
+                const recipientEmails = new Set();
+
+                // 1. Kullanıcının hesap e-postası
+                if (user?.email && user.email.includes('@')) {
+                    recipientEmails.add(user.email.trim().toLowerCase());
+                }
+
+                // 2. Manuel girilen ek bildirim e-postası (virgül veya noktalı virgül ile birden fazla olabilir)
+                if (prefs.notificationEmail) {
+                    const customList = String(prefs.notificationEmail)
+                        .split(/[,;]+/)
+                        .map(e => e.trim().toLowerCase())
+                        .filter(e => e && e.includes('@'));
+
+                    for (const email of customList) {
+                        recipientEmails.add(email);
+                    }
+                }
+
+                const targetEmails = Array.from(recipientEmails);
+
+                if (targetEmails.length > 0) {
+                    const { sendSystemEmail } = await import('../services/systemEmail.service.js');
+                    const emailBody = `
+                        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;border:1px solid #eaeaea;border-radius:10px;">
+                            <h2 style="color:#1a1a2e;font-size:18px;margin-top:0;">🔔 ${title}</h2>
+                            <p style="color:#4b5563;font-size:15px;line-height:1.6;">${body}</p>
+                            <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0;">
+                            <p style="color:#9ca3af;font-size:12px;margin-bottom:0;">Bu bildirimi Instomer panelindeki <strong>Ayarlar → Bildirim Ayarları</strong> menüsünden yönetebilirsiniz.</p>
+                        </div>
+                    `;
+                    // Instomer sistem mailinden alıcıların mailine gönder
+                    await sendSystemEmail(targetEmails, `Instomer Bildirimi: ${title}`, emailBody, { isHtml: true });
+                    console.log(`📧 [Notification] System email sent to [${targetEmails.join(', ')}]: ${title}`);
+                }
             } catch (emailErr) {
                 console.error('❌ [Notification] System email send error:', emailErr.message);
             }
@@ -202,7 +225,16 @@ export const getNotificationPreferences = async (req, res) => {
             select: { notificationPreferences: true }
         });
 
-        const defaults = { assignment: true, newRequest: true, dealStage: true, fbLead: true, whatsappEnabled: false, whatsappPhone: '', emailEnabled: false };
+        const defaults = {
+            assignment: true,
+            newRequest: true,
+            dealStage: true,
+            fbLead: true,
+            whatsappEnabled: false,
+            whatsappPhone: '',
+            emailEnabled: false,
+            notificationEmail: ''
+        };
         const prefs = user?.notificationPreferences || defaults;
 
         res.json({ preferences: { ...defaults, ...prefs } });
@@ -216,7 +248,7 @@ export const getNotificationPreferences = async (req, res) => {
 export const updateNotificationPreferences = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { assignment, newRequest, dealStage, fbLead, whatsappEnabled, whatsappPhone, emailEnabled } = req.body;
+        const { assignment, newRequest, dealStage, fbLead, whatsappEnabled, whatsappPhone, emailEnabled, notificationEmail } = req.body;
 
         const prefs = {
             assignment: assignment !== false,
@@ -225,7 +257,8 @@ export const updateNotificationPreferences = async (req, res) => {
             fbLead: fbLead !== false,
             whatsappEnabled: whatsappEnabled === true,
             whatsappPhone: whatsappPhone || '',
-            emailEnabled: emailEnabled === true
+            emailEnabled: emailEnabled === true,
+            notificationEmail: notificationEmail ? String(notificationEmail).trim() : ''
         };
 
         await prisma.user.update({

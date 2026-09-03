@@ -108,3 +108,88 @@
     color: #6b7280;
     margin-top: 6px;
 }
+
+/* E-posta Bildirim Manuel Mail Alanı */
+.notif-email-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 12px;
+    animation: notifSlideDown 0.2s ease-out;
+}
+
+@keyframes notifSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.notif-email-card label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.notif-email-row {
+    display: flex;
+    gap: 8px;
+}
+
+.notif-email-row input {
+    flex: 1;
+    padding: 9px 13px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    background: #fff;
+    color: #0f172a;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.notif-email-row input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.notif-email-save {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.notif-email-save:hover {
+    background: #1d4ed8;
+}
+
+.notif-email-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.notif-email-hint {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
