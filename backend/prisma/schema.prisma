@@ -2034,6 +2034,8 @@ model CampaignSend {
   // Zamanlama
   scheduledAt     DateTime?         // Planlı gönderim tarihi
   sentAt          DateTime?         // Gerçek gönderim tarihi
+  // Gönderim hızı
+  sendRate        Int               @default(20) // Dakikada mesaj sayısı
   // İstatistikler
   status          String            @default("PENDING") // PENDING, SENDING, COMPLETED, FAILED, CANCELLED
   totalCount      Int               @default(0)

@@ -1636,11 +1636,14 @@ export const getMessageSends = async (req, res) => {
 // ─── POST campaigns/:id/messages/:msgId/sends — Gönderim ekle (liste + tarih)
 export const addMessageSend = async (req, res) => {
     try {
-        const { segmentId, segmentName, tagIds, groupId, filterSnapshot, scheduledAt } = req.body;
+        const { segmentId, segmentName, tagIds, groupId, filterSnapshot, scheduledAt, sendRate } = req.body;
 
         if (!segmentId && !tagIds && !groupId && !filterSnapshot) {
             return res.status(400).json({ error: 'Hedef kitle seçimi gerekli' });
         }
+
+        // Hız sınırı: min 1, max 120, default 20
+        const rate = Math.max(1, Math.min(120, parseInt(sendRate) || 20));
 
         const send = await prisma.campaignSend.create({
             data: {
@@ -1651,6 +1654,7 @@ export const addMessageSend = async (req, res) => {
                 groupId,
                 filterSnapshot: filterSnapshot ? JSON.stringify(filterSnapshot) : null,
                 scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+                sendRate: rate,
             }
         });
 

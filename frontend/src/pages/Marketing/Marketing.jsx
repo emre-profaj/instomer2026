@@ -1217,6 +1217,7 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
     const [sendSegment, setSendSegment] = useState('');
     const [sendSegmentName, setSendSegmentName] = useState('');
     const [sendSchedule, setSendSchedule] = useState('');
+    const [sendRate, setSendRate] = useState(20);
     const [segments, setSegments] = useState([]);
     const [addingSend, setAddingSend] = useState(false);
 
@@ -1305,11 +1306,13 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
                 segmentId: sendSegment,
                 segmentName: sendSegmentName,
                 scheduledAt: sendSchedule || null,
+                sendRate: sendRate,
             });
             setAddSendFor(null);
             setSendSegment('');
             setSendSegmentName('');
             setSendSchedule('');
+            setSendRate(20);
             fetchMessages();
         } catch (e) {
             alert('Gönderim eklenemedi');
@@ -1584,6 +1587,11 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
                                                                 👥 {send.totalCount}
                                                             </span>
                                                         )}
+                                                        {send.sendRate && (
+                                                            <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                                                                ⚡ {send.sendRate}/dk
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     {send.totalCount > 0 && (
                                                         <div style={{ width: 60, height: 4, borderRadius: 4, background: '#e2e8f0', overflow: 'hidden' }}>
@@ -1655,6 +1663,30 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
                                                         onChange={e => setSendSchedule(e.target.value)}
                                                         style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                                                     />
+                                                </div>
+                                                {/* Gönderim Hızı */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                                    <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>⚡ Gönderim hızı:</span>
+                                                    <div style={{ display: 'flex', gap: 4 }}>
+                                                        {[5, 10, 20, 40, 60, 120].map(rate => (
+                                                            <button
+                                                                key={rate}
+                                                                onClick={() => setSendRate(rate)}
+                                                                style={{
+                                                                    padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                                                                    border: sendRate === rate ? '2px solid #7c3aed' : '1px solid #e2e8f0',
+                                                                    background: sendRate === rate ? '#ede9fe' : '#fff',
+                                                                    color: sendRate === rate ? '#7c3aed' : '#64748b',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                {rate}/dk
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                                                        {sendRate <= 10 ? '🐢 Yavaş' : sendRate <= 30 ? '⚡ Normal' : '🚀 Hızlı'}
+                                                    </span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                                                     <button onClick={() => setAddSendFor(null)}
