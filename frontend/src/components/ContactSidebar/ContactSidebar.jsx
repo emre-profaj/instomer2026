@@ -5035,7 +5035,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 {/* ═══ STICKY FOOTER — Aktivite & Satış Butonları ═══ */}
                 {profile && (
                     <div className="sidebar-action-footer">
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: 4 }}>
                             <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('NOTE')}>
                                 <span style={{ position: 'relative', display: 'inline-flex', width: 24, height: 20, alignItems: 'center', justifyContent: 'center' }}>
                                     <PhoneCall size={15} style={{ color: '#374151' }} />
@@ -5059,7 +5059,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.1 }}>Hatırlatıcı</span>
                             </button>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
                             <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={openQuoteFormHandler}>
                                 <FileText size={15} style={{ color: '#10b981' }} />
                                 <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>

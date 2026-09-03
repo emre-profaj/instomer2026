@@ -7271,7 +7271,7 @@ const Inbox = () => {
                 <div style={{
                     position: 'fixed', top: 0, right: 0,
                     width: 320, height: '100vh',
-                    zIndex: 1499, overflowY: 'auto',
+                    zIndex: 1499, overflow: 'hidden',
                     boxShadow: '-4px 0 24px rgba(0,0,0,0.12)'
                 }}>
                     <ContactSidebar

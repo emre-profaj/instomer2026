@@ -29,9 +29,13 @@
 
 .sidebar-action-footer {
     flex-shrink: 0;
-    padding: 6px 8px 8px;
+    padding: 10px 8px;
     border-top: 1px solid #e5e7eb;
     background: #fafbfc;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
 }
 
 /* Profile Header — horizontal centered */
