@@ -11,7 +11,7 @@ import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
 import { hasProfanity } from '../utils/profanityFilter.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { mergeContacts } from '../services/contactMerge.service.js';
-import { generateCaseNumber } from '../services/caseNumber.service.js';
+import { generateCaseNumber } from './case.controller.js';
 
 
 // Lock to prevent duplicate AI replies for same conversation

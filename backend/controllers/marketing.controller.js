@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
-import { generateCaseNumber } from '../services/caseNumber.service.js';
+import { generateCaseNumber } from './case.controller.js';
 
 // ─── In-memory bulk-send job tracker ───────────────────────────────────────────
 // Maps jobId → { sent, failed, total, done, templateName, startedAt }

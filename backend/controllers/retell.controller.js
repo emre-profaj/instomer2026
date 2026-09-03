@@ -7,7 +7,7 @@ import { assignDefaultFunnel } from '../services/conversationRouting.service.js'
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { executeRule } from '../services/ruleEngine.service.js';
-import { generateCaseNumber } from '../services/caseNumber.service.js';
+import { generateCaseNumber } from './case.controller.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;

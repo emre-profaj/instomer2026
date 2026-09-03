@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
-import { generateCaseNumber } from '../services/caseNumber.service.js';
+import { generateCaseNumber } from './case.controller.js';
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({

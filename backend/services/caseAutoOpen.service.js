@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js';
-import { generateCaseNumber } from './caseNumber.service.js';
+import { generateCaseNumber } from '../controllers/case.controller.js';
 
 export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
   // 1. Aktif case var mı kontrol et
