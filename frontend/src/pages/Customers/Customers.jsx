@@ -213,6 +213,10 @@ const Customers = () => {
     const [exporting, setExporting] = useState(false);
     const [exportingLeads, setExportingLeads] = useState(false);
     const [exportingSelected, setExportingSelected] = useState(false);
+    const [showSelectedExportModal, setShowSelectedExportModal] = useState(false);
+    const [selectedExportStartDate, setSelectedExportStartDate] = useState('');
+    const [selectedExportEndDate, setSelectedExportEndDate] = useState('');
+    const [selectedExportDateType, setSelectedExportDateType] = useState('first');
 
     // Dışa Aktar 2 (Arama & Talep Görüşme Raporu) state
     const [showReport2Modal, setShowReport2Modal] = useState(false);
@@ -1058,6 +1062,32 @@ const Customers = () => {
         }
     };
 
+    // Filtered selected contacts according to date filter in modal
+    const getFilteredSelectedContacts = useCallback(() => {
+        const pool = allSelectedContacts.length > 0 ? allSelectedContacts : contacts;
+        let target = pool.filter(c => selectedIds.includes(c.id));
+
+        if (!selectedExportStartDate && !selectedExportEndDate) {
+            return target;
+        }
+
+        const start = selectedExportStartDate ? new Date(selectedExportStartDate + 'T00:00:00') : null;
+        const end = selectedExportEndDate ? new Date(selectedExportEndDate + 'T23:59:59.999') : null;
+
+        return target.filter(contact => {
+            let dateVal = null;
+            if (selectedExportDateType === 'last') {
+                dateVal = contact.lastMessageAt ? new Date(contact.lastMessageAt) : null;
+            } else {
+                dateVal = contact.firstMessageAt ? new Date(contact.firstMessageAt) : (contact.createdAt ? new Date(contact.createdAt) : null);
+            }
+            if (!dateVal) return false;
+            if (start && dateVal < start) return false;
+            if (end && dateVal > end) return false;
+            return true;
+        });
+    }, [allSelectedContacts, contacts, selectedIds, selectedExportStartDate, selectedExportEndDate, selectedExportDateType]);
+
     // Export Selected Contacts to XLSX
     const handleExportSelected = async () => {
         if (selectedIds.length === 0) return;
@@ -1076,8 +1106,27 @@ const Customers = () => {
                 targetContacts = all.filter(c => selectedIds.includes(c.id));
             }
 
+            // Apply date filtering if specified
+            if (selectedExportStartDate || selectedExportEndDate) {
+                const start = selectedExportStartDate ? new Date(selectedExportStartDate + 'T00:00:00') : null;
+                const end = selectedExportEndDate ? new Date(selectedExportEndDate + 'T23:59:59.999') : null;
+
+                targetContacts = targetContacts.filter(contact => {
+                    let dateVal = null;
+                    if (selectedExportDateType === 'last') {
+                        dateVal = contact.lastMessageAt ? new Date(contact.lastMessageAt) : null;
+                    } else {
+                        dateVal = contact.firstMessageAt ? new Date(contact.firstMessageAt) : (contact.createdAt ? new Date(contact.createdAt) : null);
+                    }
+                    if (!dateVal) return false;
+                    if (start && dateVal < start) return false;
+                    if (end && dateVal > end) return false;
+                    return true;
+                });
+            }
+
             if (targetContacts.length === 0) {
-                alert('Dışa aktarılacak seçili kişi bulunamadı.');
+                alert('Seçili tarih aralığında dışa aktarılacak kişi bulunamadı.');
                 return;
             }
 
@@ -1186,6 +1235,7 @@ const Customers = () => {
             XLSX.utils.book_append_sheet(wb, ws, 'Seçilen Kişiler');
             const dateStr = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `secilen_kisiler_${dateStr}_${targetContacts.length}.xlsx`);
+            setShowSelectedExportModal(false);
         } catch (error) {
             console.error('Export selected error:', error);
             alert('Seçilen kişiler dışa aktarılırken bir hata oluştu.');
@@ -3255,12 +3305,11 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     </button>
                                     <button
                                         className="customers-bulk-action-btn customers-bulk-export-btn"
-                                        onClick={handleExportSelected}
-                                        disabled={exportingSelected}
-                                        title="Seçilen kişileri Excel (XLSX) olarak indir"
+                                        onClick={() => setShowSelectedExportModal(true)}
+                                        title="Seçilen kişileri tarih aralığına göre dışa aktar"
                                     >
-                                        {exportingSelected ? <Loader size={16} className="spin" /> : <Download size={16} />}
-                                        {exportingSelected ? 'Aktarılıyor...' : 'Dışa Aktar'}
+                                        <Download size={16} />
+                                        Dışa Aktar
                                     </button>
                                     {user?.role === 'SUPER_ADMIN' && (
                                     <button className="customers-bulk-delete-btn" onClick={handleDeleteSelected} disabled={deleting}>
@@ -4058,6 +4107,231 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     disabled={exporting || !exportStartDate || !exportEndDate}
                                 >
                                     {exporting ? 'Dışa Aktarılıyor...' : 'Dışa Aktar'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Selected Contacts Export Modal with Date Filter */}
+                {showSelectedExportModal && (
+                    <div className="modal-overlay" onClick={() => !exportingSelected && setShowSelectedExportModal(false)}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                            <div className="modal-header">
+                                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Download size={20} style={{ color: '#0284c7' }} />
+                                    Seçilen Kişileri Dışa Aktar
+                                </h2>
+                                <button className="modal-close" onClick={() => !exportingSelected && setShowSelectedExportModal(false)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="modal-body" style={{ padding: '1.5rem' }}>
+                                <p style={{ marginBottom: '16px', color: '#64748b', fontSize: '13px' }}>
+                                    Seçili <strong>{selectedIds.length}</strong> kişi arasından belirlediğiniz tarih aralığına göre Excel çıktısı alın.
+                                </p>
+
+                                {/* Hızlı Seçim Butonları */}
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const today = new Date().toISOString().slice(0, 10);
+                                            setSelectedExportStartDate(today);
+                                            setSelectedExportEndDate(today);
+                                        }}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            cursor: 'pointer',
+                                            color: '#334155'
+                                        }}
+                                    >
+                                        Bugün
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = new Date();
+                                            d.setDate(d.getDate() - 1);
+                                            const yesterday = d.toISOString().slice(0, 10);
+                                            setSelectedExportStartDate(yesterday);
+                                            setSelectedExportEndDate(yesterday);
+                                        }}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            cursor: 'pointer',
+                                            color: '#334155'
+                                        }}
+                                    >
+                                        Dün
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setDate(start.getDate() - 6);
+                                            setSelectedExportStartDate(start.toISOString().slice(0, 10));
+                                            setSelectedExportEndDate(end.toISOString().slice(0, 10));
+                                        }}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            cursor: 'pointer',
+                                            color: '#334155'
+                                        }}
+                                    >
+                                        Son 7 Gün
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const now = new Date();
+                                            const y = now.getFullYear();
+                                            const m = String(now.getMonth() + 1).padStart(2, '0');
+                                            const d = String(now.getDate()).padStart(2, '0');
+                                            setSelectedExportStartDate(`${y}-${m}-01`);
+                                            setSelectedExportEndDate(`${y}-${m}-${d}`);
+                                        }}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #cbd5e1',
+                                            background: '#f8fafc',
+                                            cursor: 'pointer',
+                                            color: '#334155'
+                                        }}
+                                    >
+                                        Bu Ay
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedExportStartDate('');
+                                            setSelectedExportEndDate('');
+                                        }}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #e2e8f0',
+                                            background: (!selectedExportStartDate && !selectedExportEndDate) ? '#e0f2fe' : '#f8fafc',
+                                            color: (!selectedExportStartDate && !selectedExportEndDate) ? '#0369a1' : '#64748b',
+                                            fontWeight: (!selectedExportStartDate && !selectedExportEndDate) ? 600 : 400,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Tüm Tarihler
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Başlangıç Tarihi</label>
+                                        <input
+                                            type="date"
+                                            value={selectedExportStartDate}
+                                            onChange={(e) => setSelectedExportStartDate(e.target.value)}
+                                            className="form-input"
+                                            style={{ padding: '8px 10px', fontSize: '13px' }}
+                                        />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Bitiş Tarihi</label>
+                                        <input
+                                            type="date"
+                                            value={selectedExportEndDate}
+                                            onChange={(e) => setSelectedExportEndDate(e.target.value)}
+                                            className="form-input"
+                                            style={{ padding: '8px 10px', fontSize: '13px' }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Tarih Tipi Seçimi */}
+                                <div style={{ marginBottom: '16px' }}>
+                                    <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '6px' }}>
+                                        Filtrelenecek Tarih Alanı
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '12px', fontSize: '13px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                            <input
+                                                type="radio"
+                                                name="selectedExportDateType"
+                                                value="first"
+                                                checked={selectedExportDateType === 'first'}
+                                                onChange={() => setSelectedExportDateType('first')}
+                                            />
+                                            İlk Yazma / Kayıt Tarihi
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                            <input
+                                                type="radio"
+                                                name="selectedExportDateType"
+                                                value="last"
+                                                checked={selectedExportDateType === 'last'}
+                                                onChange={() => setSelectedExportDateType('last')}
+                                            />
+                                            Son Yazma Tarihi
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Canlı Bilgi Kutusu */}
+                                <div style={{
+                                    padding: '10px 14px',
+                                    borderRadius: '8px',
+                                    background: '#f0f9ff',
+                                    border: '1px solid #bae6fd',
+                                    color: '#0369a1',
+                                    fontSize: '13px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <span>📊 Aktarılacak Kişi:</span>
+                                    <strong style={{ fontSize: '15px' }}>
+                                        {getFilteredSelectedContacts().length} / {selectedIds.length}
+                                    </strong>
+                                </div>
+                            </div>
+                            <div className="modal-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setShowSelectedExportModal(false)}
+                                    disabled={exportingSelected}
+                                    style={{ padding: '8px 16px', fontSize: '13px' }}
+                                >
+                                    İptal
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    onClick={handleExportSelected}
+                                    disabled={exportingSelected || getFilteredSelectedContacts().length === 0}
+                                    style={{
+                                        padding: '8px 20px',
+                                        fontSize: '13px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: '#0284c7',
+                                        borderColor: '#0284c7'
+                                    }}
+                                >
+                                    {exportingSelected ? <Loader size={14} className="spin" /> : <Download size={14} />}
+                                    {exportingSelected ? 'Aktarılıyor...' : `Excel İndir (${getFilteredSelectedContacts().length})`}
                                 </button>
                             </div>
                         </div>
