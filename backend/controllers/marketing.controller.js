@@ -1691,35 +1691,40 @@ export const executeMessageSend = async (req, res) => {
         // ── Alıcı listesi oluştur ──
         let contacts = [];
 
+        const safeFilter = { workspaceId, phone: { not: null }, isDeleted: false, isBlocked: false, marketingOptOut: false };
+
         if (send.segmentId === 'all') {
-            // Tüm kişiler
             contacts = await prisma.contact.findMany({
-                where: { workspaceId, phone: { not: null } },
+                where: safeFilter,
                 select: { id: true, phone: true, name: true },
                 take: 5000
             });
         } else if (send.segmentId?.startsWith('status:')) {
-            // Durum filtresi
             const status = send.segmentId.replace('status:', '');
             contacts = await prisma.contact.findMany({
-                where: { workspaceId, phone: { not: null }, status },
+                where: { ...safeFilter, status },
                 select: { id: true, phone: true, name: true },
                 take: 5000
             });
         } else if (send.segmentId?.startsWith('group:')) {
-            // Grup
             const groupId = send.segmentId.replace('group:', '');
-            const groupContacts = await prisma.contactGroupMember.findMany({
+            const members = await prisma.contactGroupMember.findMany({
                 where: { groupId },
-                include: { contact: { select: { id: true, phone: true, name: true } } }
+                select: { contactId: true }
             });
-            contacts = groupContacts.filter(gc => gc.contact?.phone).map(gc => gc.contact);
+            const memberIds = members.map(m => m.contactId);
+            if (memberIds.length > 0) {
+                contacts = await prisma.contact.findMany({
+                    where: { ...safeFilter, id: { in: memberIds } },
+                    select: { id: true, phone: true, name: true }
+                });
+            }
         } else if (send.segmentId) {
             // Smart segment
             try {
                 const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
                 const segResult = await buildSegmentWhere(send.segmentId, workspaceId);
-                let where = { workspaceId, phone: { not: null } };
+                let where = { ...safeFilter };
                 if (segResult.contactIds) {
                     where.id = { in: segResult.contactIds };
                 } else if (segResult.where) {
@@ -1882,9 +1887,10 @@ export const executeMessageSend = async (req, res) => {
 
                 // Kampanya toplam sayıları güncelle
                 const counts = await getCampaignCounts(campaignId);
+                const totalRecipients = await prisma.marketingRecipient.count({ where: { campaignId } });
                 await prisma.marketingCampaign.update({
                     where: { id: campaignId },
-                    data: { ...counts, sentCount: counts.sentCount, totalCount: contacts.length }
+                    data: { ...counts, totalCount: totalRecipients }
                 });
 
                 console.log(`✅ [CampaignSend] ${sendId} tamamlandı: ${sentCount} gönderildi, ${failedCount} hata`);
@@ -1955,7 +1961,7 @@ export const getCampaignStats = async (req, res) => {
         let messageStats = [];
 
         for (const msg of campaign.messages) {
-            let msgTotals = { ...totals };
+            let msgTotals = { totalCount: 0, sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0, repliedCount: 0 };
             for (const send of msg.sends) {
                 msgTotals.totalCount += send.totalCount;
                 msgTotals.sentCount += send.sentCount;

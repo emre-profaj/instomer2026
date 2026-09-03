@@ -2061,7 +2061,8 @@ model MarketingRecipient {
   campaignId  String
   sendId      String?           // Yeni: CampaignSend bağlantısı
   contactId   String?
-  phone       String
+  phone       String?           // Nullable for email-only contacts
+  email       String?           // For email campaigns
   name        String?
   messageId   String?           @unique
   status      String            @default("PENDING") // PENDING, SENT, DELIVERED, READ, FAILED
