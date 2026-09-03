@@ -212,6 +212,7 @@ const Customers = () => {
     const [exportEndDate, setExportEndDate] = useState('');
     const [exporting, setExporting] = useState(false);
     const [exportingLeads, setExportingLeads] = useState(false);
+    const [exportingSelected, setExportingSelected] = useState(false);
 
     // Dışa Aktar 2 (Arama & Talep Görüşme Raporu) state
     const [showReport2Modal, setShowReport2Modal] = useState(false);
@@ -1054,6 +1055,142 @@ const Customers = () => {
             alert('Dışa aktarma sırasında bir hata oluştu');
         } finally {
             setExporting(false);
+        }
+    };
+
+    // Export Selected Contacts to XLSX
+    const handleExportSelected = async () => {
+        if (selectedIds.length === 0) return;
+        setExportingSelected(true);
+        try {
+            const pool = allSelectedContacts.length > 0 ? allSelectedContacts : contacts;
+            let targetContacts = pool.filter(c => selectedIds.includes(c.id));
+
+            // If user selected contacts across pages not all in current in-memory pool
+            if (targetContacts.length < selectedIds.length) {
+                const response = await contactAPI.getAll(currentWorkspace.id, getContactQueryParams({
+                    limit: 10000,
+                    offset: 0
+                }));
+                const all = applyScoreFilter(response.data?.contacts || []);
+                targetContacts = all.filter(c => selectedIds.includes(c.id));
+            }
+
+            if (targetContacts.length === 0) {
+                alert('Dışa aktarılacak seçili kişi bulunamadı.');
+                return;
+            }
+
+            const headers = [
+                'İsim',
+                'Telefon',
+                'E-posta',
+                'Firma',
+                'Konu',
+                'Skor',
+                'Durum',
+                'Kime Atandığı',
+                'İlk Yazma Tarihi',
+                'Son Yazma Tarihi',
+                'Son Not'
+            ];
+
+            const rows = targetContacts.map(contact => {
+                // Get last note from notes
+                let lastNote = '';
+                if (contact.notes) {
+                    try {
+                        const notesArray = JSON.parse(contact.notes);
+                        if (Array.isArray(notesArray) && notesArray.length > 0) {
+                            lastNote = notesArray[notesArray.length - 1].content || '';
+                        }
+                    } catch (e) {
+                        const notes = String(contact.notes);
+                        const firstNote = notes.split('\n\n---\n\n')[0];
+                        const contentMatch = firstNote.match(/\[.*?\]\n([\s\S]*)/);
+                        if (contentMatch && contentMatch[1]) {
+                            lastNote = contentMatch[1].trim();
+                        } else {
+                            lastNote = notes;
+                        }
+                    }
+                }
+
+                // Get topic
+                const activeCase = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0];
+                const topic = activeCase?.title || contact.aiTopic || '';
+
+                // Get status / stage
+                let displayLabel = 'Yeni';
+                const effectiveFunnelStageId = activeCase?.funnelStageId || contact.activeCase?.funnelStageId || contact.funnelStageId;
+                if (effectiveFunnelStageId && availableFunnels.length > 0) {
+                    for (const funnel of availableFunnels) {
+                        const s = funnel.stages?.find(x => x.id === effectiveFunnelStageId);
+                        if (s) {
+                            displayLabel = `${funnel.name ? funnel.name + ' - ' : ''}${s.name}`;
+                            break;
+                        }
+                    }
+                } else if (contact.status) {
+                    displayLabel = getStatusInfo(contact.status).label;
+                }
+
+                // Get assigned agent / team
+                let assignedTo = '---';
+                if (activeCase && (activeCase.assignedTo?.name || activeCase.assignedToName || activeCase.assignedTeamId)) {
+                    const agent = activeCase.assignedTo?.name || activeCase.assignedToName || members.find(m => m.userId === activeCase.assignedToId)?.user?.name;
+                    const team = teams.find(t => t.id === activeCase.assignedTeamId)?.name;
+                    if (agent && team) assignedTo = `${agent} / ${team}`;
+                    else if (agent) assignedTo = agent;
+                    else if (team) assignedTo = team;
+                } else {
+                    const convs = [...(contact.conversations || [])].sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt));
+                    const lastConv = convs[0];
+                    if (lastConv?.assignedTo?.name) {
+                        assignedTo = lastConv.assignedTo.name;
+                    }
+                }
+
+                return [
+                    contact.name || '',
+                    contact.phone || '',
+                    contact.email || '',
+                    contact.company || '',
+                    topic,
+                    contact.leadScore != null ? contact.leadScore : '',
+                    displayLabel,
+                    assignedTo,
+                    contact.firstMessageAt ? new Date(contact.firstMessageAt).toLocaleDateString('tr-TR') : (contact.createdAt ? new Date(contact.createdAt).toLocaleDateString('tr-TR') : ''),
+                    contact.lastMessageAt ? new Date(contact.lastMessageAt).toLocaleDateString('tr-TR') : '',
+                    lastNote
+                ];
+            });
+
+            // Build XLSX
+            const wsData = [headers, ...rows];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [
+                { wch: 25 }, // İsim
+                { wch: 18 }, // Telefon
+                { wch: 28 }, // E-posta
+                { wch: 20 }, // Firma
+                { wch: 22 }, // Konu
+                { wch: 10 }, // Skor
+                { wch: 22 }, // Durum
+                { wch: 22 }, // Atanan
+                { wch: 16 }, // İlk Yazma
+                { wch: 16 }, // Son Yazma
+                { wch: 40 }, // Son Not
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Seçilen Kişiler');
+            const dateStr = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `secilen_kisiler_${dateStr}_${targetContacts.length}.xlsx`);
+        } catch (error) {
+            console.error('Export selected error:', error);
+            alert('Seçilen kişiler dışa aktarılırken bir hata oluştu.');
+        } finally {
+            setExportingSelected(false);
         }
     };
 
@@ -3115,6 +3252,15 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     <button className="customers-bulk-action-btn customers-bulk-status-btn" onClick={() => setShowBulkStatus(true)}>
                                         <ArrowUpDown size={16} />
                                         Durum Değiştir
+                                    </button>
+                                    <button
+                                        className="customers-bulk-action-btn customers-bulk-export-btn"
+                                        onClick={handleExportSelected}
+                                        disabled={exportingSelected}
+                                        title="Seçilen kişileri Excel (XLSX) olarak indir"
+                                    >
+                                        {exportingSelected ? <Loader size={16} className="spin" /> : <Download size={16} />}
+                                        {exportingSelected ? 'Aktarılıyor...' : 'Dışa Aktar'}
                                     </button>
                                     {user?.role === 'SUPER_ADMIN' && (
                                     <button className="customers-bulk-delete-btn" onClick={handleDeleteSelected} disabled={deleting}>

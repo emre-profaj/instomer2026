@@ -1316,6 +1316,20 @@
     box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
 }
 
+.customers-bulk-export-btn {
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+}
+
+.customers-bulk-export-btn:hover {
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.5);
+}
+
+.customers-bulk-export-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
 /* Bulk Status Stage Selection Grid */
 .bulk-status-stage-grid {
     display: grid;
