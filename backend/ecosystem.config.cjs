@@ -1,7 +1,7 @@
 module.exports = {
     apps: [
         {
-            name: 'chatcrm-api',
+            name: 'instomer',
             script: './server.js',
             instances: 2,
             exec_mode: 'cluster',
