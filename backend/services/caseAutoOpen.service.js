@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { generateCaseNumber } from './caseNumber.service.js';
 
 export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
   // 1. Aktif case var mı kontrol et
@@ -26,7 +27,7 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
     orderBy: { createdAt: 'desc' }
   });
   
-  const nextNumber = await getNextCaseNumber(workspaceId);
+  const nextNumber = await generateCaseNumber(workspaceId);
   
   let caseTypeId = null;
   try {
@@ -60,12 +61,4 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
   
   console.log(`📋 [CaseAutoOpen] Yeni case açıldı: #${nextNumber} (contact: ${contactId})`);
   return newCase;
-}
-
-async function getNextCaseNumber(workspaceId) {
-  const lastCase = await prisma.case.findFirst({
-    where: { workspaceId },
-    orderBy: { caseNumber: 'desc' }
-  });
-  return (lastCase?.caseNumber || 0) + 1;
 }

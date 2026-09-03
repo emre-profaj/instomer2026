@@ -4641,7 +4641,7 @@ const Inbox = () => {
                                                 const linkedCase = currentCaseId
                                                     ? (contactCases.find(c => c.id === currentCaseId) || selectedItem.case || null)
                                                     : null;
-                                                const displayCaseNumber = linkedCase?.caseNumber || (currentCaseId ? `CSE-...` : null);
+                                                const displayCaseNumber = linkedCase?.caseNumber || (currentCaseId ? `Talep...` : null);
 
                                                 return (
                                                     <div ref={caseLinkDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>

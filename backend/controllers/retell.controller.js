@@ -7,6 +7,7 @@ import { assignDefaultFunnel } from '../services/conversationRouting.service.js'
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { executeRule } from '../services/ruleEngine.service.js';
+import { generateCaseNumber } from '../services/caseNumber.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -3562,19 +3563,7 @@ async function handleCallEnded(call) {
                             console.log(`📦 [AutoCase] 24H-MERGE: Reopened case "${recentClosedCase.caseNumber}" for inbound call from contact ${caseContactId}`);
                         } else {
                             // Yeni case oluştur
-                        // Case numarası oluştur
-                        const year = new Date().getFullYear();
-                        const prefix = 'CSE';
-                        const lastCase = await prisma.case.findFirst({
-                            where: { workspaceId: caseWorkspaceId, caseNumber: { startsWith: `${prefix}-${year}` } },
-                            orderBy: { createdAt: 'desc' }
-                        });
-                        let nextNum = 1;
-                        if (lastCase?.caseNumber) {
-                            const parts = lastCase.caseNumber.split('-');
-                            if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
-                        }
-                        const caseNumber = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
+                            const caseNumber = await generateCaseNumber(caseWorkspaceId);
 
                         const phoneLabel = callRecord.direction === 'inbound'
                             ? `Gelen Arama: ${callRecord.fromNumber}`

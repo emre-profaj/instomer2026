@@ -11,6 +11,7 @@ import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
 import { hasProfanity } from '../utils/profanityFilter.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { mergeContacts } from '../services/contactMerge.service.js';
+import { generateCaseNumber } from '../services/caseNumber.service.js';
 
 
 // Lock to prevent duplicate AI replies for same conversation
@@ -4083,19 +4084,7 @@ Konu başlığı:`;
                 select: { caseId: true, contactId: true, assignedToId: true, assignedTeamId: true, topicCategoryId: true }
             });
             if (convForCase && !convForCase.caseId && convForCase.contactId) {
-                // Case numarası oluştur (inline)
-                const year = new Date().getFullYear();
-                const prefix = 'CSE';
-                const lastCase = await prisma.case.findFirst({
-                    where: { workspaceId, caseNumber: { startsWith: `${prefix}-${year}` } },
-                    orderBy: { createdAt: 'desc' }
-                });
-                let nextNum = 1;
-                if (lastCase?.caseNumber) {
-                    const parts = lastCase.caseNumber.split('-');
-                    if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
-                }
-                const caseNumber = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
+                const caseNumber = await generateCaseNumber(workspaceId);
 
                 let caseTypeId = null;
                 try {

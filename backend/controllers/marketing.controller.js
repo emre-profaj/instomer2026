@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
+import { generateCaseNumber } from '../services/caseNumber.service.js';
 
 // ─── In-memory bulk-send job tracker ───────────────────────────────────────────
 // Maps jobId → { sent, failed, total, done, templateName, startedAt }
@@ -716,17 +717,7 @@ export const bulkSendTemplate = async (req, res) => {
                             console.log(`📦 [BulkSend-AutoCase] Reminder added to case ${existingCase.caseNumber} for contact ${contact.id}`);
                         } else {
                             // Yeni case oluştur
-                            const year = new Date().getFullYear();
-                            const lastCase = await prisma.case.findFirst({
-                                where: { workspaceId, caseNumber: { startsWith: `CSE-${year}` } },
-                                orderBy: { createdAt: 'desc' }
-                            });
-                            let nextNum = 1;
-                            if (lastCase?.caseNumber) {
-                                const parts = lastCase.caseNumber.split('-');
-                                if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
-                            }
-                            const caseNumber = `CSE-${year}-${String(nextNum).padStart(4, '0')}`;
+                            const caseNumber = await generateCaseNumber(workspaceId);
 
                             let caseTypeId = null;
                             try {

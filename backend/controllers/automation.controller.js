@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { generateCaseNumber } from '../services/caseNumber.service.js';
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -1269,17 +1270,7 @@ export const sendTemplateDynamic = async (req, res) => {
                     console.log(`📦 [SendTemplate-AutoCase] Reminder added to case ${existingCase.caseNumber}`);
                 } else {
                     // Yeni case oluştur
-                    const year = new Date().getFullYear();
-                    const lastCase = await prisma.case.findFirst({
-                        where: { workspaceId, caseNumber: { startsWith: `CSE-${year}` } },
-                        orderBy: { createdAt: 'desc' }
-                    });
-                    let nextNum = 1;
-                    if (lastCase?.caseNumber) {
-                        const parts = lastCase.caseNumber.split('-');
-                        if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
-                    }
-                    const caseNumber = `CSE-${year}-${String(nextNum).padStart(4, '0')}`;
+                    const caseNumber = await generateCaseNumber(workspaceId);
 
                     let caseTypeId = null;
                     try {

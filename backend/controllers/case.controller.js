@@ -1,29 +1,8 @@
 import prisma from '../lib/prisma.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
+import { generateCaseNumber } from '../services/caseNumber.service.js';
 
-// ─── Case Number Generator ───────────────────────────────────────────────
-const generateCaseNumber = async (workspaceId) => {
-    const year = new Date().getFullYear();
-    const prefix = 'CSE';
-
-    const lastCase = await prisma.case.findFirst({
-        where: {
-            workspaceId,
-            caseNumber: { startsWith: `${prefix}-${year}` }
-        },
-        orderBy: { createdAt: 'desc' }
-    });
-
-    let nextNum = 1;
-    if (lastCase?.caseNumber) {
-        const parts = lastCase.caseNumber.split('-');
-        if (parts[2]) {
-            nextNum = parseInt(parts[2], 10) + 1;
-        }
-    }
-
-    return `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
-};
+export { generateCaseNumber };
 
 // ─── Merkezi Auto-Case Helper ────────────────────────────────────────────
 // Herhangi bir conversation için case yoksa otomatik oluşturur.
@@ -1014,13 +993,13 @@ export const splitCase = async (req, res) => {
     const sourceCase = await prisma.case.findUnique({ where: { id: caseId } });
     if (!sourceCase) return res.status(404).json({ error: 'Case bulunamadı' });
     
-    const nextNumber = await getNextCaseNumber(workspaceId);
+    const nextNumber = await generateCaseNumber(workspaceId);
     
     const newCase = await prisma.case.create({
       data: {
         workspaceId,
         contactId: sourceCase.contactId,
-        caseNumber: String(nextNumber), // Ensuring string if caseNumber is string
+        caseNumber: nextNumber,
         title: `Talep #${nextNumber} (ayrıştırıldı)`,
         status: 'ACTIVE',
         priority: sourceCase.priority,
@@ -1041,22 +1020,3 @@ export const splitCase = async (req, res) => {
     res.status(500).json({ error: 'Case ayrıştırma hatası' });
   }
 };
-
-async function getNextCaseNumber(workspaceId) {
-  const lastCase = await prisma.case.findFirst({
-    where: { workspaceId },
-    orderBy: { caseNumber: 'desc' }
-  });
-  // Safely parse caseNumber if it's a string, or just use 0 if not parsable
-  let currentNum = 0;
-  if (lastCase?.caseNumber) {
-    const parsed = parseInt(lastCase.caseNumber, 10);
-    if (!isNaN(parsed)) currentNum = parsed;
-    else if (lastCase.caseNumber.includes('-')) {
-        const parts = lastCase.caseNumber.split('-');
-        const lastPart = parseInt(parts[parts.length - 1], 10);
-        if (!isNaN(lastPart)) currentNum = lastPart;
-    }
-  }
-  return currentNum + 1;
-}
