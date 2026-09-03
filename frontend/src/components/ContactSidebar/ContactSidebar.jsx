@@ -2162,7 +2162,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         return false;
                                     });
                                     return (
-                                <div key={c.id || index} className="customer-journey-timeline" style={{ marginBottom: 16, paddingBottom: isExpanded ? 14 : 6 }}>
+                                <div key={c.id || index} className="customer-journey-timeline" style={{ marginBottom: 13, paddingBottom: isExpanded ? 14 : 6 }}>
                                     <div className="journey-header" style={{ paddingBottom: 0 }}>
 
                                         {/* ═══ SATIR 1: Case Type — Case ID — Puan — Genişletme İkonu ═══ */}
