@@ -721,7 +721,7 @@
 }
 
 /* Right Sidebar */
-.contact-sidebar {
+.contacts-page .contact-sidebar {
     width: 320px;
     min-width: 320px;
     height: calc(100vh - 60px);
@@ -1573,7 +1573,7 @@
 
 /* Responsive */
 @media (max-width: 1024px) {
-    .contact-sidebar {
+    .contacts-page .contact-sidebar {
         width: 280px;
         min-width: 280px;
     }
@@ -1627,7 +1627,7 @@
         padding-bottom: 65px;
     }
 
-    .contact-sidebar {
+    .contacts-page .contact-sidebar {
         position: fixed;
         top: 0;
         right: 0;
@@ -2276,11 +2276,11 @@
 }
 
 /* Sidebar scroll handling */
-.contact-sidebar {
+.contacts-page .contact-sidebar {
     overflow-y: auto;
 }
 
-.contact-sidebar .sidebar-details {
+.contacts-page .contact-sidebar .sidebar-details {
     overflow-y: auto;
 }
 
