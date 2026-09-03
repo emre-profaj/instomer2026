@@ -2560,7 +2560,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         ?.filter(s => !s.isClosing)
                                                         ?.map(s => ({ id: s.value, name: s.label, color: s.color }))
                                                         || c.openStages || [];
-                                                    const isClosed = (activeCaseInfo?.status && c.status !== 'ACTIVE') || conversationData?.status === 'RESOLVED';
+                                                    const caseStatusVal = (activeCaseInfo?.id === c.id && activeCaseInfo?.status) ? activeCaseInfo.status : c.status;
+                                                    const isClosed = (caseStatusVal && caseStatusVal !== 'ACTIVE') || conversationData?.status === 'RESOLVED';
 
                                                     const currentOpt = isClosed
                                                         ? { label: 'Kapalı', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' }

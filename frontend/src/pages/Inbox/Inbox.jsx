@@ -986,15 +986,17 @@ const Inbox = () => {
 
             // Update all conversations linked to this case
             setInboxItems(prev => prev.map(item => {
-                if (item.caseId !== caseId) return item;
+                if (item.caseId !== caseId && item.case?.id !== caseId) return item;
                 const updates = buildUpdates(item);
+                if (changes.status) updates._caseStatus = changes.status;
                 return Object.keys(updates).length > 0 ? { ...item, ...updates } : item;
             }));
 
             // Update selected item if linked to this case
             setSelectedItem(prev => {
-                if (!prev || prev.caseId !== caseId) return prev;
+                if (!prev || (prev.caseId !== caseId && prev.case?.id !== caseId)) return prev;
                 const updates = buildUpdates(prev);
+                if (changes.status) updates._caseStatus = changes.status;
                 return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
             });
         };
@@ -1008,7 +1010,7 @@ const Inbox = () => {
                 if (assignedToId !== undefined) {
                     updates.assignedToId = assignedToId;
                     if (assignedToName) {
-                        updates.assignedTo = { name: assignedToName };
+                        updates.assignedTo = { id: assignedToId, name: assignedToName };
                     }
                 }
                 if (assignedTeamId !== undefined) {
@@ -1019,7 +1021,7 @@ const Inbox = () => {
             };
 
             setInboxItems(prev => prev.map(item => {
-                if (item.caseId !== caseId) return item;
+                if (item.caseId !== caseId && item.case?.id !== caseId) return item;
                 const updates = buildAssignUpdates();
                 // Nested case objesini de güncelle (header linkedCase'den okuyor)
                 if (item.case) {
@@ -1034,7 +1036,7 @@ const Inbox = () => {
             }));
 
             setSelectedItem(prev => {
-                if (!prev || prev.caseId !== caseId) return prev;
+                if (!prev || (prev.caseId !== caseId && prev.case?.id !== caseId)) return prev;
                 const updates = buildAssignUpdates();
                 // Nested case objesini de güncelle
                 if (prev.case) {
@@ -4784,7 +4786,8 @@ const Inbox = () => {
                                                 <>
                                                     <div className="closing-dropdown-wrapper" ref={closingDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
                                                         {(() => {
-                                                            const isResolved = selectedItem.status === 'RESOLVED';
+                                                            const isCaseClosed = selectedItem._caseStatus ? selectedItem._caseStatus !== 'ACTIVE' : (selectedItem.case?.status && selectedItem.case.status !== 'ACTIVE');
+                                                            const isResolved = selectedItem.status === 'RESOLVED' || isCaseClosed;
                                                             const isClosed = isResolved;
                                                             const pillStyle = isClosed
                                                                 ? { bg: '#fef2f2', color: '#ef4444', border: '#fecaca', dotColor: '#ef4444' }
@@ -4843,48 +4846,25 @@ const Inbox = () => {
                                                                                     {/* Açık seçeneği */}
                                                                                     <div
                                                                                         onClick={async () => {
-                                                                                            if (!isClosed) {
-                                                                                                setClosingDropdownOpen(false);
-                                                                                                return;
-                                                                                            }
-                                                                                            try {
-                                                                                                const targetOpenStage = openStages.length > 0 ? openStages[0].value : null;
-                                                                                                if (selectedItem.caseId) {
-                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                                            setClosingDropdownOpen(false);
+                                                                                            if (!isClosed) return;
+                                                                                            const effectiveCaseId = selectedItem.caseId || selectedItem.case?.id;
+                                                                                            if (effectiveCaseId) {
+                                                                                                try {
+                                                                                                    const targetOpenStage = openStages.length > 0 ? openStages[0].value : null;
+                                                                                                    await caseAPI.update(currentWorkspace.id, effectiveCaseId, {
                                                                                                         status: 'ACTIVE',
                                                                                                         ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
                                                                                                     });
+                                                                                                    window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                        detail: { caseId: effectiveCaseId, changes: { status: 'ACTIVE', ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {}) } }
+                                                                                                    }));
+                                                                                                    window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                } catch (err) {
+                                                                                                    console.warn('Case status update error:', err);
                                                                                                 }
-                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
-                                                                                                if (targetOpenStage) {
-                                                                                                    await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
-                                                                                                        funnelStageId: targetOpenStage,
-                                                                                                        funnelType: currentFunnelId,
-                                                                                                        confirmAssignmentUpdate: false
-                                                                                                    }).catch(() => {});
-                                                                                                }
-                                                                                                setSelectedItem(prev => ({
-                                                                                                    ...prev,
-                                                                                                    status: 'OPEN',
-                                                                                                    closingStatus: null,
-                                                                                                    ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
-                                                                                                }));
-                                                                                                setInboxItems(prev => prev.map(i =>
-                                                                                                    i.id === selectedItem.id ? {
-                                                                                                        ...i,
-                                                                                                        status: 'OPEN',
-                                                                                                        closingStatus: null,
-                                                                                                        ...(targetOpenStage ? { funnelStageId: targetOpenStage } : {})
-                                                                                                    } : i
-                                                                                                ));
-                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE' } }
-                                                                                                }));
-                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                            } catch (err) {
-                                                                                                console.error('Status update error:', err);
                                                                                             }
-                                                                                            setClosingDropdownOpen(false);
+                                                                                            await handleConversationStatusChange(selectedItem.id, 'OPEN');
                                                                                         }}
                                                                                         style={{
                                                                                             padding: '10px 14px', cursor: 'pointer',
@@ -4906,52 +4886,25 @@ const Inbox = () => {
                                                                                     {/* Kapat seçeneği */}
                                                                                     <div
                                                                                         onClick={async () => {
-                                                                                            if (isClosed) {
-                                                                                                setClosingDropdownOpen(false);
-                                                                                                return;
-                                                                                            }
-                                                                                            try {
-                                                                                                const targetClosingStage = closingStages.length > 0 ? closingStages[0].value : null;
-                                                                                                if (selectedItem.caseId) {
-                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                                            setClosingDropdownOpen(false);
+                                                                                            if (isClosed) return;
+                                                                                            const effectiveCaseId = selectedItem.caseId || selectedItem.case?.id;
+                                                                                            if (effectiveCaseId) {
+                                                                                                try {
+                                                                                                    const targetClosingStage = closingStages.length > 0 ? closingStages[0].value : null;
+                                                                                                    await caseAPI.update(currentWorkspace.id, effectiveCaseId, {
                                                                                                         status: 'CLOSED',
                                                                                                         ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
                                                                                                     });
+                                                                                                    window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                        detail: { caseId: effectiveCaseId, changes: { status: 'CLOSED', ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {}) } }
+                                                                                                    }));
+                                                                                                    window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                } catch (err) {
+                                                                                                    console.warn('Case status update error:', err);
                                                                                                 }
-                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, {
-                                                                                                    status: 'RESOLVED',
-                                                                                                    closingStageId: targetClosingStage || 'CLOSED'
-                                                                                                });
-                                                                                                if (targetClosingStage) {
-                                                                                                    await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
-                                                                                                        funnelStageId: targetClosingStage,
-                                                                                                        funnelType: currentFunnelId,
-                                                                                                        confirmAssignmentUpdate: false
-                                                                                                    }).catch(() => {});
-                                                                                                }
-                                                                                                setSelectedItem(prev => ({
-                                                                                                    ...prev,
-                                                                                                    status: 'RESOLVED',
-                                                                                                    closingStatus: 'CLOSED',
-                                                                                                    ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
-                                                                                                }));
-                                                                                                setInboxItems(prev => prev.map(i =>
-                                                                                                    i.id === selectedItem.id ? {
-                                                                                                        ...i,
-                                                                                                        status: 'RESOLVED',
-                                                                                                        closingStatus: 'CLOSED',
-                                                                                                        ...(targetClosingStage ? { funnelStageId: targetClosingStage } : {})
-                                                                                                    } : i
-                                                                                                ));
-                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: 'CLOSED' } }
-                                                                                                }));
-                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                                loadInboxItems(false);
-                                                                                            } catch (err) {
-                                                                                                console.error('Status update error:', err);
                                                                                             }
-                                                                                            setClosingDropdownOpen(false);
+                                                                                            await handleConversationStatusChange(selectedItem.id, 'RESOLVED', 'CLOSED');
                                                                                         }}
                                                                                         style={{
                                                                                             padding: '10px 14px', cursor: 'pointer',
