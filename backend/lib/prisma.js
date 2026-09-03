@@ -11,8 +11,8 @@ function getDatabaseUrl() {
 
     const separator = raw.includes('?') ? '&' : '?';
     const params = [];
-    if (!hasLimit) params.push('connection_limit=15');
-    if (!hasTimeout) params.push('pool_timeout=15');
+    if (!hasLimit) params.push('connection_limit=10');
+    if (!hasTimeout) params.push('pool_timeout=10');
 
     if (params.length > 0) {
         raw = `${raw}${separator}${params.join('&')}`;

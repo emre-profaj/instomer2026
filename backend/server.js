@@ -306,6 +306,62 @@ httpServer.listen(PORT, () => {
   }
 
   if (isMasterInstance) {
+    // ─── ONE-TIME STARTUP CLEANUP ────────────────────────────────────────────
+    // 1) "Randevu Veriliyor" stage'i tüm workspace'lerden kaldır (gereksiz / kafa karıştırıcı)
+    prisma.funnelStage.deleteMany({ where: { name: 'Randevu Veriliyor' } })
+      .then(r => {
+        if (r.count > 0) console.log(`🗑️  [Startup] "Randevu Veriliyor" stage silindi: ${r.count} kayıt`);
+      })
+      .catch(e => console.warn('⚠️ [Startup] Stage cleanup error:', e.message));
+
+    // 2) funnelType var ama funnelStageId yok olan contact/conversation'ları temizle
+    (async () => {
+      try {
+        // Contacts: funnelType set, funnelStageId null → clear funnelType
+        const orphanContacts = await prisma.contact.updateMany({
+          where: { funnelType: { not: null }, funnelStageId: null },
+          data: { funnelType: null }
+        });
+        if (orphanContacts.count > 0) console.log(`🔧 [Startup] Cleared ${orphanContacts.count} contacts with funnelType but no stage`);
+
+        // Conversations: funnelType set, funnelStageId null → clear funnelType
+        const orphanConvs = await prisma.conversation.updateMany({
+          where: { funnelType: { not: null }, funnelStageId: null },
+          data: { funnelType: null }
+        });
+        if (orphanConvs.count > 0) console.log(`🔧 [Startup] Cleared ${orphanConvs.count} conversations with funnelType but no stage`);
+
+        // Contacts: funnelStageId set, funnelType null → resolve from stage's parent funnel
+        const stageOrphans = await prisma.contact.findMany({
+          where: { funnelStageId: { not: null }, funnelType: null },
+          select: { id: true, funnelStageId: true }
+        });
+        for (const c of stageOrphans) {
+          const stage = await prisma.funnelStage.findUnique({
+            where: { id: c.funnelStageId },
+            select: { funnelId: true }
+          }).catch(() => null);
+          if (stage?.funnelId) {
+            await prisma.contact.update({
+              where: { id: c.id },
+              data: { funnelType: stage.funnelId }
+            });
+          } else {
+            // Stage doesn't exist → clear
+            await prisma.contact.update({
+              where: { id: c.id },
+              data: { funnelStageId: null }
+            });
+          }
+        }
+        if (stageOrphans.length > 0) console.log(`🔧 [Startup] Fixed ${stageOrphans.length} contacts with stage but no funnelType`);
+
+      } catch (e) {
+        console.warn('⚠️ [Startup] Funnel orphan cleanup error:', e.message);
+      }
+    })();
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Start email polling after server starts
     startEmailPolling();
   } else {

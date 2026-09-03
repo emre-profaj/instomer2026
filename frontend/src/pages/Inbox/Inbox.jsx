@@ -600,7 +600,17 @@ const Inbox = () => {
     }, []);
 
     // Data states
-    const [inboxItems, setInboxItems] = useState([]);
+    const [inboxItems, setInboxItems] = useState(() => {
+        try {
+            const savedWs = localStorage.getItem('currentWorkspace') || sessionStorage.getItem('currentWorkspace');
+            const wsId = savedWs ? JSON.parse(savedWs)?.id : null;
+            if (wsId) {
+                const cached = sessionStorage.getItem(`cached_inbox_${wsId}`);
+                if (cached) return JSON.parse(cached);
+            }
+        } catch (_) {}
+        return [];
+    });
 
     // Local search filter applied on top of loaded inboxItems
     const displayedItems = useMemo(() => {
@@ -2331,15 +2341,24 @@ const Inbox = () => {
             });
 
             setInboxItems(items);
+
+            // Cache items in sessionStorage to prevent blank screen during restarts/connection spikes
+            if (items.length > 0 && currentWorkspace?.id) {
+                try {
+                    sessionStorage.setItem(`cached_inbox_${currentWorkspace.id}`, JSON.stringify(items.slice(0, 50)));
+                } catch (_) {}
+            }
         } catch (error) {
             console.error('Error loading inbox items:', error);
-            // If the error was a transient network/reload error during background refresh, retry once after 1.5s
-            if (!showLoading && requestId === loadRequestIdRef.current) {
-                console.log('🔄 [Inbox] Retrying inbox load after transient connection blip in 1.5s...');
-                setTimeout(() => {
-                    if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
-                }, 1500);
-            }
+            // Fallback: If inbox is empty and API failed, attempt to restore from cache
+            setInboxItems(prev => {
+                if (prev.length > 0) return prev;
+                try {
+                    const cached = sessionStorage.getItem(`cached_inbox_${currentWorkspace?.id}`);
+                    if (cached) return JSON.parse(cached);
+                } catch (_) {}
+                return prev;
+            });
         } finally {
             if (safetyTimer) clearTimeout(safetyTimer);
             // Only clear loading if this is still the latest request
@@ -4010,55 +4029,15 @@ const Inbox = () => {
                     }).length === 0 ? (
                         <div className="inbox-empty">
                             <InboxIcon size={40} />
-                            {(() => {
-                                let filterCount = 0;
-                                if (activeFilters.length < allFilters.length) filterCount += (allFilters.length - activeFilters.length);
-                                if (showResolved) filterCount++;
-                                if (showOnlyAssigned) filterCount++;
-                                if (showAssignedToMe) filterCount++;
-                                if (statusFilter) filterCount++;
-                                if (agentFilter) filterCount++;
-                                if (quickFilter) filterCount++;
-                                const hasFilters = filterCount > 0 || Boolean(searchTerm);
-
-                                return (
-                                    <>
-                                        <p>{hasFilters ? 'Filtrelere uygun sohbet bulunamadı' : 'Öğe bulunamadı'}</p>
-                                        {hasFilters && (
-                                            <button
-                                                className="show-resolved-btn"
-                                                style={{ marginTop: '8px', background: '#2563eb', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontWeight: 500 }}
-                                                onClick={() => {
-                                                    setActiveFilters(allFilters);
-                                                    setActiveChannel(null);
-                                                    setShowResolved(false);
-                                                    setShowArchived(false);
-                                                    setShowOnlyAssigned(false);
-                                                    setShowAssignedToMe(false);
-                                                    setStatusFilter(null);
-                                                    setFunnelFilter(null);
-                                                    setAgentFilter(null);
-                                                    setQuickFilter(null);
-                                                    setCustomDateStart(null);
-                                                    setCustomDateEnd(null);
-                                                    setSearchTerm('');
-                                                    setFilterPanelOpen(false);
-                                                }}
-                                            >
-                                                Filtreleri Temizle {filterCount > 0 ? `(${filterCount})` : ''}
-                                            </button>
-                                        )}
-                                        {!showResolved && !hasFilters && (
-                                            <button
-                                                className="show-resolved-btn"
-                                                onClick={() => setShowResolved(true)}
-                                            >
-                                                Kapatılanları Göster
-                                            </button>
-                                        )}
-                                    </>
-                                );
-                            })()}
+                            <p>Öğe bulunamadı</p>
+                            {!showResolved && (
+                                <button
+                                    className="show-resolved-btn"
+                                    onClick={() => setShowResolved(true)}
+                                >
+                                    Kapatılanları Göster
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <>
