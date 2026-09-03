@@ -1666,26 +1666,24 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
                                                 </div>
                                                 {/* Gönderim Hızı */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                                    <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>⚡ Gönderim hızı:</span>
-                                                    <div style={{ display: 'flex', gap: 4 }}>
-                                                        {[5, 10, 20, 40, 60, 120].map(rate => (
-                                                            <button
-                                                                key={rate}
-                                                                onClick={() => setSendRate(rate)}
-                                                                style={{
-                                                                    padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                                                                    border: sendRate === rate ? '2px solid #7c3aed' : '1px solid #e2e8f0',
-                                                                    background: sendRate === rate ? '#ede9fe' : '#fff',
-                                                                    color: sendRate === rate ? '#7c3aed' : '#64748b',
-                                                                    cursor: 'pointer'
-                                                                }}
-                                                            >
-                                                                {rate}/dk
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                    <span style={{ fontSize: 10, color: '#94a3b8' }}>
-                                                        {sendRate <= 10 ? '🐢 Yavaş' : sendRate <= 30 ? '⚡ Normal' : '🚀 Hızlı'}
+                                                    <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>⚡ Hız:</span>
+                                                    <input
+                                                        type="range"
+                                                        min={1}
+                                                        max={msg.channel === 'CALL' ? 5 : 100}
+                                                        value={sendRate}
+                                                        onChange={e => setSendRate(parseInt(e.target.value))}
+                                                        style={{ flex: 1, accentColor: '#7c3aed' }}
+                                                    />
+                                                    <span style={{
+                                                        minWidth: 60, padding: '3px 8px', borderRadius: 6,
+                                                        background: '#ede9fe', color: '#7c3aed',
+                                                        fontSize: 12, fontWeight: 700, textAlign: 'center'
+                                                    }}>
+                                                        {sendRate}/dk
+                                                    </span>
+                                                    <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                                        {sendRate <= 3 ? '🐢 Yavaş' : sendRate <= 20 ? '⚡ Normal' : sendRate <= 60 ? '🚀 Hızlı' : '⚡⚡ Çok Hızlı'}
                                                     </span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

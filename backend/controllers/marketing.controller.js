@@ -1668,39 +1668,232 @@ export const addMessageSend = async (req, res) => {
 // ─── POST campaigns/:id/messages/:msgId/sends/:sendId/execute — Gönderimi başlat
 export const executeMessageSend = async (req, res) => {
     try {
-        const { sendId } = req.params;
+        const { workspaceId, id: campaignId, msgId, sendId } = req.params;
 
         const send = await prisma.campaignSend.findUnique({
             where: { id: sendId },
-            include: { message: true }
+            include: {
+                message: {
+                    include: { campaign: true }
+                }
+            }
         });
 
-        if (!send) {
-            return res.status(404).json({ error: 'Gönderim bulunamadı' });
-        }
-
+        if (!send) return res.status(404).json({ error: 'Gönderim bulunamadı' });
         if (send.status !== 'PENDING') {
             return res.status(400).json({ error: `Bu gönderim zaten ${send.status} durumunda` });
         }
 
-        // Durumu SENDING olarak güncelle
+        const channel = send.message.channel;
+        const rate = send.sendRate || 20; // dk başına mesaj
+        const delayMs = Math.round(60000 / rate); // mesajlar arası bekleme
+
+        // ── Alıcı listesi oluştur ──
+        let contacts = [];
+
+        if (send.segmentId === 'all') {
+            // Tüm kişiler
+            contacts = await prisma.contact.findMany({
+                where: { workspaceId, phone: { not: null } },
+                select: { id: true, phone: true, name: true },
+                take: 5000
+            });
+        } else if (send.segmentId?.startsWith('status:')) {
+            // Durum filtresi
+            const status = send.segmentId.replace('status:', '');
+            contacts = await prisma.contact.findMany({
+                where: { workspaceId, phone: { not: null }, status },
+                select: { id: true, phone: true, name: true },
+                take: 5000
+            });
+        } else if (send.segmentId?.startsWith('group:')) {
+            // Grup
+            const groupId = send.segmentId.replace('group:', '');
+            const groupContacts = await prisma.contactGroupMember.findMany({
+                where: { groupId },
+                include: { contact: { select: { id: true, phone: true, name: true } } }
+            });
+            contacts = groupContacts.filter(gc => gc.contact?.phone).map(gc => gc.contact);
+        } else if (send.segmentId) {
+            // Smart segment
+            try {
+                const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
+                const segResult = await buildSegmentWhere(send.segmentId, workspaceId);
+                let where = { workspaceId, phone: { not: null } };
+                if (segResult.contactIds) {
+                    where.id = { in: segResult.contactIds };
+                } else if (segResult.where) {
+                    where = { ...where, ...segResult.where };
+                }
+                contacts = await prisma.contact.findMany({
+                    where,
+                    select: { id: true, phone: true, name: true },
+                    take: 5000
+                });
+            } catch (e) {
+                console.error('❌ [executeMessageSend] Segment çözümlenemedi:', e);
+                return res.status(400).json({ error: 'Segment bulunamadı: ' + send.segmentId });
+            }
+        }
+
+        if (contacts.length === 0) {
+            return res.status(400).json({ error: 'Bu hedef kitle için gönderilecek kişi bulunamadı' });
+        }
+
+        // ── Durumu güncelle ──
         await prisma.campaignSend.update({
             where: { id: sendId },
-            data: { status: 'SENDING', sentAt: new Date() }
+            data: { status: 'SENDING', sentAt: new Date(), totalCount: contacts.length }
         });
 
-        // Kampanya durumunu ACTIVE yap
         await prisma.marketingCampaign.update({
-            where: { id: req.params.id },
+            where: { id: campaignId },
             data: { status: 'ACTIVE' }
         });
 
-        // TODO: Kanal bazlı gönderim mantığı burada eklenecek
-        // send.message.channel === 'WHATSAPP' → mevcut bulkSend mantığı
-        // send.message.channel === 'EMAIL' → email gönderimi
-        // send.message.channel === 'CALL' → Retell arama
+        // ── Alıcı kayıtları oluştur ──
+        await prisma.marketingRecipient.createMany({
+            data: contacts.map(c => ({
+                campaignId,
+                sendId,
+                contactId: c.id,
+                phone: c.phone.replace(/[\s\+\-]/g, ''),
+                name: c.name || '',
+                status: 'PENDING'
+            }))
+        });
 
-        res.json({ success: true, status: 'SENDING', sendId });
+        // Hemen yanıt dön
+        res.json({
+            success: true,
+            status: 'SENDING',
+            sendId,
+            totalRecipients: contacts.length,
+            sendRate: rate,
+            estimatedMinutes: Math.ceil(contacts.length / rate)
+        });
+
+        // ── Background gönderim ──
+        setImmediate(async () => {
+            let sentCount = 0, failedCount = 0;
+
+            try {
+                if (channel === 'WHATSAPP') {
+                    // WA şablon gönderimi
+                    const template = send.message.templateId
+                        ? await prisma.whatsappTemplate.findUnique({ where: { id: send.message.templateId } })
+                        : null;
+
+                    if (!template) {
+                        await prisma.campaignSend.update({ where: { id: sendId }, data: { status: 'FAILED' } });
+                        console.error('❌ [executeMessageSend] Template bulunamadı');
+                        return;
+                    }
+
+                    const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({ where: { workspaceId } });
+                    if (!whatsappPhone) {
+                        await prisma.campaignSend.update({ where: { id: sendId }, data: { status: 'FAILED' } });
+                        console.error('❌ [executeMessageSend] WA numarası bulunamadı');
+                        return;
+                    }
+
+                    // Media hazırla
+                    let cachedMediaId = null;
+                    if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+                        const rawUrl = toAbsoluteUrl(template.headerContent);
+                        if (rawUrl) {
+                            try {
+                                cachedMediaId = await uploadMediaToMeta(rawUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
+                            } catch (e) { console.warn('⚠️ Media yüklenemedi:', e.message); }
+                        }
+                    }
+
+                    const dbRecipients = await prisma.marketingRecipient.findMany({ where: { sendId } });
+
+                    for (const recipient of dbRecipients) {
+                        try {
+                            const components = [];
+                            if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+                                let headerParam;
+                                if (cachedMediaId) {
+                                    headerParam = { type: template.headerType.toLowerCase(), [template.headerType.toLowerCase()]: { id: cachedMediaId } };
+                                } else {
+                                    const url = toAbsoluteUrl(template.headerContent);
+                                    if (url) headerParam = { type: template.headerType.toLowerCase(), [template.headerType.toLowerCase()]: { link: url } };
+                                }
+                                if (headerParam) components.push({ type: 'header', parameters: [headerParam] });
+                            }
+
+                            const payload = {
+                                messaging_product: 'whatsapp',
+                                to: recipient.phone,
+                                type: 'template',
+                                template: {
+                                    name: template.name,
+                                    language: { code: template.language || 'tr' },
+                                    ...(components.length > 0 && { components })
+                                }
+                            };
+
+                            const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.phoneNumberId}/messages`;
+                            const response = await axios.post(apiUrl, payload, {
+                                headers: { Authorization: `Bearer ${whatsappPhone.accessToken}`, 'Content-Type': 'application/json' }
+                            });
+
+                            const messageId = response.data?.messages?.[0]?.id;
+                            await prisma.marketingRecipient.update({
+                                where: { id: recipient.id },
+                                data: { status: 'SENT', messageId, sentAt: new Date() }
+                            });
+                            sentCount++;
+                        } catch (err) {
+                            console.error(`❌ [CampaignSend] Failed ${recipient.phone}:`, err.response?.data || err.message);
+                            await prisma.marketingRecipient.update({
+                                where: { id: recipient.id },
+                                data: { status: 'FAILED', failedAt: new Date(), failReason: err.response?.data?.error?.message || err.message }
+                            });
+                            failedCount++;
+                        }
+
+                        // Rate limiting
+                        await new Promise(r => setTimeout(r, delayMs));
+                    }
+
+                } else if (channel === 'CALL') {
+                    // AI Arama — Retell entegrasyonu
+                    // TODO: Retell API bağlantısı eklenecek
+                    // Şimdilik sadece durum güncelleme
+                    console.log(`📞 [CampaignSend] CALL gönderimi: ${contacts.length} kişi, hız: ${rate}/dk`);
+                    await prisma.campaignSend.update({ where: { id: sendId }, data: { status: 'COMPLETED' } });
+                    return;
+
+                } else {
+                    // EMAIL, CUSTOM — gelecek
+                    console.log(`📧 [CampaignSend] ${channel} gönderimi: ${contacts.length} kişi`);
+                    await prisma.campaignSend.update({ where: { id: sendId }, data: { status: 'COMPLETED' } });
+                    return;
+                }
+
+                // Gönderim tamamlandı
+                await prisma.campaignSend.update({
+                    where: { id: sendId },
+                    data: { status: 'COMPLETED', sentCount, failedCount }
+                });
+
+                // Kampanya toplam sayıları güncelle
+                const counts = await getCampaignCounts(campaignId);
+                await prisma.marketingCampaign.update({
+                    where: { id: campaignId },
+                    data: { ...counts, sentCount: counts.sentCount, totalCount: contacts.length }
+                });
+
+                console.log(`✅ [CampaignSend] ${sendId} tamamlandı: ${sentCount} gönderildi, ${failedCount} hata`);
+            } catch (err) {
+                console.error('❌ [CampaignSend] Background hata:', err);
+                await prisma.campaignSend.update({ where: { id: sendId }, data: { status: 'FAILED' } });
+            }
+        });
+
     } catch (error) {
         console.error('❌ [executeMessageSend]', error);
         res.status(500).json({ error: 'Gönderim başlatılamadı' });
