@@ -1,8 +1,11 @@
+const path = require('path');
+
 module.exports = {
     apps: [
         {
             name: 'instomer',
-            script: './server.js',
+            cwd: __dirname,
+            script: path.join(__dirname, 'server.js'),
             instances: 2,
             exec_mode: 'cluster',
             autorestart: true,
@@ -15,9 +18,9 @@ module.exports = {
                 NODE_ENV: 'production',
                 PORT: 5008
             },
-            error_file: './logs/error.log',
-            out_file: './logs/out.log',
-            log_file: './logs/combined.log',
+            error_file: path.join(__dirname, 'logs/error.log'),
+            out_file: path.join(__dirname, 'logs/out.log'),
+            log_file: path.join(__dirname, 'logs/combined.log'),
             time: true,
             merge_logs: true,
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z'

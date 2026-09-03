@@ -28,13 +28,18 @@ npx prisma generate
 npx prisma db push --accept-data-loss || npx prisma migrate deploy || true
 
 echo "🔄 [5/5] PM2 Cluster Sıfır Kesinti ile Yenileniyor (Zero-Downtime Reload)..."
+if pm2 describe instomer 2>&1 | grep -q "your-username"; then
+    echo "🧹 Eski/geçersiz instomer tanımı temizleniyor..."
+    pm2 delete instomer || true
+fi
+
 if pm2 describe chatcrm-api > /dev/null 2>&1 && ! pm2 describe instomer > /dev/null 2>&1; then
     echo "🔄 PM2 servis adı chatcrm-api -> instomer olarak güncelleniyor..."
     pm2 delete chatcrm-api || true
     pm2 start ecosystem.config.cjs
     pm2 save
 else
-    pm2 reload ecosystem.config.cjs --update-env || pm2 reload instomer --update-env || pm2 reload chatcrm-api --update-env || pm2 start ecosystem.config.cjs
+    pm2 reload ecosystem.config.cjs --update-env || pm2 reload instomer --update-env || pm2 start ecosystem.config.cjs || pm2 reload chatcrm-api --update-env
 fi
 
 echo "🎉 ✅ Güncelleme başarıyla tamamlandı! Kesinti süresi: 0 saniye."
