@@ -2542,6 +2542,7 @@
     position: relative;
     padding: 0;
     background: transparent;
+    margin-bottom: 13px;
 }
 
 /* Çarpı butonunu kartın sağ üstüne sabitle — sidebar-content paddingi hesaba katarak */
@@ -3288,6 +3289,7 @@
     border: 1px solid #e2e8f0;
     border-radius: 14px;
     padding: 14px 16px;
+    margin-top: 13px;
     margin-bottom: 13px;
 }
 
