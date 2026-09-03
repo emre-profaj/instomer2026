@@ -3,6 +3,15 @@ import passport from 'passport';
 import jwt from 'jsonwebtoken';
 
 
+// In-memory cache for authenticated users (TTL: 30s) to eliminate DB query storms on parallel requests
+const userCache = new Map();
+const USER_CACHE_TTL = 30 * 1000;
+
+export const invalidateUserCache = (userId) => {
+    if (userId) userCache.delete(userId);
+    else userCache.clear();
+};
+
 export const authenticateJWT = (req, res, next) => {
     passport.authenticate('jwt', { session: false }, async (err, user, info) => {
         if (err) {
@@ -14,6 +23,13 @@ export const authenticateJWT = (req, res, next) => {
         }
 
         try {
+            // Check cache first
+            const cached = userCache.get(user.id);
+            if (cached && Date.now() - cached.timestamp < USER_CACHE_TTL) {
+                req.user = cached.user;
+                return next();
+            }
+
             // Fetch fresh user data from DB to ensure role is up-to-date
             const freshUser = await prisma.user.findUnique({
                 where: { id: user.id },
@@ -31,6 +47,7 @@ export const authenticateJWT = (req, res, next) => {
                 return res.status(401).json({ error: 'User no longer exists' });
             }
 
+            userCache.set(user.id, { user: freshUser, timestamp: Date.now() });
             req.user = freshUser;
             next();
         } catch (dbError) {
