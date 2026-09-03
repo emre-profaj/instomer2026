@@ -1547,8 +1547,9 @@
 .profile-bar-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     margin-left: auto;
+    flex-shrink: 0;
 }
 
 .status-dropdown-compact {
@@ -1580,18 +1581,19 @@
 
 /* Konu başlığı input - compact, sağ panelde */
 .topic-input-compact {
-    padding: 6px 12px;
+    padding: 5px 10px;
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     background: #f9fafb;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 500;
     color: #374151;
     outline: none;
-    width: 220px;
-    min-width: 180px;
-    flex: 1;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 140px;
+    max-width: 160px;
+    min-width: 90px;
+    flex: 0 1 auto;
+    transition: border-color 0.15s, box-shadow 0.15s, width 0.2s ease;
 }
 
 .topic-input-compact::placeholder {
@@ -1603,6 +1605,8 @@
     border-color: #4f46e5;
     box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
     background: #fff;
+    width: 170px;
+    max-width: 185px;
 }
 
 /* Topic Dropdown */
@@ -1641,17 +1645,19 @@
 }
 
 .profile-action-btn {
-
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    border: 1px solid;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    flex-shrink: 0;
 }
 
 .profile-action-btn.transfer {
@@ -1677,11 +1683,26 @@
     }
 }
 
+.profile-action-btn.archive {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #475569;
+    padding: 6px 8px;
+    flex-shrink: 0;
+}
+
+.profile-action-btn.archive:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+}
+
 .profile-action-btn.delete {
     background: #fef2f2;
     border-color: #fee2e2;
     color: #ef4444;
-    padding: 8px;
+    padding: 6px 8px;
+    flex-shrink: 0;
 }
 
 .profile-action-btn.delete:hover {
@@ -1695,7 +1716,8 @@
     background: #f8fafc;
     border-color: #e2e8f0;
     color: #64748b;
-    padding: 8px;
+    padding: 6px 8px;
+    flex-shrink: 0;
 }
 
 .profile-action-btn.star-btn.starred {
