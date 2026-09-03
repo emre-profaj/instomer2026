@@ -4,7 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import {
     Megaphone, Users, BarChart2, Phone,
-    Send
+    Send, Plus, ArrowLeft, Trash2, Calendar,
+    Target, ChevronRight, Play, MessageSquare,
+    Mail, PhoneCall, FileText, Clock, CheckCircle,
+    AlertCircle, XCircle, Eye
 } from 'lucide-react';
 import './Marketing.css';
 
@@ -959,6 +962,667 @@ function CampaignsTab({ wsId }) {
                     })}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGNS HUB TAB — Kampanya Listesi + Oluştur
+// ─────────────────────────────────────────────────────────────────────────────
+function CampaignsHubTab({ wsId, onSelectCampaign }) {
+    const [campaigns, setCampaigns] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showCreate, setShowCreate] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [newDesc, setNewDesc] = useState('');
+    const [creating, setCreating] = useState(false);
+
+    const fetchCampaigns = useCallback(async () => {
+        if (!wsId) return;
+        setLoading(true);
+        try {
+            const res = await api.get(`/marketing/${wsId}/campaigns?days=90`);
+            setCampaigns(res.data?.data || []);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId]);
+
+    useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+    const handleCreate = async () => {
+        if (!newName.trim()) return;
+        setCreating(true);
+        try {
+            const res = await api.post(`/marketing/${wsId}/campaigns`, {
+                name: newName.trim(),
+                description: newDesc.trim() || null,
+            });
+            setNewName('');
+            setNewDesc('');
+            setShowCreate(false);
+            fetchCampaigns();
+            // Hemen detay sayfasına git
+            if (res.data?.campaign) {
+                onSelectCampaign(res.data.campaign);
+            }
+        } catch (e) {
+            alert('Kampanya oluşturulamadı: ' + (e.response?.data?.error || e.message));
+        }
+        setCreating(false);
+    };
+
+    const STATUS_BADGES = {
+        DRAFT: { label: 'Taslak', bg: '#f1f5f9', text: '#64748b', icon: <FileText size={12} /> },
+        ACTIVE: { label: 'Aktif', bg: '#dcfce7', text: '#16a34a', icon: <Play size={12} /> },
+        COMPLETED: { label: 'Tamamlandı', bg: '#dbeafe', text: '#2563eb', icon: <CheckCircle size={12} /> },
+        PAUSED: { label: 'Duraklatıldı', bg: '#fef9c3', text: '#a16207', icon: <Clock size={12} /> },
+        FAILED: { label: 'Başarısız', bg: '#fef2f2', text: '#dc2626', icon: <XCircle size={12} /> },
+        SENDING: { label: 'Gönderiliyor', bg: '#fef9c3', text: '#a16207', icon: <Send size={12} /> },
+        SCHEDULED: { label: 'Planlandı', bg: '#dbeafe', text: '#2563eb', icon: <Calendar size={12} /> },
+        RUNNING: { label: 'Çalışıyor', bg: '#dcfce7', text: '#16a34a', icon: <Play size={12} /> },
+    };
+
+    const CHANNEL_ICONS = {
+        WHATSAPP: '📤',
+        EMAIL: '📧',
+        CALL: '📞',
+        CUSTOM: '✏️',
+    };
+
+    return (
+        <div>
+            {/* Header + Create */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 14, color: '#64748b' }}>
+                    {campaigns.length} kampanya
+                </div>
+                <button
+                    onClick={() => setShowCreate(true)}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '8px 16px', borderRadius: 10,
+                        background: '#7c3aed', color: '#fff', border: 'none',
+                        fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                    }}
+                >
+                    <Plus size={16} /> Yeni Kampanya
+                </button>
+            </div>
+
+            {/* Create Modal */}
+            {showCreate && (
+                <div style={{
+                    background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+                    padding: 20, marginBottom: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                }}>
+                    <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 700 }}>📣 Yeni Kampanya Oluştur</h3>
+                    <input
+                        type="text"
+                        placeholder="Kampanya adı (ör: Yaz İndirimi)"
+                        value={newName}
+                        onChange={e => setNewName(e.target.value)}
+                        style={{
+                            width: '100%', padding: '10px 14px', borderRadius: 8,
+                            border: '1px solid #e2e8f0', fontSize: 13, marginBottom: 8,
+                            outline: 'none', boxSizing: 'border-box'
+                        }}
+                        autoFocus
+                    />
+                    <input
+                        type="text"
+                        placeholder="Açıklama (opsiyonel)"
+                        value={newDesc}
+                        onChange={e => setNewDesc(e.target.value)}
+                        style={{
+                            width: '100%', padding: '10px 14px', borderRadius: 8,
+                            border: '1px solid #e2e8f0', fontSize: 13, marginBottom: 12,
+                            outline: 'none', boxSizing: 'border-box'
+                        }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button onClick={() => setShowCreate(false)}
+                            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: 13, cursor: 'pointer' }}>
+                            İptal
+                        </button>
+                        <button onClick={handleCreate} disabled={creating || !newName.trim()}
+                            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: creating ? 0.5 : 1 }}>
+                            {creating ? 'Oluşturuluyor...' : 'Oluştur →'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Campaign List */}
+            {loading ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>
+            ) : campaigns.length === 0 ? (
+                <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>📣</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Henüz kampanya yok</div>
+                    <div style={{ fontSize: 13 }}>İlk kampanyanızı oluşturarak başlayın</div>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {campaigns.map(c => {
+                        const badge = STATUS_BADGES[c.status] || STATUS_BADGES.DRAFT;
+                        const totalSent = c.sentCount || 0;
+                        const totalTarget = c.totalCount || 0;
+                        const pct = totalTarget > 0 ? Math.round((totalSent / totalTarget) * 100) : 0;
+
+                        // Mesaj kanallarını belirle (varsa)
+                        const channels = c.messages?.map(m => m.channel) || [];
+                        const uniqueChannels = [...new Set(channels)];
+
+                        return (
+                            <div key={c.id}
+                                onClick={() => onSelectCampaign(c)}
+                                style={{
+                                    background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+                                    padding: '16px 20px', cursor: 'pointer',
+                                    transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 16
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(124,58,237,0.08)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                                {/* İkon */}
+                                <div style={{
+                                    width: 44, height: 44, borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #ede9fe, #ddd6fe)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 20, flexShrink: 0
+                                }}>
+                                    📣
+                                </div>
+
+                                {/* İçerik */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                        <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>{c.name}</span>
+                                        <span style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                            padding: '2px 8px', borderRadius: 6,
+                                            background: badge.bg, color: badge.text,
+                                            fontSize: 11, fontWeight: 600
+                                        }}>
+                                            {badge.icon} {badge.label}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: '#94a3b8' }}>
+                                        {uniqueChannels.length > 0 && (
+                                            <span>{uniqueChannels.map(ch => CHANNEL_ICONS[ch] || '📄').join(' ')}</span>
+                                        )}
+                                        {c.messages?.length > 0 && <span>{c.messages.length} mesaj</span>}
+                                        <span>📅 {new Date(c.createdAt).toLocaleDateString('tr-TR')}</span>
+                                        {totalTarget > 0 && <span>👥 {totalTarget.toLocaleString('tr-TR')} kişi</span>}
+                                    </div>
+                                    {totalTarget > 0 && (
+                                        <div style={{ marginTop: 6 }}>
+                                            <div style={{ height: 4, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 4, background: badge.text, transition: 'width 0.3s' }} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Stats */}
+                                <div style={{ display: 'flex', gap: 16, flexShrink: 0, fontSize: 12 }}>
+                                    {totalSent > 0 && (
+                                        <>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 700, color: '#2563eb' }}>{totalSent}</div>
+                                                <div style={{ color: '#94a3b8', fontSize: 10 }}>Gönderildi</div>
+                                            </div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 700, color: '#16a34a' }}>{c.deliveredCount || 0}</div>
+                                                <div style={{ color: '#94a3b8', fontSize: 10 }}>Teslim</div>
+                                            </div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 700, color: '#f59e0b' }}>{c.readCount || 0}</div>
+                                                <div style={{ color: '#94a3b8', fontSize: 10 }}>Okundu</div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+
+                                <ChevronRight size={18} style={{ color: '#cbd5e1', flexShrink: 0 }} />
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGN DETAIL VIEW — Drill-down: Mesajlar > Listeler > Gönderimler
+// ─────────────────────────────────────────────────────────────────────────────
+function CampaignDetailView({ wsId, campaign, onBack }) {
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showAddMsg, setShowAddMsg] = useState(false);
+    const [stats, setStats] = useState(null);
+
+    // Yeni mesaj form
+    const [msgChannel, setMsgChannel] = useState('WHATSAPP');
+    const [msgName, setMsgName] = useState('');
+    const [msgTemplateId, setMsgTemplateId] = useState('');
+    const [msgTemplateName, setMsgTemplateName] = useState('');
+    const [msgContent, setMsgContent] = useState('');
+    const [templates, setTemplates] = useState([]);
+    const [addingMsg, setAddingMsg] = useState(false);
+
+    // Gönderim ekleme
+    const [addSendFor, setAddSendFor] = useState(null); // mesaj ID
+    const [sendSegment, setSendSegment] = useState('');
+    const [sendSegmentName, setSendSegmentName] = useState('');
+    const [sendSchedule, setSendSchedule] = useState('');
+    const [segments, setSegments] = useState([]);
+    const [addingSend, setAddingSend] = useState(false);
+
+    const fetchMessages = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await api.get(`/marketing/${wsId}/campaigns/${campaign.id}/messages`);
+            setMessages(res.data?.messages || []);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId, campaign.id]);
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await api.get(`/marketing/${wsId}/campaigns/${campaign.id}/stats`);
+            setStats(res.data);
+        } catch (e) { console.error(e); }
+    }, [wsId, campaign.id]);
+
+    const fetchTemplates = useCallback(async () => {
+        try {
+            const res = await api.get(`/whatsapp/${wsId}/templates`);
+            setTemplates(res.data?.templates || res.data || []);
+        } catch (e) { setTemplates([]); }
+    }, [wsId]);
+
+    const fetchSegments = useCallback(async () => {
+        try {
+            const res = await api.get(`/marketing/${wsId}/segments`);
+            setSegments(res.data?.segments || []);
+        } catch (e) { setSegments([]); }
+    }, [wsId]);
+
+    useEffect(() => {
+        fetchMessages();
+        fetchStats();
+        fetchTemplates();
+        fetchSegments();
+    }, [fetchMessages, fetchStats, fetchTemplates, fetchSegments]);
+
+    const CHANNEL_META = {
+        WHATSAPP: { label: 'WhatsApp', icon: <MessageSquare size={14} />, color: '#25d366', bg: '#dcfce7' },
+        EMAIL: { label: 'E-posta', icon: <Mail size={14} />, color: '#2563eb', bg: '#dbeafe' },
+        CALL: { label: 'AI Arama', icon: <PhoneCall size={14} />, color: '#f59e0b', bg: '#fef9c3' },
+        CUSTOM: { label: 'Serbest', icon: <FileText size={14} />, color: '#8b5cf6', bg: '#ede9fe' },
+    };
+
+    const handleAddMessage = async () => {
+        setAddingMsg(true);
+        try {
+            await api.post(`/marketing/${wsId}/campaigns/${campaign.id}/messages`, {
+                channel: msgChannel,
+                name: msgName.trim() || null,
+                templateId: msgTemplateId || null,
+                templateName: msgTemplateName || null,
+                content: msgContent || null,
+            });
+            setShowAddMsg(false);
+            setMsgName('');
+            setMsgTemplateId('');
+            setMsgContent('');
+            fetchMessages();
+            fetchStats();
+        } catch (e) {
+            alert('Mesaj eklenemedi: ' + (e.response?.data?.error || e.message));
+        }
+        setAddingMsg(false);
+    };
+
+    const handleDeleteMessage = async (msgId) => {
+        if (!confirm('Bu mesajı ve tüm gönderimlerini silmek istediğinize emin misiniz?')) return;
+        try {
+            await api.delete(`/marketing/${wsId}/campaigns/${campaign.id}/messages/${msgId}`);
+            fetchMessages();
+            fetchStats();
+        } catch (e) {
+            alert('Mesaj silinemedi');
+        }
+    };
+
+    const handleAddSend = async (msgId) => {
+        if (!sendSegment) return;
+        setAddingSend(true);
+        try {
+            await api.post(`/marketing/${wsId}/campaigns/${campaign.id}/messages/${msgId}/sends`, {
+                segmentId: sendSegment,
+                segmentName: sendSegmentName,
+                scheduledAt: sendSchedule || null,
+            });
+            setAddSendFor(null);
+            setSendSegment('');
+            setSendSegmentName('');
+            setSendSchedule('');
+            fetchMessages();
+        } catch (e) {
+            alert('Gönderim eklenemedi');
+        }
+        setAddingSend(false);
+    };
+
+    const SEND_STATUS = {
+        PENDING: { label: 'Bekliyor', color: '#64748b', icon: <Clock size={12} /> },
+        SENDING: { label: 'Gönderiliyor', color: '#f59e0b', icon: <Send size={12} /> },
+        COMPLETED: { label: 'Tamamlandı', color: '#16a34a', icon: <CheckCircle size={12} /> },
+        FAILED: { label: 'Başarısız', color: '#dc2626', icon: <XCircle size={12} /> },
+    };
+
+    return (
+        <div className="mkt-page">
+            {/* Header */}
+            <div className="mkt-header">
+                <div className="mkt-header-inner" style={{ gap: 12 }}>
+                    <button onClick={onBack} style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        padding: 6, borderRadius: 8, display: 'flex'
+                    }}>
+                        <ArrowLeft size={20} style={{ color: '#64748b' }} />
+                    </button>
+                    <div className="mkt-header-icon-wrap">
+                        <Megaphone size={22} />
+                    </div>
+                    <div>
+                        <h1 className="mkt-header-title">{campaign.name}</h1>
+                        <p className="mkt-header-sub">{campaign.description || 'Kampanya detayları'}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+                {/* KPI Cards */}
+                {stats && (
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+                        <StatBig icon="👥" label="Hedef" value={stats.totals?.totalCount} color="#7c3aed" />
+                        <StatBig icon="📨" label="Gönderildi" value={stats.totals?.sentCount} color="#2563eb" />
+                        <StatBig icon="📖" label="Okundu" value={stats.totals?.readCount} color="#f59e0b" />
+                        <StatBig icon="💬" label="Yanıt" value={stats.totals?.repliedCount} color="#10b981" />
+                        <StatBig icon="❌" label="Hata" value={stats.totals?.failedCount} color="#dc2626" />
+                    </div>
+                )}
+
+                {/* Mesajlar Başlık */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', margin: 0 }}>
+                        💬 Mesajlar ({messages.length})
+                    </h2>
+                    <button
+                        onClick={() => setShowAddMsg(true)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 5,
+                            padding: '7px 14px', borderRadius: 8,
+                            background: '#7c3aed', color: '#fff', border: 'none',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                        }}
+                    >
+                        <Plus size={14} /> Mesaj Ekle
+                    </button>
+                </div>
+
+                {/* Add Message Form */}
+                {showAddMsg && (
+                    <div style={{
+                        background: '#faf5ff', borderRadius: 12, border: '1px solid #e9d5ff',
+                        padding: 16, marginBottom: 16
+                    }}>
+                        <h4 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700 }}>Yeni Mesaj Ekle</h4>
+
+                        {/* Kanal Seçimi */}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                            {Object.entries(CHANNEL_META).map(([key, meta]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => setMsgChannel(key)}
+                                    style={{
+                                        padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                                        border: msgChannel === key ? `2px solid ${meta.color}` : '1px solid #e2e8f0',
+                                        background: msgChannel === key ? meta.bg : '#fff',
+                                        color: msgChannel === key ? meta.color : '#64748b',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+                                    }}
+                                >
+                                    {meta.icon} {meta.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <input
+                            type="text"
+                            placeholder="Mesaj adı (ör: İndirim 1)"
+                            value={msgName}
+                            onChange={e => setMsgName(e.target.value)}
+                            style={{
+                                width: '100%', padding: '8px 12px', borderRadius: 8,
+                                border: '1px solid #e2e8f0', fontSize: 12, marginBottom: 8,
+                                outline: 'none', boxSizing: 'border-box'
+                            }}
+                        />
+
+                        {msgChannel === 'WHATSAPP' && (
+                            <select
+                                value={msgTemplateId}
+                                onChange={e => {
+                                    setMsgTemplateId(e.target.value);
+                                    const tpl = templates.find(t => t.id === e.target.value);
+                                    setMsgTemplateName(tpl?.name || '');
+                                }}
+                                style={{
+                                    width: '100%', padding: '8px 12px', borderRadius: 8,
+                                    border: '1px solid #e2e8f0', fontSize: 12, marginBottom: 8,
+                                    outline: 'none', boxSizing: 'border-box'
+                                }}
+                            >
+                                <option value="">WhatsApp şablonu seçin...</option>
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
+                        )}
+
+                        {(msgChannel === 'CUSTOM' || msgChannel === 'EMAIL') && (
+                            <textarea
+                                placeholder={msgChannel === 'EMAIL' ? 'E-posta içeriği...' : 'Mesaj metni...'}
+                                value={msgContent}
+                                onChange={e => setMsgContent(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '8px 12px', borderRadius: 8,
+                                    border: '1px solid #e2e8f0', fontSize: 12, marginBottom: 8,
+                                    resize: 'vertical', minHeight: 60, outline: 'none',
+                                    fontFamily: 'inherit', boxSizing: 'border-box'
+                                }}
+                            />
+                        )}
+
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button onClick={() => setShowAddMsg(false)}
+                                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', fontSize: 12, cursor: 'pointer' }}>
+                                İptal
+                            </button>
+                            <button onClick={handleAddMessage} disabled={addingMsg}
+                                style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: addingMsg ? 0.5 : 1 }}>
+                                {addingMsg ? 'Ekleniyor...' : 'Ekle'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Mesaj Listesi */}
+                {loading ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>
+                ) : messages.length === 0 ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', background: '#fafafa', borderRadius: 12 }}>
+                        <div style={{ fontSize: 36, marginBottom: 8 }}>💬</div>
+                        <div>Henüz mesaj eklenmemiş. Yukarıdan "Mesaj Ekle" butonuna tıklayın.</div>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {messages.map((msg, idx) => {
+                            const ch = CHANNEL_META[msg.channel] || CHANNEL_META.CUSTOM;
+                            return (
+                                <div key={msg.id} style={{
+                                    background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+                                    overflow: 'hidden'
+                                }}>
+                                    {/* Mesaj Header */}
+                                    <div style={{
+                                        padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12,
+                                        borderBottom: '1px solid #f1f5f9'
+                                    }}>
+                                        <div style={{
+                                            width: 32, height: 32, borderRadius: 8,
+                                            background: ch.bg, display: 'flex', alignItems: 'center',
+                                            justifyContent: 'center', color: ch.color
+                                        }}>
+                                            {ch.icon}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                                                {msg.name || `Mesaj ${idx + 1}`}
+                                            </div>
+                                            <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                                                {ch.label}
+                                                {msg.templateName && ` • Şablon: ${msg.templateName}`}
+                                                {msg.sends?.length > 0 && ` • ${msg.sends.length} gönderim`}
+                                            </div>
+                                        </div>
+                                        {/* Stats */}
+                                        {msg.stats?.sentCount > 0 && (
+                                            <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#64748b' }}>
+                                                <span>📨 {msg.stats.sentCount}</span>
+                                                <span>📖 {msg.stats.readCount}</span>
+                                                <span>💬 {msg.stats.repliedCount}</span>
+                                            </div>
+                                        )}
+                                        <button onClick={() => handleDeleteMessage(msg.id)}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                                            <Trash2 size={14} style={{ color: '#dc2626' }} />
+                                        </button>
+                                    </div>
+
+                                    {/* Gönderimler */}
+                                    <div style={{ padding: '12px 18px' }}>
+                                        {msg.sends?.length > 0 ? msg.sends.map(send => {
+                                            const ss = SEND_STATUS[send.status] || SEND_STATUS.PENDING;
+                                            const pct = send.totalCount > 0 ? Math.round((send.sentCount / send.totalCount) * 100) : 0;
+                                            return (
+                                                <div key={send.id} style={{
+                                                    display: 'flex', alignItems: 'center', gap: 10,
+                                                    padding: '8px 12px', borderRadius: 8, background: '#fafafa',
+                                                    marginBottom: 6, fontSize: 12
+                                                }}>
+                                                    <Target size={13} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                                                    <div style={{ flex: 1 }}>
+                                                        <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                                            {send.segmentName || 'Tüm kişiler'}
+                                                        </span>
+                                                        {send.scheduledAt && (
+                                                            <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                                                                📅 {new Date(send.scheduledAt).toLocaleDateString('tr-TR')}
+                                                            </span>
+                                                        )}
+                                                        {send.totalCount > 0 && (
+                                                            <span style={{ marginLeft: 8, color: '#94a3b8' }}>
+                                                                👥 {send.totalCount}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {send.totalCount > 0 && (
+                                                        <div style={{ width: 60, height: 4, borderRadius: 4, background: '#e2e8f0', overflow: 'hidden' }}>
+                                                            <div style={{ height: '100%', width: `${pct}%`, background: ss.color, borderRadius: 4 }} />
+                                                        </div>
+                                                    )}
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                        padding: '2px 8px', borderRadius: 6,
+                                                        background: `${ss.color}15`, color: ss.color,
+                                                        fontSize: 10, fontWeight: 600
+                                                    }}>
+                                                        {ss.icon} {ss.label}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }) : (
+                                            <div style={{ padding: 8, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
+                                                Henüz gönderim eklenmemiş
+                                            </div>
+                                        )}
+
+                                        {/* Gönderim Ekle */}
+                                        {addSendFor === msg.id ? (
+                                            <div style={{
+                                                padding: 12, background: '#f8fafc', borderRadius: 8,
+                                                marginTop: 6, border: '1px solid #e2e8f0'
+                                            }}>
+                                                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                                    <select
+                                                        value={sendSegment}
+                                                        onChange={e => {
+                                                            setSendSegment(e.target.value);
+                                                            const seg = segments.find(s => s.id === e.target.value);
+                                                            setSendSegmentName(seg?.name || e.target.value);
+                                                        }}
+                                                        style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                                                    >
+                                                        <option value="">Hedef kitle seçin...</option>
+                                                        {segments.map(s => (
+                                                            <option key={s.id} value={s.id}>{s.icon} {s.name} ({s.count})</option>
+                                                        ))}
+                                                    </select>
+                                                    <input
+                                                        type="datetime-local"
+                                                        value={sendSchedule}
+                                                        onChange={e => setSendSchedule(e.target.value)}
+                                                        style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                                                    />
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                                    <button onClick={() => setAddSendFor(null)}
+                                                        style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', fontSize: 11, cursor: 'pointer' }}>
+                                                        İptal
+                                                    </button>
+                                                    <button onClick={() => handleAddSend(msg.id)} disabled={addingSend || !sendSegment}
+                                                        style={{ padding: '6px 12px', borderRadius: 6, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: addingSend ? 0.5 : 1 }}>
+                                                        {addingSend ? '...' : 'Ekle'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => setAddSendFor(msg.id)}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: 4,
+                                                    padding: '6px 10px', borderRadius: 6, marginTop: 4,
+                                                    background: 'none', border: '1px dashed #cbd5e1',
+                                                    color: '#94a3b8', fontSize: 11, cursor: 'pointer', width: '100%',
+                                                    justifyContent: 'center'
+                                                }}
+                                            >
+                                                <Plus size={12} /> Gönderim Ekle
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -2398,17 +3062,29 @@ function BulkCallGroupModal({ wsId, group, members, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
+// ANA SAYFA — 4 Sekmeli Pazarlama Hub
+// ─────────────────────────────────────────────────────────────────────────────
 export default function Marketing() {
     const { currentWorkspace } = useAuth();
-    const [activeTab, setActiveTab] = useState('bulk');
+    const [activeTab, setActiveTab] = useState('campaigns');
+    const [selectedCampaign, setSelectedCampaign] = useState(null);
     const wsId = currentWorkspace?.id;
 
     const TABS = [
-        { key: 'bulk',      label: 'Toplu Gönderim',      Icon: Send },
-        { key: 'campaigns', label: 'Kampanyalar',          Icon: Megaphone },
-        { key: 'analytics', label: 'WhatsApp Şablon Analiz', Icon: BarChart2 },
-        { key: 'calls',     label: 'Arama Analizi',        Icon: Phone },
+        { key: 'campaigns', label: 'Kampanyalar',  Icon: Megaphone },
+        { key: 'messages',  label: 'Mesajlar',     Icon: Send },
+        { key: 'analytics', label: 'Analiz',       Icon: BarChart2 },
+        { key: 'calls',     label: 'Arama Analizi',Icon: Phone },
     ];
+
+    // Kampanya detay modundan geri dön
+    if (selectedCampaign) {
+        return <CampaignDetailView
+            wsId={wsId}
+            campaign={selectedCampaign}
+            onBack={() => setSelectedCampaign(null)}
+        />;
+    }
 
     return (
         <div className="mkt-page">
@@ -2420,7 +3096,7 @@ export default function Marketing() {
                     </div>
                     <div>
                         <h1 className="mkt-header-title">Pazarlama</h1>
-                        <p className="mkt-header-sub">Toplu gönderim ve arama analizi</p>
+                        <p className="mkt-header-sub">Kampanyalar, mesajlar ve gönderim analizi</p>
                     </div>
                 </div>
             </div>
@@ -2443,11 +3119,12 @@ export default function Marketing() {
 
             {/* Tab content */}
             <div className="mkt-tab-content">
-                {activeTab === 'bulk'      && <BulkSendTab wsId={wsId} />}
-                {activeTab === 'campaigns' && <CampaignsTab wsId={wsId} />}
+                {activeTab === 'campaigns' && <CampaignsHubTab wsId={wsId} onSelectCampaign={setSelectedCampaign} />}
+                {activeTab === 'messages'  && <BulkSendTab wsId={wsId} />}
                 {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
                 {activeTab === 'calls'     && <CallAnalyticsTab wsId={wsId} />}
             </div>
         </div>
     );
 }
+

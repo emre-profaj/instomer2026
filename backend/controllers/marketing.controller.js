@@ -1470,3 +1470,275 @@ async function getCampaignCounts(campaignId) {
     ]);
     return { sentCount: sent, deliveredCount: delivered, readCount: read, failedCount: failed };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// YENİ: Kampanya > Mesaj > Gönderim Hiyerarşisi
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── GET campaigns/:id/messages — Kampanyanın mesajlarını listele ────────────
+export const getCampaignMessages = async (req, res) => {
+    try {
+        const messages = await prisma.campaignMessage.findMany({
+            where: { campaignId: req.params.id },
+            include: {
+                sends: {
+                    include: { _count: { select: { recipients: true } } },
+                    orderBy: { createdAt: 'asc' }
+                }
+            },
+            orderBy: { order: 'asc' }
+        });
+
+        // Her mesaj için toplam istatistik hesapla
+        const enriched = messages.map(msg => {
+            const stats = msg.sends.reduce((acc, s) => ({
+                totalCount: acc.totalCount + s.totalCount,
+                sentCount: acc.sentCount + s.sentCount,
+                deliveredCount: acc.deliveredCount + s.deliveredCount,
+                readCount: acc.readCount + s.readCount,
+                failedCount: acc.failedCount + s.failedCount,
+                repliedCount: acc.repliedCount + s.repliedCount,
+                sendCount: acc.sendCount + 1,
+            }), { totalCount: 0, sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0, repliedCount: 0, sendCount: 0 });
+
+            return { ...msg, stats };
+        });
+
+        res.json({ messages: enriched });
+    } catch (error) {
+        console.error('❌ [getCampaignMessages]', error);
+        res.status(500).json({ error: 'Mesajlar yüklenemedi' });
+    }
+};
+
+// ─── POST campaigns/:id/messages — Kampanyaya mesaj ekle ─────────────────────
+export const addCampaignMessage = async (req, res) => {
+    try {
+        const { channel, name, templateId, templateName, emailSubject, emailBody,
+                retellAgentId, retellTemplateId, content, mediaUrl } = req.body;
+
+        if (!channel) {
+            return res.status(400).json({ error: 'Kanal seçimi gerekli' });
+        }
+
+        // Sıra numarasını belirle
+        const maxOrder = await prisma.campaignMessage.aggregate({
+            where: { campaignId: req.params.id },
+            _max: { order: true }
+        });
+
+        const message = await prisma.campaignMessage.create({
+            data: {
+                campaignId: req.params.id,
+                channel,
+                name: name || `Mesaj ${(maxOrder._max.order ?? -1) + 2}`,
+                templateId,
+                templateName,
+                emailSubject,
+                emailBody,
+                retellAgentId,
+                retellTemplateId,
+                content,
+                mediaUrl,
+                order: (maxOrder._max.order ?? -1) + 1
+            }
+        });
+
+        res.status(201).json({ message });
+    } catch (error) {
+        console.error('❌ [addCampaignMessage]', error);
+        res.status(500).json({ error: 'Mesaj eklenemedi' });
+    }
+};
+
+// ─── DELETE campaigns/:id/messages/:msgId — Mesaj sil ────────────────────────
+export const deleteCampaignMessage = async (req, res) => {
+    try {
+        await prisma.campaignMessage.delete({
+            where: { id: req.params.msgId }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [deleteCampaignMessage]', error);
+        res.status(500).json({ error: 'Mesaj silinemedi' });
+    }
+};
+
+// ─── GET campaigns/:id/messages/:msgId/sends — Mesajın gönderimlerini listele
+export const getMessageSends = async (req, res) => {
+    try {
+        const sends = await prisma.campaignSend.findMany({
+            where: { messageId: req.params.msgId },
+            include: { _count: { select: { recipients: true } } },
+            orderBy: { createdAt: 'asc' }
+        });
+        res.json({ sends });
+    } catch (error) {
+        console.error('❌ [getMessageSends]', error);
+        res.status(500).json({ error: 'Gönderimler yüklenemedi' });
+    }
+};
+
+// ─── POST campaigns/:id/messages/:msgId/sends — Gönderim ekle (liste + tarih)
+export const addMessageSend = async (req, res) => {
+    try {
+        const { segmentId, segmentName, tagIds, groupId, filterSnapshot, scheduledAt } = req.body;
+
+        if (!segmentId && !tagIds && !groupId && !filterSnapshot) {
+            return res.status(400).json({ error: 'Hedef kitle seçimi gerekli' });
+        }
+
+        const send = await prisma.campaignSend.create({
+            data: {
+                messageId: req.params.msgId,
+                segmentId,
+                segmentName,
+                tagIds: tagIds ? JSON.stringify(tagIds) : null,
+                groupId,
+                filterSnapshot: filterSnapshot ? JSON.stringify(filterSnapshot) : null,
+                scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+            }
+        });
+
+        res.status(201).json({ send });
+    } catch (error) {
+        console.error('❌ [addMessageSend]', error);
+        res.status(500).json({ error: 'Gönderim eklenemedi' });
+    }
+};
+
+// ─── POST campaigns/:id/messages/:msgId/sends/:sendId/execute — Gönderimi başlat
+export const executeMessageSend = async (req, res) => {
+    try {
+        const { sendId } = req.params;
+
+        const send = await prisma.campaignSend.findUnique({
+            where: { id: sendId },
+            include: { message: true }
+        });
+
+        if (!send) {
+            return res.status(404).json({ error: 'Gönderim bulunamadı' });
+        }
+
+        if (send.status !== 'PENDING') {
+            return res.status(400).json({ error: `Bu gönderim zaten ${send.status} durumunda` });
+        }
+
+        // Durumu SENDING olarak güncelle
+        await prisma.campaignSend.update({
+            where: { id: sendId },
+            data: { status: 'SENDING', sentAt: new Date() }
+        });
+
+        // Kampanya durumunu ACTIVE yap
+        await prisma.marketingCampaign.update({
+            where: { id: req.params.id },
+            data: { status: 'ACTIVE' }
+        });
+
+        // TODO: Kanal bazlı gönderim mantığı burada eklenecek
+        // send.message.channel === 'WHATSAPP' → mevcut bulkSend mantığı
+        // send.message.channel === 'EMAIL' → email gönderimi
+        // send.message.channel === 'CALL' → Retell arama
+
+        res.json({ success: true, status: 'SENDING', sendId });
+    } catch (error) {
+        console.error('❌ [executeMessageSend]', error);
+        res.status(500).json({ error: 'Gönderim başlatılamadı' });
+    }
+};
+
+// ─── GET campaigns/:id/messages/:msgId/sends/:sendId/recipients — Alıcı listesi
+export const getSendRecipients = async (req, res) => {
+    try {
+        const { page = 1, limit = 50 } = req.query;
+
+        const [recipients, total] = await Promise.all([
+            prisma.marketingRecipient.findMany({
+                where: { sendId: req.params.sendId },
+                orderBy: { createdAt: 'desc' },
+                skip: (parseInt(page) - 1) * parseInt(limit),
+                take: parseInt(limit)
+            }),
+            prisma.marketingRecipient.count({
+                where: { sendId: req.params.sendId }
+            })
+        ]);
+
+        res.json({ recipients, total, page: parseInt(page), limit: parseInt(limit) });
+    } catch (error) {
+        console.error('❌ [getSendRecipients]', error);
+        res.status(500).json({ error: 'Alıcılar yüklenemedi' });
+    }
+};
+
+// ─── GET campaigns/:id/stats — Kampanya toplam istatistikleri ────────────────
+export const getCampaignStats = async (req, res) => {
+    try {
+        const campaign = await prisma.marketingCampaign.findUnique({
+            where: { id: req.params.id },
+            include: {
+                messages: {
+                    include: {
+                        sends: {
+                            select: {
+                                id: true, status: true, totalCount: true,
+                                sentCount: true, deliveredCount: true,
+                                readCount: true, failedCount: true, repliedCount: true,
+                                scheduledAt: true, sentAt: true,
+                                segmentName: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!campaign) {
+            return res.status(404).json({ error: 'Kampanya bulunamadı' });
+        }
+
+        // Toplam istatistik
+        let totals = { totalCount: 0, sentCount: 0, deliveredCount: 0, readCount: 0, failedCount: 0, repliedCount: 0 };
+        let messageStats = [];
+
+        for (const msg of campaign.messages) {
+            let msgTotals = { ...totals };
+            for (const send of msg.sends) {
+                msgTotals.totalCount += send.totalCount;
+                msgTotals.sentCount += send.sentCount;
+                msgTotals.deliveredCount += send.deliveredCount;
+                msgTotals.readCount += send.readCount;
+                msgTotals.failedCount += send.failedCount;
+                msgTotals.repliedCount += send.repliedCount;
+            }
+            messageStats.push({
+                messageId: msg.id,
+                channel: msg.channel,
+                name: msg.name,
+                sendCount: msg.sends.length,
+                ...msgTotals
+            });
+            // Global toplam
+            totals.totalCount += msgTotals.totalCount;
+            totals.sentCount += msgTotals.sentCount;
+            totals.deliveredCount += msgTotals.deliveredCount;
+            totals.readCount += msgTotals.readCount;
+            totals.failedCount += msgTotals.failedCount;
+            totals.repliedCount += msgTotals.repliedCount;
+        }
+
+        res.json({
+            campaignId: campaign.id,
+            name: campaign.name,
+            status: campaign.status,
+            messageCount: campaign.messages.length,
+            totals,
+            messageStats
+        });
+    } catch (error) {
+        console.error('❌ [getCampaignStats]', error);
+        res.status(500).json({ error: 'İstatistikler yüklenemedi' });
+    }
+};

@@ -16,7 +16,16 @@ import {
     retryCampaignFailed,
     retryTemplateFailed,
     checkCampaignDuplicates,
-    getCampaignRecipients
+    getCampaignRecipients,
+    // Yeni: Kampanya > Mesaj > Gönderim
+    getCampaignMessages,
+    addCampaignMessage,
+    deleteCampaignMessage,
+    getMessageSends,
+    addMessageSend,
+    executeMessageSend,
+    getSendRecipients,
+    getCampaignStats
 } from '../controllers/marketing.controller.js';
 
 const router = express.Router();
@@ -35,7 +44,7 @@ router.get('/:workspaceId/contacts', requireWorkspaceAccess, getMarketingContact
 router.post('/:workspaceId/bulk-send', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), bulkSendTemplate);
 router.get('/:workspaceId/bulk-send-status/:jobId', requireWorkspaceAccess, getBulkSendStatus);
 
-// Campaign routes
+// Campaign routes (mevcut)
 router.get('/:workspaceId/campaigns', requireWorkspaceAccess, getCampaigns);
 router.get('/:workspaceId/campaigns/:id', requireWorkspaceAccess, getCampaignDetail);
 router.post('/:workspaceId/campaigns', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), createCampaign);
@@ -44,6 +53,19 @@ router.delete('/:workspaceId/campaigns/:id', requireWorkspaceAccess, requireRole
 router.post('/:workspaceId/campaigns/:id/retry', requireWorkspaceAccess, retryCampaignFailed);
 router.post('/:workspaceId/campaigns/:id/check-duplicates', requireWorkspaceAccess, checkCampaignDuplicates);
 router.get('/:workspaceId/campaigns/:id/recipients', requireWorkspaceAccess, getCampaignRecipients);
+
+// Yeni: Kampanya > Mesaj > Gönderim hiyerarşisi
+router.get('/:workspaceId/campaigns/:id/stats', requireWorkspaceAccess, getCampaignStats);
+router.get('/:workspaceId/campaigns/:id/messages', requireWorkspaceAccess, getCampaignMessages);
+router.post('/:workspaceId/campaigns/:id/messages', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), addCampaignMessage);
+router.delete('/:workspaceId/campaigns/:id/messages/:msgId', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN'), deleteCampaignMessage);
+router.get('/:workspaceId/campaigns/:id/messages/:msgId/sends', requireWorkspaceAccess, getMessageSends);
+router.post('/:workspaceId/campaigns/:id/messages/:msgId/sends', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), addMessageSend);
+router.post('/:workspaceId/campaigns/:id/messages/:msgId/sends/:sendId/execute', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), executeMessageSend);
+router.get('/:workspaceId/campaigns/:id/messages/:msgId/sends/:sendId/recipients', requireWorkspaceAccess, getSendRecipients);
+
+// Segments
 router.get('/:workspaceId/segments', requireWorkspaceAccess, getSegments);
 
 export default router;
+

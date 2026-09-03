@@ -1964,10 +1964,10 @@ model MarketingCampaign {
   workspaceId    String
   name           String
   description    String?
-  templateId     String?
-  status         String               @default("DRAFT") // DRAFT, SCHEDULED, SENDING, RUNNING, COMPLETED, FAILED
-  type           String               @default("BULK") // BULK, AUTOMATION, CALL
-  automationId   String? // Hangi otomasyon kuralından oluşturuldu
+  templateId     String?              // Eski: WA şablon (geriye uyumluluk)
+  status         String               @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED, FAILED
+  type           String               @default("BULK") // BULK, AUTOMATION, CALL (geriye uyumluluk)
+  automationId   String?              // Hangi otomasyon kuralından oluşturuldu
   scheduledAt    DateTime?
   sentAt         DateTime?
   totalCount     Int                  @default(0)
@@ -1981,18 +1981,82 @@ model MarketingCampaign {
   updatedAt      DateTime             @updatedAt
   workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   template       WhatsappTemplate?    @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  recipients     MarketingRecipient[]
+  recipients     MarketingRecipient[] // Geriye uyumluluk
   conversations  Conversation[]
   cases          Case[]
+  messages       CampaignMessage[]    // Yeni: kampanya mesajları
 
   @@index([workspaceId])
-  @@index([workspaceId, type])
+  @@index([workspaceId, status])
   @@map("marketing_campaigns")
+}
+
+// Kampanya Mesajı — her mesaj bir kanal + içerik
+model CampaignMessage {
+  id              String            @id @default(uuid())
+  campaignId      String
+  channel         String            // WHATSAPP, EMAIL, CALL, CUSTOM
+  name            String?           // Mesaj adı (ör: "İndirim 1")
+  // WhatsApp
+  templateId      String?           // WA şablon ID
+  templateName    String?           // WA şablon adı (snapshot)
+  // E-posta
+  emailSubject    String?
+  emailBody       String?           @db.Text
+  // AI Arama
+  retellAgentId   String?           // Retell agent ID
+  retellTemplateId String?          // RetellTemplate ID
+  // Serbest mesaj
+  content         String?           @db.Text
+  mediaUrl        String?           // Görsel/video URL
+  // Meta
+  order           Int               @default(0) // Sıralama
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  campaign        MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sends           CampaignSend[]
+
+  @@index([campaignId])
+  @@map("campaign_messages")
+}
+
+// Kampanya Gönderimi — mesaj + hedef liste + tarih
+model CampaignSend {
+  id              String            @id @default(uuid())
+  messageId       String            // CampaignMessage ID
+  // Hedef kitle
+  segmentId       String?           // Smart segment slug
+  segmentName     String?           // Segment adı (snapshot)
+  tagIds          String?           // JSON — etiket ID'leri
+  groupId         String?           // ContactGroup ID
+  filterSnapshot  String?           @db.Text // JSON — filtre snapshot
+  // Zamanlama
+  scheduledAt     DateTime?         // Planlı gönderim tarihi
+  sentAt          DateTime?         // Gerçek gönderim tarihi
+  // İstatistikler
+  status          String            @default("PENDING") // PENDING, SENDING, COMPLETED, FAILED, CANCELLED
+  totalCount      Int               @default(0)
+  sentCount       Int               @default(0)
+  deliveredCount  Int               @default(0)
+  readCount       Int               @default(0)
+  failedCount     Int               @default(0)
+  repliedCount    Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  message         CampaignMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  recipients      MarketingRecipient[]
+
+  @@index([messageId])
+  @@index([status, scheduledAt])
+  @@map("campaign_sends")
 }
 
 model MarketingRecipient {
   id          String            @id @default(uuid())
   campaignId  String
+  sendId      String?           // Yeni: CampaignSend bağlantısı
   contactId   String?
   phone       String
   name        String?
@@ -2005,8 +2069,10 @@ model MarketingRecipient {
   sentAt      DateTime?
   createdAt   DateTime          @default(now())
   campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  send        CampaignSend?     @relation(fields: [sendId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
+  @@index([sendId])
   @@index([messageId])
   @@map("marketing_recipients")
 }
