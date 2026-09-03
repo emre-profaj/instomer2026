@@ -2804,9 +2804,13 @@ export const getContactAnalytics = async (req, res) => {
         }
 
 
-        // Appointment Statistics
+        // Appointment Statistics — startTime ile filtrele (randevunun tarihi, oluşturulma tarihi değil!)
         const appointmentFilter = { workspaceId, ...(teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdById: { in: teamUserIds } }] } : {}) };
-        if (startDate || endDate) appointmentFilter.createdAt = dateFilter.createdAt;
+        if (startDate || endDate) {
+            appointmentFilter.startTime = {};
+            if (startDate) appointmentFilter.startTime.gte = parseDateStartTR(startDate);
+            if (endDate) appointmentFilter.startTime.lte = parseDateEndTR(endDate);
+        }
 
         const [
             totalAppointments,
@@ -3952,6 +3956,13 @@ export const getAgentPerformance = async (req, res) => {
             }
 
             // ── Randevu Sayısı (appointment tablosu + aşama değişikliği) ──
+            // startTime ile filtrele — randevunun planlandığı tarih, oluşturulma tarihi değil
+            const appointmentTimeFilter = {};
+            if (startDate || endDate) {
+                appointmentTimeFilter.startTime = {};
+                if (startDate) appointmentTimeFilter.startTime.gte = parseDateStartTR(startDate);
+                if (endDate) appointmentTimeFilter.startTime.lte = parseDateEndTR(endDate);
+            }
             const appointmentFromTable = await prisma.appointment.count({
                 where: {
                     workspaceId,
@@ -3959,7 +3970,7 @@ export const getAgentPerformance = async (req, res) => {
                         { assignedToId: userId },
                         { createdById: userId }
                     ],
-                    ...activityDateFilter
+                    ...appointmentTimeFilter
                 }
             });
 
@@ -5714,9 +5725,15 @@ export const getRequestReport = async (req, res) => {
             }
         }
 
-        // 4. Randevular (Appointment tablosundan)
+        // 4. Randevular (Appointment tablosundan) — startTime ile filtrele
+        const appointmentTimeFilter = (startDate || endDate) ? {
+            startTime: {
+                ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
+            }
+        } : {};
         const appointments = await prisma.appointment.findMany({
-            where: { workspaceId, ...dateFilter },
+            where: { workspaceId, ...appointmentTimeFilter },
             select: { assignedToId: true, createdById: true, contactId: true }
         });
         // Agent bazlı randevu sayısı

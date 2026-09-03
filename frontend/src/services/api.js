@@ -302,6 +302,9 @@ export const conversationAPI = {
     createInternal: (workspaceId, data) =>
         api.post(`/conversations/${workspaceId}/internal`, data),
 
+    createSystemChat: (workspaceId) =>
+        api.post(`/conversations/${workspaceId}/system-chat`),
+
     // Internal Notes
     addNote: (workspaceId, conversationId, data) => api.post(`/conversations/${workspaceId}/${conversationId}/notes`, data),
     getNotes: (workspaceId, conversationId) => api.get(`/conversations/${workspaceId}/${conversationId}/notes`),

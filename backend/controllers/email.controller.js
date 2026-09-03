@@ -534,6 +534,7 @@ export const syncEmailsInternal = async (channelId) => {
                 where: { id: conversation.id },
                 data: {
                     lastMessageAt: new Date(),
+                    lastContactMessageAt: new Date(),
                     unreadCount: { increment: 1 }
                 }
             });
@@ -1026,6 +1027,7 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                     where: { id: conversation.id },
                     data: {
                         lastMessageAt: new Date(),
+                        lastContactMessageAt: new Date(),
                         unreadCount: { increment: 1 }
                     }
                 });

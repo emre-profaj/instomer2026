@@ -1052,6 +1052,7 @@ async function processWebhookAsync(body) {
                                     where: { id: conversation.id },
                                     data: {
                                         lastMessageAt: new Date(),
+                                        lastContactMessageAt: new Date(),
                                         unreadCount: { increment: 1 },
                                         ...(hasProfanityDetected ? { botEnabled: false } : {})
                                     }
@@ -1887,7 +1888,7 @@ async function processWebhookAsync(body) {
                         where: { id: conversation.id },
                         data: {
                             lastMessageAt: new Date(),
-                            ...(isOutgoingMessage ? {} : { unreadCount: { increment: 1 } })
+                            ...(!isOutgoingMessage ? { lastContactMessageAt: new Date(), unreadCount: { increment: 1 } } : {})
                         }
                     });
 
@@ -3318,7 +3319,8 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     facebookPageId: facebookPage.id,
                     channel: 'LEAD',
                     status: 'OPEN',
-                    lastMessageAt: new Date()
+                    lastMessageAt: new Date(),
+                    lastContactMessageAt: new Date()
                 }
             });
             console.log(`✅ [LEADGEN] Conversation created: ${conversation.id}`);
@@ -3326,7 +3328,7 @@ async function handleLeadgenEvent(leadValue, entryId) {
             // Update lastMessageAt for existing conversation
             await prisma.conversation.update({
                 where: { id: conversation.id },
-                data: { lastMessageAt: new Date(), status: 'OPEN' }
+                data: { lastMessageAt: new Date(), lastContactMessageAt: new Date(), status: 'OPEN' }
             });
             console.log(`✅ [LEADGEN] Using existing conversation: ${conversation.id}`);
         }

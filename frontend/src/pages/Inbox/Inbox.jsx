@@ -425,6 +425,13 @@ const Inbox = () => {
     useEffect(() => {
         localStorage.setItem('inbox_showBulk', showBulk);
     }, [showBulk]);
+    // Sıralama: customerFirst (varsayılan — müşterinin son yazdığına göre) veya lastMessage
+    const [sortBy, setSortBy] = useState(() => {
+        try { return localStorage.getItem('inbox_sortBy') || 'customerFirst'; } catch { return 'customerFirst'; }
+    });
+    useEffect(() => {
+        localStorage.setItem('inbox_sortBy', sortBy);
+    }, [sortBy]);
     // Resolved post IDs (Facebook/Instagram comments) — persisted in localStorage per workspace
     const [resolvedPostIds, setResolvedPostIds] = useState(() => {
         try {
@@ -859,7 +866,7 @@ const Inbox = () => {
         setCurrentPage(1);
         currentPageRef.current = 1;
         loadInboxItems(true);
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered, showBulk]);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered, showBulk, sortBy]);
 
     // Debounced server-side search: when searchTerm changes, reload from API after 400ms
     useEffect(() => {
@@ -1780,6 +1787,7 @@ const Inbox = () => {
             if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
             if (hideUnanswered) params.hideUnanswered = 'true';
             if (showBulk) params.showBulk = 'true';
+            if (sortBy === 'lastMessage') params.sortBy = 'lastMessage';
 
             const response = await conversationAPI.getAll(currentWorkspace.id, params);
             const moreConversations = response.data.conversations || [];
@@ -1921,7 +1929,7 @@ const Inbox = () => {
         } finally {
             setLoadingMore(false);
         }
-    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered, showBulk]);
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered, showBulk, sortBy]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -2070,6 +2078,7 @@ const Inbox = () => {
                 if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
                 if (hideUnanswered) params.hideUnanswered = 'true';
                 if (showBulk) params.showBulk = 'true';
+                if (sortBy === 'lastMessage') params.sortBy = 'lastMessage';
 
                 // Advanced Single-Channel Push to Backend (Prevents Filter Pagination Paradox)
                 if (activeChannel) {
@@ -2312,8 +2321,14 @@ const Inbox = () => {
                 return;
             }
 
-            // Sort by date (most recent first)
-            items.sort((a, b) => b.sortDate - a.sortDate);
+            // Sort by date (most recent first), system chats always on top
+            items.sort((a, b) => {
+                // isSystemChat conversations pinned to top
+                const aSystem = a.isSystemChat ? 1 : 0;
+                const bSystem = b.isSystemChat ? 1 : 0;
+                if (aSystem !== bSystem) return bSystem - aSystem;
+                return b.sortDate - a.sortDate;
+            });
 
             setInboxItems(items);
         } catch (error) {
@@ -3693,6 +3708,17 @@ const Inbox = () => {
                                             <input type="checkbox" checked={showBulk} onChange={(e) => setShowBulk(e.target.checked)} />
                                             <span>📢 Toplu Gönderimler</span>
                                         </label>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                                            <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>📊 Sıralama:</span>
+                                            <select
+                                                value={sortBy}
+                                                onChange={(e) => setSortBy(e.target.value)}
+                                                style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#334155', background: '#fff', cursor: 'pointer' }}
+                                            >
+                                                <option value="lastMessage">Son Mesaj</option>
+                                                <option value="customerFirst">Müşteri Yanıtı</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -4114,7 +4140,8 @@ const Inbox = () => {
                                 return (
                                 <div
                                     key={`${item.inboxType}-${item.id}`}
-                                    className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${item.isStarred ? 'starred-pinned' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
+                                    className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${item.isStarred ? 'starred-pinned' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''} ${item.isSystemChat ? 'system-chat' : ''}`}
+                                    style={item.isSystemChat ? { background: 'linear-gradient(135deg, #fefce8 0%, #fef9c3 100%)', borderLeft: '3px solid #eab308' } : undefined}
                                     onClick={() => bulkSelectMode ? handleToggleSelect(item.id, !selectedItems.includes(item.id)) : handleSelectItem(item)}
                                 >
                                     {bulkSelectMode && (
@@ -4128,7 +4155,9 @@ const Inbox = () => {
                                     )}
                                     {/* Avatar + Kanal Overlay */}
                                     <div className="inbox-item-avatar">
-                                        {item.inboxType === INBOX_TYPES.COMMENT && item.full_picture ? (
+                                        {item.isSystemChat ? (
+                                            <span style={{ fontSize: 22 }}>⭐</span>
+                                        ) : item.inboxType === INBOX_TYPES.COMMENT && item.full_picture ? (
                                             <img src={item.full_picture} alt="post" className="post-thumb" />
                                         ) : (
                                             <User size={18} />
@@ -4148,9 +4177,10 @@ const Inbox = () => {
                                     <div className="inbox-item-content">
                                         {/* ── Row 1: Name + Time + Unread Count + Star ── */}
                                         <div className="inbox-item-header">
-                                            <span className="inbox-item-name">
+                                            <span className="inbox-item-name" style={item.isSystemChat ? { color: '#92400e', fontWeight: 700 } : undefined}>
                                                 {item.isStarred && <span style={{ color: '#f59e0b', marginRight: 4 }} title="Sabitlenmiş">⭐</span>}
                                                 {getItemName(item)}
+                                                {item.isSystemChat && <span style={{ fontSize: 9, color: '#b45309', marginLeft: 4, fontWeight: 600 }}>📌</span>}
                                                 {item.isArchived && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>📥</span>}
                                             </span>
                                             <div className="inbox-item-header-right">

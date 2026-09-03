@@ -356,6 +356,7 @@ export const handleWidgetChat = async (req, res) => {
             where: { id: conversation.id },
             data: {
                 lastMessageAt: new Date(),
+                lastContactMessageAt: new Date(),
                 unreadCount: { increment: 1 }
             },
             include: {
@@ -619,6 +620,7 @@ export const handlePrechat = async (req, res) => {
             where: { id: conversation.id },
             data: {
                 lastMessageAt: new Date(),
+                lastContactMessageAt: new Date(),
                 unreadCount: { increment: 1 }
             },
             include: {

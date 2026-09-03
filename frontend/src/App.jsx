@@ -63,6 +63,7 @@ import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSettings from './pages/Admin/AdminSettings';
 import AdminActivityLog from './pages/Admin/AdminActivityLog';
 import AdminFlowTemplates from './pages/Admin/AdminFlowTemplates';
+import AdminMessages from './pages/Admin/AdminMessages';
 
 function App() {
   return (
@@ -84,6 +85,7 @@ function App() {
               <Route path="settings" element={<AdminSettings />} />
               <Route path="activity-log" element={<AdminActivityLog />} />
               <Route path="flow-templates" element={<AdminFlowTemplates />} />
+              <Route path="messages" element={<AdminMessages />} />
               <Route path="company/:companyId" element={<AdminDashboard />} />
               <Route path="company/:companyId/workspace/:workspaceId" element={<AdminDashboard />} />
               <Route path="workspace/:workspaceId" element={<AdminDashboard />} />

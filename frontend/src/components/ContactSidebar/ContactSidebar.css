@@ -24,7 +24,14 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 6px 8px;
-    padding-bottom: 80px;
+    padding-bottom: 10px;
+}
+
+.sidebar-action-footer {
+    flex-shrink: 0;
+    padding: 6px 8px 8px;
+    border-top: 1px solid #e5e7eb;
+    background: #fafbfc;
 }
 
 /* Profile Header — horizontal centered */

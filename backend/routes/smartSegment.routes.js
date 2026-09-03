@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.js';
-import { getSegmentList, getSegmentGroups, getSegmentCount, buildSegmentWhere } from '../services/smartSegment.service.js';
+import { getSegmentList, getSegmentGroups, getSegmentCount, buildSegmentWhere, evaluateContactSegment } from '../services/smartSegment.service.js';
 import prisma from '../lib/prisma.js';
 
 const router = express.Router();
@@ -143,6 +143,28 @@ router.get('/:workspaceId/segments/:segmentId/contacts', requireWorkspaceAccess,
   } catch (error) {
     console.error(`📊 [SmartSegment] Error fetching contacts for ${req.params.segmentId}:`, error.message);
     res.status(500).json({ error: 'Failed to fetch segment contacts' });
+  }
+});
+
+// GET /:workspaceId/segments/contact/:contactId — Kişinin dahil olduğu segmentler
+router.get('/:workspaceId/segments/contact/:contactId', requireWorkspaceAccess, async (req, res) => {
+  try {
+    const { workspaceId, contactId } = req.params;
+    const segments = getSegmentList();
+    
+    const results = await Promise.all(
+      segments.map(async (segment) => {
+        try {
+          const matches = await evaluateContactSegment(contactId, segment.id, workspaceId);
+          return matches ? { id: segment.id, label: segment.label, icon: segment.icon } : null;
+        } catch { return null; }
+      })
+    );
+    
+    res.json({ segments: results.filter(Boolean) });
+  } catch (error) {
+    console.error('📊 [SmartSegment] Error matching contact segments:', error.message);
+    res.status(500).json({ error: 'Failed to match contact segments' });
   }
 });
 

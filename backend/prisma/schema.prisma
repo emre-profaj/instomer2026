@@ -512,6 +512,7 @@ model Conversation {
 
   // Inbox & Marketing
   isBulkSend           Boolean            @default(false)
+  isSystemChat         Boolean            @default(false) // Instomer sistem duyuruları — inbox'ta en üstte sabitlenir
   campaignId           String?
   campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id])
   lastContactMessageAt DateTime?
@@ -2233,4 +2234,18 @@ model ScheduledMessage {
   @@index([workspaceId])
   @@index([workspaceId, botId])
   @@map("scheduled_messages")
+}
+
+// Sistem duyuruları — SUPER_ADMIN tarafından tüm workspace'lere yayınlanan mesajlar
+model SystemAnnouncement {
+  id        String   @id @default(uuid())
+  title     String   // Duyuru başlığı
+  message   String   @db.Text // Duyuru içeriği
+  type      String   @default("UPDATE") // UPDATE, IMPROVEMENT, MAINTENANCE, INFO
+  isActive  Boolean  @default(true)
+  createdBy String   // SUPER_ADMIN user ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_announcements")
 }

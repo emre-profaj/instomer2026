@@ -117,6 +117,33 @@ const TeamChat = ({ isCollapsed }) => {
             {/* Expandable member list */}
             {isOpen && (
                 <div className="team-panel-list">
+                    {/* ⭐ Instomer Destek — her zaman en üstte */}
+                    <button
+                        className="team-panel-member"
+                        onClick={async () => {
+                            try {
+                                const res = await conversationAPI.createSystemChat(currentWorkspace.id);
+                                const convId = res.data?.id || res.id;
+                                if (window.location.pathname === '/inbox') {
+                                    navigate(`/inbox?conversationId=${convId}`, { replace: true });
+                                } else {
+                                    navigate(`/inbox?conversationId=${convId}`);
+                                }
+                            } catch (e) {
+                                console.error('Failed to open Instomer chat', e);
+                            }
+                            setIsOpen(false);
+                        }}
+                        title="Instomer'a mesaj gönder"
+                        style={{ borderBottom: '1px solid #f3f4f6' }}
+                    >
+                        <div className="team-panel-avatar">
+                            <span className="team-panel-avatar-letter" style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color: '#fff', fontSize: 14 }}>⭐</span>
+                            <span className="team-panel-status online" />
+                        </div>
+                        <span className="team-panel-name" style={{ fontWeight: 600, color: '#92400e' }}>Instomer</span>
+                    </button>
+
                     {sortedMembers.map(m => (
                         <button
                             key={m.userId}

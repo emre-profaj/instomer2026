@@ -14,7 +14,8 @@ import {
     Settings,
     Search,
     History,
-    GitBranch
+    GitBranch,
+    MessageSquare
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -74,6 +75,11 @@ const AdminLayout = () => {
             path: '/admin',
             icon: <Building2 size={20} />,
             label: 'Firmalar'
+        },
+        {
+            path: '/admin/messages',
+            icon: <MessageSquare size={20} />,
+            label: 'Mesajlar'
         },
         {
             path: '/admin/settings',

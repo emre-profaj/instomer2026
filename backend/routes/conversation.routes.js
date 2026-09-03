@@ -31,7 +31,8 @@ import {
     archiveConversation,
     unarchiveConversation,
     createInternalConversation,
-    toggleStarConversation
+    toggleStarConversation,
+    getOrCreateSystemChat
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -50,6 +51,9 @@ router.post('/:workspaceId/manual', requireWorkspaceAccess, createManualConversa
 
 // Internal Agent Chat
 router.post('/:workspaceId/internal', requireWorkspaceAccess, createInternalConversation);
+
+// Instomer Sistem Sohbeti — her workspace'te tek bir "Instomer" chat
+router.post('/:workspaceId/system-chat', requireWorkspaceAccess, getOrCreateSystemChat);
 
 // Get unread count for workspace (messages only: Facebook, Instagram, WhatsApp)
 // IMPORTANT: Must be before /:workspaceId/:conversationId to avoid "unread-count" being treated as conversationId

@@ -49,8 +49,8 @@ export const getConversations = async (req, res) => {
             // Keep contactStatus check just in case legacy calls use it
             ...(contactStatus && { contact: { status: contactStatus } }),
             ...(req.query.showArchived !== 'true' && { isArchived: false }),
-            // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle
-            ...(req.query.showBulk !== 'true' && { isBulkSend: false }),
+            // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle (sistem sohbetleri hariç)
+            ...(req.query.showBulk !== 'true' && { OR: [{ isBulkSend: false }, { isSystemChat: true }] }),
             // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
             ...(req.query.hideUnanswered === 'true' && {
                 messages: { some: { isFromContact: true } }
@@ -875,36 +875,44 @@ export const sendMessage = async (req, res) => {
         }
 
         // Update conversation last message time AND pause bot temporarily (15 min)
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: {
-                lastMessageAt: new Date(),
-                // 🟡 Agent yazdığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
-                botPausedUntil: new Date(Date.now() + 15 * 60 * 1000),
-                botDelayedUntil: null,
-                assignedToId: req.user.id // Otomatik olarak bu kullanıcıya ata
+        // Sistem sohbetlerinde bot/AI işlemleri gereksiz
+        if (conversation.isSystemChat) {
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { lastMessageAt: new Date() }
+            });
+        } else {
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: {
+                    lastMessageAt: new Date(),
+                    // 🟡 Agent yazdığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
+                    botPausedUntil: new Date(Date.now() + 15 * 60 * 1000),
+                    botDelayedUntil: null,
+                    assignedToId: req.user.id // Otomatik olarak bu kullanıcıya ata
+                }
+            });
+
+            console.log(`🟡 [SendMessage] User ${req.user.name} sent message, bot PAUSED 15min for conversation ${conversationId}`);
+
+            // --- AUTO EXTRACT START ---
+            try {
+                const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
+                autoExtractFromConversation(conversation.workspaceId, conversationId);
+                autoGenerateTopic(conversation.workspaceId, conversationId, content).catch(e =>
+                    console.error('❌ [AutoTopic] Dashboard error:', e.message)
+                );
+
+                // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+                const { ensureCaseForConversation } = await import('./case.controller.js');
+                ensureCaseForConversation(conversation.workspaceId, conversationId).catch(e =>
+                    console.error('⚠️ [AutoCase] Dashboard error:', e.message)
+                );
+            } catch (extractError) {
+                console.error('❌ AI Auto-Extract (Dashboard) failed:', extractError);
             }
-        });
-
-        console.log(`🟡 [SendMessage] User ${req.user.name} sent message, bot PAUSED 15min for conversation ${conversationId}`);
-
-        // --- AUTO EXTRACT START ---
-        try {
-            const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
-            autoExtractFromConversation(conversation.workspaceId, conversationId);
-            autoGenerateTopic(conversation.workspaceId, conversationId, content).catch(e =>
-                console.error('❌ [AutoTopic] Dashboard error:', e.message)
-            );
-
-            // 📦 AUTO-CASE: Conversation için case yoksa oluştur
-            const { ensureCaseForConversation } = await import('./case.controller.js');
-            ensureCaseForConversation(conversation.workspaceId, conversationId).catch(e =>
-                console.error('⚠️ [AutoCase] Dashboard error:', e.message)
-            );
-        } catch (extractError) {
-            console.error('❌ AI Auto-Extract (Dashboard) failed:', extractError);
+            // --- AUTO EXTRACT END ---
         }
-        // --- AUTO EXTRACT END ---
 
         // Get the latest message state (with updated status, messageId, etc.)
         const updatedMessage = await prisma.message.findUnique({
@@ -932,6 +940,51 @@ export const sendMessage = async (req, res) => {
             console.log(`📡 [SendMessage] WebSocket event emitted for conversation ${conversationId}`);
         } catch (socketError) {
             console.error('❌ WebSocket emit error:', socketError);
+        }
+
+        // ── Sistem sohbetine yanıt → SUPER_ADMIN'lere bildir ──
+        if (conversation.isSystemChat) {
+            try {
+                const workspace = await prisma.workspace.findUnique({ where: { id: conversation.workspaceId }, select: { name: true } });
+                const superAdmins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
+
+                for (const admin of superAdmins) {
+                    // Bildirim kaydı oluştur
+                    await prisma.notification.create({
+                        data: {
+                            userId: admin.id,
+                            workspaceId: conversation.workspaceId,
+                            type: 'SYSTEM_REPLY',
+                            title: `💬 ${workspace?.name || 'Workspace'} — ${req.user?.name || 'Kullanıcı'}`,
+                            body: (content || '').substring(0, 200),
+                            data: JSON.stringify({
+                                conversationId,
+                                workspaceId: conversation.workspaceId,
+                                workspaceName: workspace?.name,
+                                senderName: req.user?.name,
+                                senderEmail: req.user?.email,
+                            }),
+                        }
+                    });
+
+                    // Socket ile anlık bildirim
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.emit('system_chat_reply', {
+                            adminUserId: admin.id,
+                            workspaceName: workspace?.name,
+                            senderName: req.user?.name,
+                            preview: (content || '').substring(0, 100),
+                            conversationId,
+                            workspaceId: conversation.workspaceId,
+                            createdAt: new Date()
+                        });
+                    }
+                }
+                console.log(`📢 [SystemChat] Reply forwarded to ${superAdmins.length} SUPER_ADMINs`);
+            } catch (sysErr) {
+                console.error('❌ [SystemChat] Forward to admin error:', sysErr.message);
+            }
         }
 
         res.status(201).json({ message: updatedMessage });
@@ -3829,6 +3882,86 @@ export const unarchiveConversation = async (req, res) => {
     } catch (error) {
         console.error('Unarchive conversation error:', error);
         res.status(500).json({ message: 'Arşivden çıkarma hatası' });
+    }
+};
+
+// ══════════════════════════════════════════════════════════
+// GET/CREATE Instomer Sistem Sohbeti — workspace bazında
+// Her workspace'te tek bir "Instomer" internal chat olur
+// ══════════════════════════════════════════════════════════
+export const getOrCreateSystemChat = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        // Mevcut sistem sohbetini ara
+        let conv = await prisma.conversation.findFirst({
+            where: {
+                workspaceId,
+                isInternalChat: true,
+                isSystemChat: true,
+                channel: 'SYSTEM'
+            },
+            include: {
+                messages: { take: 1, orderBy: { createdAt: 'desc' } }
+            }
+        });
+
+        if (conv) return res.json(conv);
+
+        // Yoksa oluştur
+        // 1. Sistem kontağını bul/oluştur
+        let systemContact = await prisma.contact.findFirst({
+            where: { workspaceId, source: 'SYSTEM', name: 'Instomer Sistem' }
+        });
+
+        if (!systemContact) {
+            systemContact = await prisma.contact.create({
+                data: {
+                    workspaceId,
+                    name: 'Instomer',
+                    fullName: 'Instomer Destek',
+                    source: 'SYSTEM',
+                    category: 'PARTNER',
+                    email: 'destek@instomer.com',
+                    tags: JSON.stringify(['sistem']),
+                }
+            });
+        }
+
+        // 2. Sohbeti oluştur
+        conv = await prisma.conversation.create({
+            data: {
+                workspaceId,
+                contactId: systemContact.id,
+                channel: 'SYSTEM',
+                isInternalChat: true,
+                isSystemChat: true,
+                participantIds: JSON.stringify(['SYSTEM']),
+                status: 'OPEN',
+                botEnabled: false,
+                lastMessageAt: new Date(),
+            }
+        });
+
+        // Hoş geldin mesajı
+        await prisma.message.create({
+            data: {
+                conversationId: conv.id,
+                content: '👋 Merhaba! Ben Instomer destek hattı.\n\nBuradan bize ulaşabilir, hata bildiriminde bulunabilir veya öneri paylaşabilirsiniz.\n\nSistem güncellemeleri ve duyurular da buradan gelecektir.',
+                isFromContact: true,
+                type: 'TEXT',
+            }
+        });
+
+        const result = await prisma.conversation.findUnique({
+            where: { id: conv.id },
+            include: { messages: { take: 1, orderBy: { createdAt: 'desc' } } }
+        });
+
+        return res.status(201).json(result);
+    } catch (error) {
+        console.error('getOrCreateSystemChat error:', error);
+        res.status(500).json({ error: 'Sistem sohbeti oluşturulamadı' });
     }
 };
 

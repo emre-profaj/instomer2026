@@ -202,6 +202,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [notesExpanded, setNotesExpanded] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState({});
     const [isEditingName, setIsEditingName] = useState(false);
+    const [isEditingFullName, setIsEditingFullName] = useState(false);
+    const [isEditingCompany, setIsEditingCompany] = useState(false);
+    const [contactSegments, setContactSegments] = useState([]);
     const [funnelStage, setFunnelStage] = useState(null); // { name, color } of the current funnel stage
     const [activeCaseInfo, setActiveCaseInfo] = useState(null); // { caseNumber, caseId, title } from CaseCards
     const [allCases, setAllCases] = useState([]); // all cases for this contact
@@ -411,6 +414,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         import('../../services/api').then(({ default: api }) => {
             api.get(`/contact-groups/${currentWorkspace.id}/contacts/${profile.id}/groups`)
                 .then(res => setContactGroups((res.data.groups || []).map(g => g.id)))
+                .catch(() => {});
+        });
+    }, [isOpen, profile?.id, currentWorkspace?.id]);
+
+    // Kişinin dahil olduğu akıllı segmentleri yükle
+    useEffect(() => {
+        if (!isOpen || !profile?.id || !currentWorkspace?.id) return;
+        setContactSegments([]);
+        import('../../services/api').then(({ default: api }) => {
+            api.get(`/smart-segments/${currentWorkspace.id}/segments/contact/${profile.id}`)
+                .then(res => setContactSegments(res.data.segments || []))
                 .catch(() => {});
         });
     }, [isOpen, profile?.id, currentWorkspace?.id]);
@@ -1640,6 +1654,61 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </h2>
                                         )}
                                     </div>
+                                    {/* İkinci Ad (Soyad) & Firma — sadece doluysa veya edit modunda göster */}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, justifyContent: 'center', padding: '0 8px' }}>
+                                        {(profile.fullName || isEditingFullName) ? (
+                                            isEditingFullName ? (
+                                                <input
+                                                    type="text"
+                                                    value={profile.fullName || ''}
+                                                    onChange={(e) => setProfile(prev => ({ ...prev, fullName: e.target.value }))}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); else if (e.key === 'Escape') setIsEditingFullName(false); }}
+                                                    onBlur={async () => {
+                                                        setIsEditingFullName(false);
+                                                        const trimmed = (profile.fullName || '').trim();
+                                                        try { await contactAPI.update(currentWorkspace.id, profile.id, { fullName: trimmed || null }); } catch {}
+                                                    }}
+                                                    placeholder="Soyad"
+                                                    autoFocus
+                                                    style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', width: 100, textAlign: 'center' }}
+                                                />
+                                            ) : (
+                                                <span
+                                                    onClick={() => !readOnly && setIsEditingFullName(true)}
+                                                    title="Soyadı düzenle"
+                                                    style={{ fontSize: 12, color: '#64748b', cursor: readOnly ? 'default' : 'pointer', fontWeight: 500 }}
+                                                >{profile.fullName}</span>
+                                            )
+                                        ) : (
+                                            !readOnly && <button onClick={() => setIsEditingFullName(true)} style={{ fontSize: 10, color: '#94a3b8', background: 'none', border: '1px dashed #d1d5db', borderRadius: 12, padding: '1px 8px', cursor: 'pointer' }}>+ Soyad</button>
+                                        )}
+                                        {(profile.company || isEditingCompany) ? (
+                                            isEditingCompany ? (
+                                                <input
+                                                    type="text"
+                                                    value={profile.company || ''}
+                                                    onChange={(e) => setProfile(prev => ({ ...prev, company: e.target.value }))}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); else if (e.key === 'Escape') setIsEditingCompany(false); }}
+                                                    onBlur={async () => {
+                                                        setIsEditingCompany(false);
+                                                        const trimmed = (profile.company || '').trim();
+                                                        try { await contactAPI.update(currentWorkspace.id, profile.id, { company: trimmed || null }); } catch {}
+                                                    }}
+                                                    placeholder="Firma adı"
+                                                    autoFocus
+                                                    style={{ fontSize: 12, padding: '2px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#475569', width: 120, textAlign: 'center' }}
+                                                />
+                                            ) : (
+                                                <span
+                                                    onClick={() => !readOnly && setIsEditingCompany(true)}
+                                                    title="Firma adını düzenle"
+                                                    style={{ fontSize: 12, color: '#3b82f6', cursor: readOnly ? 'default' : 'pointer', fontWeight: 500, background: '#eff6ff', padding: '1px 8px', borderRadius: 12 }}
+                                                >🏢 {profile.company}</span>
+                                            )
+                                        ) : (
+                                            !readOnly && <button onClick={() => setIsEditingCompany(true)} style={{ fontSize: 10, color: '#94a3b8', background: 'none', border: '1px dashed #d1d5db', borderRadius: 12, padding: '1px 8px', cursor: 'pointer' }}>+ Firma</button>
+                                        )}
+                                    </div>
                                     <div className="unified-details">
                                         <div className="unified-contact-box">
                                             <div className="unified-contact-list">
@@ -1913,126 +1982,82 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 )}
                                             </div>
 
-                                            {/* Attribution Card */}
-                                            {attributions.length > 0 && (
-                                            <div style={{
-                                                margin: '0 16px 12px 16px', padding: '12px 16px',
-                                                background: '#ffffff',
-                                                borderRadius: '12px', border: '1px solid #e2e8f0'
-                                            }}>
-                                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                                🌐 Kaynak (Attribution)
-                                                </div>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* ── Birleşik Pill Alanı: Kaynak + Nereden + Gruplar + Segmentler ── */}
+                                            <div className="unified-tags-row" style={{ borderTop: '1px solid #f3f4f6', paddingTop: 4 }}>
+                                                {/* Attribution pills — mavi */}
                                                 {attributions.map((attr, idx) => (
-                                                    <div key={idx} style={{ fontSize: '13px', color: '#334155' }}>
-                                                    <div style={{ fontWeight: 600 }}>{attr.source} {attr.medium ? ` / ${attr.medium}` : ''}</div>
-                                                    {attr.campaign && <div style={{ fontSize: '11px', color: '#64748b' }}>Kampanya: {attr.campaign}</div>}
+                                                    <div key={`attr-${idx}`} className="unified-tag" style={{ background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd40' }}>
+                                                        <span style={{ fontSize: 10 }}>🌐</span>
+                                                        <span>{attr.source}{attr.medium ? ` / ${attr.medium}` : ''}</span>
                                                     </div>
                                                 ))}
-                                                </div>
-                                            </div>
-                                            )}
 
-                                            {/* Lead Source — Düzenlenebilir */}
-                                            <div style={{
-                                                margin: '0 16px 12px 16px', padding: '12px 16px',
-                                                background: '#ffffff',
-                                                borderRadius: '12px', border: '1px solid #e2e8f0'
-                                            }}>
-                                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                                📍 Bizi Nereden Buldunuz?
-                                                </div>
-                                                <select
-                                                    value={profile?.leadSource || ''}
-                                                    onChange={async (e) => {
-                                                        const val = e.target.value;
-                                                        setProfile(prev => ({ ...prev, leadSource: val }));
-                                                        try {
-                                                            await contactAPI.update(conversationData?.workspaceId || profile?.workspaceId, profile.id, { leadSource: val || null });
-                                                        } catch (err) { console.error(err); }
-                                                    }}
-                                                    style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, color: '#334155', background: '#f8fafc' }}
-                                                >
-                                                    <option value="">Seçilmedi</option>
-                                                    <option value="INBOUND">📞 Gelen Arama</option>
-                                                    <option value="SOCIAL_MEDIA">📱 Sosyal Medya</option>
-                                                    <option value="FACEBOOK">📘 Facebook</option>
-                                                    <option value="INSTAGRAM">📸 Instagram</option>
-                                                    <option value="GOOGLE">🔍 Google</option>
-                                                    <option value="REFERRAL">🤝 Referans</option>
-                                                    <option value="WEBSITE">🌐 Web Sitesi</option>
-                                                    <option value="WALK_IN">🚶 Yüz Yüze</option>
-                                                    <option value="EVENT">🎪 Etkinlik/Fuar</option>
-                                                    <option value="OTHER">📋 Diğer</option>
-                                                </select>
-                                                {profile?.leadSource && (
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Detay (opsiyonel)"
-                                                        value={profile?.leadSourceDetail || ''}
-                                                        onChange={(e) => setProfile(prev => ({ ...prev, leadSourceDetail: e.target.value }))}
-                                                        onBlur={async (e) => {
-                                                            try {
-                                                                await contactAPI.update(conversationData?.workspaceId || profile?.workspaceId, profile.id, { leadSourceDetail: e.target.value || null });
-                                                            } catch (err) { console.error(err); }
-                                                        }}
-                                                        style={{ width: '100%', marginTop: 6, padding: '5px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 11, color: '#475569' }}
-                                                    />
-                                                )}
-                                            </div>
-                                            {/* Grup Seçimi */}
-                                            {allGroups.length > 0 && (
-                                                <div style={{ padding: '6px 0 8px', borderBottom: '1px solid #f3f4f6' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                                                        <Users size={12} color="#9ca3af" />
-                                                        <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>Gruplar</span>
+                                                {/* Lead Source — amber pill (tıklanınca dropdown) */}
+                                                {profile?.leadSource ? (
+                                                    <div className="unified-tag" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d40', cursor: 'pointer', position: 'relative' }}>
+                                                        <span style={{ fontSize: 10 }}>📍</span>
+                                                        <select
+                                                            value={profile?.leadSource || ''}
+                                                            onChange={async (e) => {
+                                                                const val = e.target.value;
+                                                                setProfile(prev => ({ ...prev, leadSource: val }));
+                                                                try { await contactAPI.update(conversationData?.workspaceId || profile?.workspaceId, profile.id, { leadSource: val || null }); } catch {}
+                                                            }}
+                                                            style={{ appearance: 'none', background: 'transparent', border: 'none', color: 'inherit', fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: 0, outline: 'none' }}
+                                                        >
+                                                            <option value="">Seçilmedi</option>
+                                                            <option value="INBOUND">Gelen Arama</option>
+                                                            <option value="SOCIAL_MEDIA">Sosyal Medya</option>
+                                                            <option value="FACEBOOK">Facebook</option>
+                                                            <option value="INSTAGRAM">Instagram</option>
+                                                            <option value="GOOGLE">Google</option>
+                                                            <option value="REFERRAL">Referans</option>
+                                                            <option value="WEBSITE">Web Sitesi</option>
+                                                            <option value="WALK_IN">Yüz Yüze</option>
+                                                            <option value="EVENT">Etkinlik/Fuar</option>
+                                                            <option value="OTHER">Diğer</option>
+                                                        </select>
                                                     </div>
+                                                ) : (
+                                                    <select
+                                                        value=""
+                                                        onChange={async (e) => {
+                                                            const val = e.target.value;
+                                                            if (!val) return;
+                                                            setProfile(prev => ({ ...prev, leadSource: val }));
+                                                            try { await contactAPI.update(conversationData?.workspaceId || profile?.workspaceId, profile.id, { leadSource: val }); } catch {}
+                                                        }}
+                                                        style={{ appearance: 'none', background: 'transparent', border: '1px dashed #d1d5db', borderRadius: 20, color: '#9ca3af', fontSize: 10, padding: '2px 8px', cursor: 'pointer', outline: 'none' }}
+                                                    >
+                                                        <option value="">📍 Nereden?</option>
+                                                        <option value="INBOUND">Gelen Arama</option>
+                                                        <option value="SOCIAL_MEDIA">Sosyal Medya</option>
+                                                        <option value="FACEBOOK">Facebook</option>
+                                                        <option value="INSTAGRAM">Instagram</option>
+                                                        <option value="GOOGLE">Google</option>
+                                                        <option value="REFERRAL">Referans</option>
+                                                        <option value="WEBSITE">Web Sitesi</option>
+                                                        <option value="WALK_IN">Yüz Yüze</option>
+                                                        <option value="EVENT">Etkinlik/Fuar</option>
+                                                        <option value="OTHER">Diğer</option>
+                                                    </select>
+                                                )}
 
-                                                    {/* Seçili gruplar — tag olarak */}
-                                                    {contactGroups.length > 0 && (
-                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-                                                            {contactGroups.map(gid => {
-                                                                const g = allGroups.find(x => x.id === gid);
-                                                                if (!g) return null;
-                                                                return (
-                                                                    <span key={gid} style={{
-                                                                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                                        background: (g.color || '#6366f1') + '18',
-                                                                        color: g.color || '#6366f1',
-                                                                        border: `1px solid ${(g.color || '#6366f1')}40`,
-                                                                        borderRadius: 20, padding: '2px 8px 2px 10px',
-                                                                        fontSize: 11, fontWeight: 500,
-                                                                    }}>
-                                                                        {g.name}
-                                                                        <button
-                                                                            disabled={groupSaving}
-                                                                            onClick={async () => {
-                                                                                setGroupSaving(true);
-                                                                                try {
-                                                                                    const { default: api } = await import('../../services/api');
-                                                                                    await api.delete(`/contact-groups/${currentWorkspace.id}/groups/${gid}/members/${profile.id}`);
-                                                                                    setContactGroups(prev => prev.filter(id => id !== gid));
-                                                                                } catch (err) {
-                                                                                    console.error(err);
-                                                                                } finally {
-                                                                                    setGroupSaving(false);
-                                                                                }
-                                                                            }}
-                                                                            style={{
-                                                                                background: 'none', border: 'none', cursor: 'pointer',
-                                                                                color: 'inherit', opacity: 0.7, padding: 0,
-                                                                                display: 'flex', alignItems: 'center', lineHeight: 1,
-                                                                                fontSize: 13, fontWeight: 700,
-                                                                            }}
-                                                                        >×</button>
-                                                                    </span>
-                                                                );
-                                                            })}
+                                                {/* Grup pills — indigo */}
+                                                {contactGroups.map(gid => {
+                                                    const g = allGroups.find(x => x.id === gid);
+                                                    if (!g) return null;
+                                                    return (
+                                                        <div key={`grp-${gid}`} className="unified-tag" style={{ background: (g.color || '#6366f1') + '18', color: g.color || '#6366f1', border: `1px solid ${(g.color || '#6366f1')}40` }}>
+                                                            <Users size={10} />
+                                                            <span>{g.name}</span>
+                                                            <button disabled={groupSaving} onClick={async (e) => { e.stopPropagation(); setGroupSaving(true); try { const { default: api } = await import('../../services/api'); await api.delete(`/contact-groups/${currentWorkspace.id}/groups/${gid}/members/${profile.id}`); setContactGroups(prev => prev.filter(id => id !== gid)); } catch {} finally { setGroupSaving(false); } }} className="remove-tag-btn"><X size={10} /></button>
                                                         </div>
-                                                    )}
+                                                    );
+                                                })}
 
-                                                    {/* Grup ekle dropdown */}
+                                                {/* Grup ekle — mini pill dropdown */}
+                                                {allGroups.length > 0 && allGroups.filter(g => !contactGroups.includes(g.id)).length > 0 && (
                                                     <select
                                                         value=""
                                                         disabled={groupSaving}
@@ -2040,40 +2065,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             const gid = e.target.value;
                                                             if (!gid || contactGroups.includes(gid)) return;
                                                             setGroupSaving(true);
-                                                            try {
-                                                                const { default: api } = await import('../../services/api');
-                                                                await api.post(`/contact-groups/${currentWorkspace.id}/groups/${gid}/members`, { contactIds: [profile.id] });
-                                                                setContactGroups(prev => [...prev, gid]);
-                                                            } catch (err) {
-                                                                console.error(err);
-                                                            } finally {
-                                                                setGroupSaving(false);
-                                                            }
+                                                            try { const { default: api } = await import('../../services/api'); await api.post(`/contact-groups/${currentWorkspace.id}/groups/${gid}/members`, { contactIds: [profile.id] }); setContactGroups(prev => [...prev, gid]); } catch {} finally { setGroupSaving(false); }
                                                         }}
-                                                        style={{
-                                                            width: '100%',
-                                                            border: '1.5px solid #e5e7eb',
-                                                            borderRadius: 8,
-                                                            fontSize: 12,
-                                                            color: contactGroups.length === allGroups.length ? '#d1d5db' : '#374151',
-                                                            background: groupSaving ? '#f9fafb' : '#fff',
-                                                            outline: 'none',
-                                                            padding: '6px 8px',
-                                                            cursor: groupSaving ? 'not-allowed' : 'pointer',
-                                                            fontFamily: 'inherit',
-                                                            appearance: 'auto',
-                                                        }}
+                                                        style={{ appearance: 'none', background: 'transparent', border: '1px dashed #d1d5db', borderRadius: 20, color: '#9ca3af', fontSize: 10, padding: '2px 8px', cursor: 'pointer', outline: 'none' }}
                                                     >
-                                                        <option value="">+ Gruba ekle...</option>
-                                                        {allGroups
-                                                            .filter(g => !contactGroups.includes(g.id))
-                                                            .map(g => (
-                                                                <option key={g.id} value={g.id}>{g.name}</option>
-                                                            ))
-                                                        }
+                                                        <option value="">👥 Grup+</option>
+                                                        {allGroups.filter(g => !contactGroups.includes(g.id)).map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}
                                                     </select>
-                                                </div>
-                                            )}
+                                                )}
+
+                                                {/* Segment pills — yeşil */}
+                                                {contactSegments.map(seg => (
+                                                    <div key={`seg-${seg.id}`} className="unified-tag" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d040' }}>
+                                                        <span style={{ fontSize: 10 }}>{seg.icon}</span>
+                                                        <span>{seg.label}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
 
                                             {/* Location / Language Row */}
                                             <div className="unified-location-row">
@@ -2139,62 +2147,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     </div>
                                 </div>
                             </div>
-
-
-                            {/* ACTION BUTTONS — Row 1: Aktiviteler */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 0 2px' }}>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
-                                    <span style={{ position: 'relative', display: 'inline-flex', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                        <PhoneCall size={17} style={{ color: '#374151' }} />
-                                        <span style={{
-                                            position: 'absolute', bottom: -3, right: -2,
-                                            width: 14, height: 14, borderRadius: '50%',
-                                            background: '#10b981', display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center',
-                                            boxShadow: '0 0 0 2px #fff'
-                                        }}>
-                                            <Check size={9} strokeWidth={3} style={{ color: '#fff' }} />
-                                        </span>
-                                        <StickyNote size={10} style={{
-                                            position: 'absolute', top: -3, left: -2,
-                                            color: '#f59e0b'
-                                        }} />
-                                    </span>
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
-                                    <PhoneCall size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Planla</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('MEETING')}>
-                                    <CalendarDays size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görüşme{' '}Planla</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('REMINDER')}>
-                                    <Bell size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görev{' '}Hatırlatıcı</span>
-                                </button>
-                            </div>
-                            {/* ACTION BUTTONS — Row 2: Satış */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 0 8px' }}>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={openQuoteFormHandler}>
-                                    <FileText size={18} style={{ color: '#10b981' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={openOrderFormHandler}>
-                                    <TrendingUp size={18} style={{ color: '#3b82f6' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={openInvoiceFormHandler}>
-                                    <FileText size={18} style={{ color: '#8b5cf6' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('PAYMENT')}>
-                                    <Banknote size={18} style={{ color: '#f59e0b' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Tahsilat</span>
-                                </button>
-                            </div>
-
 
 
                             {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
@@ -4978,6 +4930,53 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                         </>
                     ) : null}
                 </div>
+                {/* ═══ STICKY FOOTER — Aktivite & Satış Butonları ═══ */}
+                {profile && (
+                    <div className="sidebar-action-footer">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px' }}>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('NOTE')}>
+                                <span style={{ position: 'relative', display: 'inline-flex', width: 24, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                    <PhoneCall size={15} style={{ color: '#374151' }} />
+                                    <span style={{ position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 1.5px #fff' }}>
+                                        <Check size={7} strokeWidth={3} style={{ color: '#fff' }} />
+                                    </span>
+                                    <StickyNote size={8} style={{ position: 'absolute', top: -2, left: -1, color: '#f59e0b' }} />
+                                </span>
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.1 }}>Arama Notu</span>
+                            </button>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('CALL')}>
+                                <PhoneCall size={15} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.1 }}>Arama Planla</span>
+                            </button>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('MEETING')}>
+                                <CalendarDays size={15} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.1 }}>Görüşme Planla</span>
+                            </button>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('REMINDER')}>
+                                <Bell size={15} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.1 }}>Hatırlatıcı</span>
+                            </button>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px' }}>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={openQuoteFormHandler}>
+                                <FileText size={15} style={{ color: '#10b981' }} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
+                            </button>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={openOrderFormHandler}>
+                                <TrendingUp size={15} style={{ color: '#3b82f6' }} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
+                            </button>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={openInvoiceFormHandler}>
+                                <FileText size={15} style={{ color: '#8b5cf6' }} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
+                            </button>
+                            <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('PAYMENT')}>
+                                <Banknote size={15} style={{ color: '#f59e0b' }} />
+                                <span style={{ fontSize: '0.55rem', color: '#6b7280', fontWeight: 500 }}>Tahsilat</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Call Popup Modal */}
