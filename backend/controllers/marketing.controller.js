@@ -980,19 +980,24 @@ export const createCampaign = async (req, res) => {
         const { workspaceId } = req.params;
         const { name, description, templateId, scheduledAt } = req.body;
 
-        if (!name || !templateId) {
-            return res.status(400).json({ error: 'Kampanya adı ve şablon zorunludur' });
+        if (!name) {
+            return res.status(400).json({ error: 'Kampanya adı zorunludur' });
         }
 
-        const template = await prisma.whatsappTemplate.findFirst({ where: { id: templateId, workspaceId } });
-        if (!template) return res.status(404).json({ error: 'Şablon bulunamadı' });
+        // templateId opsiyonel (yeni sistem: mesaj seviyesinde seçilir)
+        let validTemplateId = null;
+        if (templateId) {
+            const template = await prisma.whatsappTemplate.findFirst({ where: { id: templateId, workspaceId } });
+            if (!template) return res.status(404).json({ error: 'Şablon bulunamadı' });
+            validTemplateId = templateId;
+        }
 
         const campaign = await prisma.marketingCampaign.create({
             data: {
                 workspaceId,
                 name,
                 description,
-                templateId,
+                templateId: validTemplateId,
                 status: scheduledAt ? 'SCHEDULED' : 'DRAFT',
                 scheduledAt: scheduledAt ? new Date(scheduledAt) : null
             },
@@ -1187,7 +1192,7 @@ export const getSegments = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        const [statusCounts, sourceCounts, totalWithPhone] = await Promise.all([
+        const [statusCounts, sourceCounts, totalWithPhone, contactGroups] = await Promise.all([
             prisma.contact.groupBy({
                 by: ['status'],
                 where: { workspaceId, phone: { not: null } },
@@ -1198,7 +1203,11 @@ export const getSegments = async (req, res) => {
                 where: { workspaceId, phone: { not: null }, source: { not: null } },
                 _count: { id: true }
             }),
-            prisma.contact.count({ where: { workspaceId, phone: { not: null } } })
+            prisma.contact.count({ where: { workspaceId, phone: { not: null } } }),
+            prisma.contactGroup.findMany({
+                where: { workspaceId },
+                select: { id: true, name: true, _count: { select: { contacts: true } } }
+            })
         ]);
 
         const { getSegmentGroups, getSegmentCount, getSegmentList } = await import('../services/smartSegment.service.js');
@@ -1208,7 +1217,57 @@ export const getSegments = async (req, res) => {
             try { segmentCounts[s.id] = await getSegmentCount(s.id, workspaceId); } catch { segmentCounts[s.id] = 0; }
         }));
 
-        res.json({ statusCounts, sourceCounts, totalWithPhone, segments: getSegmentGroups(), segmentCounts });
+        // Düzleştirilmiş hedef kitle listesi (frontend gönderim seçimi için)
+        const targetOptions = [];
+
+        // Tüm kişiler
+        targetOptions.push({ id: 'all', name: 'Tüm Kişiler', icon: '👥', count: totalWithPhone, type: 'all' });
+
+        // Smart segmentler
+        for (const seg of segmentList) {
+            targetOptions.push({
+                id: seg.id,
+                name: seg.label,
+                icon: seg.icon,
+                count: segmentCounts[seg.id] || 0,
+                type: 'segment',
+                group: seg.group
+            });
+        }
+
+        // Gruplar
+        for (const g of contactGroups) {
+            targetOptions.push({
+                id: `group:${g.id}`,
+                name: g.name,
+                icon: '📁',
+                count: g._count.contacts,
+                type: 'group',
+                groupId: g.id
+            });
+        }
+
+        // Durumlara göre
+        for (const sc of statusCounts) {
+            const statusIcons = { NEW: '🔵', CUSTOMER: '🟢', OPPORTUNITY: '🟡', SPAM: '🔴', VIP: '⭐' };
+            targetOptions.push({
+                id: `status:${sc.status}`,
+                name: sc.status,
+                icon: statusIcons[sc.status] || '⚪',
+                count: sc._count.id,
+                type: 'status'
+            });
+        }
+
+        res.json({
+            statusCounts,
+            sourceCounts,
+            totalWithPhone,
+            segments: getSegmentGroups(),
+            segmentCounts,
+            contactGroups: contactGroups.map(g => ({ id: g.id, name: g.name, count: g._count.contacts })),
+            targetOptions // Yeni: düzleştirilmiş liste
+        });
     } catch (error) {
         console.error('❌ [getSegments]', error);
         res.status(500).json({ error: 'Segmentler yüklenemedi' });

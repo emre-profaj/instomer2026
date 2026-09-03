@@ -1246,7 +1246,7 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
     const fetchSegments = useCallback(async () => {
         try {
             const res = await api.get(`/marketing/${wsId}/segments`);
-            setSegments(res.data?.segments || []);
+            setSegments(res.data?.targetOptions || []);
         } catch (e) { setSegments([]); }
     }, [wsId]);
 
