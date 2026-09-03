@@ -1317,6 +1317,38 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
         setAddingSend(false);
     };
 
+    const handleDeleteCampaign = async () => {
+        if (!confirm('Bu kampanyayı ve tüm mesaj/gönderimlerini silmek istediğinize emin misiniz?')) return;
+        try {
+            await api.delete(`/marketing/${wsId}/campaigns/${campaign.id}`);
+            onBack();
+        } catch (e) {
+            alert('Kampanya silinemedi');
+        }
+    };
+
+    const handleDeleteSend = async (msgId, sendId) => {
+        if (!confirm('Bu gönderimi silmek istediğinize emin misiniz?')) return;
+        try {
+            await api.delete(`/marketing/${wsId}/campaigns/${campaign.id}/messages/${msgId}/sends/${sendId}`);
+            fetchMessages();
+            fetchStats();
+        } catch (e) {
+            alert('Gönderim silinemedi');
+        }
+    };
+
+    const handleExecuteSend = async (msgId, sendId) => {
+        if (!confirm('Bu gönderimi başlatmak istediğinize emin misiniz?')) return;
+        try {
+            await api.post(`/marketing/${wsId}/campaigns/${campaign.id}/messages/${msgId}/sends/${sendId}/execute`);
+            fetchMessages();
+            fetchStats();
+        } catch (e) {
+            alert('Gönderim başlatılamadı: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
     const SEND_STATUS = {
         PENDING: { label: 'Bekliyor', color: '#64748b', icon: <Clock size={12} /> },
         SENDING: { label: 'Gönderiliyor', color: '#f59e0b', icon: <Send size={12} /> },
@@ -1341,6 +1373,17 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
                     <div>
                         <h1 className="mkt-header-title">{campaign.name}</h1>
                         <p className="mkt-header-sub">{campaign.description || 'Kampanya detayları'}</p>
+                    </div>
+                    <div style={{ marginLeft: 'auto' }}>
+                        <button onClick={handleDeleteCampaign}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                padding: '7px 14px', borderRadius: 8,
+                                background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                                fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                            }}>
+                            <Trash2 size={13} /> Kampanyayı Sil
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1555,6 +1598,28 @@ function CampaignDetailView({ wsId, campaign, onBack }) {
                                                     }}>
                                                         {ss.icon} {ss.label}
                                                     </span>
+                                                    {send.status === 'PENDING' && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleExecuteSend(msg.id, send.id); }}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 3,
+                                                                padding: '3px 8px', borderRadius: 6,
+                                                                background: '#dcfce7', color: '#16a34a', border: 'none',
+                                                                fontSize: 10, fontWeight: 600, cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            <Play size={10} /> Başlat
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteSend(msg.id, send.id); }}
+                                                        style={{
+                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                            padding: 2, opacity: 0.5
+                                                        }}
+                                                    >
+                                                        <Trash2 size={11} style={{ color: '#dc2626' }} />
+                                                    </button>
                                                 </div>
                                             );
                                         }) : (

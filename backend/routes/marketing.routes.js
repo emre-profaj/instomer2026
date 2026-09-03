@@ -25,7 +25,9 @@ import {
     addMessageSend,
     executeMessageSend,
     getSendRecipients,
-    getCampaignStats
+    getCampaignStats,
+    deleteCampaignSend,
+    updateCampaignMessage
 } from '../controllers/marketing.controller.js';
 
 const router = express.Router();
@@ -62,7 +64,9 @@ router.delete('/:workspaceId/campaigns/:id/messages/:msgId', requireWorkspaceAcc
 router.get('/:workspaceId/campaigns/:id/messages/:msgId/sends', requireWorkspaceAccess, getMessageSends);
 router.post('/:workspaceId/campaigns/:id/messages/:msgId/sends', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), addMessageSend);
 router.post('/:workspaceId/campaigns/:id/messages/:msgId/sends/:sendId/execute', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), executeMessageSend);
+router.delete('/:workspaceId/campaigns/:id/messages/:msgId/sends/:sendId', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN'), deleteCampaignSend);
 router.get('/:workspaceId/campaigns/:id/messages/:msgId/sends/:sendId/recipients', requireWorkspaceAccess, getSendRecipients);
+router.put('/:workspaceId/campaigns/:id/messages/:msgId', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN', 'MANAGER'), updateCampaignMessage);
 
 // Segments
 router.get('/:workspaceId/segments', requireWorkspaceAccess, getSegments);

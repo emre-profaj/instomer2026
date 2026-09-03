@@ -862,7 +862,11 @@ export const getCampaigns = async (req, res) => {
                 take: parseInt(limit),
                 include: {
                     template: { select: { name: true } },
-                    _count: { select: { conversations: true, cases: true } }
+                    _count: { select: { conversations: true, cases: true } },
+                    messages: {
+                        select: { id: true, channel: true, name: true, order: true },
+                        orderBy: { order: 'asc' }
+                    }
                 }
             }),
             prisma.marketingCampaign.count({ where })
@@ -1740,5 +1744,44 @@ export const getCampaignStats = async (req, res) => {
     } catch (error) {
         console.error('❌ [getCampaignStats]', error);
         res.status(500).json({ error: 'İstatistikler yüklenemedi' });
+    }
+};
+
+// ─── DELETE campaigns/:id/messages/:msgId/sends/:sendId — Gönderim sil ───────
+export const deleteCampaignSend = async (req, res) => {
+    try {
+        await prisma.campaignSend.delete({ where: { id: req.params.sendId } });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ [deleteCampaignSend]', error);
+        res.status(500).json({ error: 'Gönderim silinemedi' });
+    }
+};
+
+// ─── PUT campaigns/:id/messages/:msgId — Mesaj güncelle ──────────────────────
+export const updateCampaignMessage = async (req, res) => {
+    try {
+        const { name, templateId, templateName, emailSubject, emailBody,
+                retellAgentId, retellTemplateId, content, mediaUrl } = req.body;
+
+        const updated = await prisma.campaignMessage.update({
+            where: { id: req.params.msgId },
+            data: {
+                ...(name !== undefined && { name }),
+                ...(templateId !== undefined && { templateId }),
+                ...(templateName !== undefined && { templateName }),
+                ...(emailSubject !== undefined && { emailSubject }),
+                ...(emailBody !== undefined && { emailBody }),
+                ...(retellAgentId !== undefined && { retellAgentId }),
+                ...(retellTemplateId !== undefined && { retellTemplateId }),
+                ...(content !== undefined && { content }),
+                ...(mediaUrl !== undefined && { mediaUrl }),
+            }
+        });
+
+        res.json({ message: updated });
+    } catch (error) {
+        console.error('❌ [updateCampaignMessage]', error);
+        res.status(500).json({ error: 'Mesaj güncellenemedi' });
     }
 };
