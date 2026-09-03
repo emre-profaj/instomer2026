@@ -3635,7 +3635,7 @@ const Inbox = () => {
         if (item.inboxType === INBOX_TYPES.COMMENT) {
             return `${item.comments?.summary?.total_count || 0} yorum`;
         } else {
-            return item.messages?.[0]?.content?.substring(0, 60) || 'Mesaj yok';
+            return item.messages?.[0]?.content?.replace(/\[HANDOFF\]/gi, '').trim().substring(0, 60) || 'Mesaj yok';
         }
     };
 
@@ -6014,7 +6014,7 @@ const Inbox = () => {
                                                     {isHtmlContent(msg.content) ? (
                                                         <div
                                                             className="email-html-content"
-                                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(msg.content) }}
+                                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(msg.content?.replace(/\[HANDOFF\]/gi, '').trim()) }}
                                                         />
                                                     ) : isFormMessage(msg, selectedItem?.channel) ? (
                                                         renderFormMessage(msg, handleScheduleFromForm, schedulingMsgId)
@@ -6120,7 +6120,7 @@ const Inbox = () => {
                                                             );
                                                         })()
                                                     ) : (
-                                                        <p>{msg.content}</p>
+                                                        <p>{msg.content?.replace(/\[HANDOFF\]/gi, '').trim()}</p>
                                                     )}
                                                     <div className="message-meta">
                                                         <span className="message-time">{formatTime(msg.createdAt)}</span>

@@ -236,7 +236,7 @@ YANIT FORMATI (JSON):
                 matchedProductIds: parsed.matchedProductIds || [],
                 isQualifiedLead: parsed.isQualifiedLead || false,
             },
-            chatResponse: parsed.response || '',
+            chatResponse: (parsed.response || '').replace(/\[HANDOFF\]/gi, '').trim(),
             stageTransition: parsed.stageTransition || null,
         };
     } catch (err) {

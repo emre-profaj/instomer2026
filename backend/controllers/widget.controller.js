@@ -431,10 +431,15 @@ export const handleWidgetChat = async (req, res) => {
         const aiResponse = await getAutoReply(workspaceId, conversation.id, message, 'widget', 'WIDGET');
 
         if (aiResponse) {
+            const cleanAiResponse = aiResponse.replace(/\[HANDOFF\]/gi, '').trim();
+            if (!cleanAiResponse) {
+                return res.json({ reply: null, conversationId: conversation.id, serverTime: pollAnchor });
+            }
+
             // Save AI Message
             const botMessage = await prisma.message.create({
                 data: {
-                    content: aiResponse,
+                    content: cleanAiResponse,
                     conversationId: conversation.id,
                     isFromContact: false
                 }
@@ -457,7 +462,7 @@ export const handleWidgetChat = async (req, res) => {
                 console.error('❌ [Widget] Bot message socket emit error:', socketError);
             }
 
-            return res.json({ reply: aiResponse, conversationId: conversation.id, botMessageId: botMessage.id, serverTime: pollAnchor });
+            return res.json({ reply: cleanAiResponse, conversationId: conversation.id, botMessageId: botMessage.id, serverTime: pollAnchor });
         }
 
         res.json({ reply: null, conversationId: conversation.id, serverTime: pollAnchor });

@@ -70,7 +70,7 @@ export default function ConversationPopup({ workspaceId, conversationId, channel
                                             )}
                                         </div>
                                     )}
-                                    <p>{msg.content}</p>
+                                    <p>{msg.content?.replace(/\[HANDOFF\]/gi, '').trim()}</p>
                                 </div>
                                 <span className="conv-popup-msg-time">
                                     {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}

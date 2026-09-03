@@ -487,7 +487,10 @@ export async function processPendingBotResponses() {
                 );
 
                 if (aiResponse) {
-                    console.log(`🤖 [Bot Scheduler] AI Response for ${conversation.id}: ${aiResponse.substring(0, 50)}...`);
+                    const safeAiResponse = aiResponse.replace(/\[HANDOFF\]/gi, '').trim();
+                    if (!safeAiResponse) return;
+
+                    console.log(`🤖 [Bot Scheduler] AI Response for ${conversation.id}: ${safeAiResponse.substring(0, 50)}...`);
 
                     // Kanal tipine göre mesaj gönder
                     if (conversation.channel === 'WHATSAPP' && conversation.whatsappPhoneNumber) {
@@ -495,7 +498,7 @@ export async function processPendingBotResponses() {
                         await sendWhatsAppMessage(
                             conversation.whatsappPhoneNumber,
                             conversation.contact.phone,
-                            aiResponse,
+                            safeAiResponse,
                             conversation.id
                         );
                     } else if ((conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') && conversation.facebookPage) {

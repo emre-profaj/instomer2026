@@ -1121,12 +1121,15 @@ async function processWebhookAsync(body) {
                                     console.log(`🤖 [COMMENTS] AI Response: ${aiResponse ? aiResponse.substring(0, 100) : 'NULL'}`);
 
                                     if (aiResponse) {
-                                        await axios.post(
-                                            `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`,
-                                            { message: aiResponse },
-                                            { params: { access_token: facebookPage.pageAccessToken } }
-                                        );
-                                        console.log('✅ AI Comment Reply posted successfully!');
+                                        const cleanReply = aiResponse.replace(/\[HANDOFF\]/gi, '').trim();
+                                        if (cleanReply) {
+                                            await axios.post(
+                                                `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`,
+                                                { message: cleanReply },
+                                                { params: { access_token: facebookPage.pageAccessToken } }
+                                            );
+                                            console.log('✅ AI Comment Reply posted successfully!');
+                                        }
                                     } else {
                                         console.log('⚠️ [COMMENTS] No AI response generated');
                                     }
@@ -2850,12 +2853,15 @@ async function processAutoReplyForComments(comments, page, postId, isInstagram) 
                 console.log(`📤 [AUTO-REPLY] Posting to: ${replyEndpoint}`);
 
                 try {
-                    await axios.post(
-                        replyEndpoint,
-                        { message: aiResponse },
-                        { params: { access_token: page.pageAccessToken } }
-                    );
-                    console.log(`✅ [AUTO-REPLY] Reply posted to comment ${comment.id}`);
+                    const cleanCommentReply = aiResponse.replace(/\[HANDOFF\]/gi, '').trim();
+                    if (cleanCommentReply) {
+                        await axios.post(
+                            replyEndpoint,
+                            { message: cleanCommentReply },
+                            { params: { access_token: page.pageAccessToken } }
+                        );
+                        console.log(`✅ [AUTO-REPLY] Reply posted to comment ${comment.id}`);
+                    }
 
                     // Mark as replied in cache (expire after 1 hour)
                     if (!global.commentReplyCache) {

@@ -937,7 +937,7 @@ const ChatPopup = ({ conversationId, onClose }) => {
                                     <div className={`chat-popup-msg ${msgClass}`}>
                                         <div className="chat-popup-msg-wrapper">
                                             <div className="chat-popup-msg-bubble">
-                                                <p>{msg.content}</p>
+                                                <p>{msg.content?.replace(/\[HANDOFF\]/gi, '').trim()}</p>
                                             </div>
                                             <div className="chat-popup-msg-meta">
                                                 <span className="chat-popup-msg-time">

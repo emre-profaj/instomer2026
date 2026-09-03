@@ -829,9 +829,12 @@
             if (messageId && seenMessageIds.has(messageId)) return;
             if (messageId) seenMessageIds.add(messageId);
 
+            const cleanText = (text || '').replace(/\[HANDOFF\]/gi, '').trim();
+            if (!cleanText) return;
+
             const msg = document.createElement('div');
             msg.className = `ag-message ${type}`;
-            msg.innerText = text;
+            msg.innerText = cleanText;
             messagesContainer.appendChild(msg);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }

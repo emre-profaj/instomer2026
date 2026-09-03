@@ -3053,7 +3053,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
         }
 
         // 🚨 HANDOFF DETECTION - Only explicit [HANDOFF] tag triggers routing (removed implicit phrase detection to avoid false positives)
-        if (responseText.includes('[HANDOFF]') && type === 'CHATS' && conversationId) {
+        if (responseText.includes('[HANDOFF]') && (type === 'CHATS' || type === 'WIDGET') && conversationId) {
             console.log(`🔄 [HANDOFF] Bot indicated it can't answer: ${conversationId}`);
 
             // Strip [HANDOFF] tag from the bot's own response before returning it
@@ -3252,7 +3252,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
             }
         }
 
-        return stripAiThinking(responseText);
+        return stripAiThinking(responseText).replace(/\[HANDOFF\]/gi, '').trim();
 
     } catch (error) {
         console.error('Auto-reply error:', error);
