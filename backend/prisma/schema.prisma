@@ -414,6 +414,7 @@ model Contact {
   automationLogs    AutomationLog[] // Otomasyon çalışma logları
   scheduledMessages ScheduledMessage[] // Zamanlanmış mesajlar
   birthDate         DateTime? // Doğum günü
+  groupMemberships  ContactGroupMember[] // Grup üyelikleri
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -2100,6 +2101,7 @@ model ContactGroupMember {
   contactId String
   addedAt   DateTime     @default(now())
   group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, contactId])
   @@index([groupId])

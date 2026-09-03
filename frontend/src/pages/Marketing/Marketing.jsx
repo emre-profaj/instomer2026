@@ -1195,6 +1195,153 @@ function CampaignsHubTab({ wsId, onSelectCampaign }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MESSAGES TAB — Tüm mesaj şablonları (WA + Arama)
+// ─────────────────────────────────────────────────────────────────────────────
+function MessagesTab({ wsId }) {
+    const [waTemplates, setWaTemplates] = useState([]);
+    const [callTemplates, setCallTemplates] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState('all'); // all, whatsapp, call
+
+    useEffect(() => {
+        const fetch = async () => {
+            setLoading(true);
+            try {
+                const [waRes, callRes] = await Promise.all([
+                    api.get(`/whatsapp/${wsId}/templates`).catch(() => ({ data: [] })),
+                    api.get(`/retell/${wsId}/agents`).catch(() => ({ data: [] })),
+                ]);
+                setWaTemplates(waRes.data?.templates || waRes.data || []);
+                setCallTemplates(callRes.data?.agents || callRes.data || []);
+            } catch (e) { console.error(e); }
+            setLoading(false);
+        };
+        fetch();
+    }, [wsId]);
+
+    const CHANNEL_ICON = { whatsapp: '📤', call: '📞' };
+
+    const filteredWa = filter === 'call' ? [] : waTemplates;
+    const filteredCall = filter === 'whatsapp' ? [] : callTemplates;
+    const totalCount = filteredWa.length + filteredCall.length;
+
+    if (loading) {
+        return <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>;
+    }
+
+    return (
+        <div>
+            {/* Filtreler */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <span style={{ fontSize: 13, color: '#64748b' }}>{totalCount} şablon</span>
+                <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                    {[
+                        { key: 'all', label: 'Tümü' },
+                        { key: 'whatsapp', label: '📤 WhatsApp' },
+                        { key: 'call', label: '📞 Arama' },
+                    ].map(f => (
+                        <button key={f.key} onClick={() => setFilter(f.key)}
+                            style={{
+                                padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                                border: filter === f.key ? '2px solid #7c3aed' : '1px solid #e2e8f0',
+                                background: filter === f.key ? '#ede9fe' : '#fff',
+                                color: filter === f.key ? '#7c3aed' : '#64748b',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {totalCount === 0 ? (
+                <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
+                    <MessageSquare size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
+                    <p>Henüz mesaj şablonu yok</p>
+                </div>
+            ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+                    {/* WA Şablonları */}
+                    {filteredWa.map(t => {
+                        const statusColors = {
+                            APPROVED: '#16a34a',
+                            PENDING: '#f59e0b',
+                            REJECTED: '#dc2626',
+                        };
+                        const st = (t.status || '').toUpperCase();
+                        return (
+                            <div key={t.id || t.name} style={{
+                                background: '#fff', borderRadius: 12, padding: 16,
+                                border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 8
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontSize: 18 }}>📤</span>
+                                    <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{t.name}</span>
+                                    <span style={{
+                                        padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                                        background: `${statusColors[st] || '#94a3b8'}15`,
+                                        color: statusColors[st] || '#94a3b8'
+                                    }}>
+                                        {st === 'APPROVED' ? '✅ Onaylı' : st === 'PENDING' ? '⏳ Bekliyor' : st === 'REJECTED' ? '❌ Reddedildi' : st || '—'}
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: 11, color: '#64748b' }}>
+                                    WhatsApp • {t.language || 'tr'} • {t.category || '—'}
+                                </div>
+                                {t.headerType && (
+                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                                        Başlık: {t.headerType} {t.headerContent ? '✓' : ''}
+                                    </div>
+                                )}
+                                {t.bodyText && (
+                                    <div style={{
+                                        padding: 8, background: '#f8fafc', borderRadius: 8,
+                                        fontSize: 11, color: '#475569', maxHeight: 60, overflow: 'hidden'
+                                    }}>
+                                        {t.bodyText.substring(0, 120)}{t.bodyText.length > 120 ? '...' : ''}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+
+                    {/* Arama Şablonları */}
+                    {filteredCall.map(a => (
+                        <div key={a.agent_id || a.id} style={{
+                            background: '#fff', borderRadius: 12, padding: 16,
+                            border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 8
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 18 }}>📞</span>
+                                <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{a.agent_name || a.name || 'Ajan'}</span>
+                                <span style={{
+                                    padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                                    background: '#dcfce715', color: '#16a34a'
+                                }}>
+                                    AI Arama
+                                </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: '#64748b' }}>
+                                Retell AI • {a.voice_id ? 'Ses ayarlı' : 'Varsayılan ses'}
+                            </div>
+                            {(a.general_prompt || a.prompt) && (
+                                <div style={{
+                                    padding: 8, background: '#f8fafc', borderRadius: 8,
+                                    fontSize: 11, color: '#475569', maxHeight: 60, overflow: 'hidden'
+                                }}>
+                                    {(a.general_prompt || a.prompt || '').substring(0, 120)}...
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CAMPAIGN DETAIL VIEW — Drill-down: Mesajlar > Listeler > Gönderimler
 // ─────────────────────────────────────────────────────────────────────────────
 function CampaignDetailView({ wsId, campaign, onBack }) {
@@ -3215,7 +3362,7 @@ export default function Marketing() {
             {/* Tab content */}
             <div className="mkt-tab-content">
                 {activeTab === 'campaigns' && <CampaignsHubTab wsId={wsId} onSelectCampaign={setSelectedCampaign} />}
-                {activeTab === 'messages'  && <BulkSendTab wsId={wsId} />}
+                {activeTab === 'messages'  && <MessagesTab wsId={wsId} />}
                 {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
                 {activeTab === 'calls'     && <CallAnalyticsTab wsId={wsId} />}
             </div>

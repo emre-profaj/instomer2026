@@ -1206,7 +1206,7 @@ export const getSegments = async (req, res) => {
             prisma.contact.count({ where: { workspaceId, phone: { not: null } } }),
             prisma.contactGroup.findMany({
                 where: { workspaceId },
-                select: { id: true, name: true, _count: { select: { contacts: true } } }
+                select: { id: true, name: true, _count: { select: { members: true } } }
             })
         ]);
 
@@ -1241,7 +1241,7 @@ export const getSegments = async (req, res) => {
                 id: `group:${g.id}`,
                 name: g.name,
                 icon: '📁',
-                count: g._count.contacts,
+                count: g._count.members,
                 type: 'group',
                 groupId: g.id
             });
@@ -1265,7 +1265,7 @@ export const getSegments = async (req, res) => {
             totalWithPhone,
             segments: getSegmentGroups(),
             segmentCounts,
-            contactGroups: contactGroups.map(g => ({ id: g.id, name: g.name, count: g._count.contacts })),
+            contactGroups: contactGroups.map(g => ({ id: g.id, name: g.name, count: g._count.members })),
             targetOptions // Yeni: düzleştirilmiş liste
         });
     } catch (error) {
