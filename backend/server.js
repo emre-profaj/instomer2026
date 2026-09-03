@@ -521,17 +521,27 @@ if (isMasterInstance) {
     }
   }
 
+  const safeCron = (fn, name) => async () => {
+    try {
+      await fn();
+    } catch (err) {
+      console.error(`🚨 [Cron Error - ${name}]:`, err?.message || err);
+    }
+  };
+
   setTimeout(() => {
     console.log('🔔 [Reminder] Starting appointment reminder processor (every 60 seconds)');
-    processAppointmentReminders();
-    setInterval(processAppointmentReminders, APPOINTMENT_REMINDER_INTERVAL);
+    const safeReminders = safeCron(processAppointmentReminders, 'AppointmentReminders');
+    safeReminders();
+    setInterval(safeReminders, APPOINTMENT_REMINDER_INTERVAL);
   }, 50000);
 
   // Scheduled calls cron: check every 60s for due auto-calls
   setTimeout(() => {
     console.log('📅 [ScheduledCall] Starting scheduled call processor (every 60 seconds)');
-    processScheduledCalls();
-    setInterval(processScheduledCalls, 60 * 1000);
+    const safeCalls = safeCron(processScheduledCalls, 'ScheduledCalls');
+    safeCalls();
+    setInterval(safeCalls, 60 * 1000);
   }, 10000);
 
   // NO_REPLY Flow & Health System Cron
@@ -541,27 +551,29 @@ if (isMasterInstance) {
   ]).then(([{ processNoReplyFlows }, { startHealthSystemCron }]) => {
     setTimeout(() => {
       console.log('⏰ [NO_REPLY] Starting no-reply flow cron (every 5 minutes)');
-      processNoReplyFlows();
-      setInterval(processNoReplyFlows, 5 * 60 * 1000);
-      startHealthSystemCron();
+      const safeNoReply = safeCron(processNoReplyFlows, 'NoReplyFlows');
+      safeNoReply();
+      setInterval(safeNoReply, 5 * 60 * 1000);
+      safeCron(startHealthSystemCron, 'HealthSystem')();
     }, 60000);
-  });
+  }).catch(e => console.error('Cron import error:', e));
 
   // Scheduled Messages Cron
   import('./controllers/scheduledMessage.controller.js').then(({ processScheduledMessages }) => {
     setTimeout(() => {
       console.log('⏰ [ScheduledMsg] Starting scheduled message processor (every 60 seconds)');
-      processScheduledMessages();
-      setInterval(processScheduledMessages, 60 * 1000);
+      const safeScheduled = safeCron(processScheduledMessages, 'ScheduledMessages');
+      safeScheduled();
+      setInterval(safeScheduled, 60 * 1000);
     }, 15000);
-  });
+  }).catch(e => console.error('Cron import error:', e));
 
   // Knowledge Base URL/Feed Sync Cron
   import('./services/knowledgeSync.service.js').then(({ initKnowledgeCron }) => {
     setTimeout(() => {
-      initKnowledgeCron();
+      safeCron(initKnowledgeCron, 'KnowledgeCron')();
     }, 65000);
-  });
+  }).catch(e => console.error('Cron import error:', e));
 
   // WhatsApp Appointment Reminder Cron (1 gün önce hatırlatma)
   import('./services/appointmentFunctions.service.js').then(({ checkAndSendReminders }) => {
