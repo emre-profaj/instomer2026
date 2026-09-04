@@ -547,6 +547,7 @@ export const googleCalendarAPI = {
     getStatus: (workspaceId) => api.get('/calendar/google/status', { params: { workspaceId } }),
     getEvents: (workspaceId, params = {}) => api.get('/calendar/google/events', { params: { workspaceId, ...params } }),
     disconnect: (workspaceId) => api.post('/calendar/google/disconnect', { workspaceId }),
+    diagnose: (workspaceId) => api.get('/calendar/google/diagnose', { params: { workspaceId } }),
     getWorkspaceConfig: (workspaceId) => api.get(`/calendar/google/workspace-config/${workspaceId}`),
     saveWorkspaceConfig: (workspaceId, data) => api.post(`/calendar/google/workspace-config/${workspaceId}`, data),
     deleteWorkspaceConfig: (workspaceId) => api.delete(`/calendar/google/workspace-config/${workspaceId}`)

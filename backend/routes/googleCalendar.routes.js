@@ -8,7 +8,8 @@ import {
     getWorkspaceConfig,
     saveWorkspaceConfig,
     deleteWorkspaceConfig,
-    getGoogleEvents
+    getGoogleEvents,
+    diagnoseGoogleCalendar
 } from '../controllers/googleCalendar.controller.js';
 
 const router = express.Router();
@@ -16,10 +17,10 @@ const router = express.Router();
 // Google OAuth callback (Google bu adrese yönlendirir, tarayıcıdan doğrudan gelir)
 router.get('/callback', handleGoogleCallback);
 
-// Giriş gerektiren temsilci endpoint'leri
 router.get('/auth-url', authenticateJWT, getGoogleAuthUrl);
 router.get('/status', authenticateJWT, getGoogleCalendarStatus);
 router.get('/events', authenticateJWT, getGoogleEvents);
+router.get('/diagnose', authenticateJWT, diagnoseGoogleCalendar);
 router.post('/disconnect', authenticateJWT, disconnectGoogleCalendar);
 
 // Workspace Google Takvim yapılandırma endpoint'leri (Kanallar / Entegrasyonlar)

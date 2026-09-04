@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './components/Toast/Toast';
 import PrivateRoute from './components/PrivateRoute';
@@ -62,8 +62,12 @@ import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSettings from './pages/Admin/AdminSettings';
 import AdminActivityLog from './pages/Admin/AdminActivityLog';
-import AdminFlowTemplates from './pages/Admin/AdminFlowTemplates';
 import AdminMessages from './pages/Admin/AdminMessages';
+
+function CalendarRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/activities/calendar${location.search}`} replace />;
+}
 
 function App() {
   return (
@@ -133,7 +137,7 @@ function App() {
               <Route path="meeting-analytics" element={<MeetingAnalytics />} />
               <Route path="appointment-analytics" element={<AppointmentAnalytics />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
-              <Route path="calendar" element={<Navigate to="/activities/calendar" replace />} />
+              <Route path="calendar" element={<CalendarRedirect />} />
               <Route path="activities/calendar" element={<Calendar />} />
 
               <Route path="automations" element={<Automations />} />

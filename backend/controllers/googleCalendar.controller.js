@@ -6,7 +6,9 @@ import {
     getWorkspaceGoogleConfig,
     saveWorkspaceGoogleConfig,
     deleteWorkspaceGoogleConfig,
-    getGoogleCalendarEvents
+    getGoogleCalendarEvents,
+    getWorkspaceGoogleCredentials,
+    getCalendarClientForUser
 } from '../services/googleCalendar.service.js';
 
 /**
@@ -27,6 +29,8 @@ export const getGoogleAuthUrl = async (req, res) => {
     }
 };
 
+import prisma from '../lib/prisma.js';
+
 /**
  * Google OAuth Callback
  */
@@ -35,14 +39,14 @@ export const handleGoogleCallback = async (req, res) => {
     try {
         const { code, state } = req.query;
         if (!code) {
-            return res.redirect(`${frontendUrl}/calendar?google_error=Kod_bulunamadi`);
+            return res.redirect(`${frontendUrl}/activities/calendar?google_error=Kod_bulunamadi`);
         }
 
         const result = await handleOAuthCallback(code, state, req);
-        res.redirect(`${frontendUrl}/calendar?google_connected=true&workspaceId=${result.workspaceId}&email=${encodeURIComponent(result.userEmail)}`);
+        res.redirect(`${frontendUrl}/activities/calendar?google_connected=true&workspaceId=${result.workspaceId}&email=${encodeURIComponent(result.userEmail)}`);
     } catch (error) {
         console.error('handleGoogleCallback error:', error);
-        res.redirect(`${frontendUrl}/calendar?google_error=${encodeURIComponent(error.message || 'Yetkilendirme_basarisiz')}`);
+        res.redirect(`${frontendUrl}/activities/calendar?google_error=${encodeURIComponent(error.message || 'Yetkilendirme_basarisiz')}`);
     }
 };
 
@@ -155,5 +159,82 @@ export const getGoogleEvents = async (req, res) => {
     } catch (error) {
         console.error('getGoogleEvents error:', error);
         res.status(500).json({ error: 'Google Takvim etkinlikleri alınamadı', message: error.message });
+    }
+};
+
+/**
+ * Google Takvim entegrasyonu teşhis (Diagnostic) endpoint'i
+ */
+export const diagnoseGoogleCalendar = async (req, res) => {
+    try {
+        const workspaceId = req.query.workspaceId || req.headers['x-workspace-id'];
+        if (!workspaceId) return res.status(400).json({ error: 'workspaceId zorunludur' });
+
+        const wsCreds = await getWorkspaceGoogleCredentials(workspaceId);
+        const userCal = await prisma.userGoogleCalendar.findUnique({
+            where: {
+                userId_workspaceId: { userId: req.user.id, workspaceId }
+            }
+        });
+        const allCalsInWs = await prisma.userGoogleCalendar.findMany({
+            where: { workspaceId }
+        });
+
+        let testResult = null;
+        let testError = null;
+
+        if (userCal?.accessToken) {
+            try {
+                const calendar = await getCalendarClientForUser(req.user.id, workspaceId);
+                if (calendar) {
+                    const listRes = await calendar.events.list({
+                        calendarId: 'primary',
+                        maxResults: 15,
+                        timeMin: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+                    });
+                    testResult = {
+                        success: true,
+                        eventsFound: listRes.data?.items?.length || 0,
+                        events: (listRes.data?.items || []).map(i => ({
+                            id: i.id,
+                            summary: i.summary,
+                            start: i.start?.dateTime || i.start?.date,
+                            hangoutLink: i.hangoutLink || null
+                        }))
+                    };
+                } else {
+                    testError = { message: 'getCalendarClientForUser null döndü (muhtemelen creds veya token eksik)' };
+                }
+            } catch (err) {
+                testError = {
+                    message: err.message,
+                    code: err.code,
+                    status: err.status,
+                    details: err.response?.data
+                };
+            }
+        }
+
+        res.json({
+            workspaceId,
+            userId: req.user.id,
+            userEmail: req.user.email,
+            credentialsConfigured: !!wsCreds,
+            credentialsSource: wsCreds?.source || 'none',
+            userCalendarRow: userCal ? {
+                id: userCal.id,
+                email: userCal.googleEmail,
+                isActive: userCal.isActive,
+                hasAccessToken: !!userCal.accessToken,
+                hasRefreshToken: !!userCal.refreshToken,
+                expiryDate: userCal.expiryDate?.toString(),
+                isExpired: userCal.expiryDate ? Number(userCal.expiryDate) < Date.now() : false
+            } : null,
+            totalConnectedInWorkspace: allCalsInWs.length,
+            googleApiTest: testResult,
+            googleApiError: testError
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 };
