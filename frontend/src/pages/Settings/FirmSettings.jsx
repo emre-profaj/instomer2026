@@ -10,13 +10,13 @@ import {
 import './FirmSettings.css';
 
 const TURKISH_DAYS = [
-    { key: 'monday', label: 'Pazartesi', short: 'Pzt' },
-    { key: 'tuesday', label: 'Salı', short: 'Sal' },
-    { key: 'wednesday', label: 'Çarşamba', short: 'Çar' },
-    { key: 'thursday', label: 'Perşembe', short: 'Per' },
-    { key: 'friday', label: 'Cuma', short: 'Cum' },
-    { key: 'saturday', label: 'Cumartesi', short: 'Cmt' },
-    { key: 'sunday', label: 'Pazar', short: 'Paz' }
+    { key: 'monday', label: 'Pazartesi', letter: 'P', short: 'Pzt' },
+    { key: 'tuesday', label: 'Salı', letter: 'S', short: 'Sal' },
+    { key: 'wednesday', label: 'Çarşamba', letter: 'Ç', short: 'Çar' },
+    { key: 'thursday', label: 'Perşembe', letter: 'P', short: 'Per' },
+    { key: 'friday', label: 'Cuma', letter: 'C', short: 'Cum' },
+    { key: 'saturday', label: 'Cumartesi', letter: 'C', short: 'Cmt' },
+    { key: 'sunday', label: 'Pazar', letter: 'P', short: 'Paz' }
 ];
 
 export default function FirmSettings() {
@@ -25,12 +25,12 @@ export default function FirmSettings() {
     // Super Admin Guard
     if (user?.role !== 'SUPER_ADMIN') {
         return (
-            <div className="firm-access-denied">
-                <div className="firm-denied-icon">
-                    <ShieldAlert size={40} />
+            <div className="fs-access-denied">
+                <div className="fs-denied-icon">
+                    <ShieldAlert size={32} />
                 </div>
                 <h2>Yetkisiz Erişim</h2>
-                <p>Klinik & Hekim Yapılandırması alanına yalnızca <strong>Süper Yöneticiler (Super Admin)</strong> erişebilir.</p>
+                <p>Bu alana yalnızca <strong>Süper Yöneticiler (Super Admin)</strong> erişebilir.</p>
             </div>
         );
     }
@@ -87,7 +87,7 @@ export default function FirmSettings() {
 
     const showToast = (msg, type = 'success') => {
         setToastMessage({ text: msg, type });
-        setTimeout(() => setToastMessage(null), 4000);
+        setTimeout(() => setToastMessage(null), 3500);
     };
 
     const loadSettings = async () => {
@@ -114,11 +114,11 @@ export default function FirmSettings() {
 
     // Seed Demo Health Data
     const handleSeedHealthDemo = async () => {
-        if (!confirm('Sağlık sektörü için hazır şubeler, branşlar ve hekim kadrosu örneği eklensin mi?')) return;
+        if (!confirm('Örnek sağlık kadrosu (şubeler, tıbbi branşlar ve hekimler) yüklensin mi?')) return;
         try {
             setSeeding(true);
             const res = await appointmentConfigAPI.seedHealthDemo(currentWorkspace.id);
-            showToast(res.data.message || 'Örnek sağlık verileri başarıyla yüklendi!');
+            showToast(res.data.message || 'Örnek veriler başarıyla yüklendi!');
             await loadSettings();
         } catch (err) {
             console.error(err);
@@ -131,12 +131,7 @@ export default function FirmSettings() {
     // ─── LOCATION (ŞUBE) HANDLERS ───
     const openCreateLocationModal = () => {
         setEditingLocation(null);
-        setLocationForm({
-            name: '',
-            address: '',
-            phone: '',
-            isActive: true
-        });
+        setLocationForm({ name: '', address: '', phone: '', isActive: true });
         setLocationModalOpen(true);
     };
 
@@ -153,23 +148,20 @@ export default function FirmSettings() {
 
     const handleSaveLocation = async (e) => {
         e.preventDefault();
-        if (!locationForm.name.trim()) {
-            showToast('Lütfen şube adını girin', 'error');
-            return;
-        }
+        if (!locationForm.name.trim()) return;
 
         try {
             if (editingLocation) {
                 await appointmentConfigAPI.updateLocation(currentWorkspace.id, editingLocation.id, locationForm);
-                showToast('Şube bilgileri güncellendi.');
+                showToast('Şube güncellendi.');
             } else {
                 await appointmentConfigAPI.createLocation(currentWorkspace.id, locationForm);
-                showToast('Yeni klinik şubesi oluşturuldu.');
+                showToast('Yeni şube eklendi.');
             }
             setLocationModalOpen(false);
             loadSettings();
         } catch (err) {
-            showToast(err.response?.data?.error || 'Şube kaydedilemedi', 'error');
+            showToast(err.response?.data?.error || 'İşlem başarısız', 'error');
         }
     };
 
@@ -204,10 +196,10 @@ export default function FirmSettings() {
         try {
             if (editingBranch) {
                 await appointmentConfigAPI.updateBranch(currentWorkspace.id, editingBranch.id, { name: branchName.trim() });
-                showToast('Branş başarıyla güncellendi.');
+                showToast('Branş güncellendi.');
             } else {
                 await appointmentConfigAPI.createBranch(currentWorkspace.id, { name: branchName.trim() });
-                showToast('Yeni tıbbi branş oluşturuldu.');
+                showToast('Yeni branş oluşturuldu.');
             }
             setBranchModalOpen(false);
             loadSettings();
@@ -217,7 +209,7 @@ export default function FirmSettings() {
     };
 
     const handleDeleteBranch = async (branchId, bName) => {
-        if (!confirm(`"${bName}" branşını ve altındaki hekim eşleşmelerini silmek istediğinize emin misiniz?`)) return;
+        if (!confirm(`"${bName}" branşını silmek istediğinize emin misiniz?`)) return;
         try {
             await appointmentConfigAPI.deleteBranch(currentWorkspace.id, branchId);
             showToast('Branş silindi.');
@@ -270,7 +262,7 @@ export default function FirmSettings() {
     const handleSaveDoctor = async (e) => {
         e.preventDefault();
         if (!doctorForm.name.trim() || !doctorForm.branchId) {
-            showToast('Lütfen hekim adı ve tıbbi branşını eksiksiz doldurun', 'error');
+            showToast('Lütfen doktor adı ve branşını doldurun', 'error');
             return;
         }
 
@@ -280,7 +272,7 @@ export default function FirmSettings() {
                 showToast('Hekim bilgileri güncellendi.');
             } else {
                 await appointmentConfigAPI.createDoctor(currentWorkspace.id, doctorForm);
-                showToast('Yeni hekim kadroya eklendi.');
+                showToast('Yeni hekim eklendi.');
             }
             setDoctorModalOpen(false);
             loadSettings();
@@ -290,7 +282,7 @@ export default function FirmSettings() {
     };
 
     const handleDeleteDoctor = async (doctorId, docName) => {
-        if (!confirm(`"${docName}" hekimini sistemden silmek istediğinize emin misiniz?`)) return;
+        if (!confirm(`"${docName}" hekimini silmek istediğinize emin misiniz?`)) return;
         try {
             await appointmentConfigAPI.deleteDoctor(currentWorkspace.id, doctorId);
             showToast('Hekim silindi.');
@@ -300,7 +292,6 @@ export default function FirmSettings() {
         }
     };
 
-    // Toggle working day
     const toggleDay = (dayKey) => {
         setDoctorForm(prev => {
             const exists = prev.workingDays.includes(dayKey);
@@ -309,21 +300,7 @@ export default function FirmSettings() {
         });
     };
 
-    const setWeekdayPreset = () => {
-        setDoctorForm(prev => ({
-            ...prev,
-            workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
-        }));
-    };
-
-    const setFullWeekPreset = () => {
-        setDoctorForm(prev => ({
-            ...prev,
-            workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-        }));
-    };
-
-    // All doctors flat list
+    // Flatten all doctors
     const allDoctors = useMemo(() => {
         return branches.flatMap(b => (b.doctors || []).map(d => ({
             ...d,
@@ -331,17 +308,15 @@ export default function FirmSettings() {
         })));
     }, [branches]);
 
-    // KPI Metrics
     const activeDoctorsCount = allDoctors.filter(d => d.isActive).length;
     const assignedDoctorsCount = allDoctors.filter(d => d.userId).length;
-    const unassignedDoctorsCount = allDoctors.length - assignedDoctorsCount;
 
     // Filtered Doctors
     const filteredDoctors = useMemo(() => {
         return allDoctors.filter(doc => {
+            const fullName = `${doc.title || ''} ${doc.name || ''}`.toLowerCase();
             const matchSearch = doctorSearchQuery === '' || 
-                doc.name?.toLowerCase().includes(doctorSearchQuery.toLowerCase()) ||
-                doc.title?.toLowerCase().includes(doctorSearchQuery.toLowerCase()) ||
+                fullName.includes(doctorSearchQuery.toLowerCase()) ||
                 doc.branchName?.toLowerCase().includes(doctorSearchQuery.toLowerCase()) ||
                 doc.locationName?.toLowerCase().includes(doctorSearchQuery.toLowerCase());
 
@@ -349,11 +324,8 @@ export default function FirmSettings() {
             const matchLocation = selectedLocationFilter === 'ALL' || doc.locationId === selectedLocationFilter;
 
             let matchUser = true;
-            if (selectedUserFilter === 'ASSIGNED') {
-                matchUser = !!doc.userId;
-            } else if (selectedUserFilter === 'UNASSIGNED') {
-                matchUser = !doc.userId;
-            }
+            if (selectedUserFilter === 'ASSIGNED') matchUser = !!doc.userId;
+            else if (selectedUserFilter === 'UNASSIGNED') matchUser = !doc.userId;
 
             return matchSearch && matchBranch && matchLocation && matchUser;
         });
@@ -375,273 +347,213 @@ export default function FirmSettings() {
     }, [locations, locationSearchQuery]);
 
     return (
-        <div className="firm-settings-page">
-            {/* 1. Header Banner */}
-            <div className="firm-header">
-                <div className="firm-header-left">
-                    <div className="firm-badge-row">
-                        <span className="firm-tag-pill">
-                            <Hospital size={13} />
-                            Sağlık & Klinik Randevu Modülü
-                        </span>
-                        <span className="super-admin-badge">
-                            Super Admin
-                        </span>
+        <div className="fs-container">
+            {/* Header */}
+            <div className="fs-header">
+                <div className="fs-header-meta">
+                    <div className="fs-category">
+                        <span>Ayarlar</span>
+                        <span className="fs-sep">/</span>
+                        <span className="fs-active-cat">Sağlık & Klinik Yönetimi</span>
+                        <span className="fs-role-pill">Super Admin</span>
                     </div>
-                    <h1 className="firm-page-title">
-                        Sağlık & Klinik Yönetimi
-                    </h1>
-                    <p className="firm-page-desc">
-                        Klinik şubelerini, tıbbi branşları, hekim kadrosunu ve çalışma saatlerini ayrı bölümler halinde yapılandırın.
+                    <h1 className="fs-title">Klinik & Hekim Yapılandırması</h1>
+                    <p className="fs-desc">
+                        Klinik şubelerinizi, tıbbi uzmanlık branşlarınızı ve hekim kadronuzu tek merkezden yapılandırın.
                     </p>
                 </div>
 
-                <div className="firm-header-actions">
+                <div className="fs-actions">
                     <button 
-                        className="btn-seed-demo" 
+                        className="fs-btn-ghost" 
                         onClick={handleSeedHealthDemo}
                         disabled={seeding}
-                        title="Hazır şubeler, tıbbi branşlar ve hekim kadrosu örneğini otomatik yükler"
                     >
-                        <Sparkles size={16} />
-                        {seeding ? 'Oluşturuluyor...' : 'Örnek Sağlık Verisi Yükle'}
+                        <Sparkles size={14} />
+                        {seeding ? 'Yükleniyor...' : 'Örnek Kadroyu Yükle'}
                     </button>
-                    <button className="btn-primary-header" onClick={() => openCreateDoctorModal()}>
-                        <Plus size={16} />
-                        Yeni Hekim Ekle
+                    <button 
+                        className="fs-btn-primary" 
+                        onClick={() => openCreateDoctorModal()}
+                    >
+                        <Plus size={15} />
+                        Yeni Hekim
                     </button>
                 </div>
             </div>
 
-            {/* Toast Feedback */}
+            {/* Toast */}
             {toastMessage && (
-                <div className={`firm-toast ${toastMessage.type === 'error' ? 'toast-error' : 'toast-success'}`}>
-                    {toastMessage.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+                <div className={`fs-toast ${toastMessage.type === 'error' ? 'err' : 'ok'}`}>
+                    {toastMessage.type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
                     <span>{toastMessage.text}</span>
                 </div>
             )}
 
-            {/* 2. Executive KPI Summary Cards */}
-            <div className="firm-stats-grid">
-                <div className="firm-stat-card" onClick={() => setActiveTab('locations')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon-box stat-purple">
-                        <Building2 size={22} />
-                    </div>
-                    <div className="stat-content">
-                        <span className="stat-label">Klinik Şubeleri</span>
-                        <div className="stat-val-group">
-                            <span className="stat-value">{locations.length}</span>
-                            <span className="stat-sub">Lokasyon</span>
-                        </div>
+            {/* KPI Summary Bar */}
+            <div className="fs-kpi-bar">
+                <div className={`fs-kpi-item ${activeTab === 'doctors' ? 'highlight' : ''}`} onClick={() => setActiveTab('doctors')}>
+                    <span className="fs-kpi-label">Hekim Kadrosu</span>
+                    <div className="fs-kpi-value-row">
+                        <span className="fs-kpi-num">{allDoctors.length}</span>
+                        <span className="fs-kpi-sub">({activeDoctorsCount} aktif)</span>
                     </div>
                 </div>
-
-                <div className="firm-stat-card" onClick={() => setActiveTab('branches')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon-box stat-blue">
-                        <Layers size={22} />
-                    </div>
-                    <div className="stat-content">
-                        <span className="stat-label">Tıbbi Branşlar</span>
-                        <div className="stat-val-group">
-                            <span className="stat-value">{branches.length}</span>
-                            <span className="stat-sub">Bölüm / Servis</span>
-                        </div>
+                <div className="fs-kpi-divider" />
+                <div className={`fs-kpi-item ${activeTab === 'branches' ? 'highlight' : ''}`} onClick={() => setActiveTab('branches')}>
+                    <span className="fs-kpi-label">Tıbbi Branşlar</span>
+                    <div className="fs-kpi-value-row">
+                        <span className="fs-kpi-num">{branches.length}</span>
+                        <span className="fs-kpi-sub">bölüm</span>
                     </div>
                 </div>
-
-                <div className="firm-stat-card" onClick={() => setActiveTab('doctors')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon-box stat-emerald">
-                        <Stethoscope size={22} />
-                    </div>
-                    <div className="stat-content">
-                        <span className="stat-label">Hekim Kadrosu</span>
-                        <div className="stat-val-group">
-                            <span className="stat-value">{allDoctors.length}</span>
-                            <span className="stat-sub">({activeDoctorsCount} aktif)</span>
-                        </div>
+                <div className="fs-kpi-divider" />
+                <div className={`fs-kpi-item ${activeTab === 'locations' ? 'highlight' : ''}`} onClick={() => setActiveTab('locations')}>
+                    <span className="fs-kpi-label">Klinik Şubeleri</span>
+                    <div className="fs-kpi-value-row">
+                        <span className="fs-kpi-num">{locations.length}</span>
+                        <span className="fs-kpi-sub">lokasyon</span>
                     </div>
                 </div>
-
-                <div className="firm-stat-card">
-                    <div className="stat-icon-box stat-amber">
-                        <UserCheck size={22} />
-                    </div>
-                    <div className="stat-content">
-                        <span className="stat-label">Temsilci Eşleşmesi</span>
-                        <div className="stat-val-group">
-                            <span className="stat-value">{assignedDoctorsCount} / {allDoctors.length}</span>
-                            <span className="stat-sub">
-                                {unassignedDoctorsCount > 0 ? `${unassignedDoctorsCount} havuzda` : 'Tamamı eşleşti'}
-                            </span>
-                        </div>
+                <div className="fs-kpi-divider" />
+                <div className="fs-kpi-item">
+                    <span className="fs-kpi-label">Temsilci Eşleşmesi</span>
+                    <div className="fs-kpi-value-row">
+                        <span className="fs-kpi-num">{assignedDoctorsCount} / {allDoctors.length}</span>
+                        <span className="fs-kpi-sub">eşleşen</span>
                     </div>
                 </div>
             </div>
 
-            {/* 3. 3-Tier Segmented Tab Bar: Şubeler / Branşlar / Doktorlar */}
-            <div className="firm-tabs-wrapper">
-                <div className="firm-segmented-nav">
+            {/* Navigation Tabs */}
+            <div className="fs-tabs-nav">
+                <div className="fs-tabs-group">
                     <button 
-                        className={`firm-segment-btn ${activeTab === 'doctors' ? 'active' : ''}`}
+                        className={`fs-tab ${activeTab === 'doctors' ? 'active' : ''}`}
                         onClick={() => setActiveTab('doctors')}
                     >
-                        <UserCheck size={17} />
-                        Doktorlar & Uzmanlar
-                        <span className="segment-counter">{allDoctors.length}</span>
+                        <UserCheck size={16} />
+                        <span>Hekimler & Uzmanlar</span>
+                        <span className="fs-badge">{allDoctors.length}</span>
                     </button>
-
                     <button 
-                        className={`firm-segment-btn ${activeTab === 'branches' ? 'active' : ''}`}
+                        className={`fs-tab ${activeTab === 'branches' ? 'active' : ''}`}
                         onClick={() => setActiveTab('branches')}
                     >
-                        <Stethoscope size={17} />
-                        Tıbbi Branşlar
-                        <span className="segment-counter">{branches.length}</span>
+                        <Stethoscope size={16} />
+                        <span>Tıbbi Branşlar</span>
+                        <span className="fs-badge">{branches.length}</span>
                     </button>
-
                     <button 
-                        className={`firm-segment-btn ${activeTab === 'locations' ? 'active' : ''}`}
+                        className={`fs-tab ${activeTab === 'locations' ? 'active' : ''}`}
                         onClick={() => setActiveTab('locations')}
                     >
-                        <Building2 size={17} />
-                        Şubeler & Lokasyonlar
-                        <span className="segment-counter">{locations.length}</span>
+                        <Building2 size={16} />
+                        <span>Şubeler & Lokasyonlar</span>
+                        <span className="fs-badge">{locations.length}</span>
                     </button>
                 </div>
 
-                <div className="firm-tabs-action">
+                <div className="fs-tabs-quick-action">
                     {activeTab === 'doctors' && (
-                        <button className="btn-secondary-action" onClick={() => openCreateDoctorModal()}>
-                            <Plus size={15} /> Yeni Hekim Ekle
+                        <button className="fs-btn-secondary" onClick={() => openCreateDoctorModal()}>
+                            <Plus size={14} /> Hekim Ekle
                         </button>
                     )}
                     {activeTab === 'branches' && (
-                        <button className="btn-secondary-action" onClick={openCreateBranchModal}>
-                            <Plus size={15} /> Yeni Branş Ekle
+                        <button className="fs-btn-secondary" onClick={openCreateBranchModal}>
+                            <Plus size={14} /> Branş Ekle
                         </button>
                     )}
                     {activeTab === 'locations' && (
-                        <button className="btn-secondary-action" onClick={openCreateLocationModal}>
-                            <Plus size={15} /> Yeni Şube Ekle
+                        <button className="fs-btn-secondary" onClick={openCreateLocationModal}>
+                            <Plus size={14} /> Şube Ekle
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* 4. Tab Content Panels */}
-            <div className="firm-main-panel">
+            {/* Tab Body */}
+            <div className="fs-content-panel">
 
-                {/* ────────────────── 1. DOKTORLAR SEKMESİ ────────────────── */}
+                {/* 1. DOKTORLAR TAB */}
                 {activeTab === 'doctors' && (
-                    <div className="firm-panel-body">
-                        {/* Search & Filters Toolbar */}
-                        <div className="firm-toolbar">
-                            <div className="firm-search-input-box">
-                                <Search size={16} className="search-icon" />
+                    <div>
+                        {/* Toolbar */}
+                        <div className="fs-toolbar">
+                            <div className="fs-search">
+                                <Search size={15} className="fs-search-icon" />
                                 <input 
                                     type="text" 
-                                    placeholder="Hekim adı, unvan, şube veya branş ara..."
+                                    placeholder="Hekim, şube veya branş ara..."
                                     value={doctorSearchQuery}
                                     onChange={e => setDoctorSearchQuery(e.target.value)}
-                                    className="firm-search-field"
                                 />
                                 {doctorSearchQuery && (
-                                    <button className="search-clear-btn" onClick={() => setDoctorSearchQuery('')}>
-                                        <X size={14} />
+                                    <button className="fs-clear-search" onClick={() => setDoctorSearchQuery('')}>
+                                        <X size={13} />
                                     </button>
                                 )}
                             </div>
 
-                            <div className="firm-filter-group">
-                                {/* Şube Filtresi */}
-                                <div className="firm-select-wrapper">
-                                    <Building2 size={14} className="filter-icon" />
-                                    <select 
-                                        className="firm-filter-select"
-                                        value={selectedLocationFilter}
-                                        onChange={e => setSelectedLocationFilter(e.target.value)}
-                                    >
-                                        <option value="ALL">Tüm Şubeler ({locations.length})</option>
-                                        {locations.map(l => (
-                                            <option key={l.id} value={l.id}>{l.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                            <div className="fs-filters">
+                                <select 
+                                    className="fs-select"
+                                    value={selectedLocationFilter}
+                                    onChange={e => setSelectedLocationFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Şubeler ({locations.length})</option>
+                                    {locations.map(l => (
+                                        <option key={l.id} value={l.id}>{l.name}</option>
+                                    ))}
+                                </select>
 
-                                {/* Branş Filtresi */}
-                                <div className="firm-select-wrapper">
-                                    <Filter size={14} className="filter-icon" />
-                                    <select 
-                                        className="firm-filter-select"
-                                        value={selectedBranchFilter}
-                                        onChange={e => setSelectedBranchFilter(e.target.value)}
-                                    >
-                                        <option value="ALL">Tüm Branşlar ({branches.length})</option>
-                                        {branches.map(b => (
-                                            <option key={b.id} value={b.id}>{b.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <select 
+                                    className="fs-select"
+                                    value={selectedBranchFilter}
+                                    onChange={e => setSelectedBranchFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Branşlar ({branches.length})</option>
+                                    {branches.map(b => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </select>
 
-                                {/* Temsilci Filtresi */}
-                                <div className="firm-select-wrapper">
-                                    <UserCheck size={14} className="filter-icon" />
-                                    <select 
-                                        className="firm-filter-select"
-                                        value={selectedUserFilter}
-                                        onChange={e => setSelectedUserFilter(e.target.value)}
-                                    >
-                                        <option value="ALL">Tüm Temsilciler</option>
-                                        <option value="ASSIGNED">Temsilciye Bağlı ({assignedDoctorsCount})</option>
-                                        <option value="UNASSIGNED">Genel Havuz ({unassignedDoctorsCount})</option>
-                                    </select>
-                                </div>
+                                <select 
+                                    className="fs-select"
+                                    value={selectedUserFilter}
+                                    onChange={e => setSelectedUserFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Temsilciler</option>
+                                    <option value="ASSIGNED">Temsilciye Bağlı ({assignedDoctorsCount})</option>
+                                    <option value="UNASSIGNED">Genel Havuz</option>
+                                </select>
                             </div>
                         </div>
 
-                        {/* Doctors Data Table */}
+                        {/* Doctors Table */}
                         {filteredDoctors.length === 0 ? (
-                            <div className="firm-empty-state">
-                                <div className="empty-icon-box">
-                                    <Stethoscope size={36} />
-                                </div>
-                                <h3>{allDoctors.length === 0 ? 'Henüz Hekim Tanımlanmadı' : 'Aramaya Uygun Hekim Bulunamadı'}</h3>
-                                <p>
-                                    {allDoctors.length === 0 
-                                        ? 'Randevu dağıtımının çalışabilmesi için hekim kadronuzu, çalıştığı şube ve branşı belirleyin.'
-                                        : 'Arama kriterlerinizi değiştirin veya filtreleri temizleyin.'}
-                                </p>
-                                {allDoctors.length === 0 ? (
-                                    <div className="empty-actions">
-                                        <button className="btn-primary-action" onClick={() => openCreateDoctorModal()}>
-                                            <Plus size={16} /> İlk Hekimi Ekle
-                                        </button>
-                                        <button className="btn-seed-demo" onClick={handleSeedHealthDemo}>
-                                            <Sparkles size={16} /> Örnek Kadroyu Yükle
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <button 
-                                        className="btn-modal-cancel" 
-                                        onClick={() => { setDoctorSearchQuery(''); setSelectedBranchFilter('ALL'); setSelectedLocationFilter('ALL'); setSelectedUserFilter('ALL'); }}
-                                    >
-                                        Filtreleri Temizle
-                                    </button>
-                                )}
+                            <div className="fs-empty">
+                                <Stethoscope size={36} className="fs-empty-icon" />
+                                <h3>Hekim Bulunamadı</h3>
+                                <p>Arama kriterlerinizi değiştirebilir veya yeni bir hekim ekleyebilirsiniz.</p>
+                                <button className="fs-btn-primary" onClick={() => openCreateDoctorModal()}>
+                                    <Plus size={14} /> Yeni Hekim Ekle
+                                </button>
                             </div>
                         ) : (
-                            <div className="firm-table-container">
-                                <table className="firm-pro-table">
+                            <div className="fs-table-wrap">
+                                <table className="fs-table">
                                     <thead>
                                         <tr>
-                                            <th>Hekim Bilgisi</th>
-                                            <th>Şube (Lokasyon)</th>
+                                            <th style={{ minWidth: '220px' }}>Hekim Bilgisi</th>
+                                            <th>Şube</th>
                                             <th>Tıbbi Branş</th>
-                                            <th>Bağlı CRM Temsilcisi</th>
-                                            <th>Mesai & Seans</th>
+                                            <th>Bağlı Temsilci</th>
+                                            <th>Mesai / Seans</th>
                                             <th>Çalışma Günleri</th>
                                             <th>Durum</th>
-                                            <th className="th-actions">İşlemler</th>
+                                            <th style={{ textAlign: 'right', width: '80px' }}>İşlem</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -652,116 +564,106 @@ export default function FirmSettings() {
                                                 if (doc.workingDays) workingDaysArr = JSON.parse(doc.workingDays);
                                             } catch (_) {}
 
-                                            const doctorInitial = (doc.name || 'D').trim().charAt(0).toUpperCase();
+                                            const initial = (doc.name || 'D').trim().charAt(0).toUpperCase();
+                                            const fullDoctorName = `${doc.title ? `${doc.title} ` : ''}${doc.name}`;
 
                                             return (
-                                                <tr key={doc.id} className={!doc.isActive ? 'row-inactive' : ''}>
-                                                    {/* Doctor Info */}
+                                                <tr key={doc.id} className={!doc.isActive ? 'is-inactive' : ''}>
+                                                    {/* Hekim Adı */}
                                                     <td>
-                                                        <div className="pro-doctor-cell">
-                                                            <div className="doctor-pro-avatar">
-                                                                <span>{doctorInitial}</span>
-                                                                <span className={`status-dot ${doc.isActive ? 'active' : 'inactive'}`} />
+                                                        <div className="fs-doctor-cell">
+                                                            <div className="fs-avatar">
+                                                                {initial}
+                                                                <span className={`fs-dot ${doc.isActive ? 'online' : 'offline'}`} />
                                                             </div>
-                                                            <div className="doctor-cell-meta">
-                                                                <div className="doctor-cell-name">
-                                                                    {doc.title && <span className="doctor-title-prefix">{doc.title}</span>}
-                                                                    <strong>{doc.name}</strong>
-                                                                </div>
-                                                                <span className="doctor-cell-sub">
-                                                                    {doc.isActive ? 'Aktif Randevu Alabilir' : 'Randevuya Kapalı'}
+                                                            <div className="fs-doctor-meta">
+                                                                <span className="fs-doc-name">{fullDoctorName}</span>
+                                                                <span className="fs-doc-sub">
+                                                                    {doc.isActive ? 'Randevuya Açık' : 'Randevuya Kapalı'}
                                                                 </span>
                                                             </div>
                                                         </div>
                                                     </td>
 
-                                                    {/* Location (Şube) */}
+                                                    {/* Şube */}
                                                     <td>
-                                                        <span className="location-pill-badge">
+                                                        <span className="fs-tag-neutral">
                                                             <Building2 size={12} />
                                                             {doc.locationName || 'Merkez Şube'}
                                                         </span>
                                                     </td>
 
-                                                    {/* Branch (Branş) */}
+                                                    {/* Branş */}
                                                     <td>
-                                                        <span className="branch-pill-badge">
+                                                        <span className="fs-tag-branch">
                                                             {doc.branchName}
                                                         </span>
                                                     </td>
 
-                                                    {/* CRM User */}
+                                                    {/* CRM Temsilcisi */}
                                                     <td>
                                                         {assignedUser ? (
-                                                            <div className="pro-assigned-user-badge">
-                                                                <UserCheck size={14} className="user-icon-check" />
-                                                                <div className="assigned-user-meta">
-                                                                    <span className="user-name">{assignedUser.name}</span>
-                                                                    <span className="user-email">{assignedUser.email}</span>
-                                                                </div>
+                                                            <div className="fs-user-pill" title={assignedUser.email}>
+                                                                <UserCheck size={13} className="text-emerald" />
+                                                                <span>{assignedUser.name}</span>
                                                             </div>
                                                         ) : (
-                                                            <span className="pool-user-badge">
-                                                                <Users size={13} />
-                                                                Genel Havuz (Atanmadı)
-                                                            </span>
+                                                            <span className="fs-text-muted">Genel Havuz</span>
                                                         )}
                                                     </td>
 
-                                                    {/* Work Hours & Slot */}
+                                                    {/* Mesai & Seans */}
                                                     <td>
-                                                        <div className="timing-cell">
-                                                            <div className="timing-hours">
-                                                                <Clock size={13} />
-                                                                <span>{doc.workStart || '09:00'} – {doc.workEnd || '17:00'}</span>
-                                                            </div>
-                                                            <span className="slot-badge">
-                                                                {doc.slotMinutes || 30} dk / seans
+                                                        <div className="fs-timing">
+                                                            <span className="fs-time-text">
+                                                                <Clock size={12} />
+                                                                {doc.workStart || '09:00'} - {doc.workEnd || '17:00'}
                                                             </span>
+                                                            <span className="fs-slot-pill">{doc.slotMinutes || 30} dk</span>
                                                         </div>
                                                     </td>
 
-                                                    {/* Working Days */}
+                                                    {/* Günler */}
                                                     <td>
-                                                        <div className="days-strip">
-                                                            {TURKISH_DAYS.map(day => {
-                                                                const isWorking = workingDaysArr.includes(day.key);
+                                                        <div className="fs-days-row">
+                                                            {TURKISH_DAYS.map(d => {
+                                                                const isWork = workingDaysArr.includes(d.key);
                                                                 return (
                                                                     <span 
-                                                                        key={day.key} 
-                                                                        className={`day-strip-pill ${isWorking ? 'active' : 'inactive'}`}
-                                                                        title={day.label}
+                                                                        key={d.key} 
+                                                                        className={`fs-day-dot ${isWork ? 'on' : 'off'}`}
+                                                                        title={d.label}
                                                                     >
-                                                                        {day.short}
+                                                                        {d.letter}
                                                                     </span>
                                                                 );
                                                             })}
                                                         </div>
                                                     </td>
 
-                                                    {/* Status Badge */}
+                                                    {/* Durum */}
                                                     <td>
-                                                        <span className={`pro-status-badge ${doc.isActive ? 'badge-active' : 'badge-inactive'}`}>
+                                                        <span className={`fs-status-pill ${doc.isActive ? 'active' : 'inactive'}`}>
                                                             {doc.isActive ? 'Aktif' : 'Pasif'}
                                                         </span>
                                                     </td>
 
-                                                    {/* Actions */}
-                                                    <td className="td-actions">
-                                                        <div className="action-buttons-group">
+                                                    {/* İşlemler */}
+                                                    <td>
+                                                        <div className="fs-row-actions">
                                                             <button 
-                                                                className="btn-pro-action edit" 
+                                                                className="fs-icon-btn" 
                                                                 onClick={() => openEditDoctorModal(doc)}
-                                                                title="Hekim Bilgilerini Düzenle"
+                                                                title="Düzenle"
                                                             >
-                                                                <Edit2 size={14} />
+                                                                <Edit2 size={13} />
                                                             </button>
                                                             <button 
-                                                                className="btn-pro-action delete" 
+                                                                className="fs-icon-btn danger" 
                                                                 onClick={() => handleDeleteDoctor(doc.id, doc.name)}
-                                                                title="Hekimi Sil"
+                                                                title="Sil"
                                                             >
-                                                                <Trash2 size={14} />
+                                                                <Trash2 size={13} />
                                                             </button>
                                                         </div>
                                                     </td>
@@ -775,121 +677,77 @@ export default function FirmSettings() {
                     </div>
                 )}
 
-                {/* ────────────────── 2. BRANŞLAR SEKMESİ ────────────────── */}
+                {/* 2. BRANŞLAR TAB */}
                 {activeTab === 'branches' && (
-                    <div className="firm-panel-body">
-                        <div className="firm-toolbar">
-                            <div className="firm-search-input-box" style={{ maxWidth: '360px' }}>
-                                <Search size={16} className="search-icon" />
+                    <div>
+                        <div className="fs-toolbar">
+                            <div className="fs-search">
+                                <Search size={15} className="fs-search-icon" />
                                 <input 
                                     type="text" 
-                                    placeholder="Tıbbi branş veya bölüm ara..."
+                                    placeholder="Tıbbi branş ara..."
                                     value={branchSearchQuery}
                                     onChange={e => setBranchSearchQuery(e.target.value)}
-                                    className="firm-search-field"
                                 />
-                                {branchSearchQuery && (
-                                    <button className="search-clear-btn" onClick={() => setBranchSearchQuery('')}>
-                                        <X size={14} />
-                                    </button>
-                                )}
                             </div>
 
-                            <button className="btn-primary-action" onClick={openCreateBranchModal}>
-                                <Plus size={16} /> Yeni Branş Ekle
+                            <button className="fs-btn-primary" onClick={openCreateBranchModal}>
+                                <Plus size={14} /> Yeni Branş Ekle
                             </button>
                         </div>
 
                         {filteredBranches.length === 0 ? (
-                            <div className="firm-empty-state">
-                                <div className="empty-icon-box">
-                                    <Layers size={36} />
-                                </div>
-                                <h3>{branches.length === 0 ? 'Henüz Tıbbi Branş Tanımlanmadı' : 'Aradığınız Kriterde Branş Yok'}</h3>
-                                <p>
-                                    {branches.length === 0 
-                                        ? 'Klinik branşlarınızı (Ağız ve Diş Sağlığı, Kardiyoloji, Göz vb.) oluşturarak hekimlerinizi bu branşlara bağlayın.'
-                                        : 'Arama teriminizi kontrol edin.'}
-                                </p>
-                                {branches.length === 0 && (
-                                    <div className="empty-actions">
-                                        <button className="btn-primary-action" onClick={openCreateBranchModal}>
-                                            <Plus size={16} /> Branş Oluştur
-                                        </button>
-                                        <button className="btn-seed-demo" onClick={handleSeedHealthDemo}>
-                                            <Sparkles size={16} /> Örnek Branşları Yükle
-                                        </button>
-                                    </div>
-                                )}
+                            <div className="fs-empty">
+                                <Layers size={36} className="fs-empty-icon" />
+                                <h3>Branş Bulunamadı</h3>
+                                <p>Arama teriminizi kontrol edin veya yeni bir tıbbi branş ekleyin.</p>
                             </div>
                         ) : (
-                            <div className="pro-branches-grid">
+                            <div className="fs-cards-grid">
                                 {filteredBranches.map(branch => {
                                     const docs = branch.doctors || [];
                                     return (
-                                        <div key={branch.id} className="pro-branch-card">
-                                            {/* Card Top */}
-                                            <div className="branch-card-top">
-                                                <div className="branch-icon-badge">
+                                        <div key={branch.id} className="fs-card">
+                                            <div className="fs-card-head">
+                                                <div className="fs-card-icon branch">
                                                     <Stethoscope size={18} />
                                                 </div>
-                                                <div className="branch-meta-info">
-                                                    <h3 className="branch-card-title">{branch.name}</h3>
-                                                    <span className="branch-card-count">
-                                                        {docs.length} Tanımlı Hekim
-                                                    </span>
+                                                <div className="fs-card-title-meta">
+                                                    <h3>{branch.name}</h3>
+                                                    <span className="fs-card-subtitle">{docs.length} hekim tanımlı</span>
                                                 </div>
-                                                <div className="branch-card-actions">
-                                                    <button 
-                                                        className="btn-pro-action edit"
-                                                        onClick={() => openEditBranchModal(branch)}
-                                                        title="Branşı Düzenle"
-                                                    >
+                                                <div className="fs-card-actions">
+                                                    <button className="fs-icon-btn" onClick={() => openEditBranchModal(branch)} title="Düzenle">
                                                         <Edit2 size={13} />
                                                     </button>
-                                                    <button 
-                                                        className="btn-pro-action delete"
-                                                        onClick={() => handleDeleteBranch(branch.id, branch.name)}
-                                                        title="Branşı Sil"
-                                                    >
+                                                    <button className="fs-icon-btn danger" onClick={() => handleDeleteBranch(branch.id, branch.name)} title="Sil">
                                                         <Trash2 size={13} />
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {/* Doctor Roster in Branch */}
-                                            <div className="branch-card-roster">
-                                                <span className="roster-heading">Bu Branştaki Hekimler:</span>
+                                            <div className="fs-card-body">
+                                                <span className="fs-chip-group-label">Kadro:</span>
                                                 {docs.length === 0 ? (
-                                                    <p className="no-docs-hint">Bu branşta henüz hekim bulunmuyor.</p>
+                                                    <span className="fs-text-muted">Bu branşta hekim bulunmuyor.</span>
                                                 ) : (
-                                                    <div className="branch-doctor-chips-wrap">
+                                                    <div className="fs-chip-wrap">
                                                         {docs.map(doc => (
-                                                            <div key={doc.id} className="branch-doc-chip">
-                                                                <span className="doc-chip-initial">
-                                                                    {(doc.name || 'D').charAt(0)}
-                                                                </span>
-                                                                <span className="doc-chip-name">
-                                                                    {doc.title ? `${doc.title} ` : ''}{doc.name}
-                                                                </span>
-                                                                {doc.locationName && (
-                                                                    <span className="doc-chip-loc">
-                                                                        ({doc.locationName})
-                                                                    </span>
-                                                                )}
-                                                            </div>
+                                                            <span key={doc.id} className="fs-chip">
+                                                                {doc.title ? `${doc.title} ` : ''}{doc.name}
+                                                                {doc.locationName && <small>({doc.locationName})</small>}
+                                                            </span>
                                                         ))}
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* Card Footer CTA */}
-                                            <div className="branch-card-footer">
+                                            <div className="fs-card-foot">
                                                 <button 
-                                                    className="btn-add-doc-to-branch"
+                                                    className="fs-btn-card-add" 
                                                     onClick={() => openCreateDoctorModal({ branchId: branch.id })}
                                                 >
-                                                    <Plus size={14} /> Bu Branşa Hekim Ekle
+                                                    <Plus size={13} /> Bu Branşa Hekim Ekle
                                                 </button>
                                             </div>
                                         </div>
@@ -900,137 +758,95 @@ export default function FirmSettings() {
                     </div>
                 )}
 
-                {/* ────────────────── 3. ŞUBELER SEKMESİ ────────────────── */}
+                {/* 3. ŞUBELER TAB */}
                 {activeTab === 'locations' && (
-                    <div className="firm-panel-body">
-                        <div className="firm-toolbar">
-                            <div className="firm-search-input-box" style={{ maxWidth: '360px' }}>
-                                <Search size={16} className="search-icon" />
+                    <div>
+                        <div className="fs-toolbar">
+                            <div className="fs-search">
+                                <Search size={15} className="fs-search-icon" />
                                 <input 
                                     type="text" 
-                                    placeholder="Klinik şubesi veya adres ara..."
+                                    placeholder="Şube veya adres ara..."
                                     value={locationSearchQuery}
                                     onChange={e => setLocationSearchQuery(e.target.value)}
-                                    className="firm-search-field"
                                 />
-                                {locationSearchQuery && (
-                                    <button className="search-clear-btn" onClick={() => setLocationSearchQuery('')}>
-                                        <X size={14} />
-                                    </button>
-                                )}
                             </div>
 
-                            <button className="btn-primary-action" onClick={openCreateLocationModal}>
-                                <Plus size={16} /> Yeni Şube Ekle
+                            <button className="fs-btn-primary" onClick={openCreateLocationModal}>
+                                <Plus size={14} /> Yeni Şube Ekle
                             </button>
                         </div>
 
                         {filteredLocations.length === 0 ? (
-                            <div className="firm-empty-state">
-                                <div className="empty-icon-box">
-                                    <Building2 size={36} />
-                                </div>
-                                <h3>{locations.length === 0 ? 'Henüz Şube Tanımlanmadı' : 'Aradığınız Kriterde Şube Yok'}</h3>
-                                <p>
-                                    {locations.length === 0 
-                                        ? 'Hastane veya klinik şubelerinizi (Örn: Kadıköy Şubesi, Nişantaşı Kliniği) tanımlayın.'
-                                        : 'Arama teriminizi kontrol edin.'}
-                                </p>
-                                {locations.length === 0 && (
-                                    <div className="empty-actions">
-                                        <button className="btn-primary-action" onClick={openCreateLocationModal}>
-                                            <Plus size={16} /> İlk Şubeyi Ekle
-                                        </button>
-                                        <button className="btn-seed-demo" onClick={handleSeedHealthDemo}>
-                                            <Sparkles size={16} /> Örnek Şubeleri Yükle
-                                        </button>
-                                    </div>
-                                )}
+                            <div className="fs-empty">
+                                <Building2 size={36} className="fs-empty-icon" />
+                                <h3>Şube Bulunamadı</h3>
+                                <p>Arama teriminizi kontrol edin veya yeni bir şube ekleyin.</p>
                             </div>
                         ) : (
-                            <div className="pro-branches-grid">
+                            <div className="fs-cards-grid">
                                 {filteredLocations.map(loc => {
                                     const locDoctors = allDoctors.filter(d => d.locationId === loc.id);
                                     return (
-                                        <div key={loc.id} className="pro-branch-card location-card-border">
-                                            <div className="branch-card-top">
-                                                <div className="branch-icon-badge loc-icon-theme">
+                                        <div key={loc.id} className="fs-card">
+                                            <div className="fs-card-head">
+                                                <div className="fs-card-icon location">
                                                     <Building2 size={18} />
                                                 </div>
-                                                <div className="branch-meta-info">
-                                                    <h3 className="branch-card-title">{loc.name}</h3>
-                                                    <span className="branch-card-count">
-                                                        {locDoctors.length} Görevli Hekim
-                                                    </span>
+                                                <div className="fs-card-title-meta">
+                                                    <h3>{loc.name}</h3>
+                                                    <span className="fs-card-subtitle">{locDoctors.length} hekim görevde</span>
                                                 </div>
-                                                <div className="branch-card-actions">
-                                                    <button 
-                                                        className="btn-pro-action edit"
-                                                        onClick={() => openEditLocationModal(loc)}
-                                                        title="Şubeyi Düzenle"
-                                                    >
+                                                <div className="fs-card-actions">
+                                                    <button className="fs-icon-btn" onClick={() => openEditLocationModal(loc)} title="Düzenle">
                                                         <Edit2 size={13} />
                                                     </button>
-                                                    <button 
-                                                        className="btn-pro-action delete"
-                                                        onClick={() => handleDeleteLocation(loc.id, loc.name)}
-                                                        title="Şubeyi Sil"
-                                                    >
+                                                    <button className="fs-icon-btn danger" onClick={() => handleDeleteLocation(loc.id, loc.name)} title="Sil">
                                                         <Trash2 size={13} />
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {/* Address & Phone details */}
-                                            <div className="location-details-box">
+                                            <div className="fs-loc-info">
                                                 {loc.address && (
-                                                    <div className="loc-info-row">
-                                                        <MapPin size={13} className="loc-info-icon" />
+                                                    <div className="fs-loc-row">
+                                                        <MapPin size={13} className="fs-loc-icon" />
                                                         <span>{loc.address}</span>
                                                     </div>
                                                 )}
                                                 {loc.phone && (
-                                                    <div className="loc-info-row">
-                                                        <Phone size={13} className="loc-info-icon" />
+                                                    <div className="fs-loc-row">
+                                                        <Phone size={13} className="fs-loc-icon" />
                                                         <span>{loc.phone}</span>
                                                     </div>
                                                 )}
                                                 {!loc.address && !loc.phone && (
-                                                    <span className="no-docs-hint">Adres ve telefon henüz belirtilmemiş.</span>
+                                                    <span className="fs-text-muted">Adres ve telefon henüz eklenmedi.</span>
                                                 )}
                                             </div>
 
-                                            {/* Doctors assigned to this location */}
-                                            <div className="branch-card-roster">
-                                                <span className="roster-heading">Bu Şubedeki Hekimler:</span>
+                                            <div className="fs-card-body">
+                                                <span className="fs-chip-group-label">Görevli Hekimler:</span>
                                                 {locDoctors.length === 0 ? (
-                                                    <p className="no-docs-hint">Bu şubeye henüz hekim atanmadı.</p>
+                                                    <span className="fs-text-muted">Bu şubeye atanmış hekim yok.</span>
                                                 ) : (
-                                                    <div className="branch-doctor-chips-wrap">
+                                                    <div className="fs-chip-wrap">
                                                         {locDoctors.map(doc => (
-                                                            <div key={doc.id} className="branch-doc-chip">
-                                                                <span className="doc-chip-initial">
-                                                                    {(doc.name || 'D').charAt(0)}
-                                                                </span>
-                                                                <span className="doc-chip-name">
-                                                                    {doc.title ? `${doc.title} ` : ''}{doc.name}
-                                                                </span>
-                                                                <span className="doc-chip-branch-badge">
-                                                                    {doc.branchName}
-                                                                </span>
-                                                            </div>
+                                                            <span key={doc.id} className="fs-chip">
+                                                                {doc.title ? `${doc.title} ` : ''}{doc.name}
+                                                                <small className="fs-chip-branch">{doc.branchName}</small>
+                                                            </span>
                                                         ))}
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* Card Footer CTA */}
-                                            <div className="branch-card-footer">
+                                            <div className="fs-card-foot">
                                                 <button 
-                                                    className="btn-add-doc-to-branch"
+                                                    className="fs-btn-card-add" 
                                                     onClick={() => openCreateDoctorModal({ locationId: loc.id })}
                                                 >
-                                                    <Plus size={14} /> Bu Şubeye Hekim Ekle
+                                                    <Plus size={13} /> Bu Şubeye Hekim Ekle
                                                 </button>
                                             </div>
                                         </div>
@@ -1040,71 +856,62 @@ export default function FirmSettings() {
                         )}
                     </div>
                 )}
-
             </div>
 
-            {/* ────────────────── 1. LOCATION MODAL (ŞUBE) ────────────────── */}
+            {/* ── LOCATION MODAL ── */}
             {locationModalOpen && (
-                <div className="firm-modal-backdrop" onClick={() => setLocationModalOpen(false)}>
-                    <div className="firm-modal-container" onClick={e => e.stopPropagation()}>
-                        <div className="firm-modal-header">
-                            <div className="modal-title-wrap">
-                                <div className="modal-title-icon loc-icon-theme">
-                                    <Building2 size={20} />
-                                </div>
-                                <div>
-                                    <h3>{editingLocation ? 'Klinik Şubesini Düzenle' : 'Yeni Klinik Şubesi / Lokasyon'}</h3>
-                                    <p className="modal-subtitle">Hastane veya poliklinik şubenizin iletişim ve adres bilgilerini girin.</p>
-                                </div>
+                <div className="fs-modal-backdrop" onClick={() => setLocationModalOpen(false)}>
+                    <div className="fs-modal" onClick={e => e.stopPropagation()}>
+                        <div className="fs-modal-head">
+                            <div className="fs-modal-title-group">
+                                <h3>{editingLocation ? 'Şubeyi Düzenle' : 'Yeni Klinik Şubesi'}</h3>
+                                <p>Hastane veya klinik poliklinik şubenizi tanımlayın.</p>
                             </div>
-                            <button className="firm-modal-close" onClick={() => setLocationModalOpen(false)}>
-                                <X size={18} />
+                            <button className="fs-close-btn" onClick={() => setLocationModalOpen(false)}>
+                                <X size={16} />
                             </button>
                         </div>
                         <form onSubmit={handleSaveLocation}>
-                            <div className="firm-modal-body">
-                                <div className="firm-form-group">
-                                    <label>Şube / Lokasyon Adı <span className="req-star">*</span></label>
+                            <div className="fs-modal-body">
+                                <div className="fs-field">
+                                    <label>Şube Adı <span className="req">*</span></label>
                                     <input 
                                         type="text" 
-                                        className="firm-form-input"
-                                        placeholder="Örn: Merkez Poliklinik (Kadıköy), Nişantaşı Şubesi"
+                                        className="fs-input"
+                                        placeholder="Örn: Merkez Şube (Kadıköy)"
                                         value={locationForm.name}
                                         onChange={e => setLocationForm({ ...locationForm, name: e.target.value })}
                                         required
                                         autoFocus
                                     />
                                 </div>
-
-                                <div className="firm-form-group">
-                                    <label>Şube İletişim Telefonu</label>
+                                <div className="fs-field">
+                                    <label>Telefon</label>
                                     <input 
                                         type="text" 
-                                        className="firm-form-input"
-                                        placeholder="+90 216 444 0 100"
+                                        className="fs-input"
+                                        placeholder="+90 216 ..."
                                         value={locationForm.phone}
                                         onChange={e => setLocationForm({ ...locationForm, phone: e.target.value })}
                                     />
                                 </div>
-
-                                <div className="firm-form-group">
-                                    <label>Şube Adresi & Lokasyon</label>
+                                <div className="fs-field">
+                                    <label>Adres</label>
                                     <textarea 
                                         rows={2}
-                                        className="firm-form-input"
-                                        placeholder="Bağdat Cad. No: 124 Kadıköy / İstanbul"
+                                        className="fs-input"
+                                        placeholder="Şube lokasyonu ve açık adres..."
                                         value={locationForm.address}
                                         onChange={e => setLocationForm({ ...locationForm, address: e.target.value })}
                                     />
                                 </div>
                             </div>
-                            <div className="firm-modal-footer">
-                                <button type="button" className="btn-modal-cancel" onClick={() => setLocationModalOpen(false)}>
+                            <div className="fs-modal-foot">
+                                <button type="button" className="fs-btn-cancel" onClick={() => setLocationModalOpen(false)}>
                                     İptal
                                 </button>
-                                <button type="submit" className="btn-modal-submit">
-                                    <Check size={16} />
-                                    {editingLocation ? 'Değişiklikleri Kaydet' : 'Şubeyi Oluştur'}
+                                <button type="submit" className="fs-btn-submit">
+                                    {editingLocation ? 'Güncelle' : 'Kaydet'}
                                 </button>
                             </div>
                         </form>
@@ -1112,49 +919,40 @@ export default function FirmSettings() {
                 </div>
             )}
 
-            {/* ────────────────── 2. BRANCH MODAL (BRANŞ) ────────────────── */}
+            {/* ── BRANCH MODAL ── */}
             {branchModalOpen && (
-                <div className="firm-modal-backdrop" onClick={() => setBranchModalOpen(false)}>
-                    <div className="firm-modal-container" onClick={e => e.stopPropagation()}>
-                        <div className="firm-modal-header">
-                            <div className="modal-title-wrap">
-                                <div className="modal-title-icon">
-                                    <Layers size={20} />
-                                </div>
-                                <div>
-                                    <h3>{editingBranch ? 'Tıbbi Branşı Düzenle' : 'Yeni Tıbbi Branş / Poliklinik'}</h3>
-                                    <p className="modal-subtitle">Tıbbi uzmanlık veya poliklinik adını girin.</p>
-                                </div>
+                <div className="fs-modal-backdrop" onClick={() => setBranchModalOpen(false)}>
+                    <div className="fs-modal" onClick={e => e.stopPropagation()}>
+                        <div className="fs-modal-head">
+                            <div className="fs-modal-title-group">
+                                <h3>{editingBranch ? 'Branşı Düzenle' : 'Yeni Tıbbi Branş'}</h3>
+                                <p>Klinik departman veya uzmanlık dalını belirleyin.</p>
                             </div>
-                            <button className="firm-modal-close" onClick={() => setBranchModalOpen(false)}>
-                                <X size={18} />
+                            <button className="fs-close-btn" onClick={() => setBranchModalOpen(false)}>
+                                <X size={16} />
                             </button>
                         </div>
                         <form onSubmit={handleSaveBranch}>
-                            <div className="firm-modal-body">
-                                <div className="firm-form-group">
-                                    <label>Branş / Poliklinik Adı <span className="req-star">*</span></label>
+                            <div className="fs-modal-body">
+                                <div className="fs-field">
+                                    <label>Branş Adı <span className="req">*</span></label>
                                     <input 
                                         type="text" 
-                                        className="firm-form-input"
-                                        placeholder="Örn: Ağız ve Diş Sağlığı, Kardiyoloji, Göz Hastalıkları..."
+                                        className="fs-input"
+                                        placeholder="Örn: Ağız ve Diş Sağlığı, Kardiyoloji, Göz..."
                                         value={branchName}
                                         onChange={e => setBranchName(e.target.value)}
                                         required
                                         autoFocus
                                     />
-                                    <span className="field-hint">
-                                        WhatsApp ve web botları, hasta talebini bu branş isimleriyle eşleştirir.
-                                    </span>
                                 </div>
                             </div>
-                            <div className="firm-modal-footer">
-                                <button type="button" className="btn-modal-cancel" onClick={() => setBranchModalOpen(false)}>
+                            <div className="fs-modal-foot">
+                                <button type="button" className="fs-btn-cancel" onClick={() => setBranchModalOpen(false)}>
                                     İptal
                                 </button>
-                                <button type="submit" className="btn-modal-submit">
-                                    <Check size={16} />
-                                    {editingBranch ? 'Değişiklikleri Kaydet' : 'Branşı Oluştur'}
+                                <button type="submit" className="fs-btn-submit">
+                                    {editingBranch ? 'Güncelle' : 'Kaydet'}
                                 </button>
                             </div>
                         </form>
@@ -1162,33 +960,26 @@ export default function FirmSettings() {
                 </div>
             )}
 
-            {/* ────────────────── 3. DOCTOR MODAL (DOKTOR) ────────────────── */}
+            {/* ── DOCTOR MODAL ── */}
             {doctorModalOpen && (
-                <div className="firm-modal-backdrop" onClick={() => setDoctorModalOpen(false)}>
-                    <div className="firm-modal-container doctor-modal-width" onClick={e => e.stopPropagation()}>
-                        <div className="firm-modal-header">
-                            <div className="modal-title-wrap">
-                                <div className="modal-title-icon doc-icon-color">
-                                    <Stethoscope size={20} />
-                                </div>
-                                <div>
-                                    <h3>{editingDoctor ? 'Hekim Bilgilerini Düzenle' : 'Yeni Hekim / Uzman Tanımla'}</h3>
-                                    <p className="modal-subtitle">Şube, branş, mesai saatleri ve CRM temsilci eşleşmesini yapılandırın.</p>
-                                </div>
+                <div className="fs-modal-backdrop" onClick={() => setDoctorModalOpen(false)}>
+                    <div className="fs-modal doc-modal-size" onClick={e => e.stopPropagation()}>
+                        <div className="fs-modal-head">
+                            <div className="fs-modal-title-group">
+                                <h3>{editingDoctor ? 'Hekim Bilgilerini Düzenle' : 'Yeni Hekim Ekle'}</h3>
+                                <p>Hekimin unvanı, şubesi, branşı, mesai ve seans sürelerini belirleyin.</p>
                             </div>
-                            <button className="firm-modal-close" onClick={() => setDoctorModalOpen(false)}>
-                                <X size={18} />
+                            <button className="fs-close-btn" onClick={() => setDoctorModalOpen(false)}>
+                                <X size={16} />
                             </button>
                         </div>
-
                         <form onSubmit={handleSaveDoctor}>
-                            <div className="firm-modal-body">
-                                {/* Title & Name */}
-                                <div className="firm-form-row">
-                                    <div className="firm-form-group" style={{ flex: '0 0 160px' }}>
-                                        <label>Tıbbi Unvan</label>
+                            <div className="fs-modal-body">
+                                <div className="fs-row-2">
+                                    <div className="fs-field" style={{ flex: '0 0 140px' }}>
+                                        <label>Unvan</label>
                                         <select 
-                                            className="firm-form-select"
+                                            className="fs-input"
                                             value={doctorForm.title}
                                             onChange={e => setDoctorForm({ ...doctorForm, title: e.target.value })}
                                         >
@@ -1204,11 +995,11 @@ export default function FirmSettings() {
                                             <option value="Psk.">Psk. (Psikolog)</option>
                                         </select>
                                     </div>
-                                    <div className="firm-form-group" style={{ flex: 1 }}>
-                                        <label>Hekim Adı Soyadı <span className="req-star">*</span></label>
+                                    <div className="fs-field" style={{ flex: 1 }}>
+                                        <label>Ad Soyad <span className="req">*</span></label>
                                         <input 
                                             type="text" 
-                                            className="firm-form-input"
+                                            className="fs-input"
                                             placeholder="Örn: Ahmet Yılmaz"
                                             value={doctorForm.name}
                                             onChange={e => setDoctorForm({ ...doctorForm, name: e.target.value })}
@@ -1218,29 +1009,23 @@ export default function FirmSettings() {
                                     </div>
                                 </div>
 
-                                {/* Şube & Branş Seçimleri */}
-                                <div className="firm-form-row">
-                                    <div className="firm-form-group" style={{ flex: 1 }}>
-                                        <label>Görev Yaptığı Şube <span className="req-star">*</span></label>
+                                <div className="fs-row-2">
+                                    <div className="fs-field" style={{ flex: 1 }}>
+                                        <label>Şube <span className="req">*</span></label>
                                         <select 
-                                            className="firm-form-select"
+                                            className="fs-input"
                                             value={doctorForm.locationId}
                                             onChange={e => setDoctorForm({ ...doctorForm, locationId: e.target.value })}
                                         >
-                                            {locations.length === 0 ? (
-                                                <option value="">Merkez Şube</option>
-                                            ) : (
-                                                locations.map(loc => (
-                                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                                ))
-                                            )}
+                                            {locations.map(loc => (
+                                                <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                            ))}
                                         </select>
                                     </div>
-
-                                    <div className="firm-form-group" style={{ flex: 1 }}>
-                                        <label>Bağlı Tıbbi Branş <span className="req-star">*</span></label>
+                                    <div className="fs-field" style={{ flex: 1 }}>
+                                        <label>Tıbbi Branş <span className="req">*</span></label>
                                         <select 
-                                            className="firm-form-select"
+                                            className="fs-input"
                                             value={doctorForm.branchId}
                                             onChange={e => setDoctorForm({ ...doctorForm, branchId: e.target.value })}
                                             required
@@ -1253,121 +1038,94 @@ export default function FirmSettings() {
                                     </div>
                                 </div>
 
-                                {/* CRM User */}
-                                <div className="firm-form-group">
+                                <div className="fs-field">
                                     <label>Sistem Temsilcisi (CRM Kullanıcısı)</label>
                                     <select 
-                                        className="firm-form-select"
+                                        className="fs-input"
                                         value={doctorForm.userId}
                                         onChange={e => setDoctorForm({ ...doctorForm, userId: e.target.value })}
                                     >
                                         <option value="">Kullanıcıya Bağlama (Genel Havuz)</option>
                                         {workspaceUsers.map(u => (
-                                            <option key={u.id} value={u.id}>
-                                                {u.name} ({u.email})
-                                            </option>
+                                            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
                                         ))}
                                     </select>
-                                    <span className="field-hint">
-                                        Bu hekime alınan randevular, seçilen temsilcinin CRM bildirimlerine ve Google Takvimine otomatik işlenir.
-                                    </span>
                                 </div>
 
-                                {/* Hours & Slot */}
-                                <div className="firm-form-row">
-                                    <div className="firm-form-group" style={{ flex: 1 }}>
+                                <div className="fs-row-3">
+                                    <div className="fs-field">
                                         <label>Mesai Başlangıç</label>
                                         <input 
                                             type="time" 
-                                            className="firm-form-input"
+                                            className="fs-input"
                                             value={doctorForm.workStart}
                                             onChange={e => setDoctorForm({ ...doctorForm, workStart: e.target.value })}
                                         />
                                     </div>
-                                    <div className="firm-form-group" style={{ flex: 1 }}>
+                                    <div className="fs-field">
                                         <label>Mesai Bitiş</label>
                                         <input 
                                             type="time" 
-                                            className="firm-form-input"
+                                            className="fs-input"
                                             value={doctorForm.workEnd}
                                             onChange={e => setDoctorForm({ ...doctorForm, workEnd: e.target.value })}
                                         />
                                     </div>
-                                    <div className="firm-form-group" style={{ flex: 1 }}>
+                                    <div className="fs-field">
                                         <label>Seans Süresi</label>
                                         <select 
-                                            className="firm-form-select"
+                                            className="fs-input"
                                             value={doctorForm.slotMinutes}
                                             onChange={e => setDoctorForm({ ...doctorForm, slotMinutes: parseInt(e.target.value) })}
                                         >
-                                            <option value={15}>15 Dakika</option>
-                                            <option value={20}>20 Dakika</option>
-                                            <option value={30}>30 Dakika (Standart)</option>
-                                            <option value={45}>45 Dakika</option>
-                                            <option value={60}>60 Dakika (1 Saat)</option>
+                                            <option value={15}>15 dk</option>
+                                            <option value={20}>20 dk</option>
+                                            <option value={30}>30 dk</option>
+                                            <option value={45}>45 dk</option>
+                                            <option value={60}>60 dk</option>
                                         </select>
                                     </div>
                                 </div>
 
-                                {/* Working Days Button Selector */}
-                                <div className="firm-form-group">
-                                    <div className="label-with-presets">
-                                        <label>Çalışma Günleri</label>
-                                        <div className="preset-buttons">
-                                            <button type="button" className="preset-link-btn" onClick={setWeekdayPreset}>
-                                                Haftaiçi (Pzt-Cum)
-                                            </button>
-                                            <span>•</span>
-                                            <button type="button" className="preset-link-btn" onClick={setFullWeekPreset}>
-                                                Pzt-Cmt
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="days-toggle-grid">
+                                {/* Çalışma Günleri */}
+                                <div className="fs-field">
+                                    <label>Çalışma Günleri</label>
+                                    <div className="fs-days-picker">
                                         {TURKISH_DAYS.map(day => {
                                             const isSelected = doctorForm.workingDays.includes(day.key);
                                             return (
                                                 <button
-                                                    type="button"
                                                     key={day.key}
-                                                    className={`day-toggle-card ${isSelected ? 'selected' : ''}`}
+                                                    type="button"
+                                                    className={`fs-day-toggle ${isSelected ? 'selected' : ''}`}
                                                     onClick={() => toggleDay(day.key)}
                                                 >
-                                                    <div className="day-check-indicator">
-                                                        {isSelected && <Check size={12} />}
-                                                    </div>
-                                                    <span className="day-toggle-name">{day.label}</span>
+                                                    {day.short}
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 </div>
 
-                                {/* Active Toggle */}
-                                <div className="firm-form-group status-toggle-box">
-                                    <label className="toggle-switch-label">
+                                {/* Aktif Anahtarı */}
+                                <div className="fs-switch-row">
+                                    <label className="fs-switch-label">
                                         <input 
                                             type="checkbox"
                                             checked={doctorForm.isActive}
                                             onChange={e => setDoctorForm({ ...doctorForm, isActive: e.target.checked })}
-                                            className="native-toggle-input"
                                         />
-                                        <span className="toggle-slider" />
-                                        <div className="toggle-label-meta">
-                                            <strong>Hekim Randevuya Açık</strong>
-                                            <span>Pasife alındığında hastalara bu hekim için yeni randevu önerilmez.</span>
-                                        </div>
+                                        <span className="fs-switch-track" />
+                                        <span className="fs-switch-text">Hekim Randevuya Açık</span>
                                     </label>
                                 </div>
                             </div>
-
-                            <div className="firm-modal-footer">
-                                <button type="button" className="btn-modal-cancel" onClick={() => setDoctorModalOpen(false)}>
+                            <div className="fs-modal-foot">
+                                <button type="button" className="fs-btn-cancel" onClick={() => setDoctorModalOpen(false)}>
                                     İptal
                                 </button>
-                                <button type="submit" className="btn-modal-submit">
-                                    <Check size={16} />
-                                    {editingDoctor ? 'Hekim Bilgilerini Kaydet' : 'Hekimi Kadroya Ekle'}
+                                <button type="submit" className="fs-btn-submit">
+                                    {editingDoctor ? 'Değişiklikleri Kaydet' : 'Hekimi Ekle'}
                                 </button>
                             </div>
                         </form>
