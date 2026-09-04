@@ -47,6 +47,85 @@ const ACTIVITY_TYPE_CONFIG = {
     PAYMENT: { icon: '💰', color: '#22c55e', label: 'Tahsilat' },
 };
 
+export const GOOGLE_ACCOUNT_PALETTE = [
+    {
+        name: 'Mavi',
+        primary: '#2563eb',       // Canlı mavi (hello@profaj.com gibi ilk hesap)
+        bgLight: '#eff6ff',
+        border: '#93c5fd',
+        text: '#1d4ed8'
+    },
+    {
+        name: 'Mor',
+        primary: '#7c3aed',       // Canlı mor (emre@profaj.com gibi ikinci hesap)
+        bgLight: '#f5f3ff',
+        border: '#c4b5fd',
+        text: '#6d28d9'
+    },
+    {
+        name: 'Zümrüt',
+        primary: '#059669',       // Canlı yeşil/zümrüt (üçüncü hesap)
+        bgLight: '#ecfdf5',
+        border: '#6ee7b7',
+        text: '#047857'
+    },
+    {
+        name: 'Turuncu',
+        primary: '#ea580c',       // Canlı turuncu
+        bgLight: '#fff7ed',
+        border: '#fed7aa',
+        text: '#c2410c'
+    },
+    {
+        name: 'Gül / Fuşya',
+        primary: '#e11d48',       // Canlı gül pembesi
+        bgLight: '#fff1f2',
+        border: '#fca5a5',
+        text: '#9f1239'
+    },
+    {
+        name: 'Teal / Turkuaz',
+        primary: '#0891b2',       // Canlı turkuaz
+        bgLight: '#ecfeff',
+        border: '#67e8f9',
+        text: '#155e75'
+    },
+    {
+        name: 'İndigo',
+        primary: '#4338ca',       // Canlı koyu indigo
+        bgLight: '#eef2ff',
+        border: '#a5b4fc',
+        text: '#312e81'
+    },
+    {
+        name: 'Amber',
+        primary: '#d97706',       // Canlı amber/sarı
+        bgLight: '#fffbeb',
+        border: '#fcd34d',
+        text: '#92400e'
+    }
+];
+
+export const getGoogleAccountColor = (googleEmail, accounts = []) => {
+    if (!googleEmail) return GOOGLE_ACCOUNT_PALETTE[0];
+    const cleanEmail = String(googleEmail).trim().toLowerCase();
+    const list = Array.isArray(accounts) ? accounts : [];
+    const index = list.findIndex(a => {
+        const mail = String(a?.email || a?.googleEmail || '').trim().toLowerCase();
+        return mail === cleanEmail;
+    });
+    if (index >= 0) {
+        return GOOGLE_ACCOUNT_PALETTE[index % GOOGLE_ACCOUNT_PALETTE.length];
+    }
+    // E-posta adresine göre deterministik hash (listenin henüz yüklenmediği durumlar için)
+    let hash = 0;
+    for (let i = 0; i < cleanEmail.length; i++) {
+        hash = (hash << 5) - hash + cleanEmail.charCodeAt(i);
+        hash |= 0;
+    }
+    return GOOGLE_ACCOUNT_PALETTE[Math.abs(hash) % GOOGLE_ACCOUNT_PALETTE.length];
+};
+
 const Calendar = () => {
     const { t } = useTranslation();
     const { currentWorkspace, user } = useAuth();
@@ -471,8 +550,10 @@ const Calendar = () => {
                         isCompleted: isCompleted,
                         isOverdue: isOverdue,
                         isPast: isPast,
-                        // Override color: blue for Google, green for completed, red for overdue
-                        color: apt.isGoogleEvent ? '#4285F4' : (isCompleted ? '#10b981' : (isOverdue ? '#ef4444' : apt.color))
+                        // Override color: account specific color for Google, green for completed, red for overdue
+                        color: apt.isGoogleEvent
+                            ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary
+                            : (isCompleted ? '#10b981' : (isOverdue ? '#ef4444' : apt.color))
                     };
                 })
                 .sort((a, b) => {
@@ -1208,73 +1289,120 @@ const Calendar = () => {
                         {/* Google Calendar Bağlantı Butonları / Rozetleri */}
                         {googleStatus.accounts && googleStatus.accounts.length > 0 ? (
                             <div className="google-cals-group">
-                                {googleStatus.accounts.map((acc) => (
+                                {googleStatus.accounts.map((acc) => {
+                                    const theme = getGoogleAccountColor(acc.email, googleStatus.accounts);
+                                    return (
+                                        <div
+                                            key={acc.id || acc.email}
+                                            className={`google-cal-pill connected ${acc.isExpired ? 'expired' : ''}`}
+                                            title={acc.isExpired ? `Oturum süresi dolmuş: ${acc.email}. Yeniden bağlayın.` : `Bağlı Google Hesabı: ${acc.email} (${theme.name})`}
+                                            style={{
+                                                background: acc.isExpired ? '#fffbeb' : theme.bgLight,
+                                                borderColor: acc.isExpired ? '#f59e0b' : theme.border,
+                                                color: acc.isExpired ? '#b45309' : theme.text
+                                            }}
+                                        >
+                                            <span
+                                                style={{
+                                                    width: 9,
+                                                    height: 9,
+                                                    borderRadius: '50%',
+                                                    backgroundColor: theme.primary,
+                                                    display: 'inline-block',
+                                                    flexShrink: 0,
+                                                    boxShadow: `0 0 0 2px ${theme.border}`
+                                                }}
+                                            />
+                                            <svg className="google-icon" viewBox="0 0 24 24" width="14" height="14">
+                                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                            </svg>
+                                            <span className="google-cal-email" style={{ color: acc.isExpired ? '#b45309' : theme.text }}>
+                                                {acc.email}
+                                            </span>
+                                            {acc.isExpired && <span style={{ fontSize: '10px', fontWeight: 600, marginLeft: 2 }}>⚠️</span>}
+                                            <button
+                                                type="button"
+                                                className="google-cal-disconnect-btn"
+                                                onClick={() => handleGoogleDisconnect(acc.email)}
+                                                title={`${acc.email} Hesabının Bağlantısını Kes`}
+                                                disabled={googleLoading}
+                                                style={{
+                                                    background: 'transparent',
+                                                    color: theme.text
+                                                }}
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                                <button
+                                    type="button"
+                                    className="google-cal-add-btn"
+                                    onClick={handleGoogleConnect}
+                                    title="Başka bir Google Takvim Hesabı Ekle"
+                                    disabled={googleLoading}
+                                >
+                                    <span>+ Hesap Ekle</span>
+                                </button>
+                            </div>
+                        ) : googleStatus.isConnected && googleStatus.email ? (() => {
+                            const theme = getGoogleAccountColor(googleStatus.email, googleStatus.accounts);
+                            return (
+                                <div className="google-cals-group">
                                     <div
-                                        key={acc.id || acc.email}
-                                        className={`google-cal-pill connected ${acc.isExpired ? 'expired' : ''}`}
-                                        title={acc.isExpired ? `Oturum süresi dolmuş: ${acc.email}. Yeniden bağlayın.` : `Bağlı Google Hesabı: ${acc.email}`}
-                                        style={acc.isExpired ? { background: '#fffbeb', borderColor: '#f59e0b', color: '#b45309' } : {}}
+                                        className="google-cal-pill connected"
+                                        title={`Bağlı Google Hesabı: ${googleStatus.email}`}
+                                        style={{
+                                            background: theme.bgLight,
+                                            borderColor: theme.border,
+                                            color: theme.text
+                                        }}
                                     >
+                                        <span
+                                            style={{
+                                                width: 9,
+                                                height: 9,
+                                                borderRadius: '50%',
+                                                backgroundColor: theme.primary,
+                                                display: 'inline-block',
+                                                flexShrink: 0,
+                                                boxShadow: `0 0 0 2px ${theme.border}`
+                                            }}
+                                        />
                                         <svg className="google-icon" viewBox="0 0 24 24" width="14" height="14">
                                             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                                             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                                             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                                             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                                         </svg>
-                                        <span className="google-cal-email">{acc.email}</span>
-                                        {acc.isExpired && <span style={{ fontSize: '10px', fontWeight: 600, marginLeft: 2 }}>⚠️</span>}
+                                        <span className="google-cal-email" style={{ color: theme.text }}>{googleStatus.email}</span>
                                         <button
                                             type="button"
                                             className="google-cal-disconnect-btn"
-                                            onClick={() => handleGoogleDisconnect(acc.email)}
-                                            title={`${acc.email} Hesabının Bağlantısını Kes`}
+                                            onClick={() => handleGoogleDisconnect(googleStatus.email)}
+                                            title="Google Takvim Bağlantısını Kes"
                                             disabled={googleLoading}
+                                            style={{ background: 'transparent', color: theme.text }}
                                         >
                                             <X size={12} />
                                         </button>
                                     </div>
-                                ))}
-                                <button
-                                    type="button"
-                                    className="google-cal-add-btn"
-                                    onClick={handleGoogleConnect}
-                                    title="Başka bir Google Takvim Hesabı Ekle"
-                                    disabled={googleLoading}
-                                >
-                                    <span>+ Hesap Ekle</span>
-                                </button>
-                            </div>
-                        ) : googleStatus.isConnected && googleStatus.email ? (
-                            <div className="google-cals-group">
-                                <div className="google-cal-pill connected" title={`Bağlı Google Hesabı: ${googleStatus.email}`}>
-                                    <svg className="google-icon" viewBox="0 0 24 24" width="14" height="14">
-                                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                                    </svg>
-                                    <span className="google-cal-email">{googleStatus.email}</span>
                                     <button
                                         type="button"
-                                        className="google-cal-disconnect-btn"
-                                        onClick={() => handleGoogleDisconnect(googleStatus.email)}
-                                        title="Google Takvim Bağlantısını Kes"
+                                        className="google-cal-add-btn"
+                                        onClick={handleGoogleConnect}
+                                        title="Başka bir Google Takvim Hesabı Ekle"
                                         disabled={googleLoading}
                                     >
-                                        <X size={12} />
+                                        <span>+ Hesap Ekle</span>
                                     </button>
                                 </div>
-                                <button
-                                    type="button"
-                                    className="google-cal-add-btn"
-                                    onClick={handleGoogleConnect}
-                                    title="Başka bir Google Takvim Hesabı Ekle"
-                                    disabled={googleLoading}
-                                >
-                                    <span>+ Hesap Ekle</span>
-                                </button>
-                            </div>
-                        ) : (
+                            );
+                        })() : (
                             <button
                                 type="button"
                                 className="google-cal-connect-btn"
@@ -1676,16 +1804,17 @@ const Calendar = () => {
                                 );
                             } else {
                                 const apt = item.data;
+                                const gColor = apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : null;
                                 return (
                                     <div key={apt.id} className="todo-item" onClick={() => openEditModal(apt)}>
-                                        <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}>
+                                        <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? gColor : (apt.color || '#3b82f6') }}>
                                             {apt.isGoogleEvent ? '🇬' : '📅'}
                                         </div>
                                         <div className="todo-content">
                                             <span className="todo-title">{apt.title}</span>
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && <span className="todo-agent">👤 {apt.assignedTo.name}</span>}
-                                            {apt.isGoogleEvent && <span className="todo-agent" style={{ color: '#4285F4', fontWeight: 500 }}>Google Takvim</span>}
+                                            {apt.isGoogleEvent && <span className="todo-agent" style={{ color: gColor, fontWeight: 500 }}>Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
                                             {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {apt.doctorName}</span>}
                                         </div>
                                         <div className="todo-time">{formatTime(apt.startTime)}</div>
@@ -1812,7 +1941,7 @@ const Calendar = () => {
                                         >
                                             {apts.map(apt => (
                                                 <div key={apt.id} className="week-event"
-                                                    style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}
+                                                    style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
                                                     onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
                                                     <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)}</span>
                                                     <span className="week-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
@@ -1851,7 +1980,7 @@ const Calendar = () => {
                                         onClick={() => { const dt = new Date(currentDate); dt.setHours(hour,0,0,0); openCreateModal(dt); }}>
                                         {apts.map(apt => (
                                             <div key={apt.id} className="day-event"
-                                                style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}
+                                                style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
                                                 onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
                                                 <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
                                                 <span className="day-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
@@ -1901,13 +2030,16 @@ const Calendar = () => {
                                             const aptEnd = new Date(apt.endTime || apt.startTime);
                                             const isOverdue = !apt.isGoogleEvent && aptEnd < now && apt.status === 'SCHEDULED';
                                             const isCompleted = apt.status === 'COMPLETED';
+                                            const eventColor = apt.isGoogleEvent
+                                                ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary
+                                                : (aptResource?.color || apt.color);
                                             allItems.push({
                                                 id: `apt-${apt.id}`, sortTime: new Date(apt.startTime),
                                                 render: (
                                                     <div key={`apt-${apt.id}`} className="appointment-pill-wrapper">
                                                         <div
                                                             className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''} ${apt.isGoogleEvent ? 'pill-google' : ''}`}
-                                                            style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (aptResource?.color || apt.color) }}
+                                                            style={{ backgroundColor: eventColor }}
                                                             onClick={(e) => { e.stopPropagation(); openEditModal(apt); }}
                                                         >
                                                             {apt.isGoogleEvent && <span style={{ marginRight: 3, fontSize: 11 }}>🇬</span>}
@@ -1917,10 +2049,10 @@ const Calendar = () => {
                                                             <span className="apt-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
                                                         </div>
                                                         <div className="appointment-tooltip">
-                                                            <div className="tooltip-header" style={{ borderLeftColor: apt.isGoogleEvent ? '#4285F4' : apt.color }}>
+                                                            <div className="tooltip-header" style={{ borderLeftColor: eventColor }}>
                                                                 <h4>{apt.isGoogleEvent ? `🇬 ${apt.title}${apt.googleEmail ? ` (${apt.googleEmail})` : ''}` : apt.title}</h4>
-                                                                <span className="tooltip-status" style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (status?.color || '#3b82f6') }}>
-                                                                    {apt.isGoogleEvent ? 'Google Takvim' : (status?.label || 'Kayıtlı')}
+                                                                <span className="tooltip-status" style={{ backgroundColor: eventColor }}>
+                                                                    {apt.isGoogleEvent ? (apt.googleEmail || 'Google Takvim') : (status?.label || 'Kayıtlı')}
                                                                 </span>
                                                             </div>
                                                             <div className="tooltip-body">
@@ -2101,11 +2233,16 @@ const Calendar = () => {
                                                     }}
                                                 >
                                                     <td>
-                                                        <span className={`activities-type-badge ${isCall ? 'type-call' : item.isGoogleEvent ? 'type-google' : 'type-appointment'}`}
-                                                            style={item.isGoogleEvent ? { background: '#e8f0fe', color: '#1a73e8' } : {}}
-                                                        >
-                                                            {isCall ? '📞' : item.isGoogleEvent ? '🇬' : '📅'}
-                                                        </span>
+                                                        {(() => {
+                                                            const gTheme = item.isGoogleEvent ? getGoogleAccountColor(item.googleEmail, googleStatus.accounts) : null;
+                                                            return (
+                                                                <span className={`activities-type-badge ${isCall ? 'type-call' : item.isGoogleEvent ? 'type-google' : 'type-appointment'}`}
+                                                                    style={item.isGoogleEvent ? { background: gTheme.bgLight, color: gTheme.text, borderColor: gTheme.border } : {}}
+                                                                >
+                                                                    {isCall ? '📞' : item.isGoogleEvent ? '🇬' : '📅'}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="activities-date-cell">
                                                         <div className="activities-date-main">
@@ -2208,7 +2345,7 @@ const Calendar = () => {
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
                     <div className="apt-modal" onClick={e => e.stopPropagation()}>
                         {/* Header */}
-                        <div className="apt-modal-header" style={selectedAppointment?.isGoogleEvent ? { background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)' } : {}}>
+                        <div className="apt-modal-header" style={selectedAppointment?.isGoogleEvent ? { background: `linear-gradient(135deg, #0f172a 0%, ${getGoogleAccountColor(selectedAppointment.googleEmail, googleStatus.accounts).primary} 100%)` } : {}}>
                             <h2>{selectedAppointment?.isGoogleEvent ? '🇬 Google Takvim Etkinliği' : (selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu')}</h2>
                             <button className="apt-modal-close" onClick={() => setIsModalOpen(false)}>
                                 <X size={18} />
@@ -2749,14 +2886,17 @@ const Calendar = () => {
                                     const aptEnd = new Date(apt.endTime || apt.startTime);
                                     const isOverdue = !apt.isGoogleEvent && aptEnd < now && apt.status === 'SCHEDULED';
                                     const isCompleted = apt.status === 'COMPLETED';
+                                    const dpEventColor = apt.isGoogleEvent
+                                        ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary
+                                        : (aptResource?.color || apt.color);
                                     allItems.push({
                                         sortTime: new Date(apt.startTime),
                                         render: (
                                             <div key={`dp-apt-${apt.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
-                                                style={{ borderLeftColor: apt.isGoogleEvent ? '#4285F4' : (aptResource?.color || apt.color) }}
+                                                style={{ borderLeftColor: dpEventColor }}
                                                 onClick={() => { openEditModal(apt); setDayPopup(null); }}
                                             >
-                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: '#4285F4', color: '#fff' }}>🇬 Google</span>}
+                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>🇬 Google</span>}
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
                                                 <span className="popup-time">{formatTime(apt.startTime)}</span>

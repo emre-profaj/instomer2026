@@ -8,6 +8,7 @@ import RetellSettings from '../../components/Settings/RetellSettings';
 import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database, PhoneCall, ArrowRight, ChevronUp, ChevronDown, Edit2, Map, List, Brain, Hash, AlertTriangle, MessageSquare, Radio, Calendar as CalendarIcon } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
 import DisaoSettingsModal from '../../components/Settings/DisaoSettingsModal';
+import { getGoogleAccountColor } from '../Calendar/Calendar';
 import './Channels.css';
 
 
@@ -2859,22 +2860,25 @@ const Channels = () => {
                                         </div>
                                         {myCals.length > 0 ? (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                {myCals.map(cal => (
-                                                    <div key={cal.id || cal.googleEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ color: '#16a34a', fontSize: '14px' }}>✓</span>
-                                                            <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{cal.googleEmail}</span>
-                                                            <span style={{ fontSize: '11px', color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>Bağlı</span>
+                                                {myCals.map(cal => {
+                                                    const theme = getGoogleAccountColor(cal.googleEmail, googleCalConfig?.connectedUsers);
+                                                    return (
+                                                        <div key={cal.id || cal.googleEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${theme.border}` }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: theme.primary, display: 'inline-block', flexShrink: 0 }} />
+                                                                <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{cal.googleEmail}</span>
+                                                                <span style={{ fontSize: '11px', color: theme.text, background: theme.bgLight, border: `1px solid ${theme.border}`, padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>Bağlı</span>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDisconnectMyGoogleFromChannels(cal.googleEmail)}
+                                                                style={{ padding: '6px 12px', fontSize: '12px', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                                                            >
+                                                                Bağlantıyı Kes
+                                                            </button>
                                                         </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDisconnectMyGoogleFromChannels(cal.googleEmail)}
-                                                            style={{ padding: '6px 12px', fontSize: '12px', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
-                                                        >
-                                                            Bağlantıyı Kes
-                                                        </button>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         ) : (
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
@@ -2912,17 +2916,21 @@ const Channels = () => {
 
                                 {googleCalConfig?.connectedUsers?.length > 0 ? (
                                     <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {googleCalConfig.connectedUsers.map(u => (
-                                            <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px' }}>
-                                                <div>
-                                                    <strong style={{ color: '#0f172a' }}>{u.userName}</strong>
-                                                    <span style={{ color: '#64748b', marginLeft: '6px' }}>({u.googleEmail})</span>
+                                        {googleCalConfig.connectedUsers.map(u => {
+                                            const theme = getGoogleAccountColor(u.googleEmail, googleCalConfig.connectedUsers);
+                                            return (
+                                                <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: `1px solid ${theme.border}`, borderRadius: '8px', fontSize: '13px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: theme.primary, display: 'inline-block', flexShrink: 0 }} />
+                                                        <strong style={{ color: '#0f172a' }}>{u.userName}</strong>
+                                                        <span style={{ color: '#64748b' }}>({u.googleEmail})</span>
+                                                    </div>
+                                                    <span style={{ fontSize: '11px', color: theme.text, background: theme.bgLight, fontWeight: 600, padding: '2px 8px', borderRadius: '12px', border: `1px solid ${theme.border}` }}>
+                                                        ● Aktif
+                                                    </span>
                                                 </div>
-                                                <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>
-                                                    ● Aktif
-                                                </span>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
