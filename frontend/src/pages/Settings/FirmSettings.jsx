@@ -5,7 +5,7 @@ import {
     Stethoscope, Plus, Edit2, Trash2, Sparkles, Clock, Calendar, 
     UserCheck, ShieldAlert, X, Check, Search, Filter, Users, 
     Layers, ChevronRight, CheckCircle2, AlertCircle, RefreshCw,
-    Activity, Hospital, Building2, MapPin, Phone
+    Activity, Hospital, Building2, MapPin, Phone, UserPlus
 } from 'lucide-react';
 import './FirmSettings.css';
 
@@ -342,7 +342,8 @@ export default function FirmSettings() {
         if (!locationSearchQuery) return locations;
         return locations.filter(l => 
             l.name?.toLowerCase().includes(locationSearchQuery.toLowerCase()) ||
-            l.address?.toLowerCase().includes(locationSearchQuery.toLowerCase())
+            l.address?.toLowerCase().includes(locationSearchQuery.toLowerCase()) ||
+            l.phone?.toLowerCase().includes(locationSearchQuery.toLowerCase())
         );
     }, [locations, locationSearchQuery]);
 
@@ -372,13 +373,21 @@ export default function FirmSettings() {
                         <Sparkles size={14} />
                         {seeding ? 'Yükleniyor...' : 'Örnek Kadroyu Yükle'}
                     </button>
-                    <button 
-                        className="fs-btn-primary" 
-                        onClick={() => openCreateDoctorModal()}
-                    >
-                        <Plus size={15} />
-                        Yeni Hekim
-                    </button>
+                    {activeTab === 'doctors' && (
+                        <button className="fs-btn-primary" onClick={() => openCreateDoctorModal()}>
+                            <Plus size={15} /> Yeni Hekim
+                        </button>
+                    )}
+                    {activeTab === 'branches' && (
+                        <button className="fs-btn-primary" onClick={openCreateBranchModal}>
+                            <Plus size={15} /> Yeni Branş
+                        </button>
+                    )}
+                    {activeTab === 'locations' && (
+                        <button className="fs-btn-primary" onClick={openCreateLocationModal}>
+                            <Plus size={15} /> Yeni Şube
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -425,7 +434,7 @@ export default function FirmSettings() {
                 </div>
             </div>
 
-            {/* Navigation Tabs */}
+            {/* Standard Navigation Tabs */}
             <div className="fs-tabs-nav">
                 <div className="fs-tabs-group">
                     <button 
@@ -473,13 +482,15 @@ export default function FirmSettings() {
                 </div>
             </div>
 
-            {/* Tab Body */}
+            {/* Standard Unified Content Panel */}
             <div className="fs-content-panel">
 
-                {/* 1. DOKTORLAR TAB */}
+                {/* ══════════════════════════════════════════════════
+                   1. DOKTORLAR TABLOSU
+                   ══════════════════════════════════════════════════ */}
                 {activeTab === 'doctors' && (
                     <div>
-                        {/* Toolbar */}
+                        {/* Standard Toolbar */}
                         <div className="fs-toolbar">
                             <div className="fs-search">
                                 <Search size={15} className="fs-search-icon" />
@@ -531,7 +542,7 @@ export default function FirmSettings() {
                             </div>
                         </div>
 
-                        {/* Doctors Table */}
+                        {/* Standard Doctors Table */}
                         {filteredDoctors.length === 0 ? (
                             <div className="fs-empty">
                                 <Stethoscope size={36} className="fs-empty-icon" />
@@ -569,7 +580,6 @@ export default function FirmSettings() {
 
                                             return (
                                                 <tr key={doc.id} className={!doc.isActive ? 'is-inactive' : ''}>
-                                                    {/* Hekim Adı */}
                                                     <td>
                                                         <div className="fs-doctor-cell">
                                                             <div className="fs-avatar">
@@ -584,23 +594,17 @@ export default function FirmSettings() {
                                                             </div>
                                                         </div>
                                                     </td>
-
-                                                    {/* Şube */}
                                                     <td>
                                                         <span className="fs-tag-neutral">
                                                             <Building2 size={12} />
                                                             {doc.locationName || 'Merkez Şube'}
                                                         </span>
                                                     </td>
-
-                                                    {/* Branş */}
                                                     <td>
                                                         <span className="fs-tag-branch">
                                                             {doc.branchName}
                                                         </span>
                                                     </td>
-
-                                                    {/* CRM Temsilcisi */}
                                                     <td>
                                                         {assignedUser ? (
                                                             <div className="fs-user-pill" title={assignedUser.email}>
@@ -611,8 +615,6 @@ export default function FirmSettings() {
                                                             <span className="fs-text-muted">Genel Havuz</span>
                                                         )}
                                                     </td>
-
-                                                    {/* Mesai & Seans */}
                                                     <td>
                                                         <div className="fs-timing">
                                                             <span className="fs-time-text">
@@ -622,8 +624,6 @@ export default function FirmSettings() {
                                                             <span className="fs-slot-pill">{doc.slotMinutes || 30} dk</span>
                                                         </div>
                                                     </td>
-
-                                                    {/* Günler */}
                                                     <td>
                                                         <div className="fs-days-row">
                                                             {TURKISH_DAYS.map(d => {
@@ -640,15 +640,11 @@ export default function FirmSettings() {
                                                             })}
                                                         </div>
                                                     </td>
-
-                                                    {/* Durum */}
                                                     <td>
                                                         <span className={`fs-status-pill ${doc.isActive ? 'active' : 'inactive'}`}>
                                                             {doc.isActive ? 'Aktif' : 'Pasif'}
                                                         </span>
                                                     </td>
-
-                                                    {/* İşlemler */}
                                                     <td>
                                                         <div className="fs-row-actions">
                                                             <button 
@@ -677,18 +673,26 @@ export default function FirmSettings() {
                     </div>
                 )}
 
-                {/* 2. BRANŞLAR TAB */}
+                {/* ══════════════════════════════════════════════════
+                   2. TIBBİ BRANŞLAR TABLOSU (STANDART GÖRÜNÜM)
+                   ══════════════════════════════════════════════════ */}
                 {activeTab === 'branches' && (
                     <div>
+                        {/* Standard Toolbar */}
                         <div className="fs-toolbar">
                             <div className="fs-search">
                                 <Search size={15} className="fs-search-icon" />
                                 <input 
                                     type="text" 
-                                    placeholder="Tıbbi branş ara..."
+                                    placeholder="Tıbbi branş veya bölüm ara..."
                                     value={branchSearchQuery}
                                     onChange={e => setBranchSearchQuery(e.target.value)}
                                 />
+                                {branchSearchQuery && (
+                                    <button className="fs-clear-search" onClick={() => setBranchSearchQuery('')}>
+                                        <X size={13} />
+                                    </button>
+                                )}
                             </div>
 
                             <button className="fs-btn-primary" onClick={openCreateBranchModal}>
@@ -696,80 +700,151 @@ export default function FirmSettings() {
                             </button>
                         </div>
 
+                        {/* Standard Branches Table */}
                         {filteredBranches.length === 0 ? (
                             <div className="fs-empty">
                                 <Layers size={36} className="fs-empty-icon" />
                                 <h3>Branş Bulunamadı</h3>
                                 <p>Arama teriminizi kontrol edin veya yeni bir tıbbi branş ekleyin.</p>
+                                <button className="fs-btn-primary" onClick={openCreateBranchModal}>
+                                    <Plus size={14} /> Yeni Branş Ekle
+                                </button>
                             </div>
                         ) : (
-                            <div className="fs-cards-grid">
-                                {filteredBranches.map(branch => {
-                                    const docs = branch.doctors || [];
-                                    return (
-                                        <div key={branch.id} className="fs-card">
-                                            <div className="fs-card-head">
-                                                <div className="fs-card-icon branch">
-                                                    <Stethoscope size={18} />
-                                                </div>
-                                                <div className="fs-card-title-meta">
-                                                    <h3>{branch.name}</h3>
-                                                    <span className="fs-card-subtitle">{docs.length} hekim tanımlı</span>
-                                                </div>
-                                                <div className="fs-card-actions">
-                                                    <button className="fs-icon-btn" onClick={() => openEditBranchModal(branch)} title="Düzenle">
-                                                        <Edit2 size={13} />
-                                                    </button>
-                                                    <button className="fs-icon-btn danger" onClick={() => handleDeleteBranch(branch.id, branch.name)} title="Sil">
-                                                        <Trash2 size={13} />
-                                                    </button>
-                                                </div>
-                                            </div>
+                            <div className="fs-table-wrap">
+                                <table className="fs-table">
+                                    <thead>
+                                        <tr>
+                                            <th style={{ minWidth: '220px' }}>Tıbbi Branş / Poliklinik</th>
+                                            <th style={{ minWidth: '280px' }}>Bağlı Hekim Kadrosu</th>
+                                            <th>Hekim Sayısı</th>
+                                            <th>Hizmet Verilen Şubeler</th>
+                                            <th>Durum</th>
+                                            <th style={{ textAlign: 'right', width: '110px' }}>İşlem</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredBranches.map(branch => {
+                                            const docs = branch.doctors || [];
+                                            // Unique locations where this branch operates
+                                            const branchLocationNames = Array.from(new Set(docs.map(d => d.locationName).filter(Boolean)));
 
-                                            <div className="fs-card-body">
-                                                <span className="fs-chip-group-label">Kadro:</span>
-                                                {docs.length === 0 ? (
-                                                    <span className="fs-text-muted">Bu branşta hekim bulunmuyor.</span>
-                                                ) : (
-                                                    <div className="fs-chip-wrap">
-                                                        {docs.map(doc => (
-                                                            <span key={doc.id} className="fs-chip">
-                                                                {doc.title ? `${doc.title} ` : ''}{doc.name}
-                                                                {doc.locationName && <small>({doc.locationName})</small>}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                            return (
+                                                <tr key={branch.id}>
+                                                    {/* Branş Adı */}
+                                                    <td>
+                                                        <div className="fs-doctor-cell">
+                                                            <div className="fs-avatar branch-avatar">
+                                                                <Stethoscope size={15} />
+                                                            </div>
+                                                            <div className="fs-doctor-meta">
+                                                                <span className="fs-doc-name">{branch.name}</span>
+                                                                <span className="fs-doc-sub">Tıbbi Poliklinik</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
 
-                                            <div className="fs-card-foot">
-                                                <button 
-                                                    className="fs-btn-card-add" 
-                                                    onClick={() => openCreateDoctorModal({ branchId: branch.id })}
-                                                >
-                                                    <Plus size={13} /> Bu Branşa Hekim Ekle
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                                    {/* Hekimler */}
+                                                    <td>
+                                                        {docs.length === 0 ? (
+                                                            <span className="fs-text-muted">Henüz hekim atanmadı</span>
+                                                        ) : (
+                                                            <div className="fs-table-chips">
+                                                                {docs.map(doc => (
+                                                                    <span key={doc.id} className="fs-cell-chip">
+                                                                        {doc.title ? `${doc.title} ` : ''}{doc.name}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Hekim Sayısı */}
+                                                    <td>
+                                                        <span className="fs-tag-neutral">
+                                                            {docs.length} Hekim
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Şubeler */}
+                                                    <td>
+                                                        {branchLocationNames.length === 0 ? (
+                                                            <span className="fs-text-muted">—</span>
+                                                        ) : (
+                                                            <div className="fs-table-chips">
+                                                                {branchLocationNames.map((locName, idx) => (
+                                                                    <span key={idx} className="fs-tag-location">
+                                                                        <Building2 size={11} />
+                                                                        {locName}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Durum */}
+                                                    <td>
+                                                        <span className="fs-status-pill active">
+                                                            Aktif
+                                                        </span>
+                                                    </td>
+
+                                                    {/* İşlemler */}
+                                                    <td>
+                                                        <div className="fs-row-actions">
+                                                            <button 
+                                                                className="fs-icon-btn" 
+                                                                onClick={() => openCreateDoctorModal({ branchId: branch.id })}
+                                                                title="Bu Branşa Hekim Ekle"
+                                                            >
+                                                                <UserPlus size={13} />
+                                                            </button>
+                                                            <button 
+                                                                className="fs-icon-btn" 
+                                                                onClick={() => openEditBranchModal(branch)}
+                                                                title="Branşı Düzenle"
+                                                            >
+                                                                <Edit2 size={13} />
+                                                            </button>
+                                                            <button 
+                                                                className="fs-icon-btn danger" 
+                                                                onClick={() => handleDeleteBranch(branch.id, branch.name)}
+                                                                title="Branşı Sil"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* 3. ŞUBELER TAB */}
+                {/* ══════════════════════════════════════════════════
+                   3. ŞUBELER TABLOSU (STANDART GÖRÜNÜM)
+                   ══════════════════════════════════════════════════ */}
                 {activeTab === 'locations' && (
                     <div>
+                        {/* Standard Toolbar */}
                         <div className="fs-toolbar">
                             <div className="fs-search">
                                 <Search size={15} className="fs-search-icon" />
                                 <input 
                                     type="text" 
-                                    placeholder="Şube veya adres ara..."
+                                    placeholder="Şube adı, adres veya telefon ara..."
                                     value={locationSearchQuery}
                                     onChange={e => setLocationSearchQuery(e.target.value)}
                                 />
+                                {locationSearchQuery && (
+                                    <button className="fs-clear-search" onClick={() => setLocationSearchQuery('')}>
+                                        <X size={13} />
+                                    </button>
+                                )}
                             </div>
 
                             <button className="fs-btn-primary" onClick={openCreateLocationModal}>
@@ -777,81 +852,134 @@ export default function FirmSettings() {
                             </button>
                         </div>
 
+                        {/* Standard Locations Table */}
                         {filteredLocations.length === 0 ? (
                             <div className="fs-empty">
                                 <Building2 size={36} className="fs-empty-icon" />
                                 <h3>Şube Bulunamadı</h3>
                                 <p>Arama teriminizi kontrol edin veya yeni bir şube ekleyin.</p>
+                                <button className="fs-btn-primary" onClick={openCreateLocationModal}>
+                                    <Plus size={14} /> Yeni Şube Ekle
+                                </button>
                             </div>
                         ) : (
-                            <div className="fs-cards-grid">
-                                {filteredLocations.map(loc => {
-                                    const locDoctors = allDoctors.filter(d => d.locationId === loc.id);
-                                    return (
-                                        <div key={loc.id} className="fs-card">
-                                            <div className="fs-card-head">
-                                                <div className="fs-card-icon location">
-                                                    <Building2 size={18} />
-                                                </div>
-                                                <div className="fs-card-title-meta">
-                                                    <h3>{loc.name}</h3>
-                                                    <span className="fs-card-subtitle">{locDoctors.length} hekim görevde</span>
-                                                </div>
-                                                <div className="fs-card-actions">
-                                                    <button className="fs-icon-btn" onClick={() => openEditLocationModal(loc)} title="Düzenle">
-                                                        <Edit2 size={13} />
-                                                    </button>
-                                                    <button className="fs-icon-btn danger" onClick={() => handleDeleteLocation(loc.id, loc.name)} title="Sil">
-                                                        <Trash2 size={13} />
-                                                    </button>
-                                                </div>
-                                            </div>
+                            <div className="fs-table-wrap">
+                                <table className="fs-table">
+                                    <thead>
+                                        <tr>
+                                            <th style={{ minWidth: '220px' }}>Şube / Lokasyon</th>
+                                            <th>İletişim Telefonu</th>
+                                            <th style={{ minWidth: '220px' }}>Adres & Lokasyon</th>
+                                            <th style={{ minWidth: '240px' }}>Görevli Hekimler</th>
+                                            <th>Hekim Sayısı</th>
+                                            <th>Durum</th>
+                                            <th style={{ textAlign: 'right', width: '110px' }}>İşlem</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredLocations.map(loc => {
+                                            const locDoctors = allDoctors.filter(d => d.locationId === loc.id);
 
-                                            <div className="fs-loc-info">
-                                                {loc.address && (
-                                                    <div className="fs-loc-row">
-                                                        <MapPin size={13} className="fs-loc-icon" />
-                                                        <span>{loc.address}</span>
-                                                    </div>
-                                                )}
-                                                {loc.phone && (
-                                                    <div className="fs-loc-row">
-                                                        <Phone size={13} className="fs-loc-icon" />
-                                                        <span>{loc.phone}</span>
-                                                    </div>
-                                                )}
-                                                {!loc.address && !loc.phone && (
-                                                    <span className="fs-text-muted">Adres ve telefon henüz eklenmedi.</span>
-                                                )}
-                                            </div>
+                                            return (
+                                                <tr key={loc.id}>
+                                                    {/* Şube Adı */}
+                                                    <td>
+                                                        <div className="fs-doctor-cell">
+                                                            <div className="fs-avatar location-avatar">
+                                                                <Building2 size={15} />
+                                                            </div>
+                                                            <div className="fs-doctor-meta">
+                                                                <span className="fs-doc-name">{loc.name}</span>
+                                                                <span className="fs-doc-sub">Klinik Şubesi</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
 
-                                            <div className="fs-card-body">
-                                                <span className="fs-chip-group-label">Görevli Hekimler:</span>
-                                                {locDoctors.length === 0 ? (
-                                                    <span className="fs-text-muted">Bu şubeye atanmış hekim yok.</span>
-                                                ) : (
-                                                    <div className="fs-chip-wrap">
-                                                        {locDoctors.map(doc => (
-                                                            <span key={doc.id} className="fs-chip">
-                                                                {doc.title ? `${doc.title} ` : ''}{doc.name}
-                                                                <small className="fs-chip-branch">{doc.branchName}</small>
+                                                    {/* Telefon */}
+                                                    <td>
+                                                        {loc.phone ? (
+                                                            <span className="fs-time-text">
+                                                                <Phone size={12} className="text-muted-icon" />
+                                                                {loc.phone}
                                                             </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                                        ) : (
+                                                            <span className="fs-text-muted">—</span>
+                                                        )}
+                                                    </td>
 
-                                            <div className="fs-card-foot">
-                                                <button 
-                                                    className="fs-btn-card-add" 
-                                                    onClick={() => openCreateDoctorModal({ locationId: loc.id })}
-                                                >
-                                                    <Plus size={13} /> Bu Şubeye Hekim Ekle
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                                    {/* Adres */}
+                                                    <td>
+                                                        {loc.address ? (
+                                                            <span className="fs-address-cell" title={loc.address}>
+                                                                <MapPin size={12} className="text-muted-icon" />
+                                                                <span>{loc.address}</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="fs-text-muted">—</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Görevli Hekimler */}
+                                                    <td>
+                                                        {locDoctors.length === 0 ? (
+                                                            <span className="fs-text-muted">Bu şubede hekim yok</span>
+                                                        ) : (
+                                                            <div className="fs-table-chips">
+                                                                {locDoctors.map(doc => (
+                                                                    <span key={doc.id} className="fs-cell-chip">
+                                                                        {doc.title ? `${doc.title} ` : ''}{doc.name}
+                                                                        <small className="fs-chip-branch">{doc.branchName}</small>
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Hekim Sayısı */}
+                                                    <td>
+                                                        <span className="fs-tag-neutral">
+                                                            {locDoctors.length} Hekim
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Durum */}
+                                                    <td>
+                                                        <span className="fs-status-pill active">
+                                                            Aktif
+                                                        </span>
+                                                    </td>
+
+                                                    {/* İşlemler */}
+                                                    <td>
+                                                        <div className="fs-row-actions">
+                                                            <button 
+                                                                className="fs-icon-btn" 
+                                                                onClick={() => openCreateDoctorModal({ locationId: loc.id })}
+                                                                title="Bu Şubeye Hekim Ekle"
+                                                            >
+                                                                <UserPlus size={13} />
+                                                            </button>
+                                                            <button 
+                                                                className="fs-icon-btn" 
+                                                                onClick={() => openEditLocationModal(loc)}
+                                                                title="Şubeyi Düzenle"
+                                                            >
+                                                                <Edit2 size={13} />
+                                                            </button>
+                                                            <button 
+                                                                className="fs-icon-btn danger" 
+                                                                onClick={() => handleDeleteLocation(loc.id, loc.name)}
+                                                                title="Şubeyi Sil"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
