@@ -146,11 +146,14 @@ export const getGoogleEvents = async (req, res) => {
         }
 
         const targetUserId = assignedToId || 'all';
-        const events = await getGoogleCalendarEvents(targetUserId, workspaceId, { startDate, endDate });
+        const result = await getGoogleCalendarEvents(targetUserId, workspaceId, { startDate, endDate });
 
-        res.json({ events });
+        const events = Array.isArray(result) ? result : (result.events || []);
+        const tokenExpired = result.tokenExpired || false;
+
+        res.json({ events, tokenExpired });
     } catch (error) {
         console.error('getGoogleEvents error:', error);
-        res.status(500).json({ error: 'Google Takvim etkinlikleri alınamadı' });
+        res.status(500).json({ error: 'Google Takvim etkinlikleri alınamadı', message: error.message });
     }
 };

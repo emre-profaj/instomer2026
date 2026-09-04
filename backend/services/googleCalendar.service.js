@@ -397,7 +397,7 @@ export async function deleteGoogleEvent(appointmentId, assignedToId = null, goog
  * Kullanıcının belirli bir çalışma alanındaki Google Takvim bağlantı durumunu getirir
  */
 export async function getUserGoogleCalendarStatus(userId, workspaceId) {
-    if (!userId || !workspaceId) return { isConnected: false, isWorkspaceConfigured: false, email: null };
+    if (!userId || !workspaceId) return { isConnected: false, isWorkspaceConfigured: false, email: null, isExpired: false };
 
     const creds = await getWorkspaceGoogleCredentials(workspaceId);
     const isWorkspaceConfigured = !!creds;
@@ -406,12 +406,15 @@ export async function getUserGoogleCalendarStatus(userId, workspaceId) {
         where: {
             userId_workspaceId: { userId, workspaceId }
         },
-        select: { googleEmail: true, isActive: true, updatedAt: true }
+        select: { googleEmail: true, isActive: true, updatedAt: true, refreshToken: true, expiryDate: true }
     });
+
+    const isExpired = !!(cal && !cal.refreshToken && cal.expiryDate && Number(cal.expiryDate) < Date.now());
 
     return {
         isWorkspaceConfigured,
-        isConnected: !!(cal && cal.isActive && cal.googleEmail),
+        isConnected: !!(cal && cal.isActive && cal.googleEmail && !isExpired),
+        isExpired,
         email: (cal && cal.isActive) ? cal.googleEmail : null,
         updatedAt: cal?.updatedAt || null
     };
@@ -516,7 +519,7 @@ export async function deleteWorkspaceGoogleConfig(workspaceId) {
  * Temsilcinin Google Takvimindeki etkinlikleri çeker (Instomer Takviminde göstermek için)
  */
 export async function getGoogleCalendarEvents(userIdInput, workspaceId, { startDate, endDate } = {}) {
-    if (!userIdInput || !workspaceId) return [];
+    if (!userIdInput || !workspaceId) return { events: [], tokenExpired: false };
 
     try {
         let userIds = [];
@@ -536,7 +539,7 @@ export async function getGoogleCalendarEvents(userIdInput, workspaceId, { startD
             }
         }
 
-        if (userIds.length === 0) return [];
+        if (userIds.length === 0) return { events: [], tokenExpired: false };
 
         // Bu workspace'te daha önce oluşturulmuş randevuların googleEventId'lerini al (çift gösterimi önlemek için)
         const existingApts = await prisma.appointment.findMany({
@@ -564,9 +567,17 @@ export async function getGoogleCalendarEvents(userIdInput, workspaceId, { startD
         });
 
         const allEvents = [];
+        let hasTokenExpired = false;
 
         for (const conn of connectedUsers) {
             try {
+                // Token süresi dolmuş ve refresh token yoksa tespit et
+                if (!conn.refreshToken && conn.expiryDate && Number(conn.expiryDate) < Date.now()) {
+                    console.warn(`⚠️ [GoogleCalendar] User ${conn.userId} access token expired without a refresh token.`);
+                    hasTokenExpired = true;
+                    continue;
+                }
+
                 const calendar = await getCalendarClientForUser(conn.userId, workspaceId);
                 if (!calendar) continue;
 
@@ -609,13 +620,17 @@ export async function getGoogleCalendarEvents(userIdInput, workspaceId, { startD
                 }
             } catch (err) {
                 console.error(`⚠️ [GoogleCalendar] User ${conn.userId} events fetch error:`, err.message);
+                if (err.message?.includes('invalid_grant') || err.message?.includes('No refresh token') || err.status === 401 || err.code === 401) {
+                    hasTokenExpired = true;
+                }
             }
         }
 
-        return allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+        allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+        return { events: allEvents, tokenExpired: hasTokenExpired };
     } catch (error) {
         console.error('❌ [GoogleCalendar] getGoogleCalendarEvents error:', error.message);
-        return [];
+        return { events: [], tokenExpired: false, error: error.message };
     }
 }
 
