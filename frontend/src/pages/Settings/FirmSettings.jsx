@@ -42,6 +42,7 @@ export default function FirmSettings() {
     const [locations, setLocations] = useState([]);
     const [branches, setBranches] = useState([]);
     const [workspaceUsers, setWorkspaceUsers] = useState([]);
+    const [teams, setTeams] = useState([]);
 
     // Search & Filter State
     const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
@@ -79,6 +80,8 @@ export default function FirmSettings() {
         locationId: '',
         name: '',
         title: 'Uzm. Dr.',
+        assignmentType: 'UNASSIGNED', // 'UNASSIGNED' | 'TEAM' | 'USER'
+        teamId: '',
         userId: '',
         workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
         workStart: '09:00',
@@ -103,6 +106,7 @@ export default function FirmSettings() {
                 setLocations(res.data.locations || []);
                 setBranches(res.data.branches || []);
                 setWorkspaceUsers(res.data.users || []);
+                setTeams(res.data.teams || []);
             }
         } catch (err) {
             console.error('loadSettings error:', err);
@@ -231,6 +235,8 @@ export default function FirmSettings() {
             locationId: preselected.locationId || (locations[0]?.id || ''),
             name: '',
             title: 'Uzm. Dr.',
+            assignmentType: 'UNASSIGNED',
+            teamId: '',
             userId: '',
             workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
             workStart: '09:00',
@@ -248,11 +254,15 @@ export default function FirmSettings() {
             if (doctor.workingDays) parsedDays = JSON.parse(doctor.workingDays);
         } catch (_) {}
 
+        const initialAssignmentType = doctor.teamId ? 'TEAM' : (doctor.userId ? 'USER' : 'UNASSIGNED');
+
         setDoctorForm({
             branchId: doctor.branchId || '',
             locationId: doctor.locationId || (locations[0]?.id || ''),
             name: doctor.name || '',
             title: doctor.title || 'Uzm. Dr.',
+            assignmentType: initialAssignmentType,
+            teamId: doctor.teamId || '',
             userId: doctor.userId || '',
             workingDays: parsedDays,
             workStart: doctor.workStart || '09:00',
@@ -270,12 +280,18 @@ export default function FirmSettings() {
             return;
         }
 
+        const payload = {
+            ...doctorForm,
+            teamId: doctorForm.assignmentType === 'TEAM' ? (doctorForm.teamId || null) : null,
+            userId: (doctorForm.assignmentType === 'USER' || (doctorForm.assignmentType === 'TEAM' && doctorForm.userId)) ? (doctorForm.userId || null) : null
+        };
+
         try {
             if (editingDoctor) {
-                await appointmentConfigAPI.updateDoctor(currentWorkspace.id, editingDoctor.id, doctorForm);
+                await appointmentConfigAPI.updateDoctor(currentWorkspace.id, editingDoctor.id, payload);
                 showToast('Hekim bilgileri güncellendi.');
             } else {
-                await appointmentConfigAPI.createDoctor(currentWorkspace.id, doctorForm);
+                await appointmentConfigAPI.createDoctor(currentWorkspace.id, payload);
                 showToast('Yeni hekim eklendi.');
             }
             setDoctorModalOpen(false);
@@ -313,23 +329,45 @@ export default function FirmSettings() {
     }, [branches]);
 
     const activeDoctorsCount = allDoctors.filter(d => d.isActive).length;
-    const assignedDoctorsCount = allDoctors.filter(d => d.userId).length;
+    const assignedDoctorsCount = allDoctors.filter(d => d.userId || d.teamId).length;
+
+    // Selected Team Helpers for Doctor Modal
+    const selectedTeam = useMemo(() => {
+        if (!doctorForm.teamId) return null;
+        return teams.find(t => t.id === doctorForm.teamId) || null;
+    }, [doctorForm.teamId, teams]);
+
+    const selectedTeamMembers = useMemo(() => {
+        if (!selectedTeam) return [];
+        return selectedTeam.members || [];
+    }, [selectedTeam]);
 
     // Filtered Doctors
     const filteredDoctors = useMemo(() => {
         return allDoctors.filter(doc => {
             const fullName = `${doc.title || ''} ${doc.name || ''}`.toLowerCase();
+            const teamName = doc.team?.name?.toLowerCase() || '';
             const matchSearch = doctorSearchQuery === '' || 
                 fullName.includes(doctorSearchQuery.toLowerCase()) ||
                 doc.branchName?.toLowerCase().includes(doctorSearchQuery.toLowerCase()) ||
-                doc.locationName?.toLowerCase().includes(doctorSearchQuery.toLowerCase());
+                doc.locationName?.toLowerCase().includes(doctorSearchQuery.toLowerCase()) ||
+                teamName.includes(doctorSearchQuery.toLowerCase());
 
             const matchBranch = selectedBranchFilter === 'ALL' || doc.branchId === selectedBranchFilter;
             const matchLocation = selectedLocationFilter === 'ALL' || doc.locationId === selectedLocationFilter;
 
             let matchUser = true;
-            if (selectedUserFilter === 'ASSIGNED') matchUser = !!doc.userId;
-            else if (selectedUserFilter === 'UNASSIGNED') matchUser = !doc.userId;
+            if (selectedUserFilter === 'ASSIGNED') {
+                matchUser = !!doc.userId || !!doc.teamId;
+            } else if (selectedUserFilter === 'UNASSIGNED') {
+                matchUser = !doc.userId && !doc.teamId;
+            } else if (selectedUserFilter.startsWith('TEAM_')) {
+                const targetTeamId = selectedUserFilter.replace('TEAM_', '');
+                matchUser = doc.teamId === targetTeamId;
+            } else if (selectedUserFilter.startsWith('USER_')) {
+                const targetUserId = selectedUserFilter.replace('USER_', '');
+                matchUser = doc.userId === targetUserId;
+            }
 
             return matchSearch && matchBranch && matchLocation && matchUser;
         });
@@ -568,9 +606,25 @@ export default function FirmSettings() {
                                     value={selectedUserFilter}
                                     onChange={e => setSelectedUserFilter(e.target.value)}
                                 >
-                                    <option value="ALL">Tüm Temsilciler</option>
-                                    <option value="ASSIGNED">Temsilciye Bağlı ({assignedDoctorsCount})</option>
-                                    <option value="UNASSIGNED">Genel Havuz</option>
+                                    <option value="ALL">Tüm Sorumlular</option>
+                                    {teams.length > 0 && (
+                                        <optgroup label="🏢 Takımlar (Ekipler)">
+                                            {teams.map(t => (
+                                                <option key={t.id} value={`TEAM_${t.id}`}>
+                                                    🏢 {t.name} ({t.membersCount || t.members?.length || 0} Üye)
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+                                    <optgroup label="👤 Bireysel Temsilciler">
+                                        {workspaceUsers.map(u => (
+                                            <option key={u.id} value={`USER_${u.id}`}>
+                                                👤 {u.name}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                    <option value="ASSIGNED">Atanmış Olanlar (Tümü)</option>
+                                    <option value="UNASSIGNED">Genel Havuz (Atanmamış)</option>
                                 </select>
                             </div>
                         </div>
@@ -593,7 +647,7 @@ export default function FirmSettings() {
                                             <th style={{ minWidth: '220px' }}>Hekim Bilgisi</th>
                                             <th>Şube</th>
                                             <th>Tıbbi Branş</th>
-                                            <th>Bağlı Temsilci</th>
+                                            <th>Sorumlu Takım / Temsilci</th>
                                             <th>Mesai / Seans</th>
                                             <th>Çalışma Günleri</th>
                                             <th>Durum</th>
@@ -639,7 +693,14 @@ export default function FirmSettings() {
                                                         </span>
                                                     </td>
                                                     <td>
-                                                        {assignedUser ? (
+                                                        {doc.team ? (
+                                                            <div className="fs-user-pill team" title={doc.team.members?.map(m => m.name || m.email).join(', ')}>
+                                                                <Building2 size={12} className="text-blue" />
+                                                                <span>{doc.team.name}</span>
+                                                                <span className="fs-team-count-badge">{doc.team.membersCount || doc.team.members?.length || 0}</span>
+                                                                {assignedUser && <span className="fs-team-specific-user">→ {assignedUser.name}</span>}
+                                                            </div>
+                                                        ) : assignedUser ? (
                                                             <div className="fs-user-pill" title={assignedUser.email}>
                                                                 <UserCheck size={13} className="text-emerald" />
                                                                 <span>{assignedUser.name}</span>
@@ -1228,18 +1289,145 @@ export default function FirmSettings() {
                                     </div>
                                 </div>
 
-                                <div className="fs-field">
-                                    <label>Sistem Temsilcisi (CRM Kullanıcısı)</label>
-                                    <select 
-                                        className="fs-input"
-                                        value={doctorForm.userId}
-                                        onChange={e => setDoctorForm({ ...doctorForm, userId: e.target.value })}
-                                    >
-                                        <option value="">Kullanıcıya Bağlama (Genel Havuz)</option>
-                                        {workspaceUsers.map(u => (
-                                            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                                        ))}
-                                    </select>
+                                {/* ── Sorumlu Atama (Takım / Bireysel / Havuz) ── */}
+                                <div className="fs-assignment-box">
+                                    <div className="fs-assignment-head">
+                                        <label className="fs-assignment-label">
+                                            <Users size={14} />
+                                            <span>Randevu Sorumlusu & Havuz Dağıtımı</span>
+                                        </label>
+                                        <p className="fs-assignment-desc">
+                                            Bu hekime alınan randevuları hangi takımın veya temsilcinin görüp yöneteceğini belirleyin.
+                                        </p>
+                                    </div>
+
+                                    {/* Segmented Selector */}
+                                    <div className="fs-segment-group">
+                                        <button
+                                            type="button"
+                                            className={`fs-segment-btn ${doctorForm.assignmentType === 'TEAM' ? 'active' : ''}`}
+                                            onClick={() => setDoctorForm(prev => ({ ...prev, assignmentType: 'TEAM' }))}
+                                        >
+                                            <Building2 size={13} />
+                                            <span>Takım / Ekip</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`fs-segment-btn ${doctorForm.assignmentType === 'USER' ? 'active' : ''}`}
+                                            onClick={() => setDoctorForm(prev => ({ ...prev, assignmentType: 'USER', teamId: '' }))}
+                                        >
+                                            <UserCheck size={13} />
+                                            <span>Bireysel Temsilci</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`fs-segment-btn ${doctorForm.assignmentType === 'UNASSIGNED' ? 'active' : ''}`}
+                                            onClick={() => setDoctorForm(prev => ({ ...prev, assignmentType: 'UNASSIGNED', teamId: '', userId: '' }))}
+                                        >
+                                            <span>Genel Havuz (Atamasız)</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Option 1: Takım Seçimi */}
+                                    {doctorForm.assignmentType === 'TEAM' && (
+                                        <div className="fs-assignment-body">
+                                            <div className="fs-row-2">
+                                                <div className="fs-field" style={{ flex: 1 }}>
+                                                    <label>Sorumlu Takım <span className="req">*</span></label>
+                                                    <select 
+                                                        className="fs-input"
+                                                        value={doctorForm.teamId}
+                                                        onChange={e => setDoctorForm(prev => ({ ...prev, teamId: e.target.value, userId: '' }))}
+                                                    >
+                                                        <option value="">Takım Seçiniz ({teams.length} Takım)...</option>
+                                                        {teams.map(team => (
+                                                            <option key={team.id} value={team.id}>
+                                                                🏢 {team.name} ({team.membersCount || team.members?.length || 0} Üye)
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <div className="fs-field" style={{ flex: 1 }}>
+                                                    <label>Takım İçi Özel Sorumlu <span className="fs-optional">(Opsiyonel)</span></label>
+                                                    <select 
+                                                        className="fs-input"
+                                                        value={doctorForm.userId}
+                                                        onChange={e => setDoctorForm(prev => ({ ...prev, userId: e.target.value }))}
+                                                        disabled={!doctorForm.teamId}
+                                                    >
+                                                        <option value="">Tüm Takım Havuzu (Herkes Görsün)</option>
+                                                        {selectedTeamMembers.map(member => (
+                                                            <option key={member.id} value={member.id}>
+                                                                👤 {member.name || member.email}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {selectedTeam ? (
+                                                <div className="fs-team-banner">
+                                                    <div className="fs-team-banner-header">
+                                                        <Users size={14} className="text-blue" />
+                                                        <strong>{selectedTeam.name} Takımı</strong>
+                                                        <span className="fs-team-badge">{selectedTeam.membersCount || selectedTeam.members?.length || 0} Üye</span>
+                                                    </div>
+                                                    <div className="fs-team-members-list">
+                                                        {selectedTeam.members && selectedTeam.members.length > 0 ? (
+                                                            selectedTeam.members.map(m => (
+                                                                <span key={m.id} className="fs-member-chip">
+                                                                    {m.name || m.email}
+                                                                </span>
+                                                            ))
+                                                        ) : (
+                                                            <span className="fs-text-muted">Bu takımda henüz kayıtlı üye bulunmuyor.</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="fs-team-note">
+                                                        ✓ Takımdaki tüm üyeler bu hekime açılan randevuları otomatik olarak görebilir ve yönetebilir.
+                                                    </p>
+                                                </div>
+                                            ) : teams.length === 0 ? (
+                                                <div className="fs-unassigned-note warning">
+                                                    Henüz bir takımınız bulunmuyor. Sol menüden <strong>Ayarlar &gt; Takımlar</strong> bölümünden yeni bir takım oluşturabilirsiniz.
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    )}
+
+                                    {/* Option 2: Bireysel Temsilci */}
+                                    {doctorForm.assignmentType === 'USER' && (
+                                        <div className="fs-assignment-body">
+                                            <div className="fs-field">
+                                                <label>Sorumlu CRM Temsilcisi <span className="req">*</span></label>
+                                                <select 
+                                                    className="fs-input"
+                                                    value={doctorForm.userId}
+                                                    onChange={e => setDoctorForm(prev => ({ ...prev, userId: e.target.value, teamId: '' }))}
+                                                >
+                                                    <option value="">Temsilci Seçiniz ({workspaceUsers.length} Kullanıcı)...</option>
+                                                    {workspaceUsers.map(u => (
+                                                        <option key={u.id} value={u.id}>👤 {u.name} ({u.email})</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <p className="fs-field-hint">
+                                                Bu hekime randevu alındığında yalnızca bu kullanıcıya bildirim ve görev oluşturulur.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {/* Option 3: Genel Havuz */}
+                                    {doctorForm.assignmentType === 'UNASSIGNED' && (
+                                        <div className="fs-unassigned-note">
+                                            <span className="fs-pool-icon">🌐</span>
+                                            <div>
+                                                <strong>Genel Randevu Havuzu</strong>
+                                                <p>Hekim herhangi bir takıma veya temsilciye atanmaz. Randevular genel havuzda listelenir ve yetkili tüm temsilciler görebilir.</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="fs-row-3">

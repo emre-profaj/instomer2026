@@ -419,6 +419,9 @@ export async function bookAppointment(workspaceId, params = {}) {
                 if (doctor) {
                     doctorName = doctor.name;
                     providerName = doctor.name;
+                    if (doctor.userId) {
+                        assignedToId = doctor.userId;
+                    }
                 }
             } else {
                 assignedToId = params.provider_id;
