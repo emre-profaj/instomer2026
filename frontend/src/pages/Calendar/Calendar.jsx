@@ -179,6 +179,7 @@ const Calendar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [isGoogleEventEditMode, setIsGoogleEventEditMode] = useState(false);
 
     // Form states
     const [formData, setFormData] = useState({
@@ -977,6 +978,7 @@ const Calendar = () => {
             status: 'SCHEDULED'
         });
         setSelectedAppointment(null);
+        setIsGoogleEventEditMode(false);
         setConflict(null);
         setIsModalOpen(true);
     };
@@ -1084,7 +1086,7 @@ const Calendar = () => {
         }
 
         setFormData({
-            title: appointment.title,
+            title: appointment.title || '',
             description: appointment.description || '',
             startTime: formatDateTimeLocal(new Date(appointment.startTime)),
             endTime: formatDateTimeLocal(new Date(appointment.endTime)),
@@ -1099,6 +1101,7 @@ const Calendar = () => {
             status: appointment.status || 'SCHEDULED'
         });
         setSelectedAppointment(appointment);
+        setIsGoogleEventEditMode(false);
         setConflict(null);
         setIsModalOpen(true);
     };
@@ -1112,6 +1115,34 @@ const Calendar = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Google Takvim etkinliği güncellemesi
+        if (selectedAppointment?.isGoogleEvent) {
+            if (!formData.title) {
+                alert('Lütfen bir başlık giriniz.');
+                return;
+            }
+            setIsCreating(true);
+            try {
+                await appointmentAPI.update(currentWorkspace.id, selectedAppointment.id, {
+                    title: formData.title,
+                    startTime: new Date(formData.startTime).toISOString(),
+                    endTime: new Date(formData.endTime).toISOString(),
+                    notes: formData.notes || formData.description || ''
+                });
+                setIsModalOpen(false);
+                setIsGoogleEventEditMode(false);
+                setSelectedAppointment(null);
+                await loadAppointments(true);
+                await loadUpcomingAppointments();
+            } catch (error) {
+                console.error('Update Google event error:', error);
+                alert(error.response?.data?.error || 'Google Takvim etkinliği güncellenemedi');
+            } finally {
+                setIsCreating(false);
+            }
+            return;
+        }
 
         // En az biri seçilmeli
         if (!formData.assignedToId && !formData.resourceId) {
@@ -1161,7 +1192,10 @@ const Calendar = () => {
 
     const handleDelete = async () => {
         if (!selectedAppointment) return;
-        if (!confirm('Bu randevuyu silmek istediğinizden emin misiniz?')) return;
+        const confirmMsg = selectedAppointment.isGoogleEvent
+            ? 'Bu Google Takvim etkinliğini silmek istediğinizden emin misiniz? Google Takviminizden de silinecektir.'
+            : 'Bu randevuyu silmek istediğinizden emin misiniz?';
+        if (!confirm(confirmMsg)) return;
 
         const aptId = selectedAppointment.id;
         try {
@@ -1169,6 +1203,7 @@ const Calendar = () => {
             setAppointments(prev => prev.filter(a => a.id !== aptId));
             setUpcomingAppointments(prev => prev.filter(a => a.id !== aptId));
             setIsModalOpen(false);
+            setIsGoogleEventEditMode(false);
             setSelectedAppointment(null);
 
             await appointmentAPI.delete(currentWorkspace.id, aptId);
@@ -2342,104 +2377,200 @@ const Calendar = () => {
 
             {/* Appointment Modal */}
             {isModalOpen && (
-                <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+                <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setIsGoogleEventEditMode(false); }}>
                     <div className="apt-modal" onClick={e => e.stopPropagation()}>
                         {/* Header */}
                         <div className="apt-modal-header" style={selectedAppointment?.isGoogleEvent ? { background: `linear-gradient(135deg, #0f172a 0%, ${getGoogleAccountColor(selectedAppointment.googleEmail, googleStatus.accounts).primary} 100%)` } : {}}>
-                            <h2>{selectedAppointment?.isGoogleEvent ? '🇬 Google Takvim Etkinliği' : (selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu')}</h2>
-                            <button className="apt-modal-close" onClick={() => setIsModalOpen(false)}>
+                            <h2>
+                                {selectedAppointment?.isGoogleEvent
+                                    ? (isGoogleEventEditMode ? '✏️ Google Takvim Etkinliğini Düzenle' : '🇬 Google Takvim Etkinliği')
+                                    : (selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu')
+                                }
+                            </h2>
+                            <button className="apt-modal-close" onClick={() => { setIsModalOpen(false); setIsGoogleEventEditMode(false); }}>
                                 <X size={18} />
                             </button>
                         </div>
 
                         {selectedAppointment?.isGoogleEvent ? (
-                            /* Google Event Detail View */
-                            <div className="apt-modal-body google-event-view">
-                                <div className="google-event-card">
-                                    <h3 className="google-event-title">{selectedAppointment.title}</h3>
-                                    <div className="google-event-meta">
-                                        <div className="google-event-meta-item">
-                                            <Clock size={16} />
-                                            <span>
-                                                {selectedAppointment.isAllDay
-                                                    ? `${new Date(selectedAppointment.startTime).toLocaleDateString('tr-TR')} (Tüm Gün)`
-                                                    : `${new Date(selectedAppointment.startTime).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })} — ${new Date(selectedAppointment.endTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
-                                                }
-                                            </span>
+                            isGoogleEventEditMode ? (
+                                /* Google Event Edit Form */
+                                <form onSubmit={handleSubmit} className="apt-modal-body">
+                                    <div className="apt-field">
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' }}>Etkinlik Başlığı *</label>
+                                        <input
+                                            type="text"
+                                            className="apt-title-input"
+                                            value={formData.title}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                                            placeholder="Etkinlik başlığı..."
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="apt-section">
+                                        <div className="apt-dt-row">
+                                            <div className="apt-dt-field">
+                                                <span className="apt-dt-label">Başlangıç Zamanı</span>
+                                                <input
+                                                    type="datetime-local"
+                                                    value={formData.startTime}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="apt-dt-field">
+                                                <span className="apt-dt-label">Bitiş Zamanı</span>
+                                                <input
+                                                    type="datetime-local"
+                                                    value={formData.endTime}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {selectedAppointment.googleEmail && (
+                                        <div className="apt-section" style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                                            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Google Takvim Hesabı</span>
+                                            <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginTop: 2 }}>{selectedAppointment.googleEmail}</div>
+                                        </div>
+                                    )}
+
+                                    <div className="apt-section">
+                                        <span className="apt-section-label">Açıklama / Notlar</span>
+                                        <textarea
+                                            className="apt-notes"
+                                            value={formData.notes}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value, description: e.target.value }))}
+                                            placeholder="Etkinlik açıklaması..."
+                                            rows={3}
+                                        />
+                                    </div>
+
+                                    <div className="apt-modal-footer">
+                                        <button type="button" className="apt-btn-delete" onClick={handleDelete}>
+                                            <Trash2 size={15} /> Sil
+                                        </button>
+                                        <div className="apt-footer-right">
+                                            <button type="button" className="apt-btn-cancel" onClick={() => setIsGoogleEventEditMode(false)}>
+                                                Vazgeç
+                                            </button>
+                                            <button type="submit" className="apt-btn-save" disabled={isCreating}>
+                                                {isCreating ? 'Kaydediliyor...' : 'Güncelle'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            ) : (
+                                /* Google Event Detail View */
+                                <div className="apt-modal-body google-event-view">
+                                    <div className="google-event-card">
+                                        <h3 className="google-event-title">{selectedAppointment.title}</h3>
+                                        <div className="google-event-meta">
+                                            <div className="google-event-meta-item">
+                                                <Clock size={16} />
+                                                <span>
+                                                    {selectedAppointment.isAllDay
+                                                        ? `${new Date(selectedAppointment.startTime).toLocaleDateString('tr-TR')} (Tüm Gün)`
+                                                        : `${new Date(selectedAppointment.startTime).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })} — ${new Date(selectedAppointment.endTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+                                                    }
+                                                </span>
+                                            </div>
+
+                                            {selectedAppointment.assignedTo?.name && (
+                                                <div className="google-event-meta-item">
+                                                    <User size={16} />
+                                                    <span>Temsilci: <strong>{selectedAppointment.assignedTo.name}</strong></span>
+                                                </div>
+                                            )}
+
+                                            {selectedAppointment.googleEmail && (
+                                                <div className="google-event-meta-item">
+                                                    <Mail size={16} />
+                                                    <span>Google Takvim: <strong>{selectedAppointment.googleEmail}</strong></span>
+                                                </div>
+                                            )}
+
+                                            {selectedAppointment.contactName && (
+                                                <div className="google-event-meta-item">
+                                                    <Mail size={16} />
+                                                    <span>Katılımcılar: <strong>{selectedAppointment.contactName}</strong></span>
+                                                </div>
+                                            )}
+
+                                            {selectedAppointment.location && (
+                                                <div className="google-event-meta-item">
+                                                    <Building2 size={16} />
+                                                    <span>Konum: {selectedAppointment.location}</span>
+                                                </div>
+                                            )}
                                         </div>
 
-                                        {selectedAppointment.assignedTo?.name && (
-                                            <div className="google-event-meta-item">
-                                                <User size={16} />
-                                                <span>Temsilci: <strong>{selectedAppointment.assignedTo.name}</strong></span>
+                                        {(selectedAppointment.description || selectedAppointment.notes) && (
+                                            <div className="google-event-notes-box">
+                                                <span className="google-event-notes-label">Açıklama / Detay:</span>
+                                                <p>{selectedAppointment.description || selectedAppointment.notes}</p>
                                             </div>
                                         )}
 
-                                        {selectedAppointment.googleEmail && (
-                                            <div className="google-event-meta-item">
-                                                <Mail size={16} />
-                                                <span>Google Takvim: <strong>{selectedAppointment.googleEmail}</strong></span>
-                                            </div>
-                                        )}
-
-                                        {selectedAppointment.contactName && (
-                                            <div className="google-event-meta-item">
-                                                <Mail size={16} />
-                                                <span>Katılımcılar: <strong>{selectedAppointment.contactName}</strong></span>
-                                            </div>
-                                        )}
-
-                                        {selectedAppointment.location && (
-                                            <div className="google-event-meta-item">
-                                                <Building2 size={16} />
-                                                <span>Konum: {selectedAppointment.location}</span>
+                                        {selectedAppointment.googleMeetLink && (
+                                            <div style={{ marginTop: 16 }}>
+                                                <a
+                                                    href={selectedAppointment.googleMeetLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="apt-google-meet-btn"
+                                                    style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8 }}
+                                                >
+                                                    📹 Google Meet Görüşmesine Katıl
+                                                </a>
                                             </div>
                                         )}
                                     </div>
 
-                                    {(selectedAppointment.description || selectedAppointment.notes) && (
-                                        <div className="google-event-notes-box">
-                                            <span className="google-event-notes-label">Açıklama / Detay:</span>
-                                            <p>{selectedAppointment.description || selectedAppointment.notes}</p>
-                                        </div>
-                                    )}
+                                    <div className="google-event-notice">
+                                        ℹ️ Bu etkinlik Google Takvim'den senkronize edilmiştir. Randevu saatlerinizin dolu görünmesini sağlar ve çakışmaları önler.
+                                    </div>
 
-                                    {selectedAppointment.googleMeetLink && (
-                                        <div style={{ marginTop: 16 }}>
-                                            <a
-                                                href={selectedAppointment.googleMeetLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="apt-google-meet-btn"
-                                                style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8 }}
+                                    <div className="apt-modal-footer">
+                                        <button type="button" className="apt-btn-delete" onClick={handleDelete}>
+                                            <Trash2 size={15} /> Sil
+                                        </button>
+                                        <div className="apt-footer-right">
+                                            <button type="button" className="apt-btn-cancel" onClick={() => { setIsModalOpen(false); setIsGoogleEventEditMode(false); }}>
+                                                Kapat
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="apt-btn-save"
+                                                onClick={() => {
+                                                    setFormData({
+                                                        title: selectedAppointment.title || '',
+                                                        description: selectedAppointment.description || selectedAppointment.notes || '',
+                                                        startTime: formatDateTimeLocal(new Date(selectedAppointment.startTime)),
+                                                        endTime: formatDateTimeLocal(new Date(selectedAppointment.endTime)),
+                                                        assignedToId: selectedAppointment.assignedToId || '',
+                                                        resourceId: '',
+                                                        doctorName: '',
+                                                        branch: '',
+                                                        contactName: selectedAppointment.contactName || '',
+                                                        contactPhone: '',
+                                                        contactEmail: '',
+                                                        notes: selectedAppointment.notes || selectedAppointment.description || '',
+                                                        status: 'SCHEDULED'
+                                                    });
+                                                    setIsGoogleEventEditMode(true);
+                                                }}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                                             >
-                                                📹 Google Meet Görüşmesine Katıl
-                                            </a>
+                                                <Edit2 size={15} /> Düzenle
+                                            </button>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
-
-                                <div className="google-event-notice">
-                                    ℹ️ Bu etkinlik Google Takvim'den senkronize edilmiştir. Randevu saatlerinizin dolu görünmesini sağlar ve çakışmaları önler.
-                                </div>
-
-                                <div className="apt-modal-footer">
-                                    <button type="button" className="apt-btn-cancel" onClick={() => setIsModalOpen(false)}>
-                                        Kapat
-                                    </button>
-                                    {selectedAppointment.htmlLink && (
-                                        <a
-                                            href={selectedAppointment.htmlLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="apt-btn-save"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', background: '#4285F4' }}
-                                        >
-                                            Google Takvim'de Aç ↗
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
+                            )
                         ) : (
                             <form onSubmit={handleSubmit} className="apt-modal-body">
                                 {/* Conflict Warning */}

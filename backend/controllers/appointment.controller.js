@@ -319,6 +319,57 @@ export const updateAppointment = async (req, res) => {
             status, color, notes, resourceId, doctorName, branch, procedure
         } = req.body;
 
+        // 1. Google Takvim etkinliği doğrudan güncelleniyorsa (id 'google-' ile başlar)
+        if (id && String(id).startsWith('google-')) {
+            const googleEventId = String(id).replace('google-', '');
+            const { updateGoogleCalendarEventDirect } = await import('../services/googleCalendar.service.js');
+            const updatedGoogleEvent = await updateGoogleCalendarEventDirect(workspaceId, googleEventId, {
+                title,
+                notes: notes || description,
+                startTime,
+                endTime
+            });
+
+            // Varsa DB'deki eşleşen randevuyu da senkron güncelle
+            try {
+                await prisma.appointment.updateMany({
+                    where: { workspaceId, googleEventId },
+                    data: {
+                        ...(title && { title }),
+                        ...((notes !== undefined || description !== undefined) && { notes: notes || description || '' }),
+                        ...(startTime && { startTime: new Date(startTime) }),
+                        ...(endTime && { endTime: new Date(endTime) })
+                    }
+                });
+            } catch (dbErr) {
+                console.warn('Could not update matching DB appointment:', dbErr.message);
+            }
+
+            // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara randevu güncellemesini bildir
+            try {
+                const io = req.app.get('io');
+                if (io && workspaceId) {
+                    io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
+                        action: 'updated',
+                        appointmentId: id
+                    });
+                }
+            } catch (socketErr) {
+                console.error('Appointment socket update error:', socketErr);
+            }
+
+            return res.json({
+                appointment: {
+                    id,
+                    title: title || updatedGoogleEvent?.summary || 'Google Takvim Etkinliği',
+                    notes: notes || description || updatedGoogleEvent?.description || '',
+                    startTime: startTime || updatedGoogleEvent?.start?.dateTime,
+                    endTime: endTime || updatedGoogleEvent?.end?.dateTime,
+                    isGoogleEvent: true
+                }
+            });
+        }
+
         const existing = await prisma.appointment.findFirst({ where: { id, workspaceId } });
         if (!existing) {
             return res.status(404).json({ error: 'Randevu bulunamadı' });
@@ -382,7 +433,7 @@ export const updateAppointment = async (req, res) => {
         // 📅 Google Takvim Senkronizasyonu
         import('../services/googleCalendar.service.js').then(({ updateGoogleEvent, deleteGoogleEvent }) => {
             if (updateData.status === 'CANCELLED') {
-                deleteGoogleEvent(appointment.id, appointment.assignedToId, appointment.googleEventId, appointment.workspaceId)
+                deleteGoogleEvent(appointment.id, appointment.assignedToId || appointment.createdById, appointment.googleEventId, appointment.workspaceId)
                     .catch(e => console.error('[GoogleCalendar Hook] Delete error:', e.message));
             } else {
                 updateGoogleEvent(appointment.id)
@@ -419,22 +470,74 @@ export const updateAppointment = async (req, res) => {
     }
 };
 
-// Delete appointment (soft delete — status: CANCELLED)
+// Delete appointment (hard delete from DB + sync delete from Google Calendar)
 export const deleteAppointment = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
 
-        // First verify the appointment belongs to this workspace
-        const existing = await prisma.appointment.findFirst({ where: { id, workspaceId } });
+        // 1. Google Takvim etkinliği doğrudan siliniyorsa (id 'google-' ile başlar)
+        if (id && String(id).startsWith('google-')) {
+            const googleEventId = String(id).replace('google-', '');
+            const { deleteGoogleEvent } = await import('../services/googleCalendar.service.js');
+            await deleteGoogleEvent(null, null, googleEventId, workspaceId);
+
+            // Varsa DB'de bu googleEventId ile eşleşen randevuyu da temizle
+            try {
+                await prisma.appointment.deleteMany({
+                    where: { workspaceId, googleEventId }
+                });
+            } catch (dbErr) {
+                console.warn('Could not clean matching DB appointment:', dbErr.message);
+            }
+
+            // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara randevu silinmesini bildir
+            try {
+                const io = req.app.get('io');
+                if (io && workspaceId) {
+                    io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
+                        action: 'deleted',
+                        appointmentId: id
+                    });
+                }
+            } catch (socketErr) {
+                console.error('Appointment socket delete error:', socketErr);
+            }
+
+            return res.json({ success: true, message: 'Google Takvim etkinliği başarıyla silindi' });
+        }
+
+        // 2. Standart randevu kontrolü
+        let existing = await prisma.appointment.findFirst({ where: { id, workspaceId } });
         if (!existing) {
+            // Belki id doğrudan bir googleEventId olarak iletilmiştir
+            existing = await prisma.appointment.findFirst({ where: { googleEventId: id, workspaceId } });
+        }
+
+        if (!existing) {
+            // Son çare: Google etkinliği olabilir, silmeyi dene
+            const { deleteGoogleEvent } = await import('../services/googleCalendar.service.js');
+            const deletedFromGoogle = await deleteGoogleEvent(null, null, id, workspaceId);
+            if (deletedFromGoogle) {
+                try {
+                    const io = req.app.get('io');
+                    if (io && workspaceId) {
+                        io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
+                            action: 'deleted',
+                            appointmentId: id
+                        });
+                    }
+                } catch (socketErr) {}
+                return res.json({ success: true, message: 'Google Takvim etkinliği silindi' });
+            }
             return res.status(404).json({ error: 'Randevu bulunamadı' });
         }
 
         // 📅 Google Takvim Senkronizasyonu (Etkinliği Google Takvim'den kaldır)
-        if (existing.googleEventId && existing.assignedToId) {
+        // NOT: assignedToId null olsa bile deleteGoogleEvent çağrılmalıdır!
+        if (existing.googleEventId) {
             try {
                 const { deleteGoogleEvent } = await import('../services/googleCalendar.service.js');
-                await deleteGoogleEvent(existing.id, existing.assignedToId, existing.googleEventId, existing.workspaceId);
+                await deleteGoogleEvent(existing.id, existing.assignedToId || existing.createdById, existing.googleEventId, existing.workspaceId);
             } catch (e) {
                 console.error('[GoogleCalendar Hook] Delete error:', e.message);
             }
@@ -442,7 +545,7 @@ export const deleteAppointment = async (req, res) => {
 
         // Randevuyu veritabanından kalıcı olarak sil
         await prisma.appointment.delete({
-            where: { id }
+            where: { id: existing.id }
         });
 
         // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara randevu silinmesini bildir
@@ -451,7 +554,7 @@ export const deleteAppointment = async (req, res) => {
             if (io && workspaceId) {
                 io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
                     action: 'deleted',
-                    appointmentId: id
+                    appointmentId: existing.id
                 });
             }
         } catch (socketErr) {

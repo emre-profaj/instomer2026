@@ -366,33 +366,130 @@ export async function deleteGoogleEvent(appointmentId, assignedToId = null, goog
         let wsId = workspaceId;
 
         if (!eventId || !userId || !wsId) {
-            const appointment = await prisma.appointment.findUnique({
-                where: { id: appointmentId },
-                select: { googleEventId: true, assignedToId: true, workspaceId: true }
-            });
-            eventId = eventId || appointment?.googleEventId;
-            userId = userId || appointment?.assignedToId;
-            wsId = wsId || appointment?.workspaceId;
+            if (appointmentId) {
+                const appointment = await prisma.appointment.findUnique({
+                    where: { id: appointmentId },
+                    select: { googleEventId: true, assignedToId: true, createdById: true, workspaceId: true }
+                });
+                eventId = eventId || appointment?.googleEventId;
+                userId = userId || appointment?.assignedToId || appointment?.createdById;
+                wsId = wsId || appointment?.workspaceId;
+            }
         }
 
-        if (!eventId || !userId || !wsId) return false;
+        if (!eventId || !wsId) return false;
 
-        const calendar = await getCalendarClientForUser(userId, wsId);
-        if (!calendar) return false;
+        // 1. Eğer kullanıcı biliniyorsa önce o kullanıcının takviminden silmeyi dene
+        if (userId) {
+            const calendar = await getCalendarClientForUser(userId, wsId);
+            if (calendar) {
+                try {
+                    await calendar.events.delete({
+                        calendarId: 'primary',
+                        eventId
+                    });
+                    console.log(`🗑️ [GoogleCalendar] Event deleted via user ${userId}: ${eventId}`);
+                    return true;
+                } catch (err) {
+                    if (err.code === 404 || err.code === 410) {
+                        return true; // Zaten silinmiş
+                    }
+                    console.warn(`⚠️ [GoogleCalendar] Could not delete with userId ${userId}, checking other accounts...`);
+                }
+            }
+        }
 
-        await calendar.events.delete({
-            calendarId: 'primary',
-            eventId
+        // 2. Çalışma alanındaki tüm aktif bağlı Google takvim hesaplarını tara ve etkinliği sil
+        const allCals = await prisma.userGoogleCalendar.findMany({
+            where: { workspaceId: wsId, isActive: true }
         });
 
-        console.log(`🗑️ [GoogleCalendar] Event deleted: ${eventId}`);
-        return true;
+        for (const calRecord of allCals) {
+            try {
+                const calendar = await getCalendarClientForUser(calRecord.userId, wsId, calRecord.googleEmail);
+                if (!calendar) continue;
+                await calendar.events.delete({
+                    calendarId: 'primary',
+                    eventId
+                });
+                console.log(`🗑️ [GoogleCalendar] Event deleted from account ${calRecord.googleEmail}: ${eventId}`);
+                return true;
+            } catch (err) {
+                if (err.code === 404 || err.code === 410) {
+                    // Bu hesapta yok, diğer hesaplara bak
+                    continue;
+                }
+                console.warn(`⚠️ [GoogleCalendar] Delete attempt failed for ${calRecord.googleEmail}:`, err.message);
+            }
+        }
+
+        return false;
     } catch (error) {
         if (error.code === 404 || error.code === 410) {
             return true; // Zaten silinmiş
         }
         console.error('❌ [GoogleCalendar] Delete error:', error.message);
         return false;
+    }
+}
+
+/**
+ * Google Takvim etkinliğini doğrudan günceller (Çalışma alanındaki bağlı hesaplarda arar ve günceller)
+ */
+export async function updateGoogleCalendarEventDirect(workspaceId, googleEventId, data) {
+    try {
+        if (!googleEventId || !workspaceId) return null;
+
+        const allCals = await prisma.userGoogleCalendar.findMany({
+            where: { workspaceId, isActive: true }
+        });
+
+        const patchBody = {};
+        if (data.title || data.summary) patchBody.summary = data.title || data.summary;
+        if (data.notes !== undefined || data.description !== undefined) {
+            patchBody.description = data.notes || data.description || '';
+        }
+        if (data.location) patchBody.location = data.location;
+        if (data.startTime) {
+            patchBody.start = {
+                dateTime: new Date(data.startTime).toISOString(),
+                timeZone: 'Europe/Istanbul'
+            };
+        }
+        if (data.endTime) {
+            patchBody.end = {
+                dateTime: new Date(data.endTime).toISOString(),
+                timeZone: 'Europe/Istanbul'
+            };
+        }
+
+        for (const calRecord of allCals) {
+            try {
+                const calendar = await getCalendarClientForUser(calRecord.userId, workspaceId, calRecord.googleEmail);
+                if (!calendar) continue;
+
+                const res = await calendar.events.patch({
+                    calendarId: 'primary',
+                    eventId: googleEventId,
+                    requestBody: patchBody
+                });
+
+                if (res?.data) {
+                    console.log(`📅 [GoogleCalendar] Event ${googleEventId} patched successfully in account ${calRecord.googleEmail}`);
+                    return res.data;
+                }
+            } catch (err) {
+                if (err.code === 404) {
+                    continue;
+                }
+                console.warn(`⚠️ [GoogleCalendar] Patch failed for ${calRecord.googleEmail}:`, err.message);
+            }
+        }
+
+        return null;
+    } catch (error) {
+        console.error('❌ [GoogleCalendar] updateGoogleCalendarEventDirect error:', error.message);
+        return null;
     }
 }
 
