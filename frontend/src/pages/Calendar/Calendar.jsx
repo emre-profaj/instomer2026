@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { appointmentAPI, retellAPI, resourceAPI, googleCalendarAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
@@ -7,7 +7,7 @@ import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
     Layers, Edit2, Building2, List, Grid3X3, Search,
-    CalendarClock, Handshake, ListTodo, PhoneCall, Bell, RefreshCw
+    CalendarClock, Handshake, ListTodo, PhoneCall, Bell, RefreshCw, ArrowRight
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import '../../components/ContactSidebar/ContactSidebar.css';
@@ -180,6 +180,13 @@ const Calendar = () => {
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
     const [isGoogleEventEditMode, setIsGoogleEventEditMode] = useState(false);
+
+    // Drag & Drop states
+    const [draggedItem, setDraggedItem] = useState(null);
+    const [dragOverDayKey, setDragOverDayKey] = useState(null);
+    const [rescheduleData, setRescheduleData] = useState(null);
+    const [isRescheduling, setIsRescheduling] = useState(false);
+    const isDraggingRef = useRef(false);
 
     // Form states
     const [formData, setFormData] = useState({
@@ -1226,6 +1233,138 @@ const Calendar = () => {
         setConflict(null);
     };
 
+    // ─── Drag & Drop Handlers ───
+    const handleDragStart = (e, apt) => {
+        isDraggingRef.current = true;
+        setDraggedItem(apt);
+        if (dayPopup) setDayPopup(null);
+        e.dataTransfer.setData('text/plain', apt.id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragEnd = () => {
+        setTimeout(() => {
+            isDraggingRef.current = false;
+        }, 150);
+        setDraggedItem(null);
+        setDragOverDayKey(null);
+    };
+
+    const formatDateForInput = (date) => {
+        if (!date) return '';
+        const d = new Date(date);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const handleDayDrop = (e, targetDate, targetHour = null) => {
+        e.preventDefault();
+        setDragOverDayKey(null);
+
+        if (!draggedItem) return;
+
+        const originalStart = new Date(draggedItem.startTime);
+        const originalEnd = new Date(draggedItem.endTime || draggedItem.startTime);
+        let durationMinutes = Math.max(15, Math.round((originalEnd.getTime() - originalStart.getTime()) / (1000 * 60)));
+        if (isNaN(durationMinutes) || durationMinutes <= 0) durationMinutes = 30;
+
+        let startH = originalStart.getHours();
+        let startM = originalStart.getMinutes();
+
+        if (targetHour !== null) {
+            startH = targetHour;
+            startM = 0;
+        }
+
+        const initialStartTimeStr = `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`;
+
+        const dummyDate = new Date();
+        dummyDate.setHours(startH, startM + durationMinutes, 0, 0);
+        const initialEndTimeStr = `${String(dummyDate.getHours()).padStart(2, '0')}:${String(dummyDate.getMinutes()).padStart(2, '0')}`;
+
+        setRescheduleData({
+            appointment: draggedItem,
+            targetDate: new Date(targetDate),
+            startTimeStr: initialStartTimeStr,
+            endTimeStr: initialEndTimeStr,
+            durationMinutes
+        });
+
+        setDraggedItem(null);
+    };
+
+    const handleRescheduleStartTimeChange = (newStartTimeStr) => {
+        if (!rescheduleData) return;
+        const [h, m] = newStartTimeStr.split(':').map(Number);
+        if (!isNaN(h) && !isNaN(m)) {
+            const dummy = new Date();
+            dummy.setHours(h, m + (rescheduleData.durationMinutes || 30), 0, 0);
+            const autoEndStr = `${String(dummy.getHours()).padStart(2, '0')}:${String(dummy.getMinutes()).padStart(2, '0')}`;
+            setRescheduleData(prev => ({
+                ...prev,
+                startTimeStr: newStartTimeStr,
+                endTimeStr: autoEndStr
+            }));
+        } else {
+            setRescheduleData(prev => ({ ...prev, startTimeStr: newStartTimeStr }));
+        }
+    };
+
+    const handleConfirmReschedule = async (e) => {
+        e.preventDefault();
+        if (!rescheduleData) return;
+
+        const { appointment, targetDate, startTimeStr, endTimeStr } = rescheduleData;
+        const [startH, startM] = startTimeStr.split(':').map(Number);
+        const [endH, endM] = endTimeStr.split(':').map(Number);
+
+        const newStart = new Date(targetDate);
+        newStart.setHours(startH, startM, 0, 0);
+
+        const newEnd = new Date(targetDate);
+        newEnd.setHours(endH, endM, 0, 0);
+
+        if (newStart >= newEnd) {
+            alert('Bitiş zamanı başlangıç zamanından sonra olmalıdır.');
+            return;
+        }
+
+        setIsRescheduling(true);
+        const aptId = appointment.id;
+
+        try {
+            // Optimistic update
+            setAppointments(prev => prev.map(a => {
+                if (a.id === aptId) {
+                    return {
+                        ...a,
+                        startTime: newStart.toISOString(),
+                        endTime: newEnd.toISOString()
+                    };
+                }
+                return a;
+            }));
+
+            setRescheduleData(null);
+
+            await appointmentAPI.update(currentWorkspace.id, aptId, {
+                startTime: newStart.toISOString(),
+                endTime: newEnd.toISOString()
+            });
+
+            await loadAppointments(true);
+            await loadUpcomingAppointments();
+        } catch (error) {
+            console.error('Reschedule appointment error:', error);
+            alert(error.response?.data?.error || 'Randevu taşınırken bir hata oluştu');
+            await loadAppointments(true);
+        } finally {
+            setIsRescheduling(false);
+        }
+    };
+
     const formatTime = (dateStr) => {
         return new Date(dateStr).toLocaleTimeString('tr-TR', {
             hour: '2-digit',
@@ -1971,13 +2110,38 @@ const Calendar = () => {
                                     return (
                                         <div
                                             key={di}
-                                            className={`week-hour-cell ${isToday(d) ? 'today-col' : ''}`}
+                                            className={`week-hour-cell ${isToday(d) ? 'today-col' : ''} ${dragOverDayKey === `${d.toDateString()}-${hour}` ? 'drop-target' : ''}`}
                                             onClick={() => { const dt = new Date(d); dt.setHours(hour,0,0,0); openCreateModal(dt); }}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.dataTransfer.dropEffect = 'move';
+                                            }}
+                                            onDragEnter={(e) => {
+                                                e.preventDefault();
+                                                setDragOverDayKey(`${d.toDateString()}-${hour}`);
+                                            }}
+                                            onDragLeave={(e) => {
+                                                e.preventDefault();
+                                                if (e.currentTarget.contains(e.relatedTarget)) return;
+                                                if (dragOverDayKey === `${d.toDateString()}-${hour}`) {
+                                                    setDragOverDayKey(null);
+                                                }
+                                            }}
+                                            onDrop={(e) => handleDayDrop(e, d, hour)}
                                         >
                                             {apts.map(apt => (
-                                                <div key={apt.id} className="week-event"
+                                                <div key={apt.id}
+                                                    draggable="true"
+                                                    onDragStart={(e) => handleDragStart(e, apt)}
+                                                    onDragEnd={handleDragEnd}
+                                                    className={`week-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
                                                     style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
-                                                    onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
+                                                    onClick={e => {
+                                                        if (isDraggingRef.current) return;
+                                                        e.stopPropagation();
+                                                        openEditModal(apt);
+                                                    }}
+                                                >
                                                     <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)}</span>
                                                     <span className="week-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
                                                 </div>
@@ -2011,12 +2175,39 @@ const Calendar = () => {
                             return (
                                 <div key={hour} className="day-hour-row">
                                     <div className="day-time-label">{String(hour).padStart(2,'0')}:00</div>
-                                    <div className="day-hour-cell"
-                                        onClick={() => { const dt = new Date(currentDate); dt.setHours(hour,0,0,0); openCreateModal(dt); }}>
+                                    <div
+                                        className={`day-hour-cell ${dragOverDayKey === `day-${hour}` ? 'drop-target' : ''}`}
+                                        onClick={() => { const dt = new Date(currentDate); dt.setHours(hour,0,0,0); openCreateModal(dt); }}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.dataTransfer.dropEffect = 'move';
+                                        }}
+                                        onDragEnter={(e) => {
+                                            e.preventDefault();
+                                            setDragOverDayKey(`day-${hour}`);
+                                        }}
+                                        onDragLeave={(e) => {
+                                            e.preventDefault();
+                                            if (e.currentTarget.contains(e.relatedTarget)) return;
+                                            if (dragOverDayKey === `day-${hour}`) {
+                                                setDragOverDayKey(null);
+                                            }
+                                        }}
+                                        onDrop={(e) => handleDayDrop(e, currentDate, hour)}
+                                    >
                                         {apts.map(apt => (
-                                            <div key={apt.id} className="day-event"
+                                            <div key={apt.id}
+                                                draggable="true"
+                                                onDragStart={(e) => handleDragStart(e, apt)}
+                                                onDragEnd={handleDragEnd}
+                                                className={`day-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
                                                 style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
-                                                onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
+                                                onClick={e => {
+                                                    if (isDraggingRef.current) return;
+                                                    e.stopPropagation();
+                                                    openEditModal(apt);
+                                                }}
+                                            >
                                                 <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
                                                 <span className="day-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
                                                 {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
@@ -2048,8 +2239,24 @@ const Calendar = () => {
                         {getDaysInMonth().map((day, index) => (
                             <div
                                 key={index}
-                                className={`calendar-day ${!day.isCurrentMonth ? 'other-month' : ''} ${isToday(day.date) ? 'today' : ''}`}
+                                className={`calendar-day ${!day.isCurrentMonth ? 'other-month' : ''} ${isToday(day.date) ? 'today' : ''} ${dragOverDayKey === day.date.toDateString() ? 'drop-target' : ''}`}
                                 onClick={() => openCreateModal(day.date)}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'move';
+                                }}
+                                onDragEnter={(e) => {
+                                    e.preventDefault();
+                                    setDragOverDayKey(day.date.toDateString());
+                                }}
+                                onDragLeave={(e) => {
+                                    e.preventDefault();
+                                    if (e.currentTarget.contains(e.relatedTarget)) return;
+                                    if (dragOverDayKey === day.date.toDateString()) {
+                                        setDragOverDayKey(null);
+                                    }
+                                }}
+                                onDrop={(e) => handleDayDrop(e, day.date)}
                             >
                                 <span className="day-number">{day.date.getDate()}</span>
                                 <div className="day-appointments">
@@ -2073,9 +2280,16 @@ const Calendar = () => {
                                                 render: (
                                                     <div key={`apt-${apt.id}`} className="appointment-pill-wrapper">
                                                         <div
-                                                            className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''} ${apt.isGoogleEvent ? 'pill-google' : ''}`}
+                                                            draggable="true"
+                                                            onDragStart={(e) => handleDragStart(e, apt)}
+                                                            onDragEnd={handleDragEnd}
+                                                            className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''} ${apt.isGoogleEvent ? 'pill-google' : ''} ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
                                                             style={{ backgroundColor: eventColor }}
-                                                            onClick={(e) => { e.stopPropagation(); openEditModal(apt); }}
+                                                            onClick={(e) => {
+                                                                if (isDraggingRef.current) return;
+                                                                e.stopPropagation();
+                                                                openEditModal(apt);
+                                                            }}
                                                         >
                                                             {apt.isGoogleEvent && <span style={{ marginRight: 3, fontSize: 11 }}>🇬</span>}
                                                             {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
@@ -2374,6 +2588,126 @@ const Calendar = () => {
                 )}
             </div> {/* End calendar-main */}
             </div> {/* End calendar-content */}
+            {/* ─── Reschedule / Drag & Drop Confirmation Modal ─── */}
+            {rescheduleData && (
+                <div className="modal-overlay" onClick={() => setRescheduleData(null)}>
+                    <div className="reschedule-modal" onClick={e => e.stopPropagation()}>
+                        <div
+                            className="reschedule-modal-header"
+                            style={rescheduleData.appointment.isGoogleEvent ? { background: `linear-gradient(135deg, #0f172a 0%, ${getGoogleAccountColor(rescheduleData.appointment.googleEmail, googleStatus.accounts).primary} 100%)` } : {}}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div className="reschedule-modal-icon">📅</div>
+                                <div>
+                                    <h3>Randevuyu / Etkinliği Taşı</h3>
+                                    <p>{rescheduleData.appointment.isGoogleEvent ? `Google Takvim (${rescheduleData.appointment.googleEmail || 'Bağlı Hesap'})` : 'Instomer Randevusu'}</p>
+                                </div>
+                            </div>
+                            <button className="apt-modal-close" onClick={() => setRescheduleData(null)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleConfirmReschedule} className="reschedule-modal-body">
+                            <div className="reschedule-event-card">
+                                <span className="reschedule-event-title">{rescheduleData.appointment.title}</span>
+                                {rescheduleData.appointment.isGoogleEvent && (
+                                    <span className="reschedule-google-badge" style={{ backgroundColor: getGoogleAccountColor(rescheduleData.appointment.googleEmail, googleStatus.accounts).primary }}>
+                                        🇬 Google
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="reschedule-dates-compare">
+                                <div className="reschedule-date-col from">
+                                    <span className="reschedule-label">Mevcut Zaman</span>
+                                    <div className="reschedule-date-val">
+                                        {new Date(rescheduleData.appointment.startTime).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
+                                    </div>
+                                    <div className="reschedule-time-val">
+                                        {formatTime(rescheduleData.appointment.startTime)} - {formatTime(rescheduleData.appointment.endTime)}
+                                    </div>
+                                </div>
+
+                                <div className="reschedule-arrow">
+                                    <ArrowRight size={20} />
+                                </div>
+
+                                <div className="reschedule-date-col to">
+                                    <span className="reschedule-label">Hedef Tarih</span>
+                                    <div className="reschedule-date-val target">
+                                        {rescheduleData.targetDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
+                                    </div>
+                                    <div className="reschedule-time-hint">
+                                        {rescheduleData.startTimeStr} - {rescheduleData.endTimeStr}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="reschedule-time-section">
+                                <div className="reschedule-date-field">
+                                    <span>Tarihi Değiştir (İsteğe Bağlı)</span>
+                                    <input
+                                        type="date"
+                                        value={formatDateForInput(rescheduleData.targetDate)}
+                                        onChange={e => {
+                                            if (!e.target.value) return;
+                                            const [y, m, d] = e.target.value.split('-').map(Number);
+                                            setRescheduleData(prev => ({ ...prev, targetDate: new Date(y, m - 1, d) }));
+                                        }}
+                                        required
+                                    />
+                                </div>
+
+                                <label className="reschedule-section-title">⏰ Yeni Saat Seçimi</label>
+                                <div className="reschedule-time-inputs">
+                                    <div className="reschedule-time-field">
+                                        <span>Başlangıç Saati</span>
+                                        <input
+                                            type="time"
+                                            value={rescheduleData.startTimeStr}
+                                            onChange={e => handleRescheduleStartTimeChange(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="reschedule-time-field">
+                                        <span>Bitiş Saati</span>
+                                        <input
+                                            type="time"
+                                            value={rescheduleData.endTimeStr}
+                                            onChange={e => setRescheduleData(prev => ({ ...prev, endTimeStr: e.target.value }))}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="reschedule-quick-times">
+                                    <span style={{ fontSize: 11, color: '#64748b' }}>Hızlı Saat:</span>
+                                    {['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00'].map(t => (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            className={`reschedule-time-pill ${rescheduleData.startTimeStr === t ? 'active' : ''}`}
+                                            onClick={() => handleRescheduleStartTimeChange(t)}
+                                        >
+                                            {t}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="reschedule-modal-footer">
+                                <button type="button" className="apt-btn-cancel" onClick={() => setRescheduleData(null)}>
+                                    İptal
+                                </button>
+                                <button type="submit" className="apt-btn-save" disabled={isRescheduling}>
+                                    {isRescheduling ? 'Taşınıyor...' : 'Taşı ve Güncelle'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Appointment Modal */}
             {isModalOpen && (
@@ -3023,9 +3357,17 @@ const Calendar = () => {
                                     allItems.push({
                                         sortTime: new Date(apt.startTime),
                                         render: (
-                                            <div key={`dp-apt-${apt.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
+                                            <div key={`dp-apt-${apt.id}`}
+                                                draggable="true"
+                                                onDragStart={(e) => handleDragStart(e, apt)}
+                                                onDragEnd={handleDragEnd}
+                                                className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''} ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
                                                 style={{ borderLeftColor: dpEventColor }}
-                                                onClick={() => { openEditModal(apt); setDayPopup(null); }}
+                                                onClick={() => {
+                                                    if (isDraggingRef.current) return;
+                                                    openEditModal(apt);
+                                                    setDayPopup(null);
+                                                }}
                                             >
                                                 {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>🇬 Google</span>}
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
