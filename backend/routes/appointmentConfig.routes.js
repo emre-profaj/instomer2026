@@ -1,21 +1,28 @@
 import express from 'express';
-import { authenticateJWT } from '../middleware/auth.middleware.js';
+import { authenticateJWT, requireRole } from '../middleware/auth.middleware.js';
 import {
     getBranches, createBranch, updateBranch, deleteBranch,
-    createDoctor, updateDoctor, deleteDoctor
+    createDoctor, updateDoctor, deleteDoctor,
+    getFirmSettings, updateFirmSettings, seedHealthDemo, getAllDoctors
 } from '../controllers/appointmentConfig.controller.js';
 
 const router = express.Router();
 
+// Firm / Sector Settings (SUPER_ADMIN only)
+router.get('/:workspaceId/firm-settings', authenticateJWT, requireRole('SUPER_ADMIN'), getFirmSettings);
+router.put('/:workspaceId/firm-settings', authenticateJWT, requireRole('SUPER_ADMIN'), updateFirmSettings);
+router.post('/:workspaceId/seed-health-demo', authenticateJWT, requireRole('SUPER_ADMIN'), seedHealthDemo);
+
 // Branch routes
 router.get('/:workspaceId/branches', authenticateJWT, getBranches);
-router.post('/:workspaceId/branches', authenticateJWT, createBranch);
-router.put('/:workspaceId/branches/:id', authenticateJWT, updateBranch);
-router.delete('/:workspaceId/branches/:id', authenticateJWT, deleteBranch);
+router.post('/:workspaceId/branches', authenticateJWT, requireRole('SUPER_ADMIN'), createBranch);
+router.put('/:workspaceId/branches/:id', authenticateJWT, requireRole('SUPER_ADMIN'), updateBranch);
+router.delete('/:workspaceId/branches/:id', authenticateJWT, requireRole('SUPER_ADMIN'), deleteBranch);
 
 // Doctor routes
-router.post('/:workspaceId/doctors', authenticateJWT, createDoctor);
-router.put('/:workspaceId/doctors/:id', authenticateJWT, updateDoctor);
-router.delete('/:workspaceId/doctors/:id', authenticateJWT, deleteDoctor);
+router.get('/:workspaceId/doctors', authenticateJWT, getAllDoctors);
+router.post('/:workspaceId/doctors', authenticateJWT, requireRole('SUPER_ADMIN'), createDoctor);
+router.put('/:workspaceId/doctors/:id', authenticateJWT, requireRole('SUPER_ADMIN'), updateDoctor);
+router.delete('/:workspaceId/doctors/:id', authenticateJWT, requireRole('SUPER_ADMIN'), deleteDoctor);
 
 export default router;

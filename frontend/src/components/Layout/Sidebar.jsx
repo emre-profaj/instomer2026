@@ -61,6 +61,7 @@ const Sidebar = () => {
     ];
 
     const settingsSubItems = [
+        ...(user?.role === 'SUPER_ADMIN' ? [{ path: '/firm-settings', icon: Building2, label: 'Firma Ayarları' }] : []),
         { path: '/channels', icon: Radio, label: 'Kanallar ve Yönlendirme' },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
@@ -180,7 +181,7 @@ const Sidebar = () => {
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
         setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
-        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/notification-settings'].some(p => path === p));
+        setIsSettingsOpen(['/settings', '/firm-settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/notification-settings'].some(p => path === p));
     }, [location.pathname]);
 
 

@@ -43,6 +43,7 @@ import Calendar from './pages/Calendar/Calendar';
 
 import Automations from './pages/Automations/Automations';
 import NotificationSettings from './pages/Settings/NotificationSettings';
+import FirmSettings from './pages/Settings/FirmSettings';
 // Functions page removed - merged into Integrations
 import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
@@ -119,6 +120,7 @@ function App() {
               <Route path="teams" element={<Users />} />
               <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="firm-settings" element={<FirmSettings />} />
               <Route path="workspace-settings" element={<WorkspaceSettings />} />
               <Route path="topic-categories" element={<Navigate to="/casetypes" replace />} />
               <Route path="casetypes" element={<CaseTypesAndTopics />} />
