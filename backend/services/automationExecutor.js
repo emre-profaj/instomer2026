@@ -135,22 +135,31 @@ async function handleScheduleAppointment(automation, context) {
     if (!contactRecord) return { success: false, error: 'Kişi bulunamadı' };
 
     // Create appointment record
-    const appointmentDate = new Date(Date.now() + (automation.delayMinutes || 60) * 60 * 1000);
+    const startTime = new Date(Date.now() + (automation.delayMinutes || 60) * 60 * 1000);
+    const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
     const appointment = await prisma.appointment.create({
         data: {
             workspaceId,
             contactId,
-            patientName: contactRecord.name || 'Bilinmiyor',
-            patientPhone: contactRecord.phone || '',
-            appointmentDate,
-            appointmentType: automation.appointmentType || 'GENERAL',
-            status: 'PENDING',
-            source: 'AUTOMATION',
-            notes: `Otomasyon: ${automation.name}`
+            title: `Randevu — ${contactRecord.name || 'Müşteri'}`,
+            contactName: contactRecord.name || 'Bilinmiyor',
+            contactPhone: contactRecord.phone || '',
+            contactEmail: contactRecord.email || null,
+            startTime,
+            endTime,
+            status: 'SCHEDULED',
+            createdById: 'system',
+            notes: `Otomasyon: ${automation.name || 'SCHEDULE_APPOINTMENT'}`
         }
     });
 
-    console.log(`🗓️ [AutomationExecutor] SCHEDULE_APPOINTMENT: ${contactRecord.name} → ${appointmentDate.toISOString()}`);
+    console.log(`🗓️ [AutomationExecutor] SCHEDULE_APPOINTMENT: ${contactRecord.name} → ${startTime.toISOString()}`);
+    
+    // 📅 Google Takvim Senkronizasyonu
+    import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
+        syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AutomationExecutor GoogleSync] error:', e.message));
+    });
+
     emitToWorkspace(workspaceId, 'appointment_created', { appointment });
     return { success: true, action: 'SCHEDULE_APPOINTMENT', appointmentId: appointment.id };
 }

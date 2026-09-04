@@ -203,11 +203,34 @@ export async function syncAppointmentToGoogle(appointmentId, targetUserId = null
 
         if (!appointment || !appointment.workspaceId) return null;
 
-        const effectiveUserId = targetUserId || appointment.assignedToId || appointment.createdById;
-        if (!effectiveUserId) return null;
+        let effectiveUserId = targetUserId || appointment.assignedToId;
+        let calendar = null;
 
-        const calendar = await getCalendarClientForUser(effectiveUserId, appointment.workspaceId);
-        if (!calendar) return null;
+        if (effectiveUserId) {
+            calendar = await getCalendarClientForUser(effectiveUserId, appointment.workspaceId);
+        }
+
+        if (!calendar && appointment.createdById && appointment.createdById !== 'system') {
+            calendar = await getCalendarClientForUser(appointment.createdById, appointment.workspaceId);
+            if (calendar) effectiveUserId = appointment.createdById;
+        }
+
+        // Eğer henüz takvim bulunamadıysa (bot/sistem veya atanmamış randevularda), workspace'teki ilk aktif takvimi kullan
+        if (!calendar) {
+            const fallbackCal = await prisma.userGoogleCalendar.findFirst({
+                where: { workspaceId: appointment.workspaceId, isActive: true },
+                orderBy: { createdAt: 'asc' }
+            });
+            if (fallbackCal) {
+                calendar = await getCalendarClientForUser(fallbackCal.userId, appointment.workspaceId, fallbackCal.googleEmail);
+                if (calendar && !effectiveUserId) effectiveUserId = fallbackCal.userId;
+            }
+        }
+
+        if (!calendar) {
+            console.log(`ℹ️ [GoogleCalendar] Workspace ${appointment.workspaceId} için bağlı aktif Google Takvim hesabı bulunamadı.`);
+            return null;
+        }
 
         const descriptionParts = [];
         if (appointment.contactName) descriptionParts.push(`👤 Müşteri/Hasta: ${appointment.contactName}`);
@@ -287,14 +310,29 @@ export async function updateGoogleEvent(appointmentId) {
             where: { id: appointmentId }
         });
 
-        if (!appointment || !appointment.assignedToId || !appointment.workspaceId) return null;
+        if (!appointment || !appointment.workspaceId) return null;
 
         // Henüz Google etkinliği yoksa yeni oluştur
         if (!appointment.googleEventId) {
             return syncAppointmentToGoogle(appointmentId);
         }
 
-        const calendar = await getCalendarClientForUser(appointment.assignedToId, appointment.workspaceId);
+        let calendar = null;
+        if (appointment.assignedToId) {
+            calendar = await getCalendarClientForUser(appointment.assignedToId, appointment.workspaceId);
+        }
+        if (!calendar && appointment.createdById && appointment.createdById !== 'system') {
+            calendar = await getCalendarClientForUser(appointment.createdById, appointment.workspaceId);
+        }
+        if (!calendar) {
+            const fallbackCal = await prisma.userGoogleCalendar.findFirst({
+                where: { workspaceId: appointment.workspaceId, isActive: true },
+                orderBy: { createdAt: 'asc' }
+            });
+            if (fallbackCal) {
+                calendar = await getCalendarClientForUser(fallbackCal.userId, appointment.workspaceId, fallbackCal.googleEmail);
+            }
+        }
         if (!calendar) return null;
 
         const descriptionParts = [];

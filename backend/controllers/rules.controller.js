@@ -1442,6 +1442,39 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
         });
         console.log(`📅 [RULE:APPOINTMENT] APPOINTMENT activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, team: ${teamId || 'YOK'}, user: ${inheritedAssigneeId || 'HAVUZ'})`);
 
+        // 10b. Create Calendar Appointment & Sync to Google Calendar
+        try {
+            const endApptTime = new Date(dueDate.getTime() + 30 * 60 * 1000);
+            const calendarAppt = await prisma.appointment.create({
+                data: {
+                    workspaceId,
+                    title: appointmentDetails?.title || `Randevu — ${contact.name || contact.fullName || contact.phone || 'Müşteri'}`,
+                    description,
+                    startTime: dueDate,
+                    endTime: endApptTime,
+                    contactId,
+                    contactName: contact.name || contact.fullName || '',
+                    contactPhone: contact.phone || '',
+                    contactEmail: contact.email || null,
+                    assignedToId: inheritedAssigneeId || null,
+                    status: 'SCHEDULED',
+                    createdById: inheritedAssigneeId || 'system',
+                    conversationId: latestConversation?.id || null,
+                    notes: `Otomasyon (APPOINTMENT_AUTO_PLAN) tarafından planlandı.`
+                }
+            });
+
+            // Google Takvim Senkronizasyonu
+            import('../services/googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
+                syncAppointmentToGoogle(calendarAppt.id).catch(e => console.error('[Rule Appointment GoogleSync] error:', e.message));
+            });
+
+            // Takvim Socket bildirimi
+            emitToWorkspace(workspaceId, 'appointment_created', { appointment: calendarAppt });
+        } catch (calApptErr) {
+            console.error('⚠️ [RULE:APPOINTMENT] Calendar appointment creation error:', calApptErr.message);
+        }
+
         // 11. Emit socket events
         emitToWorkspace(workspaceId, 'activity_created', {
             contactId,

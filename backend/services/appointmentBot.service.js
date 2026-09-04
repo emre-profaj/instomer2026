@@ -952,6 +952,17 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
         localAppointmentId = appointment.id;
         console.log(`✅ [AppointmentBot] Instomer DB randevu kaydedildi: ${appointment.id} | ${patient_name} | ${date} ${time}`);
 
+        // 📅 Google Takvim Senkronizasyonu
+        import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
+            syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AppointmentBot GoogleSync] error:', e.message));
+        });
+
+        // ── Socket ile bildir (Takvim canlı güncellensin) ──
+        try {
+            const { emitToWorkspace } = await import('../socket.js');
+            emitToWorkspace(workspaceId, 'appointment_created', { appointment });
+        } catch (_) {}
+
         if (conversationId) {
             await prisma.conversation.update({
                 where: { id: conversationId },

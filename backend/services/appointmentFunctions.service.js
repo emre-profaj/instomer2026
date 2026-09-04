@@ -508,12 +508,10 @@ export async function bookAppointment(workspaceId, params = {}) {
 
         console.log(`✅ [AppointmentFn] Randevu oluşturuldu: ${appointment.id} | ${providerName} | ${formatDate(startTime)} ${formatTime(startTime)}`);
 
-        // 📅 Google Takvim Senkronizasyonu (Temsilcinin Google Takvimine işle)
-        if (appointment.assignedToId) {
-            import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
-                syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AppointmentFn GoogleSync] error:', e.message));
-            });
-        }
+        // 📅 Google Takvim Senkronizasyonu
+        import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
+            syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AppointmentFn GoogleSync] error:', e.message));
+        });
 
         // ── Socket ile bildir ──
         try {
