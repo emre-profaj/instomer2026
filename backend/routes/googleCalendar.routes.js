@@ -20,7 +20,7 @@ router.get('/callback', handleGoogleCallback);
 router.get('/auth-url', authenticateJWT, getGoogleAuthUrl);
 router.get('/status', authenticateJWT, getGoogleCalendarStatus);
 router.get('/events', authenticateJWT, getGoogleEvents);
-router.get('/diagnose', authenticateJWT, diagnoseGoogleCalendar);
+router.get('/diagnose', diagnoseGoogleCalendar);
 router.post('/disconnect', authenticateJWT, disconnectGoogleCalendar);
 
 // Workspace Google Takvim yapılandırma endpoint'leri (Kanallar / Entegrasyonlar)

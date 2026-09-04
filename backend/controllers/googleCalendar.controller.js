@@ -167,25 +167,35 @@ export const getGoogleEvents = async (req, res) => {
  */
 export const diagnoseGoogleCalendar = async (req, res) => {
     try {
-        const workspaceId = req.query.workspaceId || req.headers['x-workspace-id'];
-        if (!workspaceId) return res.status(400).json({ error: 'workspaceId zorunludur' });
+        let workspaceId = req.query.workspaceId || req.headers['x-workspace-id'];
+        if (!workspaceId) {
+            const firstWs = await prisma.workspace.findFirst({ select: { id: true, name: true } });
+            workspaceId = firstWs?.id;
+        }
+
+        if (!workspaceId) {
+            return res.json({ status: 'no_workspace', message: 'Kayıtlı çalışma alanı bulunamadı' });
+        }
+
+        const ws = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { id: true, name: true }
+        });
 
         const wsCreds = await getWorkspaceGoogleCredentials(workspaceId);
-        const userCal = await prisma.userGoogleCalendar.findUnique({
-            where: {
-                userId_workspaceId: { userId: req.user.id, workspaceId }
-            }
-        });
-        const allCalsInWs = await prisma.userGoogleCalendar.findMany({
-            where: { workspaceId }
+        const allCals = await prisma.userGoogleCalendar.findMany({
+            where: { workspaceId },
+            include: { user: { select: { id: true, name: true, email: true } } }
         });
 
-        let testResult = null;
-        let testError = null;
+        const usersReport = [];
 
-        if (userCal?.accessToken) {
+        for (const c of allCals) {
+            let testResult = null;
+            let testError = null;
+
             try {
-                const calendar = await getCalendarClientForUser(req.user.id, workspaceId);
+                const calendar = await getCalendarClientForUser(c.userId, workspaceId);
                 if (calendar) {
                     const listRes = await calendar.events.list({
                         calendarId: 'primary',
@@ -197,42 +207,46 @@ export const diagnoseGoogleCalendar = async (req, res) => {
                         eventsFound: listRes.data?.items?.length || 0,
                         events: (listRes.data?.items || []).map(i => ({
                             id: i.id,
-                            summary: i.summary,
+                            summary: i.summary || '(Başlıksız)',
                             start: i.start?.dateTime || i.start?.date,
                             hangoutLink: i.hangoutLink || null
                         }))
                     };
                 } else {
-                    testError = { message: 'getCalendarClientForUser null döndü (muhtemelen creds veya token eksik)' };
+                    testError = { message: 'getCalendarClientForUser null döndü (client üretilemedi)' };
                 }
             } catch (err) {
                 testError = {
                     message: err.message,
                     code: err.code,
                     status: err.status,
-                    details: err.response?.data
+                    details: err.response?.data?.error || err.response?.data
                 };
             }
+
+            usersReport.push({
+                userName: c.user?.name || 'Bilinmiyor',
+                systemUserEmail: c.user?.email || '',
+                googleEmail: c.googleEmail,
+                isActive: c.isActive,
+                hasAccessToken: !!c.accessToken,
+                hasRefreshToken: !!c.refreshToken,
+                isExpired: c.expiryDate ? Number(c.expiryDate) < Date.now() : false,
+                apiTest: testResult,
+                apiError: testError
+            });
         }
 
         res.json({
-            workspaceId,
-            userId: req.user.id,
-            userEmail: req.user.email,
-            credentialsConfigured: !!wsCreds,
-            credentialsSource: wsCreds?.source || 'none',
-            userCalendarRow: userCal ? {
-                id: userCal.id,
-                email: userCal.googleEmail,
-                isActive: userCal.isActive,
-                hasAccessToken: !!userCal.accessToken,
-                hasRefreshToken: !!userCal.refreshToken,
-                expiryDate: userCal.expiryDate?.toString(),
-                isExpired: userCal.expiryDate ? Number(userCal.expiryDate) < Date.now() : false
-            } : null,
-            totalConnectedInWorkspace: allCalsInWs.length,
-            googleApiTest: testResult,
-            googleApiError: testError
+            status: 'ok',
+            workspace: { id: ws?.id, name: ws?.name },
+            googleCredentials: {
+                configured: !!wsCreds,
+                source: wsCreds?.source || 'none',
+                clientIdPrefix: wsCreds?.clientId ? wsCreds.clientId.slice(0, 18) + '...' : null
+            },
+            connectedAccountsCount: allCals.length,
+            accounts: usersReport
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
