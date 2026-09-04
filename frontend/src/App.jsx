@@ -62,6 +62,7 @@ import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSettings from './pages/Admin/AdminSettings';
 import AdminActivityLog from './pages/Admin/AdminActivityLog';
+import AdminFlowTemplates from './pages/Admin/AdminFlowTemplates';
 import AdminMessages from './pages/Admin/AdminMessages';
 
 function CalendarRedirect() {
