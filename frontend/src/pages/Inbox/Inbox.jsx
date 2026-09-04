@@ -440,12 +440,33 @@ const Inbox = () => {
             return stored ? new Set(JSON.parse(stored)) : new Set();
         } catch { return new Set(); }
     });
-    const [showOnlyAssigned, setShowOnlyAssigned] = useState(false); // Filter to show only UNassigned conversations
-    const [showAssignedToMe, setShowAssignedToMe] = useState(false); // Filter to show only conversations assigned to me
-    const [statusFilter, setStatusFilter] = useState(null); // null = All, stage ID = filter by stage
+    // Filter states persisted in localStorage per workspace
+    const [showOnlyAssigned, setShowOnlyAssigned] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_showOnlyAssigned_${ws.id || 'default'}`) === 'true';
+        } catch { return false; }
+    });
+    const [showAssignedToMe, setShowAssignedToMe] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_showAssignedToMe_${ws.id || 'default'}`) === 'true';
+        } catch { return false; }
+    });
+    const [statusFilter, setStatusFilter] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_statusFilter_${ws.id || 'default'}`) || null;
+        } catch { return null; }
+    });
     const [stageFilterOpen, setStageFilterOpen] = useState(false);
     const stageFilterRef = useRef(null);
-    const [funnelFilter, setFunnelFilter] = useState(null); // null = All, funnel ID = filter by funnel type
+    const [funnelFilter, setFunnelFilter] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_funnelFilter_${ws.id || 'default'}`) || null;
+        } catch { return null; }
+    });
     const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
     const funnelFilterRef = useRef(null);
     const [stageMegaMenuOpen, setStageMegaMenuOpen] = useState(false);
@@ -458,10 +479,20 @@ const Inbox = () => {
     const assignMenuDivRef = useRef(null); // fixed menü div ref
     const [assignMegaMenuPos, setAssignMegaMenuPos] = useState({ top: 0, left: 0 });
     const [assignSelectedTeam, setAssignSelectedTeam] = useState(null);
-    const [agentFilter, setAgentFilter] = useState(null); // null = All, user ID = filter by assigned agent
+    const [agentFilter, setAgentFilter] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_agentFilter_${ws.id || 'default'}`) || null;
+        } catch { return null; }
+    });
     const [agentFilterOpen, setAgentFilterOpen] = useState(false);
     const agentFilterRef = useRef(null);
-    const [quickFilter, setQuickFilter] = useState(null); // 'today' | 'week' | 'month' | 'unread'
+    const [quickFilter, setQuickFilter] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_quickFilter_${ws.id || 'default'}`) || null;
+        } catch { return null; }
+    });
     const [quickFilterOpen, setQuickFilterOpen] = useState(false);
     const quickFilterRef = useRef(null);
     const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -471,6 +502,95 @@ const Inbox = () => {
     const [closingDropdownOpen, setClosingDropdownOpen] = useState(false);
     const closingDropdownRef = useRef(null);
     const caseLinkDropdownRef = useRef(null);
+
+    // Persist filters to localStorage per workspace
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (funnelFilter) {
+            localStorage.setItem(`inbox_funnelFilter_${wsId}`, funnelFilter);
+        } else {
+            localStorage.removeItem(`inbox_funnelFilter_${wsId}`);
+        }
+    }, [funnelFilter, currentWorkspace?.id]);
+
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (statusFilter) {
+            localStorage.setItem(`inbox_statusFilter_${wsId}`, statusFilter);
+        } else {
+            localStorage.removeItem(`inbox_statusFilter_${wsId}`);
+        }
+    }, [statusFilter, currentWorkspace?.id]);
+
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (agentFilter) {
+            localStorage.setItem(`inbox_agentFilter_${wsId}`, agentFilter);
+        } else {
+            localStorage.removeItem(`inbox_agentFilter_${wsId}`);
+        }
+    }, [agentFilter, currentWorkspace?.id]);
+
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (quickFilter) {
+            localStorage.setItem(`inbox_quickFilter_${wsId}`, quickFilter);
+        } else {
+            localStorage.removeItem(`inbox_quickFilter_${wsId}`);
+        }
+    }, [quickFilter, currentWorkspace?.id]);
+
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (showOnlyAssigned) {
+            localStorage.setItem(`inbox_showOnlyAssigned_${wsId}`, 'true');
+        } else {
+            localStorage.removeItem(`inbox_showOnlyAssigned_${wsId}`);
+        }
+    }, [showOnlyAssigned, currentWorkspace?.id]);
+
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (showAssignedToMe) {
+            localStorage.setItem(`inbox_showAssignedToMe_${wsId}`, 'true');
+        } else {
+            localStorage.removeItem(`inbox_showAssignedToMe_${wsId}`);
+        }
+    }, [showAssignedToMe, currentWorkspace?.id]);
+
+    // Restore workspace-specific filters when switching active workspace
+    const prevWsIdRef = useRef(currentWorkspace?.id);
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        if (prevWsIdRef.current && prevWsIdRef.current !== currentWorkspace.id) {
+            const wsId = currentWorkspace.id;
+            setFunnelFilter(localStorage.getItem(`inbox_funnelFilter_${wsId}`) || null);
+            setStatusFilter(localStorage.getItem(`inbox_statusFilter_${wsId}`) || null);
+            setAgentFilter(localStorage.getItem(`inbox_agentFilter_${wsId}`) || null);
+            setQuickFilter(localStorage.getItem(`inbox_quickFilter_${wsId}`) || null);
+            setShowOnlyAssigned(localStorage.getItem(`inbox_showOnlyAssigned_${wsId}`) === 'true');
+            setShowAssignedToMe(localStorage.getItem(`inbox_showAssignedToMe_${wsId}`) === 'true');
+        }
+        prevWsIdRef.current = currentWorkspace.id;
+    }, [currentWorkspace?.id]);
 
     // Funnel options — loaded dynamically from API
     const [funnelOptions, setFunnelOptions] = useState(FUNNEL_TYPE_OPTIONS_DEFAULT);
@@ -4020,6 +4140,9 @@ const Inbox = () => {
                             }}
                         >
                             <option value="">Tümü</option>
+                            {funnelFilter && !funnelOptions.some(f => f.value === funnelFilter) && (
+                                <option value={funnelFilter} style={{ display: 'none' }}>{funnelFilter}</option>
+                            )}
                             {funnelOptions.filter(f => f.value).map(funnel => {
                                 const count = inboxItems.filter(item => item.contact?.funnelType === funnel.value).length;
                                 return (
