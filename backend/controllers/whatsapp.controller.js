@@ -1481,7 +1481,7 @@ export const webhookHandler = async (req, res) => {
                             const msgLower = msg_body.toLowerCase();
                             const apptKeywords = ['randevu', 'görüşme', 'toplantı', 'ziyaret', 'gelmek istiyorum', 'ne zaman müsait', 'appointment', 'meeting'];
                             if (apptKeywords.some(kw => msgLower.includes(kw)) && conversation.contactId) {
-                                executeAppointmentPlanning(waNumber.workspaceId, conversation.contactId, 'WHATSAPP_MSG').catch(e =>
+                                executeAppointmentPlanning(waNumber.workspaceId, conversation.contactId, 'WHATSAPP_MSG', null, msg_body).catch(e =>
                                     console.error('❌ [RULE:APPOINTMENT] WA async error:', e.message)
                                 );
                             }

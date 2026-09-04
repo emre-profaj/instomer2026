@@ -646,6 +646,20 @@ export const getContactTimeline = async (req, res) => {
 
         // Appointments
         appointments.forEach(apt => {
+            // Dedup: Eğer activities içinde bu randevuyu temsil eden bir APPOINTMENT veya MEETING aktivitesi varsa timeline'a mükerrer kart ekleme
+            const aptTime = apt.startTime ? new Date(apt.startTime).getTime() : 0;
+            const isAlreadyRepresented = activities.some(act => {
+                if (!['APPOINTMENT', 'MEETING'].includes(act.type)) return false;
+                const actDueTime = act.dueDate ? new Date(act.dueDate).getTime() : 0;
+                if (aptTime && actDueTime && Math.abs(aptTime - actDueTime) <= 5 * 60 * 1000) {
+                    return true;
+                }
+                return false;
+            });
+            if (isAlreadyRepresented) {
+                return;
+            }
+
             let labelName = apt.assignedTo?.name || 'Sistem';
             if (apt.assignedTo?.teamMemberships && apt.assignedTo.teamMemberships.length > 0) {
                 labelName += ` (${apt.assignedTo.teamMemberships[0].team.name})`;

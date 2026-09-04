@@ -1988,7 +1988,7 @@ async function processWebhookAsync(body) {
                             const msgLower = message.text.toLowerCase();
                             const apptKeywords = ['randevu', 'görüşme', 'toplantı', 'ziyaret', 'gelmek istiyorum', 'ne zaman müsait', 'appointment', 'meeting'];
                             if (apptKeywords.some(kw => msgLower.includes(kw)) && conversation.contactId) {
-                                executeAppointmentPlanning(facebookPage.workspaceId, conversation.contactId, 'FACEBOOK_MSG').catch(e =>
+                                executeAppointmentPlanning(facebookPage.workspaceId, conversation.contactId, 'FACEBOOK_MSG', null, message.text).catch(e =>
                                     console.error('❌ [RULE:APPOINTMENT] FB/IG async error:', e.message)
                                 );
                             }

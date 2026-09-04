@@ -9,92 +9,160 @@ import { createTeamNotifications, createNotification } from './notification.cont
 // ────────────────────────────────────────────────────────────────────────────
 function parseCallTimingFromMessages(messagesText) {
     if (!messagesText) return null;
-    const text = messagesText.toLowerCase().replace(/[?!.,]/g, ' ');
+    const text = messagesText.toLowerCase();
 
     const now = new Date();
     const TR_OFFSET_H = 3; // Turkey UTC+3
 
-    // Helper: Turkey local hour right now
+    // Current Turkey local date/time
     const turkeyNow = new Date(now.getTime() + TR_OFFSET_H * 3600000);
-    const turkeyHour = turkeyNow.getUTCHours();
-    const turkeyDay = turkeyNow.getUTCDay(); // 0=Sun
+    const currentYear = turkeyNow.getUTCFullYear();
+    const currentDay = turkeyNow.getUTCDay(); // 0=Sun, 1=Mon, ...
+    const currentHour = turkeyNow.getUTCHours();
+    const currentMinute = turkeyNow.getUTCMinutes();
 
-    // Helper: create UTC date from Turkey-local day offset + hour
-    const makeDate = (daysFromNow, hour, minute = 0) => {
-        const d = new Date(now);
-        d.setDate(d.getDate() + daysFromNow);
-        d.setUTCHours(hour - TR_OFFSET_H, minute, 0, 0);
-        // Ensure we don't schedule in the past
-        if (d <= now) d.setDate(d.getDate() + 1);
-        return d;
+    // Helper: make UTC Date from Turkey local components
+    const makeTRDate = (year, month, day, hour, minute = 0) => {
+        return new Date(Date.UTC(year, month, day, hour - TR_OFFSET_H, minute, 0, 0));
     };
 
-    // ── "yarın" (tomorrow) ──
+    // Helper: make date relative to today in Turkey
+    const makeDate = (daysFromNow, hour, minute = 0) => {
+        const targetTR = new Date(turkeyNow.getTime() + daysFromNow * 86400000);
+        return makeTRDate(targetTR.getUTCFullYear(), targetTR.getUTCMonth(), targetTR.getUTCDate(), hour, minute);
+    };
+
+    // 1. Extract explicit hour & minute
+    let explicitHour = null;
+    let explicitMinute = 0;
+
+    // Pattern A: '14:00', '14.30', 'saat 14:00', 'saat 14.30', '14:00te', '14:00 a', '14:00 da'
+    const hmMatch = text.match(/(?:saat\s*)?([01]?\d|2[0-3])[.:]([0-5]\d)/i);
+    if (hmMatch) {
+        explicitHour = parseInt(hmMatch[1], 10);
+        explicitMinute = parseInt(hmMatch[2], 10);
+    } else {
+        // Pattern B: 'saat 14', 'saat 2', 'saat 14 te', 'saat 14 e'
+        const hMatch = text.match(/\bsaat\s*([01]?\d|2[0-3])\b/i);
+        if (hMatch) {
+            explicitHour = parseInt(hMatch[1], 10);
+            explicitMinute = 0;
+        } else {
+            // Pattern C: '14 te', '14 teki', '14 de', '14 e', '14 a'
+            const suffixMatch = text.match(/\b([01]?\d|2[0-3])\s*(?:'|’)?\s*(?:te|ta|de|da|ye|ya|e|a)\b/i);
+            if (suffixMatch) {
+                const val = parseInt(suffixMatch[1], 10);
+                if (val >= 8 && val <= 22) { // realistic appointment hours
+                    explicitHour = val;
+                    explicitMinute = 0;
+                }
+            }
+        }
+    }
+
+    // Default hours for times of day if no explicit hour given
+    const getPeriodHour = () => {
+        if (/sabah/.test(text)) return { hour: 9, min: 30 };
+        if (/öğleden\s*sonra/.test(text)) return { hour: 14, min: 0 };
+        if (/akşam/.test(text)) return { hour: 18, min: 0 };
+        if (/öğle/.test(text)) return { hour: 12, min: 0 };
+        return null;
+    };
+
+    const period = getPeriodHour();
+    const finalHour = explicitHour !== null ? explicitHour : (period ? period.hour : null);
+    const finalMinute = explicitHour !== null ? explicitMinute : (period ? period.min : 0);
+
+    // 2. Determine Day / Date
+    // 2a. Explicit Turkish month: '10 eylül', '15 ekim', etc.
+    const monthNames = {
+        'ocak': 0, 'şubat': 1, 'mart': 2, 'nisan': 3, 'mayıs': 4, 'haziran': 5,
+        'temmuz': 6, 'ağustos': 7, 'eylül': 8, 'ekim': 9, 'kasım': 10, 'aralık': 11
+    };
+    const monthMatch = text.match(/(\d{1,2})\s*(ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık)/i);
+    if (monthMatch) {
+        const d = parseInt(monthMatch[1], 10);
+        const m = monthNames[monthMatch[2].toLowerCase()];
+        let y = currentYear;
+        const candidate = makeTRDate(y, m, d, finalHour !== null ? finalHour : 10, finalMinute);
+        if (candidate <= now) {
+            y += 1;
+        }
+        return makeTRDate(y, m, d, finalHour !== null ? finalHour : 10, finalMinute);
+    }
+
+    // 2b. 'öbür gün' / 'ertesi gün' / 'yarından sonra'
+    if (/öbür\s*gün|ertesi\s*gün|yarından\s*sonra/.test(text)) {
+        return makeDate(2, finalHour !== null ? finalHour : 10, finalMinute);
+    }
+
+    // 2c. 'yarın'
     if (/yarın/.test(text)) {
-        if (/sabah/.test(text)) return makeDate(1, 9, 30);
-        if (/öğleden\s*sonra/.test(text)) return makeDate(1, 14, 0);
-        if (/akşam/.test(text)) return makeDate(1, 18, 0);
-        if (/öğle/.test(text)) return makeDate(1, 12, 0);
-        return makeDate(1, 10, 0); // Default: yarın 10:00
+        return makeDate(1, finalHour !== null ? finalHour : 10, finalMinute);
     }
 
-    // ── "bugün" + time of day ──
+    // 2d. 'bugün'
     if (/bugün/.test(text)) {
-        if (/akşam/.test(text)) return makeDate(0, 18, 0);
-        if (/öğleden\s*sonra/.test(text)) return makeDate(0, 14, 0);
-        if (/öğle/.test(text)) return makeDate(0, 12, 0);
-        return makeDate(0, turkeyHour + 1, 0); // +1 saat
+        if (finalHour !== null) {
+            return makeDate(0, finalHour, finalMinute);
+        }
+        return makeDate(0, currentHour + 1, 0);
     }
 
-    // ── Specific day names ──
+    // 2e. Specific day names
     const dayNames = {
         'pazartesi': 1, 'salı': 2, 'çarşamba': 3, 'perşembe': 4,
         'cuma': 5, 'cumartesi': 6, 'pazar': 0
     };
     for (const [name, dayNum] of Object.entries(dayNames)) {
         if (text.includes(name)) {
-            let daysUntil = dayNum - turkeyDay;
+            let daysUntil = dayNum - currentDay;
             if (daysUntil <= 0) daysUntil += 7;
-            return makeDate(daysUntil, 10, 0);
+            return makeDate(daysUntil, finalHour !== null ? finalHour : 10, finalMinute);
         }
     }
 
-    // ── "hafta sonu" (weekend) ──
+    // 2f. 'hafta sonu'
     if (/hafta\s*sonu/.test(text)) {
-        let daysUntil = 6 - turkeyDay; // Saturday
+        let daysUntil = 6 - currentDay; // Saturday
         if (daysUntil <= 0) daysUntil += 7;
-        return makeDate(daysUntil, 10, 0);
+        return makeDate(daysUntil, finalHour !== null ? finalHour : 10, finalMinute);
     }
 
-    // ── "haftaya" / "gelecek hafta" (next week) ──
+    // 2g. 'haftaya' / 'gelecek hafta'
     if (/haftaya|gelecek\s*hafta/.test(text)) {
-        let daysUntilMon = 1 - turkeyDay;
+        let daysUntilMon = 1 - currentDay;
         if (daysUntilMon <= 0) daysUntilMon += 7;
-        return makeDate(daysUntilMon, 10, 0);
+        return makeDate(daysUntilMon, finalHour !== null ? finalHour : 10, finalMinute);
     }
 
-    // ── "X gün sonra" ──
+    // 2h. 'X gün sonra'
     const gunSonra = text.match(/(\d+)\s*gün\s*sonra/);
     if (gunSonra) {
-        const days = parseInt(gunSonra[1]);
-        if (days > 0 && days <= 30) return makeDate(days, 10, 0);
+        const days = parseInt(gunSonra[1], 10);
+        if (days > 0 && days <= 30) return makeDate(days, finalHour !== null ? finalHour : 10, finalMinute);
     }
 
-    // ── "bir kaç gün" / "birkaç gün" ──
-    if (/birka[cç]\s*gün/.test(text)) return makeDate(2, 10, 0);
+    // 2i. 'birkaç gün'
+    if (/birka[cç]\s*gün/.test(text)) return makeDate(2, finalHour !== null ? finalHour : 10, finalMinute);
 
-    // ── "X saat sonra" ──
+    // 2j. If explicit hour was found without day:
+    if (explicitHour !== null) {
+        if (explicitHour > currentHour || (explicitHour === currentHour && explicitMinute > currentMinute)) {
+            return makeDate(0, explicitHour, explicitMinute);
+        } else {
+            return makeDate(1, explicitHour, explicitMinute);
+        }
+    }
+
+    // 2k. Relative hours: 'X saat sonra'
     const saatSonra = text.match(/(\d+)\s*saat\s*sonra/);
     if (saatSonra) {
-        const hours = parseInt(saatSonra[1]);
+        const hours = parseInt(saatSonra[1], 10);
         if (hours > 0 && hours <= 48) return new Date(now.getTime() + hours * 3600000);
     }
-
-    // ── "bir saat sonra" / "birkaç saat sonra" ──
     if (/bir\s*saat\s*sonra/.test(text)) return new Date(now.getTime() + 3600000);
     if (/birka[cç]\s*saat/.test(text)) return new Date(now.getTime() + 3 * 3600000);
-
-    // ── "sonra" / "daha sonra" (generic later — give 2 hours) ──
     if (/daha\s*sonra|sonra\s*arayın|sonra\s*ara/.test(text)) {
         return new Date(now.getTime() + 2 * 3600000);
     }
@@ -1256,7 +1324,7 @@ if (!global._appointmentPlanningLocks) {
     global._appointmentPlanningLocks = new Map();
 }
 
-export const executeAppointmentPlanning = async (workspaceId, contactId, source = 'AUTOMATION', appointmentDetails = null) => {
+export const executeAppointmentPlanning = async (workspaceId, contactId, source = 'AUTOMATION', appointmentDetails = null, incomingMessageText = null) => {
     // Race-condition guard
     const lockKey = `${workspaceId}:${contactId}`;
     if (global._appointmentPlanningLocks.has(lockKey)) {
@@ -1283,18 +1351,27 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
         });
         if (!contact) return;
 
-        // 3. Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite varsa atla
+        // 3. Cross-type dedup: son 5 dk içinde bu kişi için herhangi bir PLANNED aktivite veya randevu varsa atla
         const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-        const existingActivity = await prisma.contactActivity.findFirst({
-            where: {
-                workspaceId,
-                contactId,
-                status: 'PLANNED',
-                createdAt: { gte: fiveMinAgo }
-            }
-        });
-        if (existingActivity) {
-            console.log(`ℹ️ [RULE:APPOINTMENT] Contact ${contactId} already has a planned activity (${existingActivity.type}) from last 5 min, skipping`);
+        const [existingActivity, existingAppt] = await Promise.all([
+            prisma.contactActivity.findFirst({
+                where: {
+                    workspaceId,
+                    contactId,
+                    status: 'PLANNED',
+                    createdAt: { gte: fiveMinAgo }
+                }
+            }),
+            prisma.appointment.findFirst({
+                where: {
+                    workspaceId,
+                    contactId,
+                    createdAt: { gte: fiveMinAgo }
+                }
+            })
+        ]);
+        if (existingActivity || existingAppt) {
+            console.log(`ℹ️ [RULE:APPOINTMENT] Contact ${contactId} already has a planned activity or appointment from last 5 min, skipping`);
             return;
         }
 
@@ -1314,11 +1391,12 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
                 select: { content: true, isFromContact: true, messageType: true }
             });
 
-            const hasAppointmentIntent = recentMessages.some(msg => {
-                if (msg.messageType === 'TEMPLATE') return false;
-                const lower = (msg.content || '').toLowerCase();
-                return APPOINTMENT_INTENT_KEYWORDS.some(kw => lower.includes(kw));
-            });
+            const hasAppointmentIntent = (incomingMessageText && APPOINTMENT_INTENT_KEYWORDS.some(kw => incomingMessageText.toLowerCase().includes(kw))) ||
+                recentMessages.some(msg => {
+                    if (msg.messageType === 'TEMPLATE') return false;
+                    const lower = (msg.content || '').toLowerCase();
+                    return APPOINTMENT_INTENT_KEYWORDS.some(kw => lower.includes(kw));
+                });
 
             if (!hasAppointmentIntent) {
                 console.log(`ℹ️ [RULE:APPOINTMENT] No appointment intent detected for contact ${contactId}, skipping`);
@@ -1376,17 +1454,18 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
         } else {
             // Try to parse timing from messages
             try {
+                let combinedText = incomingMessageText ? incomingMessageText + ' ' : '';
                 const recentMsgs = await prisma.message.findMany({
                     where: { conversation: { workspaceId, contactId }, isFromContact: true },
                     orderBy: { createdAt: 'desc' },
                     take: 10,
                     select: { content: true }
                 });
-                const combinedText = recentMsgs.map(m => m.content || '').join(' ');
+                combinedText += recentMsgs.map(m => m.content || '').join(' ');
                 const customerTiming = parseCallTimingFromMessages(combinedText);
                 if (customerTiming) {
                     dueDate = customerTiming;
-                    console.log(`🕐 [RULE:APPOINTMENT] Customer timing preference: ${dueDate.toISOString()}`);
+                    console.log(`🕐 [RULE:APPOINTMENT] Customer timing preference: ${dueDate.toISOString()} (TR: ${dueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })})`);
                 }
             } catch (err) {
                 console.error('⚠️ [RULE:APPOINTMENT] Timing parse error:', err.message);

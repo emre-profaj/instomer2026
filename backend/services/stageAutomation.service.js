@@ -230,6 +230,31 @@ export async function executeSingleAction(action, contactId, workspaceId) {
 
     switch (action.type) {
         case ACTION_TYPES.CREATE_TASK: {
+            // Dedup check: Son 10 dakika içinde bu contact için oluşturulmuş bir PLANNED aktivite veya appointment varsa mükerrer oluşturma!
+            const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+            const [recentPlannedActivity, recentAppt] = await Promise.all([
+                prisma.contactActivity.findFirst({
+                    where: {
+                        workspaceId,
+                        contactId,
+                        status: 'PLANNED',
+                        createdAt: { gte: tenMinutesAgo }
+                    }
+                }),
+                prisma.appointment.findFirst({
+                    where: {
+                        workspaceId,
+                        contactId,
+                        createdAt: { gte: tenMinutesAgo }
+                    }
+                })
+            ]);
+
+            if (recentPlannedActivity || recentAppt) {
+                console.log(`ℹ️ [StageAutomation] CREATE_TASK: Contact ${contactId} already has a planned activity or appointment in last 10 mins. Skipping duplicate.`);
+                break;
+            }
+
             // Sorumluyu belirle — önce action config, yoksa güncel görüşmenin sorumlusu
             let assigneeId = action.assignToUserId || null;
             if (!assigneeId) {
@@ -279,6 +304,22 @@ export async function executeSingleAction(action, contactId, workspaceId) {
 
             if (!contactForCall?.phone) {
                 console.log(`[StageAutomation] CREATE_CALL_TASK: Kişinin telefonu yok, görev oluşturulamadı`);
+                break;
+            }
+
+            // Dedup check: Son 10 dakika içinde bu contact için oluşturulmuş bir PLANNED CALL aktivitesi varsa mükerrer oluşturma!
+            const tenMinAgoCall = new Date(Date.now() - 10 * 60 * 1000);
+            const recentPlannedCall = await prisma.contactActivity.findFirst({
+                where: {
+                    workspaceId,
+                    contactId,
+                    type: 'CALL',
+                    status: 'PLANNED',
+                    createdAt: { gte: tenMinAgoCall }
+                }
+            });
+            if (recentPlannedCall) {
+                console.log(`ℹ️ [StageAutomation] CREATE_CALL_TASK: Contact ${contactId} already has a planned call in last 10 mins. Skipping duplicate.`);
                 break;
             }
 
