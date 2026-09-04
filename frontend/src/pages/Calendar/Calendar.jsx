@@ -7,7 +7,7 @@ import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
     Layers, Edit2, Building2, List, Grid3X3, Search,
-    CalendarClock, Handshake, ListTodo, PhoneCall, Bell
+    CalendarClock, Handshake, ListTodo, PhoneCall, Bell, RefreshCw
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import '../../components/ContactSidebar/ContactSidebar.css';
@@ -64,6 +64,7 @@ const Calendar = () => {
     const [googleStatus, setGoogleStatus] = useState({ isConnected: false, email: null });
     const [googleLoading, setGoogleLoading] = useState(false);
     const [googleNotification, setGoogleNotification] = useState(null);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     // localStorage anahtar yardımcısı — her workspace/user için ayrı
     const lsKey = (k) => `cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_${k}`;
@@ -347,9 +348,9 @@ const Calendar = () => {
         }
     };
 
-    const loadAppointments = async () => {
+    const loadAppointments = async (silent = false) => {
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const days = getDaysInMonth();
             const startOfGrid = days[0].date;
             const endOfGrid = new Date(days[days.length - 1].date);
@@ -396,7 +397,7 @@ const Calendar = () => {
         } catch (error) {
             console.error('Load appointments error:', error);
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -513,6 +514,75 @@ const Calendar = () => {
             console.error('Load calendar activities error:', error);
         }
     };
+
+    const handleManualSync = async () => {
+        if (isSyncing || !currentWorkspace?.id) return;
+        setIsSyncing(true);
+        try {
+            await Promise.all([
+                loadAppointments(true),
+                loadUpcomingAppointments(),
+                loadScheduledCalls(),
+                loadCalendarActivities(),
+                fetchGoogleStatus()
+            ]);
+        } catch (syncErr) {
+            console.error('Manual sync error:', syncErr);
+        } finally {
+            setTimeout(() => setIsSyncing(false), 500);
+        }
+    };
+
+    // Otomatik Canlı Senkronizasyon (Sekmeye dönüldüğünde, WebSocket tetiklendiğinde veya 30 sn'de bir)
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+
+        let lastTrigger = 0;
+        const triggerSilentRefresh = () => {
+            const now = Date.now();
+            // 3 saniye aralıkla throttle (spam engelleme)
+            if (now - lastTrigger < 3000) return;
+            lastTrigger = now;
+            loadAppointments(true);
+            loadUpcomingAppointments();
+            loadScheduledCalls();
+            loadCalendarActivities();
+        };
+
+        // 1. Sekmeye geri dönüldüğünde (ör. Google Takvim sekmesinden veya telefon uygulamasından dönünce)
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                triggerSilentRefresh();
+            }
+        };
+        const handleFocus = () => {
+            triggerSilentRefresh();
+        };
+
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        // 2. WebSocket ile gelen randevu ve aktivite bildirimleri
+        const handleSocketAppointment = () => triggerSilentRefresh();
+        const handleSocketActivity = () => triggerSilentRefresh();
+        window.addEventListener('websocket:appointment_updated', handleSocketAppointment);
+        window.addEventListener('websocket:activity_updated', handleSocketActivity);
+
+        // 3. Ekranda açık beklerken her 30 saniyede bir otomatik sessiz yenileme (Google Takvim dahil)
+        const pollInterval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                triggerSilentRefresh();
+            }
+        }, 30000);
+
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('websocket:appointment_updated', handleSocketAppointment);
+            window.removeEventListener('websocket:activity_updated', handleSocketActivity);
+            clearInterval(pollInterval);
+        };
+    }, [currentWorkspace?.id, currentDate, selectedAgents, selectedResource]);
 
     const handleCancelScheduledCall = async (sc) => {
         if (!confirm(`${sc.contactName || sc.toNumber} için planlanmış aramayı iptal etmek istiyor musunuz?`)) return;
@@ -1651,6 +1721,16 @@ const Calendar = () => {
                                 <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
                             </div>
                             <span className="current-month">{getHeaderLabel()}</span>
+                            <button
+                                type="button"
+                                className={`cal-sync-btn ${isSyncing ? 'spinning' : ''}`}
+                                onClick={handleManualSync}
+                                disabled={isSyncing}
+                                title="Takvimi ve Google Takvim etkinliklerini hemen senkronize et"
+                            >
+                                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                                <span>{isSyncing ? 'Yenileniyor...' : 'Yenile'}</span>
+                            </button>
                         </div>
                     </div>
 

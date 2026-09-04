@@ -283,6 +283,19 @@ export const createAppointment = async (req, res) => {
             select: { id: true, name: true, avatar: true }
         }) : null;
 
+        // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara yeni randevuyu canlı bildir
+        try {
+            const io = req.app.get('io');
+            if (io && workspaceId) {
+                io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
+                    action: 'created',
+                    appointmentId: appointment.id
+                });
+            }
+        } catch (socketErr) {
+            console.error('Appointment socket emit error:', socketErr);
+        }
+
         const resource = resourceId ? await prisma.calendarResource.findUnique({
             where: { id: resourceId }
         }) : null;
@@ -386,6 +399,19 @@ export const updateAppointment = async (req, res) => {
             where: { id: appointment.resourceId }
         }) : null;
 
+        // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara randevu güncellemesini bildir
+        try {
+            const io = req.app.get('io');
+            if (io && workspaceId) {
+                io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
+                    action: 'updated',
+                    appointmentId: appointment.id
+                });
+            }
+        } catch (socketErr) {
+            console.error('Appointment socket update error:', socketErr);
+        }
+
         res.json({ appointment: { ...appointment, assignedTo: agent, resource } });
     } catch (error) {
         console.error('Update appointment error:', error);
@@ -416,6 +442,19 @@ export const deleteAppointment = async (req, res) => {
                 deleteGoogleEvent(existing.id, existing.assignedToId, existing.googleEventId, existing.workspaceId)
                     .catch(e => console.error('[GoogleCalendar Hook] Delete error:', e.message));
             });
+        }
+
+        // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara randevu silinmesini bildir
+        try {
+            const io = req.app.get('io');
+            if (io && workspaceId) {
+                io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
+                    action: 'deleted',
+                    appointmentId: id
+                });
+            }
+        } catch (socketErr) {
+            console.error('Appointment socket delete error:', socketErr);
         }
 
         res.json({ success: true, message: 'Randevu iptal edildi' });

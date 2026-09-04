@@ -222,6 +222,20 @@ export const AuthProvider = ({ children }) => {
             window.dispatchEvent(new CustomEvent('websocket:new_notification', { detail: data }));
         });
 
+        // Randevu ve Aktivite canlı güncellemeleri
+        socket.on('appointment_updated', (data) => {
+            console.log('📅 [AuthContext] Appointment updated:', data);
+            window.dispatchEvent(new CustomEvent('websocket:appointment_updated', { detail: data }));
+        });
+
+        socket.on('activity_created', (data) => {
+            window.dispatchEvent(new CustomEvent('websocket:activity_updated', { detail: data }));
+        });
+
+        socket.on('activity_completed', (data) => {
+            window.dispatchEvent(new CustomEvent('websocket:activity_updated', { detail: data }));
+        });
+
         // Online/offline status tracking
         socket.on('user_status_changed', (data) => {
             console.log(`${data.isOnline ? '🟢' : '🔴'} [AuthContext] User status changed:`, data.userId, data.isOnline ? 'ONLINE' : 'OFFLINE');
