@@ -644,14 +644,14 @@ export default function FirmSettings() {
                                 <table className="fs-table">
                                     <thead>
                                         <tr>
-                                            <th style={{ minWidth: '220px' }}>Hekim Bilgisi</th>
+                                            <th style={{ minWidth: '190px' }}>Hekim Bilgisi</th>
                                             <th>Şube</th>
                                             <th>Tıbbi Branş</th>
                                             <th>Sorumlu Takım / Temsilci</th>
                                             <th>Mesai / Seans</th>
                                             <th>Çalışma Günleri</th>
                                             <th>Durum</th>
-                                            <th style={{ textAlign: 'right', width: '80px' }}>İşlem</th>
+                                            <th style={{ textAlign: 'right', minWidth: '80px', width: '80px' }}>İşlem</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -828,12 +828,12 @@ export default function FirmSettings() {
                                 <table className="fs-table">
                                     <thead>
                                         <tr>
-                                            <th style={{ minWidth: '220px' }}>Tıbbi Branş / Poliklinik</th>
+                                            <th style={{ minWidth: '190px' }}>Tıbbi Branş / Poliklinik</th>
                                             <th>Hizmet Verilen Şubeler</th>
-                                            <th style={{ minWidth: '280px' }}>Bağlı Hekim Kadrosu</th>
+                                            <th style={{ minWidth: '220px' }}>Bağlı Hekim Kadrosu</th>
                                             <th>Hekim Sayısı</th>
                                             <th>Durum</th>
-                                            <th style={{ textAlign: 'right', width: '110px' }}>İşlem</th>
+                                            <th style={{ textAlign: 'right', minWidth: '100px', width: '100px' }}>İşlem</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -990,13 +990,13 @@ export default function FirmSettings() {
                                 <table className="fs-table">
                                     <thead>
                                         <tr>
-                                            <th style={{ minWidth: '220px' }}>Şube / Lokasyon</th>
+                                            <th style={{ minWidth: '190px' }}>Şube / Lokasyon</th>
                                             <th>İletişim Telefonu</th>
-                                            <th style={{ minWidth: '220px' }}>Adres & Lokasyon</th>
-                                            <th style={{ minWidth: '240px' }}>Görevli Hekimler</th>
+                                            <th style={{ minWidth: '190px' }}>Adres & Lokasyon</th>
+                                            <th style={{ minWidth: '200px' }}>Görevli Hekimler</th>
                                             <th>Hekim Sayısı</th>
                                             <th>Durum</th>
-                                            <th style={{ textAlign: 'right', width: '110px' }}>İşlem</th>
+                                            <th style={{ textAlign: 'right', minWidth: '100px', width: '100px' }}>İşlem</th>
                                         </tr>
                                     </thead>
                                     <tbody>

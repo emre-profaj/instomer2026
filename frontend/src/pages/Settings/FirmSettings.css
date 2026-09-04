@@ -3,12 +3,15 @@
    ══════════════════════════════════════════════════════════════ */
 
 .fs-container {
-    max-width: 1280px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
     padding: 24px 28px 60px;
+    box-sizing: border-box;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
     color: #111827;
     -webkit-font-smoothing: antialiased;
+    min-width: 0;
 }
 
 /* ── 1. HEADER ── */
@@ -19,6 +22,8 @@
     margin-bottom: 20px;
     gap: 16px;
     flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .fs-header-meta {
@@ -157,6 +162,8 @@
     padding: 10px 18px;
     margin-bottom: 20px;
     overflow-x: auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .fs-kpi-item {
@@ -218,6 +225,8 @@
     align-items: center;
     border-bottom: 1px solid #e5e7eb;
     margin-bottom: 16px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .fs-tabs-group {
@@ -293,6 +302,10 @@
     border-radius: 10px;
     padding: 16px 20px 24px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
 }
 
 /* ── 5. TOOLBAR ── */
@@ -303,6 +316,8 @@
     gap: 10px;
     margin-bottom: 16px;
     flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .fs-search {
@@ -378,13 +393,19 @@
 
 /* ── 6. TABLE (STANDARDIZED ACROSS ALL 3 TABS) ── */
 .fs-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow-x: auto;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
 }
 
 .fs-table {
     width: 100%;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 12.5px;
     text-align: left;
@@ -396,7 +417,7 @@
 }
 
 .fs-table th {
-    padding: 10px 14px;
+    padding: 10px 12px;
     font-size: 11px;
     font-weight: 600;
     color: #6b7280;
@@ -406,7 +427,7 @@
 }
 
 .fs-table td {
-    padding: 11px 14px;
+    padding: 10px 12px;
     border-bottom: 1px solid #f3f4f6;
     vertical-align: middle;
     white-space: nowrap;
@@ -651,17 +672,17 @@
 /* Days row */
 .fs-days-row {
     display: flex;
-    gap: 3px;
+    gap: 2.5px;
 }
 
 .fs-day-dot {
-    width: 19px;
-    height: 19px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 700;
 }
 
