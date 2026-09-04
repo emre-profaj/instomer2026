@@ -7,6 +7,7 @@ import { ensureCaseForConversation } from './case.controller.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 import { executeRule } from '../services/ruleEngine.service.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getDescendantFunnelKeys } from '../utils/funnelHierarchy.js';
 
 // ─── AI Topic Classification Cache ─────────────────────────────
 // Cache key: workspaceId + hash of topic list, expires in 30 minutes
@@ -558,14 +559,11 @@ export const getContacts = async (req, res) => {
                 where = { AND: [where, { OR: allTerms.map(term => ({ funnelType: term })) }] };
             }
         } else if (funnelType && funnelType !== 'ALL') {
-            const funnel = await prisma.funnel.findFirst({
-                where: { id: funnelType }
-            });
-            const names = funnel ? [funnelType, funnel.name] : [funnelType];
+            const descendantKeys = await getDescendantFunnelKeys(workspaceId, funnelType);
             where = { 
                 AND: [
                     where, 
-                    { OR: names.map(term => ({ funnelType: term })) }
+                    { OR: descendantKeys.map(term => ({ funnelType: term })) }
                 ] 
             };
         }

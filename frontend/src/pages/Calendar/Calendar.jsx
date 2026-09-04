@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { appointmentAPI, retellAPI, resourceAPI } from '../../services/api';
+import { appointmentAPI, retellAPI, resourceAPI, googleCalendarAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
@@ -59,6 +59,11 @@ const Calendar = () => {
     const [layoutMode, setLayoutMode] = useState('grid'); // 'grid' | 'list'
     const [agents, setAgents] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Google Calendar integration states
+    const [googleStatus, setGoogleStatus] = useState({ isConnected: false, email: null });
+    const [googleLoading, setGoogleLoading] = useState(false);
+    const [googleNotification, setGoogleNotification] = useState(null);
 
     // localStorage anahtar yardımcısı — her workspace/user için ayrı
     const lsKey = (k) => `cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_${k}`;
@@ -237,7 +242,101 @@ const Calendar = () => {
             loadResources();
             loadCalendarActivities();
         }
-    }, [currentWorkspace, currentDate, selectedAgents, selectedResource]);
+    }, [currentWorkspace, currentDate, selectedAgents, selectedResource, googleStatus.isConnected]);
+
+    // Google Calendar Status Fetch (Çalışma Alanı Bazlı)
+    const fetchGoogleStatus = async () => {
+        if (!currentWorkspace?.id) {
+            setGoogleStatus({ isConnected: false, isWorkspaceConfigured: false, email: null });
+            return;
+        }
+        try {
+            const res = await googleCalendarAPI.getStatus(currentWorkspace.id);
+            setGoogleStatus(res.data || { isConnected: false, isWorkspaceConfigured: false, email: null });
+        } catch (err) {
+            console.error('Google Calendar status error:', err);
+            setGoogleStatus({ isConnected: false, isWorkspaceConfigured: false, email: null });
+        }
+    };
+
+    // Workspace değiştiğinde veya sayfa yüklendiğinde o workspace'in Google Takvim durumunu getir
+    useEffect(() => {
+        if (currentWorkspace?.id) {
+            fetchGoogleStatus();
+        }
+    }, [currentWorkspace?.id]);
+
+    // Google Calendar OAuth redirect parametrelerini yakala
+    useEffect(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('google_connected') === 'true') {
+                const email = params.get('email');
+                setGoogleNotification({
+                    type: 'success',
+                    message: email ? `Google Takvim başarıyla bağlandı (${email})` : 'Google Takvim başarıyla bağlandı!'
+                });
+                if (currentWorkspace?.id) {
+                    fetchGoogleStatus();
+                }
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (params.get('google_error')) {
+                const errorMsg = params.get('google_error');
+                setGoogleNotification({
+                    type: 'error',
+                    message: `Google Takvim bağlantı hatası: ${errorMsg}`
+                });
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        } catch (e) {
+            console.error('OAuth param parsing error:', e);
+        }
+    }, []);
+
+    // Auto-dismiss Google notification banner after 6 seconds
+    useEffect(() => {
+        if (googleNotification) {
+            const timer = setTimeout(() => setGoogleNotification(null), 6000);
+            return () => clearTimeout(timer);
+        }
+    }, [googleNotification]);
+
+    const handleGoogleConnect = async () => {
+        if (!currentWorkspace?.id) return;
+        if (googleStatus.isWorkspaceConfigured === false) {
+            alert('Bu çalışma alanı için Google Takvim entegrasyonu henüz yapılandırılmamış. Lütfen Yönetici olarak sol menüden "Kanallar" sayfasına gidip Google Takvim Client ID ve Secret bilgilerini tanımlayın.');
+            return;
+        }
+        try {
+            setGoogleLoading(true);
+            const res = await googleCalendarAPI.getAuthUrl(currentWorkspace.id);
+            if (res.data?.url) {
+                window.location.href = res.data.url;
+            } else {
+                alert('Google yetkilendirme adresi alınamadı.');
+            }
+        } catch (err) {
+            console.error('Google Calendar connect error:', err);
+            alert(err.response?.data?.error || 'Google Takvim bağlantısı başlatılamadı.');
+        } finally {
+            setGoogleLoading(false);
+        }
+    };
+
+    const handleGoogleDisconnect = async () => {
+        if (!window.confirm('Google Takvim bağlantınızı bu çalışma alanı için kesmek istediğinizden emin misiniz?')) return;
+        try {
+            setGoogleLoading(true);
+            await googleCalendarAPI.disconnect(currentWorkspace?.id);
+            setGoogleStatus(prev => ({ ...prev, isConnected: false, email: null }));
+            setGoogleNotification({ type: 'success', message: 'Google Takvim bağlantısı bu çalışma alanı için kesildi.' });
+        } catch (err) {
+            console.error('Google Calendar disconnect error:', err);
+            alert(err.response?.data?.error || 'Bağlantı kesilirken hata oluştu.');
+        } finally {
+            setGoogleLoading(false);
+        }
+    };
 
     const loadResources = async () => {
         try {
@@ -270,8 +369,29 @@ const Calendar = () => {
             }
 
             const response = await appointmentAPI.getAll(currentWorkspace.id, params);
-            // Tüm randevuları göster (completed dahil — takvimde ne yapıldığı görülsün)
-            setAppointments(response.data.appointments || []);
+            let aptList = response.data.appointments || [];
+
+            // Eğer Google Takvim bağlantısı varsa, Google Takvim'deki etkinlikleri de çekip birleştir
+            if (googleStatus.isConnected) {
+                try {
+                    const googleParams = {
+                        startDate: params.startDate,
+                        endDate: params.endDate
+                    };
+                    if (selectedAgents.size > 0) {
+                        googleParams.assignedToId = [...selectedAgents].join(',');
+                    }
+                    const googleRes = await googleCalendarAPI.getEvents(currentWorkspace.id, googleParams);
+                    const googleEvents = googleRes.data?.events || [];
+                    if (googleEvents.length > 0) {
+                        aptList = [...aptList, ...googleEvents];
+                    }
+                } catch (gErr) {
+                    console.error('Google Calendar events fetch error:', gErr);
+                }
+            }
+
+            setAppointments(aptList);
         } catch (error) {
             console.error('Load appointments error:', error);
         } finally {
@@ -301,35 +421,57 @@ const Calendar = () => {
                 endDate: nextWeek.toISOString()
             };
 
+            if (selectedAgents.size > 0) {
+                params.assignedToId = [...selectedAgents].join(',');
+            }
+
             if (selectedResource) {
                 params.resourceId = selectedResource;
             }
 
             const response = await appointmentAPI.getAll(currentWorkspace.id, params);
+            let rawList = response.data.appointments || [];
+
+            if (googleStatus.isConnected) {
+                try {
+                    const googleParams = {
+                        startDate: params.startDate,
+                        endDate: params.endDate
+                    };
+                    if (selectedAgents.size > 0) {
+                        googleParams.assignedToId = [...selectedAgents].join(',');
+                    }
+                    const googleRes = await googleCalendarAPI.getEvents(currentWorkspace.id, googleParams);
+                    const gEvents = googleRes.data?.events || [];
+                    if (gEvents.length > 0) {
+                        rawList = [...rawList, ...gEvents];
+                    }
+                } catch (e) {
+                    console.error('Upcoming Google events error:', e);
+                }
+            }
 
             // Process appointments - include all, mark completed ones
-            const upcoming = (response.data.appointments || [])
+            const upcoming = rawList
                 .map(apt => {
-                    // Check if appointment is overdue (past end time but not completed)
-                    const endTime = new Date(apt.endTime);
+                    const endTime = new Date(apt.endTime || apt.startTime);
                     const isPast = endTime < now;
                     const isCompleted = apt.status === 'COMPLETED';
-                    const isOverdue = isPast && apt.status === 'SCHEDULED';
+                    const isOverdue = !apt.isGoogleEvent && isPast && apt.status === 'SCHEDULED';
 
                     return {
                         ...apt,
                         isCompleted: isCompleted,
                         isOverdue: isOverdue,
                         isPast: isPast,
-                        // Override color: green for completed, red for overdue
-                        color: isCompleted ? '#10b981' : (isOverdue ? '#ef4444' : apt.color)
+                        // Override color: blue for Google, green for completed, red for overdue
+                        color: apt.isGoogleEvent ? '#4285F4' : (isCompleted ? '#10b981' : (isOverdue ? '#ef4444' : apt.color))
                     };
                 })
                 .sort((a, b) => {
-                    // Sort by date: oldest first (ascending)
                     return new Date(a.startTime) - new Date(b.startTime);
                 })
-                .slice(0, 15); // Show max 15
+                .slice(0, 15);
 
             setUpcomingAppointments(upcoming);
         } catch (error) {
@@ -422,7 +564,11 @@ const Calendar = () => {
 
     const filteredUpcomingAppointments = upcomingAppointments.filter(apt => {
         if (!showCompleted && apt.isCompleted) return false;
-        if (!activeFilters.has('appointments')) return false;
+        if (apt.isGoogleEvent) {
+            if (!activeFilters.has('appointments') && !activeFilters.has('meetings')) return false;
+        } else if (!activeFilters.has('appointments')) {
+            return false;
+        }
         return true;
     });
 
@@ -497,7 +643,11 @@ const Calendar = () => {
             const start = new Date(apt.startTime);
             if (start.toDateString() !== dateStr) return false;
             if (start.getHours() !== hour) return false;
-            if (!activeFilters.has('appointments')) return false;
+            if (apt.isGoogleEvent) {
+                if (!activeFilters.has('appointments') && !activeFilters.has('meetings')) return false;
+            } else if (!activeFilters.has('appointments')) {
+                return false;
+            }
             return true;
         });
         const calls = (!selectedResource && activeFilters.has('calls'))
@@ -520,7 +670,7 @@ const Calendar = () => {
             if (first.getMonth() === last.getMonth()) {
                 return `${first.getDate()} - ${last.getDate()} ${monthNames[first.getMonth()]} ${first.getFullYear()}`;
             }
-            return `${first.getDate()} ${monthNames[first.getMonth()]} - ${last.getDate()} ${monthNames[last.getMonth()]} ${last.getFullYear()}`;
+            return `${first.getDate()} ${monthNames[first.getMonth()]} - ${last.getDate()} ${monthNames[last.getMonth()]} ${first.getFullYear()}`;
         } else {
             return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         }
@@ -571,7 +721,13 @@ const Calendar = () => {
         return appointments.filter(apt => {
             const aptDate = new Date(apt.startTime);
             if (aptDate.toDateString() !== date.toDateString()) return false;
-            if (!ignoreTypeFilter && !activeFilters.has('appointments')) return false;
+            if (!ignoreTypeFilter) {
+                if (apt.isGoogleEvent) {
+                    if (!activeFilters.has('appointments') && !activeFilters.has('meetings')) return false;
+                } else if (!activeFilters.has('appointments')) {
+                    return false;
+                }
+            }
             // Tamamlanan filtresi
             if (apt.status === 'COMPLETED' && !showCompleted) return false;
             return true;
@@ -649,11 +805,11 @@ const Calendar = () => {
         const initialRes = selectedResource ? resources.find(r => r.id === selectedResource) : null;
 
         setFormData({
-            title: '',
+            title: contact?.name ? `${contact.name} — Görüşme` : '',
             description: '',
             startTime: formatDateTimeLocal(startTime),
             endTime: formatDateTimeLocal(endTime),
-            assignedToId: agents[0]?.id || '',
+            assignedToId: user?.id || agents[0]?.id || '',
             resourceId: selectedResource || '',
             doctorName: initialRes?.type === 'PERSON' ? initialRes.name : '',
             branch: initialRes?.description || '',
@@ -691,12 +847,18 @@ const Calendar = () => {
         }
     };
 
-    // Kişi seçilince — QuickActivityModal aç
+    // Kişi seçilince
     const handlePickContact = (contact) => {
+        if (quickActionType?.type === 'appointments') {
+            setContactPickerOpen(false);
+            setQuickActionType(null);
+            openCreateModal(null, contact);
+            return;
+        }
+
         const actionMap = {
             'calls':        'NOTE',
             'calls_plan':   'CALL',
-            'appointments': 'MEETING',
             'tasks':        'REMINDER',
         };
         let actionKey = quickActionType?.type || 'calls';
@@ -958,8 +1120,48 @@ const Calendar = () => {
                         <h1>Aktiviteler</h1>
                     </div>
 
-                    {/* Hızlı eylem butonları */}
+                    {/* Hızlı eylem butonları ve Google Takvim */}
                     <div className="cal-quick-actions">
+                        {/* Google Calendar Bağlantı Butonu / Rozeti */}
+                        {googleStatus.isConnected ? (
+                            <div className="google-cal-pill connected" title={`Bağlı Google Hesabı: ${googleStatus.email}`}>
+                                <svg className="google-icon" viewBox="0 0 24 24" width="15" height="15">
+                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                </svg>
+                                <span className="google-cal-email">{googleStatus.email}</span>
+                                <button
+                                    type="button"
+                                    className="google-cal-disconnect-btn"
+                                    onClick={handleGoogleDisconnect}
+                                    title="Google Takvim Bağlantısını Kes"
+                                    disabled={googleLoading}
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                className="google-cal-connect-btn"
+                                onClick={handleGoogleConnect}
+                                title="Kendi Google Takviminizi Bağlayın"
+                                disabled={googleLoading}
+                            >
+                                <svg className="google-icon" viewBox="0 0 24 24" width="15" height="15">
+                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                </svg>
+                                <span>{googleLoading ? 'Bağlanıyor...' : 'Google Takvimi Bağla'}</span>
+                            </button>
+                        )}
+
+                        <div className="cal-quick-divider" />
+
                         {[
                             { label: 'Arama Notu',        icon: PhoneCall,     type: 'calls',        subtype: 'note'     },
                             { label: 'Arama Planla',      icon: PhoneCall,     type: 'calls',        subtype: 'planned'  },
@@ -978,6 +1180,14 @@ const Calendar = () => {
                         ))}
                     </div>
                 </div>
+
+                {/* Google Calendar Bildirim Bannerı */}
+                {googleNotification && (
+                    <div className={`google-cal-banner ${googleNotification.type}`}>
+                        <span>{googleNotification.message}</span>
+                        <button type="button" onClick={() => setGoogleNotification(null)}>✕</button>
+                    </div>
+                )}
 
                 {/* SATIR 2: Agent+Kaynak seçimleri | Aktivite tip filtreleri | Status filtreleri */}
                 <div className="cal-header-row cal-filters-main-row">
@@ -1336,11 +1546,14 @@ const Calendar = () => {
                                 const apt = item.data;
                                 return (
                                     <div key={apt.id} className="todo-item" onClick={() => openEditModal(apt)}>
-                                        <div className="todo-icon" style={{ backgroundColor: apt.color || '#3b82f6' }}>📅</div>
+                                        <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}>
+                                            {apt.isGoogleEvent ? '🇬' : '📅'}
+                                        </div>
                                         <div className="todo-content">
                                             <span className="todo-title">{apt.title}</span>
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && <span className="todo-agent">👤 {apt.assignedTo.name}</span>}
+                                            {apt.isGoogleEvent && <span className="todo-agent" style={{ color: '#4285F4', fontWeight: 500 }}>Google Takvim</span>}
                                             {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {apt.doctorName}</span>}
                                         </div>
                                         <div className="todo-time">{formatTime(apt.startTime)}</div>
@@ -1457,9 +1670,9 @@ const Calendar = () => {
                                         >
                                             {apts.map(apt => (
                                                 <div key={apt.id} className="week-event"
-                                                    style={{ backgroundColor: apt.color || '#3b82f6' }}
+                                                    style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}
                                                     onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
-                                                    <span className="week-event-time">{formatTime(apt.startTime)}</span>
+                                                    <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)}</span>
                                                     <span className="week-event-title">{apt.title}</span>
                                                 </div>
                                             ))}
@@ -1496,9 +1709,9 @@ const Calendar = () => {
                                         onClick={() => { const dt = new Date(currentDate); dt.setHours(hour,0,0,0); openCreateModal(dt); }}>
                                         {apts.map(apt => (
                                             <div key={apt.id} className="day-event"
-                                                style={{ backgroundColor: apt.color || '#3b82f6' }}
+                                                style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}
                                                 onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
-                                                <span className="day-event-time">{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
+                                                <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
                                                 <span className="day-event-title">{apt.title}</span>
                                                 {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
                                             </div>
@@ -1544,30 +1757,34 @@ const Calendar = () => {
                                             const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
                                             const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
                                             const aptEnd = new Date(apt.endTime || apt.startTime);
-                                            const isOverdue = aptEnd < now && apt.status === 'SCHEDULED';
+                                            const isOverdue = !apt.isGoogleEvent && aptEnd < now && apt.status === 'SCHEDULED';
                                             const isCompleted = apt.status === 'COMPLETED';
                                             allItems.push({
                                                 id: `apt-${apt.id}`, sortTime: new Date(apt.startTime),
                                                 render: (
                                                     <div key={`apt-${apt.id}`} className="appointment-pill-wrapper">
                                                         <div
-                                                            className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
-                                                            style={{ backgroundColor: aptResource?.color || apt.color }}
+                                                            className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''} ${apt.isGoogleEvent ? 'pill-google' : ''}`}
+                                                            style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (aptResource?.color || apt.color) }}
                                                             onClick={(e) => { e.stopPropagation(); openEditModal(apt); }}
                                                         >
+                                                            {apt.isGoogleEvent && <span style={{ marginRight: 3, fontSize: 11 }}>🇬</span>}
                                                             {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
                                                             {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
                                                             <span className="apt-time">{formatTime(apt.startTime)}</span>
                                                             <span className="apt-title">{apt.title}</span>
                                                         </div>
                                                         <div className="appointment-tooltip">
-                                                            <div className="tooltip-header" style={{ borderLeftColor: apt.color }}>
-                                                                <h4>{apt.title}</h4>
-                                                                <span className="tooltip-status" style={{ backgroundColor: status?.color || '#3b82f6' }}>{status?.label || 'Kayıtlı'}</span>
+                                                            <div className="tooltip-header" style={{ borderLeftColor: apt.isGoogleEvent ? '#4285F4' : apt.color }}>
+                                                                <h4>{apt.isGoogleEvent ? `🇬 ${apt.title}` : apt.title}</h4>
+                                                                <span className="tooltip-status" style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (status?.color || '#3b82f6') }}>
+                                                                    {apt.isGoogleEvent ? 'Google Takvim' : (status?.label || 'Kayıtlı')}
+                                                                </span>
                                                             </div>
                                                             <div className="tooltip-body">
                                                                 <div className="tooltip-row"><Clock size={14} /><span>{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span></div>
                                                                 {apt.contactName && <div className="tooltip-row"><User size={14} /><span>{apt.contactName}</span></div>}
+                                                                {apt.location && <div className="tooltip-row"><Building2 size={14} /><span>{apt.location}</span></div>}
                                                                 {apt.contactPhone && <div className="tooltip-row"><Phone size={14} /><span>{apt.contactPhone}</span></div>}
                                                                 {apt.assignedTo && <div className="tooltip-row tooltip-agent"><User size={14} /><span>Temsilci: {apt.assignedTo.name}</span></div>}
                                                                 {apt.createdBy && <div className="tooltip-row" style={{ color: '#8b5cf6' }}><User size={14} /><span>Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span></div>}
@@ -1742,8 +1959,10 @@ const Calendar = () => {
                                                     }}
                                                 >
                                                     <td>
-                                                        <span className={`activities-type-badge ${isCall ? 'type-call' : 'type-appointment'}`}>
-                                                            {isCall ? '📞' : '📅'}
+                                                        <span className={`activities-type-badge ${isCall ? 'type-call' : item.isGoogleEvent ? 'type-google' : 'type-appointment'}`}
+                                                            style={item.isGoogleEvent ? { background: '#e8f0fe', color: '#1a73e8' } : {}}
+                                                        >
+                                                            {isCall ? '📞' : item.isGoogleEvent ? '🇬' : '📅'}
                                                         </span>
                                                     </td>
                                                     <td className="activities-date-cell">
@@ -1846,219 +2065,329 @@ const Calendar = () => {
             {isModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
                     <div className="apt-modal" onClick={e => e.stopPropagation()}>
-                        {/* Dark Header */}
-                        <div className="apt-modal-header">
-                            <h2>{selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu'}</h2>
+                        {/* Header */}
+                        <div className="apt-modal-header" style={selectedAppointment?.isGoogleEvent ? { background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)' } : {}}>
+                            <h2>{selectedAppointment?.isGoogleEvent ? '🇬 Google Takvim Etkinliği' : (selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu')}</h2>
                             <button className="apt-modal-close" onClick={() => setIsModalOpen(false)}>
                                 <X size={18} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="apt-modal-body">
-                            {/* Conflict Warning */}
-                            {conflict && (
-                                <div className="conflict-warning">
-                                    <AlertCircle size={20} />
-                                    <div className="conflict-info">
-                                        <strong>{conflict.error}</strong>
-                                        <p>Mevcut randevu: {conflict.conflictingAppointment?.title}</p>
-                                        {conflict.suggestion && (
-                                            <button type="button" className="suggestion-btn" onClick={applySuggestion}>
-                                                <Check size={16} />
-                                                Öneriyi Uygula: {new Date(conflict.suggestion.startTime).toLocaleString('tr-TR')}
-                                            </button>
+                        {selectedAppointment?.isGoogleEvent ? (
+                            /* Google Event Detail View */
+                            <div className="apt-modal-body google-event-view">
+                                <div className="google-event-card">
+                                    <h3 className="google-event-title">{selectedAppointment.title}</h3>
+                                    <div className="google-event-meta">
+                                        <div className="google-event-meta-item">
+                                            <Clock size={16} />
+                                            <span>
+                                                {selectedAppointment.isAllDay
+                                                    ? `${new Date(selectedAppointment.startTime).toLocaleDateString('tr-TR')} (Tüm Gün)`
+                                                    : `${new Date(selectedAppointment.startTime).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })} — ${new Date(selectedAppointment.endTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+                                                }
+                                            </span>
+                                        </div>
+
+                                        {selectedAppointment.assignedTo?.name && (
+                                            <div className="google-event-meta-item">
+                                                <User size={16} />
+                                                <span>Temsilci: <strong>{selectedAppointment.assignedTo.name}</strong></span>
+                                            </div>
+                                        )}
+
+                                        {selectedAppointment.contactName && (
+                                            <div className="google-event-meta-item">
+                                                <Mail size={16} />
+                                                <span>Katılımcılar: <strong>{selectedAppointment.contactName}</strong></span>
+                                            </div>
+                                        )}
+
+                                        {selectedAppointment.location && (
+                                            <div className="google-event-meta-item">
+                                                <Building2 size={16} />
+                                                <span>Konum: {selectedAppointment.location}</span>
+                                            </div>
                                         )}
                                     </div>
-                                </div>
-                            )}
 
-                            {/* Title */}
-                            <div className="apt-field">
-                                <input
-                                    type="text"
-                                    className="apt-title-input"
-                                    value={formData.title}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                                    placeholder="Randevu başlığı girin..."
-                                    required
-                                />
-                            </div>
+                                    {(selectedAppointment.description || selectedAppointment.notes) && (
+                                        <div className="google-event-notes-box">
+                                            <span className="google-event-notes-label">Açıklama / Detay:</span>
+                                            <p>{selectedAppointment.description || selectedAppointment.notes}</p>
+                                        </div>
+                                    )}
 
-                            {/* Date & Time Row */}
-                            <div className="apt-section">
-                                <div className="apt-dt-row">
-                                    <div className="apt-dt-field">
-                                        <span className="apt-dt-label">{t('calendar.start')}</span>
-                                        <input
-                                            type="datetime-local"
-                                            value={formData.startTime}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                                            required
-                                        />
-                                    </div>
-                                    <div className="apt-dt-sep">→</div>
-                                    <div className="apt-dt-field">
-                                        <span className="apt-dt-label">{t('calendar.end')}</span>
-                                        <input
-                                            type="datetime-local"
-                                            value={formData.endTime}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Assignment Cards */}
-                            <div className="apt-section">
-                                <span className="apt-section-label">Atama</span>
-                                <div className="apt-assign-row">
-                                    <div className={`apt-assign-card ${formData.assignedToId ? 'selected' : ''}`}>
-                                        <div className="apt-assign-icon"><User size={16} /></div>
-                                        <div className="apt-assign-content">
-                                            <span className="apt-assign-type">Temsilci</span>
-                                            <select
-                                                value={formData.assignedToId}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, assignedToId: e.target.value }))}
+                                    {selectedAppointment.googleMeetLink && (
+                                        <div style={{ marginTop: 16 }}>
+                                            <a
+                                                href={selectedAppointment.googleMeetLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="apt-google-meet-btn"
+                                                style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8 }}
                                             >
-                                                <option value="">{t("channels.selectOption")}</option>
-                                                {agents.map(agent => (
-                                                    <option key={agent.id} value={agent.id}>{agent.name}</option>
-                                                ))}
-                                            </select>
+                                                📹 Google Meet Görüşmesine Katıl
+                                            </a>
                                         </div>
-                                    </div>
-
-                                    <div className={`apt-assign-card ${formData.resourceId ? 'selected' : ''}`}>
-                                        <div className="apt-assign-icon resource">
-                                            {(() => {
-                                                const currentRes = resources.find(r => r.id === formData.resourceId);
-                                                if (currentRes?.type === 'PERSON') return <User size={16} />;
-                                                return <Building2 size={16} />;
-                                            })()}
-                                        </div>
-                                        <div className="apt-assign-content">
-                                            <span className="apt-assign-type">
-                                                {resources.some(r => r.type === 'PERSON') ? 'Doktor / Kaynak' : 'Kaynak'}
-                                            </span>
-                                            <select
-                                                value={formData.resourceId}
-                                                onChange={(e) => {
-                                                    const resId = e.target.value;
-                                                    const selectedRes = resources.find(r => r.id === resId);
-                                                    setFormData(prev => ({
-                                                        ...prev,
-                                                        resourceId: resId,
-                                                        doctorName: selectedRes ? selectedRes.name : '',
-                                                        branch: selectedRes?.description || prev.branch
-                                                    }));
-                                                }}
-                                            >
-                                                <option value="">{t("channels.selectOption")}</option>
-                                                {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
-                                                    <optgroup key={branchName} label={`🏥 ${branchName}`}>
-                                                        {branchDocs.map(resource => (
-                                                            <option key={resource.id} value={resource.id}>
-                                                                {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.name}
-                                                            </option>
-                                                        ))}
-                                                    </optgroup>
-                                                ))}
-                                                {groupedResources.unassigned.length > 0 && (
-                                                    <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
-                                                        {groupedResources.unassigned.map(resource => (
-                                                            <option key={resource.id} value={resource.id}>
-                                                                {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
-                                                            </option>
-                                                        ))}
-                                                    </optgroup>
-                                                )}
-                                            </select>
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
-                            </div>
 
-                            {/* Customer Info - Compact */}
-                            <div className="apt-section">
-                                <span className="apt-section-label">{t('calendar.customerInfo')}</span>
-                                <div className="apt-customer-row">
-                                    <div className="apt-customer-field">
-                                        <User size={14} />
-                                        <input
-                                            type="text"
-                                            value={formData.contactName}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, contactName: e.target.value }))}
-                                            placeholder="Ad Soyad"
-                                        />
-                                    </div>
-                                    <div className="apt-customer-field">
-                                        <Phone size={14} />
-                                        <input
-                                            type="tel"
-                                            value={formData.contactPhone}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-                                            placeholder="Telefon"
-                                        />
-                                    </div>
-                                    <div className="apt-customer-field">
-                                        <Mail size={14} />
-                                        <input
-                                            type="email"
-                                            value={formData.contactEmail}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-                                            placeholder="E-posta"
-                                        />
-                                    </div>
+                                <div className="google-event-notice">
+                                    ℹ️ Bu etkinlik Google Takvim'den senkronize edilmiştir. Randevu saatlerinizin dolu görünmesini sağlar ve çakışmaları önler.
                                 </div>
-                            </div>
 
-                            {/* Status Pills */}
-                            <div className="apt-section">
-                                <span className="apt-section-label">Durum</span>
-                                <div className="apt-status-pills">
-                                    {APPOINTMENT_STATUSES.map(status => (
-                                        <button
-                                            key={status.value}
-                                            type="button"
-                                            className={`apt-status-pill ${formData.status === status.value ? 'active' : ''}`}
-                                            style={formData.status === status.value ? { background: status.color, borderColor: status.color } : {}}
-                                            onClick={() => setFormData(prev => ({ ...prev, status: status.value }))}
-                                        >
-                                            {status.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Notes */}
-                            <div className="apt-section">
-                                <textarea
-                                    className="apt-notes"
-                                    value={formData.notes}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                    placeholder="Not ekle..."
-                                    rows={2}
-                                />
-                            </div>
-
-                            {/* Footer */}
-                            <div className="apt-modal-footer">
-                                {selectedAppointment && (
-                                    <button type="button" className="apt-btn-delete" onClick={handleDelete}>
-                                        <Trash2 size={15} /> Sil
-                                    </button>
-                                )}
-                                <div className="apt-footer-right">
+                                <div className="apt-modal-footer">
                                     <button type="button" className="apt-btn-cancel" onClick={() => setIsModalOpen(false)}>
-                                        İptal
+                                        Kapat
                                     </button>
-                                    <button type="submit" className="apt-btn-save" disabled={isCreating}>
-                                        {isCreating ? 'Kaydediliyor...' : (selectedAppointment ? 'Güncelle' : 'Oluştur')}
-                                    </button>
+                                    {selectedAppointment.htmlLink && (
+                                        <a
+                                            href={selectedAppointment.htmlLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="apt-btn-save"
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', background: '#4285F4' }}
+                                        >
+                                            Google Takvim'de Aç ↗
+                                        </a>
+                                    )}
                                 </div>
                             </div>
-                        </form>
+                        ) : (
+                            <form onSubmit={handleSubmit} className="apt-modal-body">
+                                {/* Conflict Warning */}
+                                {conflict && (
+                                    <div className="conflict-warning">
+                                        <AlertCircle size={20} />
+                                        <div className="conflict-info">
+                                            <strong>{conflict.error}</strong>
+                                            <p>Mevcut randevu: {conflict.conflictingAppointment?.title}</p>
+                                            {conflict.suggestion && (
+                                                <button type="button" className="suggestion-btn" onClick={applySuggestion}>
+                                                    <Check size={16} />
+                                                    Öneriyi Uygula: {new Date(conflict.suggestion.startTime).toLocaleString('tr-TR')}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Google Calendar Sync Info / Google Meet Link */}
+                                {selectedAppointment && (selectedAppointment.googleEventId || selectedAppointment.googleMeetLink) && (
+                                    <div className="apt-google-info-box">
+                                        <div className="apt-google-info-header">
+                                            <svg viewBox="0 0 24 24" width="16" height="16">
+                                                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                            </svg>
+                                            <span style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>
+                                                Google Takvim ile Senkronize
+                                            </span>
+                                        </div>
+                                        {selectedAppointment.googleMeetLink && (
+                                            <a
+                                                href={selectedAppointment.googleMeetLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="apt-google-meet-btn"
+                                            >
+                                                📹 Google Meet'e Katıl
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Title */}
+                                <div className="apt-field">
+                                    <input
+                                        type="text"
+                                        className="apt-title-input"
+                                        value={formData.title}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                                        placeholder="Randevu başlığı girin..."
+                                        required
+                                    />
+                                </div>
+
+                                {/* Date & Time Row */}
+                                <div className="apt-section">
+                                    <div className="apt-dt-row">
+                                        <div className="apt-dt-field">
+                                            <span className="apt-dt-label">{t('calendar.start')}</span>
+                                            <input
+                                                type="datetime-local"
+                                                value={formData.startTime}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                                                required
+                                            />
+                                        </div>
+                                        <div className="apt-dt-sep">→</div>
+                                        <div className="apt-dt-field">
+                                            <span className="apt-dt-label">{t('calendar.end')}</span>
+                                            <input
+                                                type="datetime-local"
+                                                value={formData.endTime}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Assignment Cards */}
+                                <div className="apt-section">
+                                    <span className="apt-section-label">Atama</span>
+                                    <div className="apt-assign-row">
+                                        <div className={`apt-assign-card ${formData.assignedToId ? 'selected' : ''}`}>
+                                            <div className="apt-assign-icon"><User size={16} /></div>
+                                            <div className="apt-assign-content">
+                                                <span className="apt-assign-type">Temsilci</span>
+                                                <select
+                                                    value={formData.assignedToId}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, assignedToId: e.target.value }))}
+                                                >
+                                                    <option value="">{t("channels.selectOption")}</option>
+                                                    {agents.map(agent => (
+                                                        <option key={agent.id} value={agent.id}>{agent.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className={`apt-assign-card ${formData.resourceId ? 'selected' : ''}`}>
+                                            <div className="apt-assign-icon resource">
+                                                {(() => {
+                                                    const currentRes = resources.find(r => r.id === formData.resourceId);
+                                                    if (currentRes?.type === 'PERSON') return <User size={16} />;
+                                                    return <Building2 size={16} />;
+                                                })()}
+                                            </div>
+                                            <div className="apt-assign-content">
+                                                <span className="apt-assign-type">
+                                                    {resources.some(r => r.type === 'PERSON') ? 'Doktor / Kaynak' : 'Kaynak'}
+                                                </span>
+                                                <select
+                                                    value={formData.resourceId}
+                                                    onChange={(e) => {
+                                                        const resId = e.target.value;
+                                                        const selectedRes = resources.find(r => r.id === resId);
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            resourceId: resId,
+                                                            doctorName: selectedRes ? selectedRes.name : '',
+                                                            branch: selectedRes?.description || prev.branch
+                                                        }));
+                                                    }}
+                                                >
+                                                    <option value="">{t("channels.selectOption")}</option>
+                                                    {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
+                                                        <optgroup key={branchName} label={`🏥 ${branchName}`}>
+                                                            {branchDocs.map(resource => (
+                                                                <option key={resource.id} value={resource.id}>
+                                                                    {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.name}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    ))}
+                                                    {groupedResources.unassigned.length > 0 && (
+                                                        <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
+                                                            {groupedResources.unassigned.map(resource => (
+                                                                <option key={resource.id} value={resource.id}>
+                                                                    {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Customer Info - Compact */}
+                                <div className="apt-section">
+                                    <span className="apt-section-label">{t('calendar.customerInfo')}</span>
+                                    <div className="apt-customer-row">
+                                        <div className="apt-customer-field">
+                                            <User size={14} />
+                                            <input
+                                                type="text"
+                                                value={formData.contactName}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, contactName: e.target.value }))}
+                                                placeholder="Ad Soyad"
+                                            />
+                                        </div>
+                                        <div className="apt-customer-field">
+                                            <Phone size={14} />
+                                            <input
+                                                type="tel"
+                                                value={formData.contactPhone}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
+                                                placeholder="Telefon"
+                                            />
+                                        </div>
+                                        <div className="apt-customer-field">
+                                            <Mail size={14} />
+                                            <input
+                                                type="email"
+                                                value={formData.contactEmail}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
+                                                placeholder="E-posta"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Status Pills */}
+                                <div className="apt-section">
+                                    <span className="apt-section-label">Durum</span>
+                                    <div className="apt-status-pills">
+                                        {APPOINTMENT_STATUSES.map(status => (
+                                            <button
+                                                key={status.value}
+                                                type="button"
+                                                className={`apt-status-pill ${formData.status === status.value ? 'active' : ''}`}
+                                                style={formData.status === status.value ? { background: status.color, borderColor: status.color } : {}}
+                                                onClick={() => setFormData(prev => ({ ...prev, status: status.value }))}
+                                            >
+                                                {status.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Notes */}
+                                <div className="apt-section">
+                                    <textarea
+                                        className="apt-notes"
+                                        value={formData.notes}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                                        placeholder="Not ekle..."
+                                        rows={2}
+                                    />
+                                </div>
+
+                                {/* Footer */}
+                                <div className="apt-modal-footer">
+                                    {selectedAppointment && (
+                                        <button type="button" className="apt-btn-delete" onClick={handleDelete}>
+                                            <Trash2 size={15} /> Sil
+                                        </button>
+                                    )}
+                                    <div className="apt-footer-right">
+                                        <button type="button" className="apt-btn-cancel" onClick={() => setIsModalOpen(false)}>
+                                            İptal
+                                        </button>
+                                        <button type="submit" className="apt-btn-save" disabled={isCreating}>
+                                            {isCreating ? 'Kaydediliyor...' : (selectedAppointment ? 'Güncelle' : 'Oluştur')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        )}
                     </div>
                 </div>
             )}
@@ -2269,15 +2598,16 @@ const Calendar = () => {
                                 getAppointmentsForDay(dayPopup.date).forEach(apt => {
                                     const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
                                     const aptEnd = new Date(apt.endTime || apt.startTime);
-                                    const isOverdue = aptEnd < now && apt.status === 'SCHEDULED';
+                                    const isOverdue = !apt.isGoogleEvent && aptEnd < now && apt.status === 'SCHEDULED';
                                     const isCompleted = apt.status === 'COMPLETED';
                                     allItems.push({
                                         sortTime: new Date(apt.startTime),
                                         render: (
                                             <div key={`dp-apt-${apt.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
-                                                style={{ borderLeftColor: aptResource?.color || apt.color }}
+                                                style={{ borderLeftColor: apt.isGoogleEvent ? '#4285F4' : (aptResource?.color || apt.color) }}
                                                 onClick={() => { openEditModal(apt); setDayPopup(null); }}
                                             >
+                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: '#4285F4', color: '#fff' }}>🇬 Google</span>}
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
                                                 <span className="popup-time">{formatTime(apt.startTime)}</span>

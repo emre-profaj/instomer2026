@@ -84,8 +84,29 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
 
     // Atamaları (Assignments) belirle — Prisma alan adlarına uygun
     const assignments = {};
-    const targetTeamId = newStage?.assignedTeamId || funnel?.assignedTeamId || null;
-    const targetUserId = newStage?.assignedUserId || funnel?.assignedUserId || null;
+    let targetTeamId = newStage?.assignedTeamId || funnel?.assignedTeamId || null;
+    let targetUserId = newStage?.assignedUserId || funnel?.assignedUserId || null;
+
+    // Hiyerarşik Miras: Eğer funnel'da takım veya kişi yoksa, parentId boyunca yukarı tırman
+    if ((!targetTeamId || !targetUserId) && funnel?.parentId) {
+      let currentParentId = funnel.parentId;
+      let depth = 0;
+      while (currentParentId && depth < 10 && (!targetTeamId || !targetUserId)) {
+        const parentFunnel = await prisma.funnel.findUnique({
+          where: { id: currentParentId },
+          select: { assignedTeamId: true, assignedUserId: true, parentId: true }
+        }).catch(() => null);
+        if (!parentFunnel) break;
+        if (!targetTeamId && parentFunnel.assignedTeamId) {
+          targetTeamId = parentFunnel.assignedTeamId;
+        }
+        if (!targetUserId && parentFunnel.assignedUserId) {
+          targetUserId = parentFunnel.assignedUserId;
+        }
+        currentParentId = parentFunnel.parentId;
+        depth++;
+      }
+    }
 
     if (targetTeamId) {
       assignments.assignedTeamId = targetTeamId;
@@ -303,31 +324,53 @@ export async function resolveInheritedBot(workspaceId, funnelId, stageId) {
         where: { id: stageId }
       });
       if (stage?.assignedBotId) return stage.assignedBotId;
-    }
-
-    // 2. Funnel bot check
-    if (funnelId) {
-      const funnel = await prisma.funnel.findUnique({
-        where: { id: funnelId }
-      }).catch(() => null);
-      
-      if (funnel?.assignedBotId) {
-        return funnel.assignedBotId;
+      if (!funnelId && stage?.funnelId) {
+        funnelId = stage.funnelId;
       }
     }
 
-    // 3. Default (Genel) funnel bot check
-    const defaultFunnel = await prisma.funnel.findFirst({
-      where: { workspaceId, isDefault: true }
-    }).catch(() => null);
+    // 2. Funnel bot check (ve parentId hiyerarşisi boyunca yukarı tırman)
+    if (funnelId) {
+      let currentFunnelId = funnelId;
+      let depth = 0;
+      let topFunnel = null;
+      while (currentFunnelId && depth < 10) {
+        const funnel = await prisma.funnel.findUnique({
+          where: { id: currentFunnelId },
+          select: { id: true, assignedBotId: true, parentId: true, isDefault: true, funnelType: true }
+        }).catch(() => null);
 
-    if (defaultFunnel?.assignedBotId) {
-      return defaultFunnel.assignedBotId;
+        if (!funnel) break;
+        topFunnel = funnel;
+
+        if (funnel.assignedBotId) {
+          return funnel.assignedBotId;
+        }
+        currentFunnelId = funnel.parentId;
+        depth++;
+      }
+
+      // Eğer funnel bağımsız kök akışsa (topFunnel.funnelType === 'NORMAL' ve parentId yok),
+      // default/Genel funnel'dan bot miras ALMAZ.
+      if (topFunnel && topFunnel.funnelType === 'NORMAL' && !topFunnel.isDefault) {
+        return null;
+      }
+    }
+
+    // 3. Default (Genel) funnel bot check (sadece funnelId yoksa veya funnel Genel ağacındaysa)
+    if (!funnelId) {
+      const defaultFunnel = await prisma.funnel.findFirst({
+        where: { workspaceId, isDefault: true }
+      }).catch(() => null);
+
+      if (defaultFunnel?.assignedBotId) {
+        return defaultFunnel.assignedBotId;
+      }
     }
 
     return null;
   } catch (error) {
     console.error('resolveInheritedBot error:', error);
-    return null; // Hata durumunda null dönerek sistemin kırılmasını engelle
+    return null;
   }
 }

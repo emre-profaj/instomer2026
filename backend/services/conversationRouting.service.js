@@ -603,21 +603,27 @@ export async function resolveTeamBot(workspaceId, conversationId) {
             }
         }
 
-        // 2. Akışın takımı
+        // 2. Akışın takımı (ve hiyerarşik üst akışların takımı)
         if (conversation.funnelType) {
-            const funnel = await prisma.funnel.findUnique({
-                where: { id: conversation.funnelType },
-                select: { assignedTeamId: true }
-            });
-            if (funnel?.assignedTeamId) {
-                const team = await prisma.team.findUnique({
-                    where: { id: funnel.assignedTeamId },
-                    select: { assignedBotId: true }
+            let currentFunnelId = conversation.funnelType;
+            let depth = 0;
+            while (currentFunnelId && depth < 10) {
+                const funnel = await prisma.funnel.findUnique({
+                    where: { id: currentFunnelId },
+                    select: { assignedTeamId: true, parentId: true }
                 });
-                if (team?.assignedBotId) {
-                    console.log(`🤖 [TeamBot] Funnel team bot resolved: ${team.assignedBotId}`);
-                    return { botId: team.assignedBotId, teamId: funnel.assignedTeamId, source: 'funnel_team' };
+                if (funnel?.assignedTeamId) {
+                    const team = await prisma.team.findUnique({
+                        where: { id: funnel.assignedTeamId },
+                        select: { assignedBotId: true }
+                    });
+                    if (team?.assignedBotId) {
+                        console.log(`🤖 [TeamBot] Funnel ${depth > 0 ? `parent (depth ${depth}) ` : ''}team bot resolved: ${team.assignedBotId}`);
+                        return { botId: team.assignedBotId, teamId: funnel.assignedTeamId, source: depth === 0 ? 'funnel_team' : `parent_funnel_team_${depth}` };
+                    }
                 }
+                currentFunnelId = funnel?.parentId;
+                depth++;
             }
         }
 

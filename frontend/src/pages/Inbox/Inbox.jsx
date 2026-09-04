@@ -866,61 +866,6 @@ const Inbox = () => {
     const globalUserRole = user?.role;
     // Use workspace role first, fallback to global role (for SUPER_ADMIN who might not be in members)
     const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(workspaceMemberRole) || globalUserRole === 'SUPER_ADMIN';
-    const isAgent = workspaceMemberRole === 'AGENT' && !isOwner;
-
-    // Agent'ın ait olduğu takımlara bağlı akışlar
-    const agentFunnels = useMemo(() => {
-        if (!isAgent) return funnelOptions.filter(f => f.value);
-
-        const flattenTeams = (list) => list.flatMap(t => [t, ...(t.children ? flattenTeams(t.children) : [])]);
-        const flatTeams = flattenTeams(teams);
-
-        // Kullanıcının üye olduğu takımlar
-        const myTeams = flatTeams.filter(t => (t.members || []).some(m => m.userId === user?.id));
-        const myTeamIds = myTeams.map(t => t.id);
-
-        // Bu takımlarla eşleşen akışlar (assignedTeamId veya isim eşleşmesi)
-        const matched = funnelOptions.filter(f =>
-            f.value && (
-                myTeamIds.includes(f.assignedTeamId) ||
-                myTeams.some(t => t.name?.trim().toLowerCase() === f.label?.trim().toLowerCase())
-            )
-        );
-
-        const userName = (user?.name || '').trim().toLowerCase();
-        const userEmail = (user?.email || '').trim().toLowerCase();
-
-        // 1. Öncelik: Kullanıcının ismi veya e-postası doğrudan bir takımla/akışla eşleşiyorsa (örn. "Call Center")
-        // O zaman diğer tüm takımlar elenir ve sadece bu eşleşen akış/takım verilir!
-        const exactNameMatches = matched.filter(f => {
-            const fLabel = (f.label || '').trim().toLowerCase();
-            return fLabel === userName || (userName && fLabel.includes(userName)) || (userName && userName.includes(fLabel)) || (userEmail.includes(fLabel) && fLabel.length > 2);
-        });
-
-        if (exactNameMatches.length > 0) {
-            return exactNameMatches;
-        }
-
-        return matched.length > 0 ? matched : funnelOptions.filter(f => f.value);
-    }, [isAgent, funnelOptions, teams, user?.id, user?.name, user?.email]);
-
-    // Agent ise: Kendi takımına ait akışı otomatik seç ve kilitli tut ("Tümü" seçilmesini engelle)
-    useEffect(() => {
-        if (!isAgent) return;
-        if (!agentFunnels || agentFunnels.length === 0) return;
-
-        // Henüz akışlar tam yüklenmemişse bekle
-        const hasRealFunnels = agentFunnels.some(f => f.value && f.value !== '');
-        if (!hasRealFunnels) return;
-
-        // Eğer henüz bir filtre seçili değilse veya seçili filtre agent'ın akışlarından biri değilse:
-        if (!funnelFilter || !agentFunnels.some(f => f.value === funnelFilter)) {
-            setFunnelFilter(agentFunnels[0].value);
-            setStatusFilter(null);
-            setCurrentPage(1);
-            if (currentPageRef) currentPageRef.current = 1;
-        }
-    }, [isAgent, agentFunnels, funnelFilter]);
 
     // Scroll to bottom for messages
     const scrollToBottom = () => {
@@ -1863,11 +1808,7 @@ const Inbox = () => {
                 params.assignedToId = agentFilter === '__unassigned__' ? 'unassigned' : agentFilter;
             }
 
-            if (funnelFilter) {
-                params.funnelType = funnelFilter;
-            } else if (isAgent && agentFunnels.length > 0 && agentFunnels[0].value) {
-                params.funnelType = agentFunnels[0].value;
-            }
+            if (funnelFilter) params.funnelType = funnelFilter;
             if (statusFilter) {
                 params.funnelStageId = statusFilter;
             }
@@ -2158,11 +2099,7 @@ const Inbox = () => {
                     params.assignedToId = agentFilter === '__unassigned__' ? 'unassigned' : agentFilter;
                 }
 
-                if (funnelFilter) {
-                    params.funnelType = funnelFilter;
-                } else if (isAgent && agentFunnels.length > 0 && agentFunnels[0].value) {
-                    params.funnelType = agentFunnels[0].value;
-                }
+                if (funnelFilter) params.funnelType = funnelFilter;
                 if (statusFilter) {
                     params.funnelStageId = statusFilter;
                 }
@@ -3877,7 +3814,7 @@ const Inbox = () => {
                                                 setFunnelFilter(null);
                                             } else {
                                                 const [fv, sv] = val.split('::');
-                                                if (!isAgent) setFunnelFilter(fv || null);
+                                                setFunnelFilter(fv || null);
                                                 setStatusFilter(sv);
                                             }
                                             currentPageRef.current = 1;
@@ -3885,7 +3822,7 @@ const Inbox = () => {
                                         }}
                                     >
                                         <option value="">Tüm Durumlar</option>
-                                        {(isAgent ? agentFunnels : funnelOptions).filter(f => f.value && f.stages).map(funnel => (
+                                        {funnelOptions.filter(f => f.value && f.stages).map(funnel => (
                                             <optgroup key={funnel.value} label={funnel.label}>
                                                 {funnel.stages.map(stage => (
                                                     <option key={stage.value} value={`${funnel.value}::${stage.value}`}>
@@ -4062,7 +3999,6 @@ const Inbox = () => {
                                 setCurrentPage(1);
                                 if (currentPageRef) currentPageRef.current = 1;
                             }}
-                            disabled={isAgent && agentFunnels.length <= 1}
                             style={{
                                 height: '28px',
                                 borderRadius: '14px',
@@ -4070,21 +4006,21 @@ const Inbox = () => {
                                 fontSize: '0.72rem',
                                 fontWeight: 600,
                                 padding: '0 12px',
-                                cursor: (isAgent && agentFunnels.length <= 1) ? 'default' : 'pointer',
+                                cursor: 'pointer',
                                 background: funnelFilter ? '#eef2ff' : '#ffffff',
                                 color: funnelFilter ? '#4f46e5' : '#1e293b',
                                 minWidth: '150px',
                                 flexShrink: 0,
                                 appearance: 'none',
                                 WebkitAppearance: 'none',
-                                backgroundImage: (isAgent && agentFunnels.length <= 1) ? 'none' : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
                                 backgroundRepeat: 'no-repeat',
                                 backgroundPosition: 'right 8px center',
-                                paddingRight: (isAgent && agentFunnels.length <= 1) ? '12px' : '24px'
+                                paddingRight: '24px'
                             }}
                         >
-                            {!isAgent && <option value="">Tümü</option>}
-                            {(isAgent ? agentFunnels : funnelOptions.filter(f => f.value)).map(funnel => {
+                            <option value="">Tümü</option>
+                            {funnelOptions.filter(f => f.value).map(funnel => {
                                 const count = inboxItems.filter(item => item.contact?.funnelType === funnel.value).length;
                                 return (
                                     <option key={funnel.value} value={funnel.value}>

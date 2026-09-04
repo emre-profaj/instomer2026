@@ -392,13 +392,12 @@ const Funnels = () => {
     };
 
     // Build funnel tree
-    const mainFunnel = funnels.find(f => f.funnelType === 'MAIN');
+    const mainFunnel = funnels.find(f => f.funnelType === 'MAIN') || funnels.find(f => f.isDefault) || funnels[0];
     const childrenMap = {};
     funnels.forEach(f => {
-        const parentKey = f.parentId || (f.funnelType !== 'MAIN' ? mainFunnel?.id : null);
-        if (parentKey && f.id !== mainFunnel?.id) {
-            if (!childrenMap[parentKey]) childrenMap[parentKey] = [];
-            childrenMap[parentKey].push(f);
+        if (f.parentId) {
+            if (!childrenMap[f.parentId]) childrenMap[f.parentId] = [];
+            childrenMap[f.parentId].push(f);
         }
     });
 
@@ -454,6 +453,10 @@ const Funnels = () => {
                 depth={depth}
                 isLast={isLast}
                 connectorLines={myConnectorLines}
+                teams={teams}
+                members={members}
+                bots={bots}
+                allFunnels={funnels}
             >
                 {childFunnels.map((child, i) => {
                     const childIsLast = i === childFunnels.length - 1;
@@ -502,6 +505,7 @@ const Funnels = () => {
                         <div className="settings-field">
                             <label>Üst Akış</label>
                             <select value={newParentId} onChange={e => setNewParentId(e.target.value)}>
+                                <option value="">Normal Akış (Bağımsız / Üst Akış Yok)</option>
                                 {mainFunnel && (
                                     <option value={mainFunnel.id}>↳ {mainFunnel.name} (Ana Akış) Altında</option>
                                 )}
@@ -556,7 +560,10 @@ const Funnels = () => {
                     <p>{t('funnels.empty')}</p>
                 </div>
             ) : (
-                mainFunnel ? renderFunnelTree(mainFunnel) : funnels.filter(f => !f.parentId).map(f => renderFunnelTree(f))
+                [
+                    ...(mainFunnel ? [mainFunnel] : []),
+                    ...funnels.filter(f => !f.parentId && f.id !== mainFunnel?.id)
+                ].map((rootFunnel, idx, arr) => renderFunnelTree(rootFunnel, 0, idx === arr.length - 1))
             )}
 
             {/* Add Stage Modal (simple inline) */}
@@ -1207,7 +1214,8 @@ const Funnels = () => {
                                             value={funnelPanel.parentId || ''}
                                             onChange={e => setFunnelPanel(p => ({ ...p, parentId: e.target.value }))}
                                         >
-                                            {mainFunnel && (
+                                            <option value="">Normal Akış (Bağımsız / Üst Akış Yok)</option>
+                                            {mainFunnel && funnelPanel.id !== mainFunnel.id && (
                                                 <option value={mainFunnel.id}>↳ {mainFunnel.name} (Ana Akış) Altında</option>
                                             )}
                                             {getParentOptions(funnelPanel.id).filter(f => f.id !== mainFunnel?.id).map(f =>

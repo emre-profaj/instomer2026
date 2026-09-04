@@ -541,6 +541,17 @@ export const healthSystemAPI = {
     updateBot: (workspaceId, id, data) => api.put(`/health-system/${workspaceId}/bot/${id}`, data)
 };
 
+// Google Calendar Integration API
+export const googleCalendarAPI = {
+    getAuthUrl: (workspaceId) => api.get('/calendar/google/auth-url', { params: { workspaceId } }),
+    getStatus: (workspaceId) => api.get('/calendar/google/status', { params: { workspaceId } }),
+    getEvents: (workspaceId, params = {}) => api.get('/calendar/google/events', { params: { workspaceId, ...params } }),
+    disconnect: (workspaceId) => api.post('/calendar/google/disconnect', { workspaceId }),
+    getWorkspaceConfig: (workspaceId) => api.get(`/calendar/google/workspace-config/${workspaceId}`),
+    saveWorkspaceConfig: (workspaceId, data) => api.post(`/calendar/google/workspace-config/${workspaceId}`, data),
+    deleteWorkspaceConfig: (workspaceId) => api.delete(`/calendar/google/workspace-config/${workspaceId}`)
+};
+
 // Calendar Resource API
 export const resourceAPI = {
     getAll: (workspaceId, params) => api.get(`/resources/${workspaceId}`, { params }),

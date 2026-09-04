@@ -46,6 +46,7 @@ model User {
   createdActivities       ContactActivity[]      @relation("ActivityCreator")
   assignedCases           Case[]                 @relation("CaseAssignee")
   notificationPreferences Json?
+  googleCalendars         UserGoogleCalendar[]
 
   @@map("users")
 }
@@ -147,6 +148,11 @@ model Workspace {
   classifierRules      ClassifierRule[]
   telsamConfig         TelsamConfig?
   automationLogs       AutomationLog[]
+  userGoogleCalendars  UserGoogleCalendar[]
+
+  // Google Calendar Integration (Workspace level credentials)
+  googleClientId       String?
+  googleClientSecret   String?
 
   // Retell AI Voice
   retellApiKey          String?
@@ -856,6 +862,8 @@ model Appointment {
   branch         String? // Branch name (Dahiliye, Ortopedi, etc.)
   procedure      String? // Procedure type
   doctorName     String? // Doctor name
+  googleEventId  String? // Google Calendar Event ID
+  googleMeetLink String? // Google Meet link if generated
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -864,7 +872,31 @@ model Appointment {
   @@index([resourceId])
   @@index([startTime])
   @@index([status])
+  @@index([googleEventId])
   @@map("appointments")
+}
+
+// Temsilci Bazlı Google Takvim Entegrasyonu
+model UserGoogleCalendar {
+  id           String    @id @default(uuid())
+  userId       String
+  workspaceId  String
+  googleEmail  String
+  accessToken  String    @db.Text
+  refreshToken String?   @db.Text
+  expiryDate   BigInt?
+  calendarId   String    @default("primary")
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([userId])
+  @@index([workspaceId])
+  @@map("user_google_calendars")
 }
 
 // Randevu Asistanı — Branş Tanımları

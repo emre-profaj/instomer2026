@@ -2,10 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI, telsamAPI, classifierAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI, telsamAPI, classifierAPI, googleCalendarAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database, PhoneCall, ArrowRight, ChevronUp, ChevronDown, Edit2, Map, List, Brain, Hash, AlertTriangle, MessageSquare, Radio } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database, PhoneCall, ArrowRight, ChevronUp, ChevronDown, Edit2, Map, List, Brain, Hash, AlertTriangle, MessageSquare, Radio, Calendar as CalendarIcon } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
 import DisaoSettingsModal from '../../components/Settings/DisaoSettingsModal';
 import './Channels.css';
@@ -64,6 +64,17 @@ const Channels = () => {
     const [telsamError, setTelsamError] = useState('');
     const [telsamSuccess, setTelsamSuccess] = useState('');
     const [telsamForm, setTelsamForm] = useState({ siteUrl: '', username: '', password: '' });
+
+    // Google Calendar Integration states
+    const [showGoogleCalModal, setShowGoogleCalModal] = useState(false);
+    const [googleCalConfig, setGoogleCalConfig] = useState(null);
+    const [googleCalForm, setGoogleCalForm] = useState({ clientId: '', clientSecret: '' });
+    const [googleCalSaving, setGoogleCalSaving] = useState(false);
+    const [googleCalError, setGoogleCalError] = useState('');
+    const [googleCalSuccess, setGoogleCalSuccess] = useState('');
+    const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
+    const [showAdvancedGoogleSettings, setShowAdvancedGoogleSettings] = useState(false);
+    const [connectingGoogleCal, setConnectingGoogleCal] = useState(false);
 
     // Routing states
     const [channelRoutings, setChannelRoutings] = useState([]);
@@ -167,7 +178,7 @@ const Channels = () => {
         setLoading(true);
         try {
             const API = import.meta.env.VITE_API_URL || 'http://localhost:5008';
-            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes, wsRes, telsamRes, rulesRes, formsRes] = await Promise.all([
+            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes, wsRes, telsamRes, rulesRes, formsRes, googleCalRes] = await Promise.all([
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
@@ -182,7 +193,8 @@ const Channels = () => {
                 fetch(`${API}/workspaces/${currentWorkspace.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }).then(res => res.json()).catch(() => null),
                 telsamAPI.getSettings(currentWorkspace.id).catch(() => ({ data: null })),
                 classifierAPI.getRules(currentWorkspace.id).catch(() => ({ data: { rules: [] } })),
-                facebookAPI.getPageForms(currentWorkspace.id).catch(() => ({ data: { forms: [] } }))
+                facebookAPI.getPageForms(currentWorkspace.id).catch(() => ({ data: { forms: [] } })),
+                googleCalendarAPI.getWorkspaceConfig(currentWorkspace.id).catch(() => ({ data: null }))
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -205,6 +217,7 @@ const Channels = () => {
             setFunnels(funnelsRes.data?.funnels || funnelsRes.data || []);
             const telsamData = telsamRes?.data?.data || null;
             setTelsamConfig(telsamData);
+            setGoogleCalConfig(googleCalRes?.data || null);
 
             const loadedRules = rulesRes.data?.rules || [];
             setClassifierRules(loadedRules);
@@ -428,6 +441,85 @@ const Channels = () => {
         } catch (err) {
             console.error('Error deleting telsam:', err);
             alert('Telsam bağlantısı silinemedi.');
+        }
+    };
+
+    // Google Calendar handlers
+    const openGoogleCalModal = () => {
+        setGoogleCalError('');
+        setGoogleCalSuccess('');
+        setShowAdvancedGoogleSettings(!!googleCalConfig?.hasCustomCredentials);
+        setGoogleCalForm({
+            clientId: googleCalConfig?.clientId && googleCalConfig.clientId !== '••••••••' ? googleCalConfig.clientId : '',
+            clientSecret: ''
+        });
+        setShowGoogleCalModal(true);
+    };
+
+    const handleConnectMyGoogleFromChannels = async () => {
+        try {
+            setConnectingGoogleCal(true);
+            const res = await googleCalendarAPI.getAuthUrl(currentWorkspace.id);
+            if (res.data?.url) {
+                window.location.href = res.data.url;
+            } else {
+                alert('Google yetkilendirme linki alınamadı.');
+            }
+        } catch (err) {
+            console.error('Connect Google error:', err);
+            alert(err.response?.data?.error || 'Google Takvim bağlantısı başlatılamadı.');
+        } finally {
+            setConnectingGoogleCal(false);
+        }
+    };
+
+    const handleDisconnectMyGoogleFromChannels = async () => {
+        if (!confirm('Kendi Google Takvim bağlantınızı bu çalışma alanı için kesmek istediğinize emin misiniz?')) return;
+        try {
+            await googleCalendarAPI.disconnect(currentWorkspace.id);
+            const res = await googleCalendarAPI.getWorkspaceConfig(currentWorkspace.id);
+            setGoogleCalConfig(res.data);
+        } catch (err) {
+            console.error('Disconnect Google error:', err);
+            alert('Bağlantı kesilirken hata oluştu.');
+        }
+    };
+
+    const handleSaveGoogleCalConfig = async () => {
+        if (!googleCalForm.clientId || !googleCalForm.clientSecret) {
+            setGoogleCalError('Client ID ve Client Secret alanları zorunludur.');
+            return;
+        }
+        setGoogleCalSaving(true);
+        setGoogleCalError('');
+        setGoogleCalSuccess('');
+        try {
+            await googleCalendarAPI.saveWorkspaceConfig(currentWorkspace.id, {
+                clientId: googleCalForm.clientId,
+                clientSecret: googleCalForm.clientSecret
+            });
+            setGoogleCalSuccess('Özel Google Takvim ayarları başarıyla kaydedildi!');
+            const res = await googleCalendarAPI.getWorkspaceConfig(currentWorkspace.id);
+            setGoogleCalConfig(res.data);
+            setTimeout(() => setGoogleCalSuccess(''), 2500);
+        } catch (err) {
+            console.error('Save Google Calendar config error:', err);
+            setGoogleCalError(err.response?.data?.error || 'Ayarlar kaydedilemedi.');
+        } finally {
+            setGoogleCalSaving(false);
+        }
+    };
+
+    const handleDeleteGoogleCalConfig = async () => {
+        if (!confirm('Bu çalışma alanının özel Google Takvim yapılandırmasını sıfırlayıp platform varsayılanına dönmek istediğinizden emin misiniz?')) return;
+        try {
+            await googleCalendarAPI.deleteWorkspaceConfig(currentWorkspace.id);
+            const res = await googleCalendarAPI.getWorkspaceConfig(currentWorkspace.id);
+            setGoogleCalConfig(res.data);
+            setShowAdvancedGoogleSettings(false);
+        } catch (err) {
+            console.error('Delete Google Calendar config error:', err);
+            alert(err.response?.data?.error || 'Yapılandırma sıfırlanamadı.');
         }
     };
 
@@ -1418,6 +1510,10 @@ const Channels = () => {
                         <PhoneCall size={16} />
                         Telsam Santral
                     </button>
+                    <button className="quick-add-btn google-cal" onClick={openGoogleCalModal}>
+                        <CalendarIcon size={16} />
+                        Google Takvim
+                    </button>
                 </div>
             </div>
 
@@ -1723,6 +1819,47 @@ const Channels = () => {
                                             </>
                                         ) : (
                                             <button onClick={() => { setTelsamError(''); setTelsamSuccess(''); setShowTelsamModal(true); }} className="btn-integration-connect">Bağlan</button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Google Takvim Card */}
+                                <div className="channels-integration-card card-google-cal">
+                                    <div>
+                                        <div className="integration-card-header">
+                                            <div className="integration-icon-wrap" style={{ background: '#eff6ff' }}>
+                                                <svg viewBox="0 0 24 24" width="22" height="22">
+                                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                                </svg>
+                                            </div>
+                                            <div className="integration-title-group">
+                                                <h3>Google Takvim</h3>
+                                                <span className={`integration-status-pill ${googleCalConfig?.isConfigured ? 'connected' : 'disconnected'}`}>
+                                                    ● {googleCalConfig?.isConfigured ? 'Yapılandırıldı' : 'Yapılandırılmadı'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="integration-card-body">
+                                            {googleCalConfig?.connectedUsersCount > 0
+                                                ? `${googleCalConfig.connectedUsersCount} temsilci bağlı`
+                                                : googleCalConfig?.isConfigured
+                                                    ? 'Kullanıma hazır (Temsilciler bağlayabilir)'
+                                                    : 'Temsilci senkronizasyonu için Client ID girin'}
+                                        </div>
+                                    </div>
+                                    <div className="integration-card-actions">
+                                        {googleCalConfig?.isConfigured ? (
+                                            <>
+                                                <button onClick={openGoogleCalModal} className="btn-integration-settings">Ayarlar</button>
+                                                {googleCalConfig?.source === 'workspace' && (
+                                                    <button onClick={handleDeleteGoogleCalConfig} className="btn-integration-disconnect">Sıfırla</button>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <button onClick={openGoogleCalModal} className="btn-integration-connect">Yapılandır</button>
                                         )}
                                     </div>
                                 </div>
@@ -2649,6 +2786,238 @@ const Channels = () => {
                                         {pageSyncResult.message}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Google Takvim Modal */}
+            {showGoogleCalModal && (
+                <div className="modal-overlay" onClick={() => setShowGoogleCalModal(false)}>
+                    <div className="modal-content modal-lg" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <svg viewBox="0 0 24 24" width="24" height="24">
+                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                </svg>
+                                <h2>Google Takvim Entegrasyonu</h2>
+                            </div>
+                            <button className="btn-icon" onClick={() => setShowGoogleCalModal(false)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            {googleCalError && (
+                                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '13px' }}>
+                                    {googleCalError}
+                                </div>
+                            )}
+
+                            {googleCalSuccess && (
+                                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '13px' }}>
+                                    {googleCalSuccess}
+                                </div>
+                            )}
+
+                            {/* Entegrasyon Durumu Bilgi Kartı */}
+                            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                    <span style={{ display: 'inline-block', width: '9px', height: '9px', borderRadius: '50%', background: '#16a34a' }} />
+                                    <strong style={{ color: '#166534', fontSize: '14px' }}>Google Takvim Entegrasyonu Kullanıma Hazır</strong>
+                                </div>
+                                <p style={{ color: '#15803d', fontSize: '13px', margin: 0, lineHeight: 1.5 }}>
+                                    Temsilcileriniz, kendi kişisel veya kurumsal Google hesaplarını bağlayarak randevularını doğrudan Google Takvim ile senkronize edebilir. Randevular otomatik Google Meet bağlantısıyla birlikte işlenir.
+                                </p>
+                            </div>
+
+                            {/* Giriş Yapan Kullanıcının Kendi Takvimi */}
+                            {(() => {
+                                const myCal = googleCalConfig?.connectedUsers?.find(u => u.userId === user?.id);
+                                return (
+                                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                            Kendi Google Takviminiz
+                                        </div>
+                                        {myCal ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ color: '#16a34a', fontSize: '14px' }}>✓</span>
+                                                    <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{myCal.googleEmail}</span>
+                                                    <span style={{ fontSize: '11px', color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>Bağlı</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDisconnectMyGoogleFromChannels}
+                                                    style={{ padding: '6px 12px', fontSize: '12px', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                                                >
+                                                    Bağlantıyı Kes
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: 600, color: '#1e40af', fontSize: '13px' }}>Henüz Google Takviminizi bağlamadınız</div>
+                                                    <div style={{ fontSize: '12px', color: '#64748b' }}>Size atanan randevuların takviminize düşmesi için bağlayın.</div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleConnectMyGoogleFromChannels}
+                                                    disabled={connectingGoogleCal}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '13px' }}
+                                                >
+                                                    <svg viewBox="0 0 24 24" width="14" height="14">
+                                                        <path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                                        <path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                                        <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                                                        <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                                                    </svg>
+                                                    <span>{connectingGoogleCal ? 'Yönlendiriliyor...' : 'Google Takvimi Bağla'}</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Connected Representatives List */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#334155', margin: 0 }}>
+                                        Bu Çalışma Alanında Bağlı Temsilciler ({googleCalConfig?.connectedUsers?.length || 0})
+                                    </h4>
+                                </div>
+
+                                {googleCalConfig?.connectedUsers?.length > 0 ? (
+                                    <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {googleCalConfig.connectedUsers.map(u => (
+                                            <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px' }}>
+                                                <div>
+                                                    <strong style={{ color: '#0f172a' }}>{u.userName}</strong>
+                                                    <span style={{ color: '#64748b', marginLeft: '6px' }}>({u.googleEmail})</span>
+                                                </div>
+                                                <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>
+                                                    ● Aktif
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                                        Bu çalışma alanında henüz takvim bağlayan temsilci bulunmuyor. Temsilciler Takvim sayfasından veya yukarıdaki butondan tek tıkla bağlayabilir.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Gelişmiş Ayarlar (Gizli Akordeon - Sadece Özel Google App İsteyenler İçin) */}
+                            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px', marginTop: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdvancedGoogleSettings(p => !p)}
+                                    style={{ background: 'none', border: 'none', padding: 0, color: '#64748b', fontSize: '12.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}
+                                >
+                                    <span>{showAdvancedGoogleSettings ? '▼' : '▶'}</span>
+                                    <span>Özel Google Cloud OAuth İstemcisi Tanımla (İsteğe Bağlı / Gelişmiş)</span>
+                                </button>
+
+                                {showAdvancedGoogleSettings && (
+                                    <div style={{ marginTop: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px' }}>
+                                        <p style={{ fontSize: '12.5px', color: '#64748b', marginBottom: '14px' }}>
+                                            Kendi kurumunuza ait özel bir Google Cloud OAuth 2.0 İstemcisi kullanmak isterseniz aşağıdaki bilgileri doldurabilirsiniz. Boş bırakırsanız sistemin hazır motoru kullanılır.
+                                        </p>
+
+                                        {/* Otomatik Redirect URI */}
+                                        <div style={{ marginBottom: '14px' }}>
+                                            <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#475569', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                                Yetkili Yönlendirme Adresi (Redirect URI)
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <input
+                                                    type="text"
+                                                    readOnly
+                                                    value={googleCalConfig?.redirectUri || `${window.location.origin.replace(':5173', ':5008')}/api/calendar/google/callback`}
+                                                    style={{ flex: 1, padding: '6px 10px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', color: '#0f172a', fontFamily: 'monospace' }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const uri = googleCalConfig?.redirectUri || `${window.location.origin.replace(':5173', ':5008')}/api/calendar/google/callback`;
+                                                        navigator.clipboard.writeText(uri);
+                                                        setCopiedRedirectUri(true);
+                                                        setTimeout(() => setCopiedRedirectUri(false), 2000);
+                                                    }}
+                                                    style={{ padding: '6px 12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}
+                                                >
+                                                    {copiedRedirectUri ? 'Kopyalandı' : 'Kopyala'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                                    Özel Google Client ID
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="...apps.googleusercontent.com"
+                                                    value={googleCalForm.clientId}
+                                                    onChange={(e) => setGoogleCalForm(p => ({ ...p, clientId: e.target.value }))}
+                                                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12.5px' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                                    Özel Google Client Secret
+                                                </label>
+                                                <input
+                                                    type="password"
+                                                    placeholder={googleCalConfig?.hasCustomCredentials ? '•••••••••••••••• (Kayıtlı)' : 'Client secret girin...'}
+                                                    value={googleCalForm.clientSecret}
+                                                    onChange={(e) => setGoogleCalForm(p => ({ ...p, clientSecret: e.target.value }))}
+                                                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12.5px' }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                            {googleCalConfig?.hasCustomCredentials && (
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    onClick={handleDeleteGoogleCalConfig}
+                                                    style={{ fontSize: '12px', color: '#dc2626' }}
+                                                >
+                                                    Özel Ayarları Sıfırla
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="btn btn-primary"
+                                                onClick={handleSaveGoogleCalConfig}
+                                                disabled={googleCalSaving || !googleCalForm.clientId || !googleCalForm.clientSecret}
+                                                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            >
+                                                {googleCalSaving ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                                                <span>Özel Ayarları Kaydet</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Actions */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowGoogleCalModal(false)}
+                                >
+                                    Kapat
+                                </button>
                             </div>
                         </div>
                     </div>

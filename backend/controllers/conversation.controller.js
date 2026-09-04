@@ -9,6 +9,7 @@ import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
 import { maskSensitiveInfo } from '../utils/masking.js';
 import { processShortcodes } from '../utils/shortcodeExecutor.js';
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
+import { getDescendantFunnelKeys, getAllowedFunnelKeysForAgent } from '../utils/funnelHierarchy.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -43,7 +44,6 @@ export const getConversations = async (req, res) => {
             }),
             ...(status && { status }),
             ...(contactId && { contactId }),
-            ...(funnelType && { funnelType }),
             // Direct conversation funnelStageId filter (no fallback to contact)
             ...(funnelStageId && { funnelStageId }),
             // Keep contactStatus check just in case legacy calls use it
@@ -56,6 +56,9 @@ export const getConversations = async (req, res) => {
                 messages: { some: { isFromContact: true } }
             })
         };
+
+        // Funnel hiyerarşisi: Seçilen akışın altındaki tüm alt akışları recursive dahil et
+        const descendantFunnelKeys = funnelType ? await getDescendantFunnelKeys(workspaceId, funnelType) : null;
 
         // Server-side search: filter by contact name/email/phone
         if (search && search.trim()) {
@@ -87,6 +90,22 @@ export const getConversations = async (req, res) => {
             });
             const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
 
+            // Sorumlu olunan akışlar: Agent veya takımlarının sorumlu olduğu akışlar + alt akışları
+            const allowedFunnelKeys = await getAllowedFunnelKeysForAgent(workspaceId, req.user.id, myTeamIds);
+
+            if (allowedFunnelKeys !== null) {
+                if (funnelType && descendantFunnelKeys) {
+                    const effectiveKeys = descendantFunnelKeys.filter(k => allowedFunnelKeys.includes(k));
+                    where.funnelType = effectiveKeys.length > 0
+                        ? (effectiveKeys.length > 1 ? { in: effectiveKeys } : effectiveKeys[0])
+                        : 'unauthorized_funnel_access';
+                } else {
+                    where.funnelType = allowedFunnelKeys.length > 1 ? { in: allowedFunnelKeys } : allowedFunnelKeys[0];
+                }
+            } else if (funnelType && descendantFunnelKeys) {
+                where.funnelType = descendantFunnelKeys.length > 1 ? { in: descendantFunnelKeys } : descendantFunnelKeys[0];
+            }
+
             // Post/yorum konuşmalarını Agent'lar görmez
             where.channel = { notIn: ['FACEBOOK_COMMENT', 'INSTAGRAM_COMMENT'] };
 
@@ -103,11 +122,12 @@ export const getConversations = async (req, res) => {
                 };
                 console.log(`🔒 [LEAD Filter] Agent ${req.user.id} can only see assigned leads`);
             } else {
-                // Diğer kanallar: Kendisine atanmış VEYA kendisinin atadığı VEYA takımında atanmamış
+                // Diğer kanallar: Kendisine atanmış VEYA kendisinin atadığı VEYA sorumlu olduğu akışlar VEYA takımında atanmamış
                 accessCondition = {
                     OR: [
                         { assignedToId: req.user.id }, // Kendisine atanmış
                         { assignedById: req.user.id }, // Kendisinin atadığı
+                        ...(allowedFunnelKeys ? [{ funnelType: { in: allowedFunnelKeys } }] : []), // Sorumlu olduğu akışlar ve alt akışlar
                         ...myTeamIds.map(tid => ({
                             AND: [
                                 { teamIds: { contains: `"${tid}"` } },
@@ -162,6 +182,9 @@ export const getConversations = async (req, res) => {
             }
         } else {
             // ADMIN/OWNER logic
+            if (funnelType && descendantFunnelKeys) {
+                where.funnelType = descendantFunnelKeys.length > 1 ? { in: descendantFunnelKeys } : descendantFunnelKeys[0];
+            }
             if (assignedToId) {
                 if (assignedToId === 'unassigned') {
                     where.assignedToId = null;
@@ -2761,6 +2784,23 @@ export const updateFunnel = async (req, res) => {
             } else if (targetFunnel) {
                 suggestedTeamId = targetFunnel.assignedTeamId || null;
                 suggestedUserId = targetFunnel.assignedUserId || null;
+
+                // Hiyerarşik miras: Funnel'da takım veya kişi yoksa üst akışlardan (parentId) miras al
+                if ((!suggestedTeamId || !suggestedUserId) && targetFunnel.parentId) {
+                    let curPid = targetFunnel.parentId;
+                    let depth = 0;
+                    while (curPid && depth < 10 && (!suggestedTeamId || !suggestedUserId)) {
+                        const parent = await prisma.funnel.findUnique({
+                            where: { id: curPid },
+                            select: { assignedTeamId: true, assignedUserId: true, parentId: true }
+                        }).catch(() => null);
+                        if (!parent) break;
+                        if (!suggestedTeamId && parent.assignedTeamId) suggestedTeamId = parent.assignedTeamId;
+                        if (!suggestedUserId && parent.assignedUserId) suggestedUserId = parent.assignedUserId;
+                        curPid = parent.parentId;
+                        depth++;
+                    }
+                }
                 
                 if (suggestedTeamId && !suggestedUserId) {
                     try {
@@ -2792,16 +2832,20 @@ export const updateFunnel = async (req, res) => {
                 suggestedTeamId = newStageRec.assignedTeamId || null;
                 suggestedUserId = newStageRec.assignedUserId || null;
 
-                if (!suggestedTeamId) {
-                    const parentFunnel = await prisma.funnel.findUnique({
-                        where: { id: newStageRec.funnelId },
-                        select: { assignedTeamId: true, assignedUserId: true }
-                    }).catch(() => null);
-                    if (parentFunnel) {
-                        suggestedTeamId = parentFunnel.assignedTeamId || null;
-                        if (!suggestedUserId) {
-                            suggestedUserId = parentFunnel.assignedUserId || null;
-                        }
+                // Hiyerarşik miras: Aşamada veya akışta takım/kişi yoksa üst akışlardan miras al
+                if (!suggestedTeamId || !suggestedUserId) {
+                    let curPid = newStageRec.funnelId;
+                    let depth = 0;
+                    while (curPid && depth < 10 && (!suggestedTeamId || !suggestedUserId)) {
+                        const parent = await prisma.funnel.findUnique({
+                            where: { id: curPid },
+                            select: { assignedTeamId: true, assignedUserId: true, parentId: true }
+                        }).catch(() => null);
+                        if (!parent) break;
+                        if (!suggestedTeamId && parent.assignedTeamId) suggestedTeamId = parent.assignedTeamId;
+                        if (!suggestedUserId && parent.assignedUserId) suggestedUserId = parent.assignedUserId;
+                        curPid = parent.parentId;
+                        depth++;
                     }
                 }
 
@@ -3644,8 +3688,26 @@ export const getContactGroupedConversations = async (req, res) => {
         else convWhere.status = { not: 'RESOLVED' };
 
         if (channel) convWhere.channel = channel;
-        if (funnelType) convWhere.funnelType = funnelType;
         if (funnelStageId) convWhere.funnelStageId = funnelStageId;
+
+        // Funnel hiyerarşisi: Seçilen akışın altındaki tüm alt akışları recursive dahil et
+        const descendantFunnelKeys = funnelType ? await getDescendantFunnelKeys(workspaceId, funnelType) : null;
+
+        // Sorumlu olunan akışlar: Agent veya takımlarının sorumlu olduğu akışlar + alt akışları
+        const allowedFunnelKeys = !isAdmin ? await getAllowedFunnelKeysForAgent(workspaceId, req.user.id, myTeamIds) : null;
+
+        if (allowedFunnelKeys !== null) {
+            if (funnelType && descendantFunnelKeys) {
+                const effectiveKeys = descendantFunnelKeys.filter(k => allowedFunnelKeys.includes(k));
+                convWhere.funnelType = effectiveKeys.length > 0
+                    ? (effectiveKeys.length > 1 ? { in: effectiveKeys } : effectiveKeys[0])
+                    : 'unauthorized_funnel_access';
+            } else {
+                convWhere.funnelType = allowedFunnelKeys.length > 1 ? { in: allowedFunnelKeys } : allowedFunnelKeys[0];
+            }
+        } else if (funnelType && descendantFunnelKeys) {
+            convWhere.funnelType = descendantFunnelKeys.length > 1 ? { in: descendantFunnelKeys } : descendantFunnelKeys[0];
+        }
 
         // Erişim kontrolü
         if (!isAdmin) {
@@ -3659,6 +3721,7 @@ export const getContactGroupedConversations = async (req, res) => {
             } else if (assignedToId === 'mine_or_unassigned') {
                 convWhere.OR = [
                     { assignedToId: req.user.id },
+                    ...(allowedFunnelKeys ? [{ funnelType: { in: allowedFunnelKeys } }] : []),
                     ...(myTeamIds.length > 0 ? myTeamIds.map(tid => ({
                         AND: [
                             { teamIds: { contains: `"${tid}"` } },
@@ -3670,6 +3733,7 @@ export const getContactGroupedConversations = async (req, res) => {
                 // Varsayılan: mine_or_unassigned
                 convWhere.OR = [
                     { assignedToId: req.user.id },
+                    ...(allowedFunnelKeys ? [{ funnelType: { in: allowedFunnelKeys } }] : []),
                     ...(myTeamIds.length > 0 ? myTeamIds.map(tid => ({
                         AND: [
                             { teamIds: { contains: `"${tid}"` } },

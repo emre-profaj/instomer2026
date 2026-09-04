@@ -12,36 +12,42 @@ import prisma from '../lib/prisma.js';
  * @param {string} stageId - Hedef aşama ID
  * @returns {{ userId?: string, teamId?: string, botId?: string, source: string }}
  */
-export async function findResponsible(stageId) {
+export async function findResponsible(stageId, explicitFunnelId = null) {
     try {
-        const stage = await prisma.funnelStage.findUnique({
-            where: { id: stageId },
-            select: {
-                assignedUserId: true,
-                assignedTeamId: true,
-                assignedBotId: true,
-                funnelId: true,
-            }
-        });
-
-        if (!stage) return { source: 'NOT_FOUND' };
+        let userId = null;
+        let teamId = null;
+        let botId = null;
+        let source = 'NONE';
+        let funnelId = explicitFunnelId;
 
         // 1. Aşama seviyesi
-        if (stage.assignedUserId || stage.assignedTeamId || stage.assignedBotId) {
-            return {
-                userId: stage.assignedUserId,
-                teamId: stage.assignedTeamId,
-                botId: stage.assignedBotId,
-                source: 'STAGE'
-            };
+        if (stageId) {
+            const stage = await prisma.funnelStage.findUnique({
+                where: { id: stageId },
+                select: {
+                    assignedUserId: true,
+                    assignedTeamId: true,
+                    assignedBotId: true,
+                    funnelId: true,
+                }
+            });
+
+            if (stage) {
+                userId = stage.assignedUserId || null;
+                teamId = stage.assignedTeamId || null;
+                botId = stage.assignedBotId || null;
+                if (!funnelId) funnelId = stage.funnelId;
+                if (userId || teamId || botId) {
+                    source = 'STAGE';
+                }
+            }
         }
 
-        // 2. Akış seviyesi (ve üst akışlar — recursive)
-        let funnelId = stage.funnelId;
+        // 2. Akış seviyesi ve üst akışlar — recursive
         let depth = 0;
-        const maxDepth = 5; // Sonsuz döngü koruması
+        const maxDepth = 10;
 
-        while (funnelId && depth < maxDepth) {
+        while (funnelId && depth < maxDepth && (!userId || !teamId || !botId)) {
             const funnel = await prisma.funnel.findUnique({
                 where: { id: funnelId },
                 select: {
@@ -55,13 +61,17 @@ export async function findResponsible(stageId) {
 
             if (!funnel) break;
 
-            if (funnel.assignedUserId || funnel.assignedTeamId || funnel.assignedBotId) {
-                return {
-                    userId: funnel.assignedUserId,
-                    teamId: funnel.assignedTeamId,
-                    botId: funnel.assignedBotId,
-                    source: depth === 0 ? 'FUNNEL' : `PARENT_FUNNEL_${depth}`
-                };
+            if (!userId && funnel.assignedUserId) {
+                userId = funnel.assignedUserId;
+                if (source === 'NONE') source = depth === 0 ? 'FUNNEL' : `PARENT_FUNNEL_${depth}`;
+            }
+            if (!teamId && funnel.assignedTeamId) {
+                teamId = funnel.assignedTeamId;
+                if (source === 'NONE') source = depth === 0 ? 'FUNNEL' : `PARENT_FUNNEL_${depth}`;
+            }
+            if (!botId && funnel.assignedBotId) {
+                botId = funnel.assignedBotId;
+                if (source === 'NONE') source = depth === 0 ? 'FUNNEL' : `PARENT_FUNNEL_${depth}`;
             }
 
             // Üst akışa çık
@@ -69,12 +79,27 @@ export async function findResponsible(stageId) {
             depth++;
         }
 
-        // 3. Bulunamadı
-        return { source: 'DEFAULT' };
+        if (!userId && !teamId && !botId) {
+            return { source: 'DEFAULT' };
+        }
+
+        return {
+            userId: userId || undefined,
+            teamId: teamId || undefined,
+            botId: botId || undefined,
+            source
+        };
     } catch (err) {
         console.error('[ResponsibilityLookup] Error:', err.message);
         return { source: 'ERROR' };
     }
+}
+
+/**
+ * Doğrudan akış ID'si üzerinden hiyerarşik sorumluyu arar.
+ */
+export async function findResponsibleForFunnel(funnelId) {
+    return findResponsible(null, funnelId);
 }
 
 /**

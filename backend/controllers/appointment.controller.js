@@ -269,6 +269,14 @@ export const createAppointment = async (req, res) => {
             executeRule(workspaceId, 'APPOINTMENT_PLANNED_NOTIFY', { contactId: appointment.contactId }).catch(e => console.error('[AutoHook] APPOINTMENT_PLANNED_NOTIFY error:', e.message));
         }
 
+        // 📅 Google Takvim Senkronizasyonu (Temsilcinin kişisel Google Takvimine etkinlik ekle)
+        const targetSyncUserId = appointment.assignedToId || req.user.id;
+        if (targetSyncUserId) {
+            import('../services/googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
+                syncAppointmentToGoogle(appointment.id, targetSyncUserId).catch(e => console.error('[GoogleCalendar Hook] Sync error:', e.message));
+            });
+        }
+
         // Get agent details
         const agent = assignedToId ? await prisma.user.findUnique({
             where: { id: assignedToId },
@@ -358,6 +366,17 @@ export const updateAppointment = async (req, res) => {
             executeRule(workspaceId, 'APPOINTMENT_CANCEL_NOTIFY', { contactId: appointment.contactId }).catch(e => console.error('[AutoHook] APPOINTMENT_CANCEL_NOTIFY error:', e.message));
         }
 
+        // 📅 Google Takvim Senkronizasyonu
+        import('../services/googleCalendar.service.js').then(({ updateGoogleEvent, deleteGoogleEvent }) => {
+            if (updateData.status === 'CANCELLED') {
+                deleteGoogleEvent(appointment.id, appointment.assignedToId, appointment.googleEventId, appointment.workspaceId)
+                    .catch(e => console.error('[GoogleCalendar Hook] Delete error:', e.message));
+            } else {
+                updateGoogleEvent(appointment.id)
+                    .catch(e => console.error('[GoogleCalendar Hook] Update error:', e.message));
+            }
+        });
+
         const agent = appointment.assignedToId ? await prisma.user.findUnique({
             where: { id: appointment.assignedToId },
             select: { id: true, name: true, avatar: true }
@@ -390,6 +409,14 @@ export const deleteAppointment = async (req, res) => {
             where: { id },
             data: { status: 'CANCELLED', updatedAt: new Date() }
         });
+
+        // 📅 Google Takvim Senkronizasyonu (Etkinliği Google Takvim'den kaldır)
+        if (existing.googleEventId && existing.assignedToId) {
+            import('../services/googleCalendar.service.js').then(({ deleteGoogleEvent }) => {
+                deleteGoogleEvent(existing.id, existing.assignedToId, existing.googleEventId, existing.workspaceId)
+                    .catch(e => console.error('[GoogleCalendar Hook] Delete error:', e.message));
+            });
+        }
 
         res.json({ success: true, message: 'Randevu iptal edildi' });
     } catch (error) {

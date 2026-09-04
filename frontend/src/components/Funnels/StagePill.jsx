@@ -1,6 +1,10 @@
 import { Settings, Bot, Users, User } from 'lucide-react';
 
-const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick }) => {
+const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick, teams = [], members = [], bots = [] }) => {
+    const assignedTeam = (teams || []).find(t => t.id === stage.assignedTeamId);
+    const assignedUser = (members || []).find(m => m.id === stage.assignedUserId);
+    const assignedBot = (bots || []).find(b => b.id === stage.assignedBotId);
+
     return (
         <div
             className={`stage-pill${isSelected ? ' active' : ''}`}
@@ -9,12 +13,34 @@ const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick }) =
         >
             <span className="stage-color-dot" style={{ backgroundColor: stage.color || '#6b7280' }} />
             <span className="stage-name">{stage.name}</span>
-            {/* Sorumlu mini ikonları */}
+            {/* Sorumlu mini rozetleri */}
             {(stage.assignedBotId || stage.assignedTeamId || stage.assignedUserId) && (
-                <span className="stage-assign-icons">
-                    {stage.assignedBotId && <Bot size={9} />}
-                    {stage.assignedTeamId && <Users size={9} />}
-                    {stage.assignedUserId && <User size={9} />}
+                <span
+                    className="stage-assign-icons"
+                    title={[
+                        assignedTeam ? `Takım: ${assignedTeam.name}` : null,
+                        assignedUser ? `Kişi: ${assignedUser.name || assignedUser.email}` : null,
+                        assignedBot ? `Bot: ${assignedBot.name}` : null,
+                    ].filter(Boolean).join(' · ')}
+                >
+                    {stage.assignedTeamId && (
+                        <span className="stage-assign-badge team" title={`Takım: ${assignedTeam?.name || 'Takım'}`}>
+                            <Users size={9} />
+                            {assignedTeam?.name && <span className="stage-assign-name">{assignedTeam.name}</span>}
+                        </span>
+                    )}
+                    {stage.assignedUserId && (
+                        <span className="stage-assign-badge user" title={`Kişi: ${assignedUser?.name || assignedUser?.email || 'Kişi'}`}>
+                            <User size={9} />
+                            {assignedUser?.name && <span className="stage-assign-name">{assignedUser.name}</span>}
+                        </span>
+                    )}
+                    {stage.assignedBotId && (
+                        <span className="stage-assign-badge bot" title={`Bot: ${assignedBot?.name || 'Bot'}`}>
+                            <Bot size={9} />
+                            {assignedBot?.name && <span className="stage-assign-name">{assignedBot.name}</span>}
+                        </span>
+                    )}
                 </span>
             )}
             {count > 0 && (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Settings, ChevronRight, ChevronDown, GripVertical, Bot, Users, User } from 'lucide-react';
 import StagePill from './StagePill';
 
@@ -16,12 +16,66 @@ const FunnelPipeline = ({
     depth = 0,
     isLast = false,
     connectorLines = [],
+    teams = [],
+    members = [],
+    bots = [],
+    allFunnels = [],
     children,
 }) => {
     const [isExpanded, setIsExpanded] = useState(true);
     const [dropHighlight, setDropHighlight] = useState(false);
     const stages = (funnel.stages || []).sort((a, b) => a.order - b.order);
     const totalCount = stages.reduce((sum, s) => sum + (stageCounts[s.id] || 0), 0);
+
+    const flattenTeams = (list) => (list || []).flatMap(t => [t, ...(t.children ? flattenTeams(t.children) : [])]);
+    const allFlatTeams = useMemo(() => flattenTeams(teams), [teams]);
+
+    const assignedTeam = allFlatTeams.find(t => t.id === funnel.assignedTeamId) || funnel.assignedTeam;
+    const assignedUser = (members || []).find(m => m.id === funnel.assignedUserId) || funnel.assignedUser;
+    const assignedBot = (bots || []).find(b => b.id === funnel.assignedBotId) || funnel.assignedBot;
+
+    // Hiyerarşik Miras: Kendi ataması yoksa üst akışlardan miras al
+    const inherited = useMemo(() => {
+        if (funnel.assignedTeamId || funnel.assignedUserId || funnel.assignedBotId) {
+            return null; // Doğrudan ataması var
+        }
+        if (!funnel.parentId || !allFunnels || allFunnels.length === 0) return null;
+
+        let curParentId = funnel.parentId;
+        let depth = 0;
+        let inheritedTeamId = null;
+        let inheritedUserId = null;
+        let inheritedBotId = null;
+        let sourceFunnelName = null;
+
+        while (curParentId && depth < 10) {
+            const parent = allFunnels.find(f => f.id === curParentId);
+            if (!parent) break;
+            if (!inheritedTeamId && parent.assignedTeamId) {
+                inheritedTeamId = parent.assignedTeamId;
+                if (!sourceFunnelName) sourceFunnelName = parent.name;
+            }
+            if (!inheritedUserId && parent.assignedUserId) {
+                inheritedUserId = parent.assignedUserId;
+                if (!sourceFunnelName) sourceFunnelName = parent.name;
+            }
+            if (!inheritedBotId && parent.assignedBotId) {
+                inheritedBotId = parent.assignedBotId;
+                if (!sourceFunnelName) sourceFunnelName = parent.name;
+            }
+            curParentId = parent.parentId;
+            depth++;
+        }
+
+        if (!inheritedTeamId && !inheritedUserId && !inheritedBotId) return null;
+
+        return {
+            team: inheritedTeamId ? allFlatTeams.find(t => t.id === inheritedTeamId) : null,
+            user: inheritedUserId ? (members || []).find(m => m.id === inheritedUserId) : null,
+            bot: inheritedBotId ? (bots || []).find(b => b.id === inheritedBotId) : null,
+            sourceFunnelName
+        };
+    }, [funnel, allFunnels, allFlatTeams, members, bots]);
 
     const INDENT = 32;
 
@@ -124,25 +178,84 @@ const FunnelPipeline = ({
                             })}
                         </div>
                     )}
-                    {/* Sorumlu ikonları */}
-                    {(funnel.assignedBotId || funnel.assignedTeamId || funnel.assignedUserId) && (
-                    <div className="funnel-responsibility-icons">
-                        {funnel.assignedBotId && (
-                            <span className="responsibility-icon bot" title="Bot atanmış">
-                                <Bot size={13} />
+                    {/* Sorumlu rozetleri */}
+                    {(funnel.assignedBotId || funnel.assignedTeamId || funnel.assignedUserId) ? (
+                        <div className="funnel-responsibility-icons">
+                            {funnel.assignedTeamId && (
+                                <span
+                                    className="responsibility-badge team"
+                                    title={`Atanmış Takım: ${assignedTeam?.name || 'Takım'}`}
+                                    onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                                >
+                                    <Users size={12} />
+                                    <span className="responsibility-name">{assignedTeam?.name || 'Takım'}</span>
+                                </span>
+                            )}
+                            {funnel.assignedUserId && (
+                                <span
+                                    className="responsibility-badge user"
+                                    title={`Atanmış Kişi: ${assignedUser?.name || assignedUser?.email || 'Kişi'}`}
+                                    onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                                >
+                                    <User size={12} />
+                                    <span className="responsibility-name">{assignedUser?.name || assignedUser?.email || 'Kişi'}</span>
+                                </span>
+                            )}
+                            {funnel.assignedBotId && (
+                                <span
+                                    className="responsibility-badge bot"
+                                    title={`Atanmış Bot: ${assignedBot?.name || 'Bot'}`}
+                                    onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                                >
+                                    <Bot size={12} />
+                                    <span className="responsibility-name">{assignedBot?.name || 'Bot'}</span>
+                                </span>
+                            )}
+                        </div>
+                    ) : inherited && (inherited.team || inherited.user || inherited.bot) ? (
+                        <div className="funnel-responsibility-icons">
+                            {inherited.team && (
+                                <span
+                                    className="responsibility-badge team inherited"
+                                    title={`${inherited.sourceFunnelName} akışından miras alındı`}
+                                    onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                                >
+                                    <Users size={12} />
+                                    <span className="responsibility-name">{inherited.team.name} (Miras)</span>
+                                </span>
+                            )}
+                            {inherited.user && (
+                                <span
+                                    className="responsibility-badge user inherited"
+                                    title={`${inherited.sourceFunnelName} akışından miras alındı`}
+                                    onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                                >
+                                    <User size={12} />
+                                    <span className="responsibility-name">{inherited.user.name || inherited.user.email} (Miras)</span>
+                                </span>
+                            )}
+                            {inherited.bot && (
+                                <span
+                                    className="responsibility-badge bot inherited"
+                                    title={`${inherited.sourceFunnelName} akışından miras alındı`}
+                                    onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                                >
+                                    <Bot size={12} />
+                                    <span className="responsibility-name">{inherited.bot.name} (Miras)</span>
+                                </span>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="funnel-responsibility-icons">
+                            <span
+                                className="responsibility-badge unassigned"
+                                title="Sorumlu Ata (Takım, Kişi veya Bot)"
+                                onClick={e => { e.stopPropagation(); onFunnelSettingsClick?.(funnel); }}
+                            >
+                                <Users size={12} />
+                                <span className="responsibility-name">+ Sorumlu Ata</span>
                             </span>
-                        )}
-                        {funnel.assignedTeamId && (
-                            <span className="responsibility-icon team" title="Takım atanmış">
-                                <Users size={13} />
-                            </span>
-                        )}
-                        {funnel.assignedUserId && (
-                            <span className="responsibility-icon user" title="Kişi atanmış">
-                                <User size={13} />
-                            </span>
-                        )}
-                    </div>
+                        </div>
                     )}
                     <div className="funnel-header-right">
                         <span className="funnel-stage-count">
@@ -205,6 +318,9 @@ const FunnelPipeline = ({
                                             isSelected={selectedStage === stage.id}
                                             onClick={onStageClick}
                                             onSettingsClick={onStageSettingsClick}
+                                            teams={allFlatTeams}
+                                            members={members}
+                                            bots={bots}
                                         />
                                     </div>
                                     {i < stages.length - 1 && (

@@ -949,14 +949,117 @@ select.action-param {
     transform: scale(1.15);
 }
 
-/* ── Funnel Responsibility Icons ── */
+/* ── Funnel Responsibility Badges ── */
 .funnel-responsibility-icons {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-left: 8px;
+    gap: 6px;
+    margin-left: 6px;
+    flex-wrap: wrap;
 }
 
+.responsibility-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    height: 24px;
+    border-radius: 12px;
+    font-size: 0.73rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.responsibility-badge .responsibility-name {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.responsibility-badge.bot {
+    background: #f5f3ff;
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
+}
+
+.responsibility-badge.bot:hover {
+    background: #ede9fe;
+    border-color: #c4b5fd;
+    transform: translateY(-1px);
+}
+
+.responsibility-badge.team {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+.responsibility-badge.team:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    transform: translateY(-1px);
+}
+
+.responsibility-badge.user {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+
+.responsibility-badge.user:hover {
+    background: #d1fae5;
+    border-color: #6ee7b7;
+    transform: translateY(-1px);
+}
+
+.responsibility-badge.unassigned {
+    background: #f8fafc;
+    color: #94a3b8;
+    border: 1px dashed #cbd5e1;
+    font-size: 0.7rem;
+    opacity: 0.45;
+    transition: opacity 0.2s, background 0.15s;
+}
+
+.funnel-card:hover .responsibility-badge.unassigned {
+    opacity: 1;
+}
+
+.responsibility-badge.unassigned:hover {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #94a3b8;
+}
+
+/* Inherited responsibility styles */
+.responsibility-badge.inherited {
+    border-style: dashed;
+    opacity: 0.88;
+}
+
+.responsibility-badge.inherited.team {
+    background: #f0f7ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+
+.responsibility-badge.inherited.user {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #16a34a;
+}
+
+.responsibility-badge.inherited.bot {
+    background: #faf5ff;
+    border-color: #d8b4fe;
+    color: #9333ea;
+}
+
+/* Backward compatibility */
 .responsibility-icon {
     display: inline-flex;
     align-items: center;
@@ -990,12 +1093,47 @@ select.action-param {
     transform: scale(1.15);
 }
 
-/* ── Stage Assignment Mini Icons ── */
+/* ── Stage Assignment Mini Badges ── */
 .stage-assign-icons {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    margin-left: 2px;
-    color: #94a3b8;
-    opacity: 0.7;
+    gap: 4px;
+    margin-left: 4px;
+}
+
+.stage-assign-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.stage-assign-badge.bot {
+    background: #f5f3ff;
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
+}
+
+.stage-assign-badge.team {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+.stage-assign-badge.user {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+
+.stage-assign-badge .stage-assign-name {
+    max-width: 75px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
 }
