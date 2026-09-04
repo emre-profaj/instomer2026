@@ -50,7 +50,11 @@ export default function FirmSettings() {
     const [selectedUserFilter, setSelectedUserFilter] = useState('ALL');
 
     const [branchSearchQuery, setBranchSearchQuery] = useState('');
+    const [selectedBranchLocationFilter, setSelectedBranchLocationFilter] = useState('ALL');
+    const [selectedBranchDoctorFilter, setSelectedBranchDoctorFilter] = useState('ALL');
+
     const [locationSearchQuery, setLocationSearchQuery] = useState('');
+    const [selectedLocationDoctorFilter, setSelectedLocationDoctorFilter] = useState('ALL');
 
     // Location Modal State
     const [locationModalOpen, setLocationModalOpen] = useState(false);
@@ -333,19 +337,48 @@ export default function FirmSettings() {
 
     // Filtered Branches
     const filteredBranches = useMemo(() => {
-        if (!branchSearchQuery) return branches;
-        return branches.filter(b => b.name?.toLowerCase().includes(branchSearchQuery.toLowerCase()));
-    }, [branches, branchSearchQuery]);
+        return branches.filter(b => {
+            const matchesSearch = !branchSearchQuery || 
+                b.name?.toLowerCase().includes(branchSearchQuery.toLowerCase());
+            
+            const docs = b.doctors || [];
+            
+            let matchesLocation = true;
+            if (selectedBranchLocationFilter !== 'ALL') {
+                matchesLocation = docs.some(d => d.locationId === selectedBranchLocationFilter);
+            }
+
+            let matchesDocStatus = true;
+            if (selectedBranchDoctorFilter === 'WITH_DOC') {
+                matchesDocStatus = docs.length > 0;
+            } else if (selectedBranchDoctorFilter === 'EMPTY') {
+                matchesDocStatus = docs.length === 0;
+            }
+
+            return matchesSearch && matchesLocation && matchesDocStatus;
+        });
+    }, [branches, branchSearchQuery, selectedBranchLocationFilter, selectedBranchDoctorFilter]);
 
     // Filtered Locations
     const filteredLocations = useMemo(() => {
-        if (!locationSearchQuery) return locations;
-        return locations.filter(l => 
-            l.name?.toLowerCase().includes(locationSearchQuery.toLowerCase()) ||
-            l.address?.toLowerCase().includes(locationSearchQuery.toLowerCase()) ||
-            l.phone?.toLowerCase().includes(locationSearchQuery.toLowerCase())
-        );
-    }, [locations, locationSearchQuery]);
+        return locations.filter(l => {
+            const matchesSearch = !locationSearchQuery || 
+                l.name?.toLowerCase().includes(locationSearchQuery.toLowerCase()) ||
+                l.address?.toLowerCase().includes(locationSearchQuery.toLowerCase()) ||
+                l.phone?.toLowerCase().includes(locationSearchQuery.toLowerCase());
+            
+            const locDoctors = allDoctors.filter(d => d.locationId === l.id);
+
+            let matchesDocStatus = true;
+            if (selectedLocationDoctorFilter === 'WITH_DOC') {
+                matchesDocStatus = locDoctors.length > 0;
+            } else if (selectedLocationDoctorFilter === 'EMPTY') {
+                matchesDocStatus = locDoctors.length === 0;
+            }
+
+            return matchesSearch && matchesDocStatus;
+        });
+    }, [locations, locationSearchQuery, selectedLocationDoctorFilter, allDoctors]);
 
     return (
         <div className="fs-container">
@@ -684,7 +717,7 @@ export default function FirmSettings() {
                                 <Search size={15} className="fs-search-icon" />
                                 <input 
                                     type="text" 
-                                    placeholder="Tıbbi branş veya bölüm ara..."
+                                    placeholder="Tıbbi branş veya poliklinik ara..."
                                     value={branchSearchQuery}
                                     onChange={e => setBranchSearchQuery(e.target.value)}
                                 />
@@ -695,9 +728,28 @@ export default function FirmSettings() {
                                 )}
                             </div>
 
-                            <button className="fs-btn-primary" onClick={openCreateBranchModal}>
-                                <Plus size={14} /> Yeni Branş Ekle
-                            </button>
+                            <div className="fs-filters">
+                                <select 
+                                    className="fs-select"
+                                    value={selectedBranchLocationFilter}
+                                    onChange={e => setSelectedBranchLocationFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Şubeler ({locations.length})</option>
+                                    {locations.map(l => (
+                                        <option key={l.id} value={l.id}>{l.name}</option>
+                                    ))}
+                                </select>
+
+                                <select 
+                                    className="fs-select"
+                                    value={selectedBranchDoctorFilter}
+                                    onChange={e => setSelectedBranchDoctorFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Kadrolar</option>
+                                    <option value="WITH_DOC">Hekimi Olan Branşlar</option>
+                                    <option value="EMPTY">Henüz Hekim Atanmayanlar</option>
+                                </select>
+                            </div>
                         </div>
 
                         {/* Standard Branches Table */}
@@ -716,9 +768,9 @@ export default function FirmSettings() {
                                     <thead>
                                         <tr>
                                             <th style={{ minWidth: '220px' }}>Tıbbi Branş / Poliklinik</th>
+                                            <th>Hizmet Verilen Şubeler</th>
                                             <th style={{ minWidth: '280px' }}>Bağlı Hekim Kadrosu</th>
                                             <th>Hekim Sayısı</th>
-                                            <th>Hizmet Verilen Şubeler</th>
                                             <th>Durum</th>
                                             <th style={{ textAlign: 'right', width: '110px' }}>İşlem</th>
                                         </tr>
@@ -739,9 +791,27 @@ export default function FirmSettings() {
                                                             </div>
                                                             <div className="fs-doctor-meta">
                                                                 <span className="fs-doc-name">{branch.name}</span>
-                                                                <span className="fs-doc-sub">Tıbbi Poliklinik</span>
+                                                                <span className="fs-doc-sub">
+                                                                    {docs.length > 0 ? `${docs.length} Görevli Hekim` : 'Henüz Hekim Atanmadı'}
+                                                                </span>
                                                             </div>
                                                         </div>
+                                                    </td>
+
+                                                    {/* Şubeler */}
+                                                    <td>
+                                                        {branchLocationNames.length === 0 ? (
+                                                            <span className="fs-text-muted">—</span>
+                                                        ) : (
+                                                            <div className="fs-table-chips">
+                                                                {branchLocationNames.map((locName, idx) => (
+                                                                    <span key={idx} className="fs-tag-location">
+                                                                        <Building2 size={11} />
+                                                                        {locName}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </td>
 
                                                     {/* Hekimler */}
@@ -764,22 +834,6 @@ export default function FirmSettings() {
                                                         <span className="fs-tag-neutral">
                                                             {docs.length} Hekim
                                                         </span>
-                                                    </td>
-
-                                                    {/* Şubeler */}
-                                                    <td>
-                                                        {branchLocationNames.length === 0 ? (
-                                                            <span className="fs-text-muted">—</span>
-                                                        ) : (
-                                                            <div className="fs-table-chips">
-                                                                {branchLocationNames.map((locName, idx) => (
-                                                                    <span key={idx} className="fs-tag-location">
-                                                                        <Building2 size={11} />
-                                                                        {locName}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
                                                     </td>
 
                                                     {/* Durum */}
@@ -847,9 +901,17 @@ export default function FirmSettings() {
                                 )}
                             </div>
 
-                            <button className="fs-btn-primary" onClick={openCreateLocationModal}>
-                                <Plus size={14} /> Yeni Şube Ekle
-                            </button>
+                            <div className="fs-filters">
+                                <select 
+                                    className="fs-select"
+                                    value={selectedLocationDoctorFilter}
+                                    onChange={e => setSelectedLocationDoctorFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Şubeler ({locations.length})</option>
+                                    <option value="WITH_DOC">Hekim Görevde Olanlar</option>
+                                    <option value="EMPTY">Henüz Hekim Atanmayanlar</option>
+                                </select>
+                            </div>
                         </div>
 
                         {/* Standard Locations Table */}
