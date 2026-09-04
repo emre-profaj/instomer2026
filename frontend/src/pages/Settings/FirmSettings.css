@@ -350,7 +350,7 @@
     color: #0f172a;
 }
 
-/* ── 4. MAIN CARD / PANEL CONTAINER ── */
+/* ── 4. MAIN PANEL ── */
 .firm-main-panel {
     background: #ffffff;
     border: 1px solid #e2e8f0;
@@ -585,12 +585,26 @@
     margin-top: 2px;
 }
 
+/* Location Badge (Şube) */
+.location-pill-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #faf5ff;
+    color: #6b21a8;
+    border: 1px solid #e9d5ff;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+
 /* Branch Badge */
 .branch-pill-badge {
     display: inline-flex;
-    background: #f1f5f9;
-    color: #334155;
-    border: 1px solid #e2e8f0;
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
     padding: 3px 10px;
     border-radius: 6px;
     font-weight: 600;
@@ -755,7 +769,7 @@
     border-color: #fca5a5;
 }
 
-/* ── 7. PRO BRANCHES GRID ── */
+/* ── 7. PRO BRANCHES & LOCATIONS GRID ── */
 .pro-branches-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -780,6 +794,10 @@
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
 }
 
+.location-card-border:hover {
+    border-color: #c084fc;
+}
+
 .branch-card-top {
     display: flex;
     align-items: flex-start;
@@ -798,6 +816,12 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+
+.loc-icon-theme {
+    background: #faf5ff;
+    color: #7c3aed;
+    border-color: #ede9fe;
 }
 
 .branch-meta-info {
@@ -820,6 +844,30 @@
 .branch-card-actions {
     display: flex;
     gap: 6px;
+}
+
+/* Location details box */
+.location-details-box {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: #475569;
+}
+
+.loc-info-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.loc-info-icon {
+    color: #7c3aed;
+    flex-shrink: 0;
 }
 
 .branch-card-roster {
@@ -877,6 +925,21 @@
     justify-content: center;
     font-weight: 700;
     font-size: 0.7rem;
+}
+
+.doc-chip-loc {
+    font-size: 0.7rem;
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+.doc-chip-branch-badge {
+    font-size: 0.7rem;
+    color: #2563eb;
+    background: #eff6ff;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
 }
 
 .branch-card-footer {
@@ -967,7 +1030,7 @@
     background: #1d4ed8;
 }
 
-/* ── 9. MODALS (LUXURY BACKDROP BLUR) ── */
+/* ── 9. MODALS ── */
 .firm-modal-backdrop {
     position: fixed;
     top: 0;

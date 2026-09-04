@@ -1,6 +1,143 @@
 import prisma from '../lib/prisma.js';
 
-// ─── BRANCH CRUD ────────────────────────────────────────────────────────────
+// ─── LOCATIONS (ŞUBELER / KLİNİK MERKEZLERİ) ─────────────────────────────────
+
+const getLocationsConfig = async (workspaceId) => {
+    const locRule = await prisma.workspaceRule.findUnique({
+        where: { workspaceId_ruleType: { workspaceId, ruleType: 'CLINIC_LOCATIONS' } }
+    });
+
+    if (locRule?.config) {
+        try {
+            const parsed = JSON.parse(locRule.config);
+            return {
+                locations: parsed.locations || [],
+                doctorLocations: parsed.doctorLocations || {}
+            };
+        } catch (_) {}
+    }
+
+    // Default initial location if none exists
+    return {
+        locations: [
+            {
+                id: 'loc-default',
+                name: 'Merkez Şube / Poliklinik',
+                address: '',
+                phone: '',
+                isActive: true,
+                createdAt: new Date().toISOString()
+            }
+        ],
+        doctorLocations: {}
+    };
+};
+
+const saveLocationsConfig = async (workspaceId, config) => {
+    return prisma.workspaceRule.upsert({
+        where: { workspaceId_ruleType: { workspaceId, ruleType: 'CLINIC_LOCATIONS' } },
+        create: {
+            workspaceId,
+            ruleType: 'CLINIC_LOCATIONS',
+            isActive: true,
+            config: JSON.stringify(config)
+        },
+        update: {
+            config: JSON.stringify(config)
+        }
+    });
+};
+
+export const getLocations = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const config = await getLocationsConfig(workspaceId);
+        res.json({ locations: config.locations });
+    } catch (error) {
+        console.error('Get locations error:', error);
+        res.status(500).json({ error: 'Şubeler yüklenirken hata oluştu' });
+    }
+};
+
+export const createLocation = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { name, address, phone } = req.body;
+
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Şube adı gereklidir' });
+        }
+
+        const config = await getLocationsConfig(workspaceId);
+        const newLocation = {
+            id: 'loc_' + Date.now(),
+            name: name.trim(),
+            address: address?.trim() || '',
+            phone: phone?.trim() || '',
+            isActive: true,
+            createdAt: new Date().toISOString()
+        };
+
+        config.locations.push(newLocation);
+        await saveLocationsConfig(workspaceId, config);
+
+        res.status(201).json({ location: newLocation });
+    } catch (error) {
+        console.error('Create location error:', error);
+        res.status(500).json({ error: 'Şube eklenirken hata oluştu' });
+    }
+};
+
+export const updateLocation = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const { name, address, phone, isActive } = req.body;
+
+        const config = await getLocationsConfig(workspaceId);
+        const index = config.locations.findIndex(l => l.id === id);
+
+        if (index === -1) {
+            return res.status(404).json({ error: 'Şube bulunamadı' });
+        }
+
+        if (name !== undefined) config.locations[index].name = name.trim();
+        if (address !== undefined) config.locations[index].address = address.trim();
+        if (phone !== undefined) config.locations[index].phone = phone.trim();
+        if (isActive !== undefined) config.locations[index].isActive = isActive;
+
+        await saveLocationsConfig(workspaceId, config);
+        res.json({ location: config.locations[index] });
+    } catch (error) {
+        console.error('Update location error:', error);
+        res.status(500).json({ error: 'Şube güncellenirken hata oluştu' });
+    }
+};
+
+export const deleteLocation = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const config = await getLocationsConfig(workspaceId);
+
+        config.locations = config.locations.filter(l => l.id !== id);
+
+        // Remove references in doctorLocations
+        if (config.doctorLocations) {
+            for (const docId of Object.keys(config.doctorLocations)) {
+                if (config.doctorLocations[docId] === id) {
+                    delete config.doctorLocations[docId];
+                }
+            }
+        }
+
+        await saveLocationsConfig(workspaceId, config);
+        res.json({ success: true, message: 'Şube silindi' });
+    } catch (error) {
+        console.error('Delete location error:', error);
+        res.status(500).json({ error: 'Şube silinirken hata oluştu' });
+    }
+};
+
+// ─── BRANCH CRUD (TIBBİ BRANŞLAR) ────────────────────────────────────────────
 
 export const getBranches = async (req, res) => {
     try {
@@ -10,7 +147,25 @@ export const getBranches = async (req, res) => {
             include: { doctors: { orderBy: { name: 'asc' } } },
             orderBy: { order: 'asc' }
         });
-        res.json({ branches });
+
+        // Attach location information to doctors
+        const locConfig = await getLocationsConfig(workspaceId);
+        const locMap = {};
+        (locConfig.locations || []).forEach(l => { locMap[l.id] = l.name; });
+
+        const enrichedBranches = branches.map(b => ({
+            ...b,
+            doctors: (b.doctors || []).map(d => {
+                const locId = locConfig.doctorLocations?.[d.id] || (locConfig.locations[0]?.id || null);
+                return {
+                    ...d,
+                    locationId: locId,
+                    locationName: locMap[locId] || locConfig.locations[0]?.name || 'Merkez Şube'
+                };
+            })
+        }));
+
+        res.json({ branches: enrichedBranches });
     } catch (error) {
         console.error('Get branches error:', error);
         res.status(500).json({ error: 'Branşlar yüklenirken hata oluştu' });
@@ -26,7 +181,6 @@ export const createBranch = async (req, res) => {
             return res.status(400).json({ error: 'Branş adı gereklidir' });
         }
 
-        // Get max order
         const maxOrder = await prisma.appointmentBranch.aggregate({
             where: { workspaceId },
             _max: { order: true }
@@ -89,12 +243,12 @@ export const deleteBranch = async (req, res) => {
     }
 };
 
-// ─── DOCTOR CRUD ────────────────────────────────────────────────────────────
+// ─── DOCTOR CRUD (HEKİM KADROSU) ─────────────────────────────────────────────
 
 export const createDoctor = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { branchId, name, title, userId, workingDays, workStart, workEnd, slotMinutes } = req.body;
+        const { branchId, locationId, name, title, userId, workingDays, workStart, workEnd, slotMinutes } = req.body;
 
         if (!branchId || !name) {
             return res.status(400).json({ error: 'Branş ve doktor adı gereklidir' });
@@ -117,7 +271,15 @@ export const createDoctor = async (req, res) => {
             }
         });
 
-        res.status(201).json({ doctor });
+        // Save locationId in CLINIC_LOCATIONS config
+        if (locationId) {
+            const locConfig = await getLocationsConfig(workspaceId);
+            locConfig.doctorLocations = locConfig.doctorLocations || {};
+            locConfig.doctorLocations[doctor.id] = locationId;
+            await saveLocationsConfig(workspaceId, locConfig);
+        }
+
+        res.status(201).json({ doctor: { ...doctor, locationId } });
     } catch (error) {
         console.error('Create doctor error:', error);
         res.status(500).json({ error: 'Doktor oluşturulurken hata oluştu' });
@@ -127,7 +289,7 @@ export const createDoctor = async (req, res) => {
 export const updateDoctor = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, title, userId, workingDays, workStart, workEnd, slotMinutes, isActive } = req.body;
+        const { branchId, locationId, name, title, userId, workingDays, workStart, workEnd, slotMinutes, isActive } = req.body;
 
         // Verify doctor's branch belongs to workspace
         const doctor = await prisma.appointmentDoctor.findFirst({
@@ -139,6 +301,7 @@ export const updateDoctor = async (req, res) => {
         }
 
         const updateData = {};
+        if (branchId !== undefined) updateData.branchId = branchId;
         if (name !== undefined) updateData.name = name;
         if (title !== undefined) updateData.title = title;
         if (userId !== undefined) updateData.userId = userId;
@@ -153,7 +316,19 @@ export const updateDoctor = async (req, res) => {
             data: updateData
         });
 
-        res.json({ doctor: updated });
+        // Update location mapping
+        if (locationId !== undefined) {
+            const locConfig = await getLocationsConfig(workspaceId);
+            locConfig.doctorLocations = locConfig.doctorLocations || {};
+            if (locationId) {
+                locConfig.doctorLocations[id] = locationId;
+            } else {
+                delete locConfig.doctorLocations[id];
+            }
+            await saveLocationsConfig(workspaceId, locConfig);
+        }
+
+        res.json({ doctor: { ...updated, locationId } });
     } catch (error) {
         console.error('Update doctor error:', error);
         res.status(500).json({ error: 'Doktor güncellenirken hata oluştu' });
@@ -173,6 +348,14 @@ export const deleteDoctor = async (req, res) => {
         }
 
         await prisma.appointmentDoctor.delete({ where: { id } });
+
+        // Clean from doctorLocations
+        const locConfig = await getLocationsConfig(workspaceId);
+        if (locConfig.doctorLocations?.[id]) {
+            delete locConfig.doctorLocations[id];
+            await saveLocationsConfig(workspaceId, locConfig);
+        }
+
         res.json({ success: true, message: 'Doktor silindi' });
     } catch (error) {
         console.error('Delete doctor error:', error);
@@ -206,26 +389,44 @@ export const getFirmSettings = async (req, res) => {
             return res.status(404).json({ error: 'Workspace bulunamadı' });
         }
 
-        // Get sector from WorkspaceRule
+        // Sector config
         const sectorRule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'WORKSPACE_SECTOR' } }
         });
 
-        let sectorConfig = { sector: 'HEALTH' }; // Default example is HEALTH
+        let sectorConfig = { sector: 'HEALTH' };
         if (sectorRule?.config) {
             try {
                 sectorConfig = JSON.parse(sectorRule.config);
             } catch (_) {}
         }
 
-        // Get branches with doctors
+        // Get Locations (Şubeler)
+        const locConfig = await getLocationsConfig(workspaceId);
+        const locMap = {};
+        (locConfig.locations || []).forEach(l => { locMap[l.id] = l.name; });
+
+        // Get Branches with Doctors
         const branches = await prisma.appointmentBranch.findMany({
             where: { workspaceId },
             include: { doctors: { orderBy: { name: 'asc' } } },
             orderBy: { order: 'asc' }
         });
 
-        // Get workspace members / users (to assign doctors to actual agent accounts)
+        // Enrich doctors with location
+        const enrichedBranches = branches.map(b => ({
+            ...b,
+            doctors: (b.doctors || []).map(d => {
+                const locId = locConfig.doctorLocations?.[d.id] || (locConfig.locations[0]?.id || null);
+                return {
+                    ...d,
+                    locationId: locId,
+                    locationName: locMap[locId] || locConfig.locations[0]?.name || 'Merkez Şube'
+                };
+            })
+        }));
+
+        // Get workspace members / users
         const members = await prisma.workspaceMember.findMany({
             where: { workspaceId },
             include: {
@@ -240,7 +441,8 @@ export const getFirmSettings = async (req, res) => {
             workspace,
             sector: sectorConfig.sector || 'HEALTH',
             sectorConfig,
-            branches,
+            locations: locConfig.locations,
+            branches: enrichedBranches,
             users
         });
     } catch (error) {
@@ -254,7 +456,6 @@ export const updateFirmSettings = async (req, res) => {
         const { workspaceId } = req.params;
         const { sector, companyName, companyPhone, companyAddress, companyEmail, companyWorkingHours } = req.body;
 
-        // Update Workspace Rule for sector
         if (sector) {
             await prisma.workspaceRule.upsert({
                 where: { workspaceId_ruleType: { workspaceId, ruleType: 'WORKSPACE_SECTOR' } },
@@ -270,7 +471,6 @@ export const updateFirmSettings = async (req, res) => {
             });
         }
 
-        // Update workspace company info
         const wsUpdate = {};
         if (companyName !== undefined) wsUpdate.companyName = companyName;
         if (companyPhone !== undefined) wsUpdate.companyPhone = companyPhone;
@@ -292,7 +492,7 @@ export const updateFirmSettings = async (req, res) => {
     }
 };
 
-// ─── HEALTH DEMO SEEDER ─────────────────────────────────────────────────────
+// ─── HEALTH DEMO SEEDER (ŞUBELER + BRANŞLAR + DOKTORLAR) ────────────────────
 
 export const seedHealthDemo = async (req, res) => {
     try {
@@ -312,32 +512,56 @@ export const seedHealthDemo = async (req, res) => {
             }
         });
 
-        // Demo branches & doctors definition
+        // 1. Seed Locations (Şubeler)
+        const demoLocations = [
+            {
+                id: 'loc_merkez',
+                name: 'Merkez Poliklinik (Kadıköy)',
+                address: 'Bağdat Cad. No: 124 Kadıköy / İstanbul',
+                phone: '+90 216 444 0 100',
+                isActive: true,
+                createdAt: new Date().toISOString()
+            },
+            {
+                id: 'loc_avrupa',
+                name: 'Avrupa Yakası Şubesi (Nişantaşı)',
+                address: 'Valikonağı Cad. No: 58 Şişli / İstanbul',
+                phone: '+90 212 444 0 200',
+                isActive: true,
+                createdAt: new Date().toISOString()
+            }
+        ];
+
+        const locConfig = await getLocationsConfig(workspaceId);
+        locConfig.locations = demoLocations;
+        locConfig.doctorLocations = locConfig.doctorLocations || {};
+
+        // 2. Seed Medical Branches (Tıbbi Branşlar)
         const demoData = [
             {
                 name: 'Ağız ve Diş Sağlığı',
                 doctors: [
-                    { name: 'Emre Can', title: 'Dt.', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], workStart: '09:30', workEnd: '17:30', slotMinutes: 45 },
-                    { name: 'Ayşe Kaya', title: 'Uzm. Dt.', workingDays: ['monday', 'wednesday', 'friday', 'saturday'], workStart: '10:00', workEnd: '18:00', slotMinutes: 30 }
+                    { name: 'Emre Can', title: 'Dt.', locationId: 'loc_merkez', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], workStart: '09:30', workEnd: '17:30', slotMinutes: 45 },
+                    { name: 'Ayşe Kaya', title: 'Uzm. Dt.', locationId: 'loc_avrupa', workingDays: ['monday', 'wednesday', 'friday', 'saturday'], workStart: '10:00', workEnd: '18:00', slotMinutes: 30 }
                 ]
             },
             {
                 name: 'Kardiyoloji & Dahiliye',
                 doctors: [
-                    { name: 'Kemal Demir', title: 'Prof. Dr.', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday'], workStart: '09:00', workEnd: '16:00', slotMinutes: 30 },
-                    { name: 'Zeynep Öztürk', title: 'Uzm. Dr.', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], workStart: '09:00', workEnd: '17:00', slotMinutes: 30 }
+                    { name: 'Kemal Demir', title: 'Prof. Dr.', locationId: 'loc_merkez', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday'], workStart: '09:00', workEnd: '16:00', slotMinutes: 30 },
+                    { name: 'Zeynep Öztürk', title: 'Uzm. Dr.', locationId: 'loc_merkez', workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], workStart: '09:00', workEnd: '17:00', slotMinutes: 30 }
                 ]
             },
             {
                 name: 'Dermatoloji & Medikal Estetik',
                 doctors: [
-                    { name: 'Selin Yıldız', title: 'Uzm. Dr.', workingDays: ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday'], workStart: '10:00', workEnd: '18:30', slotMinutes: 40 }
+                    { name: 'Selin Yıldız', title: 'Uzm. Dr.', locationId: 'loc_avrupa', workingDays: ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday'], workStart: '10:00', workEnd: '18:30', slotMinutes: 40 }
                 ]
             },
             {
                 name: 'Göz Hastalıkları',
                 doctors: [
-                    { name: 'Burak Şahin', title: 'Op. Dr.', workingDays: ['monday', 'tuesday', 'thursday', 'friday'], workStart: '09:00', workEnd: '17:00', slotMinutes: 20 }
+                    { name: 'Burak Şahin', title: 'Op. Dr.', locationId: 'loc_avrupa', workingDays: ['monday', 'tuesday', 'thursday', 'friday'], workStart: '09:00', workEnd: '17:00', slotMinutes: 20 }
                 ]
             }
         ];
@@ -347,7 +571,6 @@ export const seedHealthDemo = async (req, res) => {
 
         for (let i = 0; i < demoData.length; i++) {
             const item = demoData[i];
-            // Check if branch already exists
             let branch = await prisma.appointmentBranch.findFirst({
                 where: { workspaceId, name: item.name }
             });
@@ -364,14 +587,13 @@ export const seedHealthDemo = async (req, res) => {
                 createdBranchesCount++;
             }
 
-            // Create doctors for this branch
             for (const doc of item.doctors) {
-                const existingDoc = await prisma.appointmentDoctor.findFirst({
+                let existingDoc = await prisma.appointmentDoctor.findFirst({
                     where: { branchId: branch.id, name: doc.name }
                 });
 
                 if (!existingDoc) {
-                    await prisma.appointmentDoctor.create({
+                    existingDoc = await prisma.appointmentDoctor.create({
                         data: {
                             branchId: branch.id,
                             name: doc.name,
@@ -385,20 +607,18 @@ export const seedHealthDemo = async (req, res) => {
                     });
                     createdDoctorsCount++;
                 }
+
+                if (doc.locationId) {
+                    locConfig.doctorLocations[existingDoc.id] = doc.locationId;
+                }
             }
         }
 
-        // Fetch refreshed branches
-        const refreshedBranches = await prisma.appointmentBranch.findMany({
-            where: { workspaceId },
-            include: { doctors: { orderBy: { name: 'asc' } } },
-            orderBy: { order: 'asc' }
-        });
+        await saveLocationsConfig(workspaceId, locConfig);
 
         res.json({
             success: true,
-            message: `Örnek sağlık verisi başarıyla yüklendi (${createdBranchesCount} branş, ${createdDoctorsCount} doktor oluşturuldu).`,
-            branches: refreshedBranches
+            message: `Örnek sağlık verisi başarıyla yüklendi (${demoLocations.length} şube, ${createdBranchesCount} branş, ${createdDoctorsCount} hekim eklendi).`
         });
     } catch (error) {
         console.error('seedHealthDemo error:', error);
@@ -416,7 +636,20 @@ export const getAllDoctors = async (req, res) => {
             orderBy: { name: 'asc' }
         });
 
-        res.json({ doctors });
+        const locConfig = await getLocationsConfig(workspaceId);
+        const locMap = {};
+        (locConfig.locations || []).forEach(l => { locMap[l.id] = l.name; });
+
+        const enrichedDoctors = doctors.map(d => {
+            const locId = locConfig.doctorLocations?.[d.id] || (locConfig.locations[0]?.id || null);
+            return {
+                ...d,
+                locationId: locId,
+                locationName: locMap[locId] || locConfig.locations[0]?.name || 'Merkez Şube'
+            };
+        });
+
+        res.json({ doctors: enrichedDoctors });
     } catch (error) {
         console.error('getAllDoctors error:', error);
         res.status(500).json({ error: 'Doktorlar yüklenirken hata oluştu' });

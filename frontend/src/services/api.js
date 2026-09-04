@@ -526,10 +526,17 @@ export const appointmentConfigAPI = {
     getFirmSettings: (workspaceId) => api.get(`/appointment-config/${workspaceId}/firm-settings`),
     updateFirmSettings: (workspaceId, data) => api.put(`/appointment-config/${workspaceId}/firm-settings`, data),
     seedHealthDemo: (workspaceId) => api.post(`/appointment-config/${workspaceId}/seed-health-demo`),
+    // Locations (Şubeler)
+    getLocations: (workspaceId) => api.get(`/appointment-config/${workspaceId}/locations`),
+    createLocation: (workspaceId, data) => api.post(`/appointment-config/${workspaceId}/locations`, data),
+    updateLocation: (workspaceId, id, data) => api.put(`/appointment-config/${workspaceId}/locations/${id}`, data),
+    deleteLocation: (workspaceId, id) => api.delete(`/appointment-config/${workspaceId}/locations/${id}`),
+    // Branches (Tıbbi Branşlar)
     getBranches: (workspaceId) => api.get(`/appointment-config/${workspaceId}/branches`),
     createBranch: (workspaceId, data) => api.post(`/appointment-config/${workspaceId}/branches`, data),
     updateBranch: (workspaceId, id, data) => api.put(`/appointment-config/${workspaceId}/branches/${id}`, data),
     deleteBranch: (workspaceId, id) => api.delete(`/appointment-config/${workspaceId}/branches/${id}`),
+    // Doctors (Hekimler)
     getAllDoctors: (workspaceId) => api.get(`/appointment-config/${workspaceId}/doctors`),
     createDoctor: (workspaceId, data) => api.post(`/appointment-config/${workspaceId}/doctors`, data),
     updateDoctor: (workspaceId, id, data) => api.put(`/appointment-config/${workspaceId}/doctors/${id}`, data),
