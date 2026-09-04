@@ -1770,7 +1770,7 @@ const Calendar = () => {
                                                     style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}
                                                     onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
                                                     <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)}</span>
-                                                    <span className="week-event-title">{apt.title}</span>
+                                                    <span className="week-event-title">{apt.title}{apt.isGoogleEvent && apt.assignedTo?.name ? ` (${apt.assignedTo.name})` : ''}</span>
                                                 </div>
                                             ))}
                                             {calls.map(sc => (
@@ -1809,7 +1809,7 @@ const Calendar = () => {
                                                 style={{ backgroundColor: apt.isGoogleEvent ? '#4285F4' : (apt.color || '#3b82f6') }}
                                                 onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
                                                 <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
-                                                <span className="day-event-title">{apt.title}</span>
+                                                <span className="day-event-title">{apt.title}{apt.isGoogleEvent && apt.assignedTo?.name ? ` (${apt.assignedTo.name})` : ''}</span>
                                                 {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
                                             </div>
                                         ))}
@@ -1869,7 +1869,7 @@ const Calendar = () => {
                                                             {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
                                                             {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
                                                             <span className="apt-time">{formatTime(apt.startTime)}</span>
-                                                            <span className="apt-title">{apt.title}</span>
+                                                            <span className="apt-title">{apt.title}{apt.isGoogleEvent && apt.assignedTo?.name ? ` (${apt.assignedTo.name})` : ''}</span>
                                                         </div>
                                                         <div className="appointment-tooltip">
                                                             <div className="tooltip-header" style={{ borderLeftColor: apt.isGoogleEvent ? '#4285F4' : apt.color }}>
@@ -2708,7 +2708,7 @@ const Calendar = () => {
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
                                                 <span className="popup-time">{formatTime(apt.startTime)}</span>
-                                                <span className="popup-title">{apt.title}</span>
+                                                <span className="popup-title">{apt.title}{apt.isGoogleEvent && apt.assignedTo?.name ? ` (${apt.assignedTo.name})` : ''}</span>
                                                 {apt.contactName && <span className="popup-contact">{apt.contactName}</span>}
                                             </div>
                                         )
