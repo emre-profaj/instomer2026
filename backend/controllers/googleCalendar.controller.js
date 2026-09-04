@@ -73,11 +73,15 @@ export const getGoogleCalendarStatus = async (req, res) => {
 export const disconnectGoogleCalendar = async (req, res) => {
     try {
         const workspaceId = req.body.workspaceId || req.query.workspaceId || req.headers['x-workspace-id'];
+        const googleEmail = req.body.googleEmail || req.query.googleEmail || null;
         if (!workspaceId) {
             return res.status(400).json({ error: 'workspaceId zorunludur' });
         }
-        await disconnectCalendar(req.user.id, workspaceId);
-        res.json({ success: true, message: 'Google Takvim bağlantısı kesildi' });
+        await disconnectCalendar(req.user.id, workspaceId, googleEmail);
+        res.json({
+            success: true,
+            message: googleEmail ? `${googleEmail} bağlantısı kesildi` : 'Google Takvim bağlantısı kesildi'
+        });
     } catch (error) {
         console.error('disconnectGoogleCalendar error:', error);
         res.status(500).json({ error: 'Bağlantı kesilirken hata oluştu' });

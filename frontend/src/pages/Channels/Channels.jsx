@@ -473,10 +473,13 @@ const Channels = () => {
         }
     };
 
-    const handleDisconnectMyGoogleFromChannels = async () => {
-        if (!confirm('Kendi Google Takvim bağlantınızı bu çalışma alanı için kesmek istediğinize emin misiniz?')) return;
+    const handleDisconnectMyGoogleFromChannels = async (targetEmail = null) => {
+        const confirmMsg = targetEmail
+            ? `${targetEmail} Google Takvim hesabının bağlantısını kesmek istediğinizden emin misiniz?`
+            : 'Kendi Google Takvim bağlantınızı bu çalışma alanı için kesmek istediğinize emin misiniz?';
+        if (!confirm(confirmMsg)) return;
         try {
-            await googleCalendarAPI.disconnect(currentWorkspace.id);
+            await googleCalendarAPI.disconnect(currentWorkspace.id, targetEmail);
             const res = await googleCalendarAPI.getWorkspaceConfig(currentWorkspace.id);
             setGoogleCalConfig(res.data);
         } catch (err) {
@@ -2836,26 +2839,42 @@ const Channels = () => {
 
                             {/* Giriş Yapan Kullanıcının Kendi Takvimi */}
                             {(() => {
-                                const myCal = googleCalConfig?.connectedUsers?.find(u => u.userId === user?.id);
+                                const myCals = googleCalConfig?.connectedUsers?.filter(u => u.userId === user?.id) || [];
                                 return (
                                     <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
-                                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                            Kendi Google Takviminiz
-                                        </div>
-                                        {myCal ? (
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ color: '#16a34a', fontSize: '14px' }}>✓</span>
-                                                    <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{myCal.googleEmail}</span>
-                                                    <span style={{ fontSize: '11px', color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>Bağlı</span>
-                                                </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+                                                Kendi Google Takvimleriniz ({myCals.length})
+                                            </div>
+                                            {myCals.length > 0 && (
                                                 <button
                                                     type="button"
-                                                    onClick={handleDisconnectMyGoogleFromChannels}
-                                                    style={{ padding: '6px 12px', fontSize: '12px', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                                                    onClick={handleConnectMyGoogleFromChannels}
+                                                    disabled={connectingGoogleCal}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', cursor: 'pointer', fontWeight: 500, fontSize: '12px' }}
                                                 >
-                                                    Bağlantıyı Kes
+                                                    + Başka Hesap Ekle
                                                 </button>
+                                            )}
+                                        </div>
+                                        {myCals.length > 0 ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {myCals.map(cal => (
+                                                    <div key={cal.id || cal.googleEmail} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span style={{ color: '#16a34a', fontSize: '14px' }}>✓</span>
+                                                            <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{cal.googleEmail}</span>
+                                                            <span style={{ fontSize: '11px', color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>Bağlı</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDisconnectMyGoogleFromChannels(cal.googleEmail)}
+                                                            style={{ padding: '6px 12px', fontSize: '12px', background: '#fff', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                                                        >
+                                                            Bağlantıyı Kes
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
                                         ) : (
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #bfdbfe' }}>

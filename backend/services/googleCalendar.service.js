@@ -115,13 +115,12 @@ export async function handleOAuthCallback(code, stateStr, req = null) {
     const userInfo = await oauth2.userinfo.get();
     const googleEmail = userInfo.data?.email || '';
 
-    // Veritabanına kaydet/güncelle (workspace bazlı)
+    // Veritabanına kaydet/güncelle (workspace bazlı, çoklu hesap destekli)
     await prisma.userGoogleCalendar.upsert({
         where: {
-            userId_workspaceId: { userId, workspaceId }
+            userId_workspaceId_googleEmail: { userId, workspaceId, googleEmail }
         },
         update: {
-            googleEmail,
             accessToken: tokens.access_token,
             ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
             expiryDate: tokens.expiry_date ? BigInt(tokens.expiry_date) : undefined,
@@ -146,15 +145,21 @@ export async function handleOAuthCallback(code, stateStr, req = null) {
 /**
  * İlgili kullanıcının kimlik doğrulamasını yapmış Google Calendar API istemcisi döner
  */
-export async function getCalendarClientForUser(userId, workspaceId) {
+export async function getCalendarClientForUser(userId, workspaceId, googleEmail = null) {
     if (!userId || !workspaceId) return null;
 
     try {
-        const calRecord = await prisma.userGoogleCalendar.findUnique({
-            where: {
-                userId_workspaceId: { userId, workspaceId }
-            }
-        });
+        let calRecord = null;
+        if (googleEmail) {
+            calRecord = await prisma.userGoogleCalendar.findFirst({
+                where: { userId, workspaceId, googleEmail, isActive: true }
+            });
+        } else {
+            calRecord = await prisma.userGoogleCalendar.findFirst({
+                where: { userId, workspaceId, isActive: true },
+                orderBy: { createdAt: 'asc' }
+            });
+        }
 
         if (!calRecord || !calRecord.accessToken || !calRecord.isActive) return null;
 
@@ -172,9 +177,7 @@ export async function getCalendarClientForUser(userId, workspaceId) {
                 if (newTokens.refresh_token) updateData.refreshToken = newTokens.refresh_token;
                 if (newTokens.expiry_date) updateData.expiryDate = BigInt(newTokens.expiry_date);
                 await prisma.userGoogleCalendar.update({
-                    where: {
-                        userId_workspaceId: { userId, workspaceId }
-                    },
+                    where: { id: calRecord.id },
                     data: updateData
                 });
             } catch (err) {
@@ -397,40 +400,53 @@ export async function deleteGoogleEvent(appointmentId, assignedToId = null, goog
  * Kullanıcının belirli bir çalışma alanındaki Google Takvim bağlantı durumunu getirir
  */
 export async function getUserGoogleCalendarStatus(userId, workspaceId) {
-    if (!userId || !workspaceId) return { isConnected: false, isWorkspaceConfigured: false, email: null, isExpired: false };
+    if (!userId || !workspaceId) return { isConnected: false, isWorkspaceConfigured: false, accounts: [], email: null, isExpired: false };
 
     const creds = await getWorkspaceGoogleCredentials(workspaceId);
     const isWorkspaceConfigured = !!creds;
 
-    const cal = await prisma.userGoogleCalendar.findUnique({
-        where: {
-            userId_workspaceId: { userId, workspaceId }
-        },
-        select: { googleEmail: true, isActive: true, updatedAt: true, refreshToken: true, expiryDate: true }
+    const cals = await prisma.userGoogleCalendar.findMany({
+        where: { userId, workspaceId, isActive: true },
+        select: { id: true, googleEmail: true, isActive: true, updatedAt: true, refreshToken: true, expiryDate: true },
+        orderBy: { createdAt: 'asc' }
     });
 
-    const isExpired = !!(cal && !cal.refreshToken && cal.expiryDate && Number(cal.expiryDate) < Date.now());
+    const accounts = cals.map(cal => {
+        const isExpired = !!(!cal.refreshToken && cal.expiryDate && Number(cal.expiryDate) < Date.now());
+        return {
+            id: cal.id,
+            email: cal.googleEmail,
+            isExpired,
+            updatedAt: cal.updatedAt
+        };
+    });
+
+    const activeAccounts = accounts.filter(a => !a.isExpired);
 
     return {
         isWorkspaceConfigured,
-        isConnected: !!(cal && cal.isActive && cal.googleEmail && !isExpired),
-        isExpired,
-        email: (cal && cal.isActive) ? cal.googleEmail : null,
-        updatedAt: cal?.updatedAt || null
+        isConnected: activeAccounts.length > 0,
+        accounts,
+        email: activeAccounts[0]?.email || accounts[0]?.email || null,
+        isExpired: accounts.length > 0 && activeAccounts.length === 0,
+        updatedAt: accounts[0]?.updatedAt || null
     };
 }
 
 /**
- * Kullanıcının belirli bir çalışma alanındaki Google Takvim bağlantısını keser
+ * Kullanıcının belirli bir çalışma alanındaki Google Takvim bağlantısını keser (seçilen hesabı veya tümünü)
  */
-export async function disconnectCalendar(userId, workspaceId) {
+export async function disconnectCalendar(userId, workspaceId, googleEmail = null) {
     if (!userId || !workspaceId) return false;
 
-    await prisma.userGoogleCalendar.deleteMany({
-        where: { userId, workspaceId }
-    });
+    const where = { userId, workspaceId };
+    if (googleEmail) {
+        where.googleEmail = googleEmail;
+    }
 
-    console.log(`🔌 [GoogleCalendar] Disconnected for user ${userId} in workspace ${workspaceId}`);
+    await prisma.userGoogleCalendar.deleteMany({ where });
+
+    console.log(`🔌 [GoogleCalendar] Disconnected for user ${userId} (${googleEmail || 'all'}) in workspace ${workspaceId}`);
     return true;
 }
 
@@ -578,7 +594,7 @@ export async function getGoogleCalendarEvents(userIdInput, workspaceId, { startD
                     continue;
                 }
 
-                const calendar = await getCalendarClientForUser(conn.userId, workspaceId);
+                const calendar = await getCalendarClientForUser(conn.userId, workspaceId, conn.googleEmail);
                 if (!calendar) continue;
 
                 const response = await calendar.events.list({
@@ -609,13 +625,18 @@ export async function getGoogleCalendarEvents(userIdInput, workspaceId, { startD
                         googleMeetLink: ev.hangoutLink || null,
                         htmlLink: ev.htmlLink || null,
                         isGoogleEvent: true,
+                        googleEmail: conn.googleEmail,
                         status: 'SCHEDULED',
                         color: '#4285F4',
                         contactName: ev.attendees?.map(a => a.displayName || a.email).join(', ') || '',
                         notes: ev.description || '',
                         location: ev.location || null,
                         assignedToId: conn.userId,
-                        assignedTo: conn.user ? { id: conn.user.id, name: conn.user.name, email: conn.user.email } : null
+                        assignedTo: conn.user ? {
+                            id: conn.user.id,
+                            name: `${conn.user.name} (${conn.googleEmail})`,
+                            email: conn.googleEmail
+                        } : { id: conn.userId, name: conn.googleEmail, email: conn.googleEmail }
                     });
                 }
             } catch (err) {

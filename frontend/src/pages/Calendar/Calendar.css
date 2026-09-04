@@ -3058,6 +3058,41 @@
     cursor: not-allowed;
 }
 
+.google-cals-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.google-cal-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 11px;
+    background: #f8fafc;
+    border: 1px dashed #94a3b8;
+    border-radius: 8px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.google-cal-add-btn:hover:not(:disabled) {
+    background: #e2e8f0;
+    border-color: #64748b;
+    color: #0f172a;
+    transform: translateY(-1px);
+}
+
+.google-cal-add-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .google-cal-pill {
     display: inline-flex;
     align-items: center;
