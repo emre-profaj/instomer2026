@@ -75,6 +75,7 @@ export default function FirmSettings() {
     // Doctor Modal State
     const [doctorModalOpen, setDoctorModalOpen] = useState(false);
     const [editingDoctor, setEditingDoctor] = useState(null);
+    const [googleCalendars, setGoogleCalendars] = useState([]);
     const [doctorForm, setDoctorForm] = useState({
         branchId: '',
         locationId: '',
@@ -83,6 +84,7 @@ export default function FirmSettings() {
         assignmentType: 'UNASSIGNED', // 'UNASSIGNED' | 'TEAM' | 'USER'
         teamId: '',
         userId: '',
+        calendarEmail: '',
         workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
         workStart: '09:00',
         workEnd: '17:00',
@@ -107,6 +109,7 @@ export default function FirmSettings() {
                 setBranches(res.data.branches || []);
                 setWorkspaceUsers(res.data.users || []);
                 setTeams(res.data.teams || []);
+                setGoogleCalendars(res.data.googleCalendars || []);
             }
         } catch (err) {
             console.error('loadSettings error:', err);
@@ -238,6 +241,7 @@ export default function FirmSettings() {
             assignmentType: 'UNASSIGNED',
             teamId: '',
             userId: '',
+            calendarEmail: '',
             workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
             workStart: '09:00',
             workEnd: '17:00',
@@ -264,6 +268,7 @@ export default function FirmSettings() {
             assignmentType: initialAssignmentType,
             teamId: doctor.teamId || '',
             userId: doctor.userId || '',
+            calendarEmail: doctor.calendarEmail || '',
             workingDays: parsedDays,
             workStart: doctor.workStart || '09:00',
             workEnd: doctor.workEnd || '17:00',
@@ -283,7 +288,8 @@ export default function FirmSettings() {
         const payload = {
             ...doctorForm,
             teamId: doctorForm.assignmentType === 'TEAM' ? (doctorForm.teamId || null) : null,
-            userId: (doctorForm.assignmentType === 'USER' || (doctorForm.assignmentType === 'TEAM' && doctorForm.userId)) ? (doctorForm.userId || null) : null
+            userId: (doctorForm.assignmentType === 'USER' || (doctorForm.assignmentType === 'TEAM' && doctorForm.userId)) ? (doctorForm.userId || null) : null,
+            calendarEmail: doctorForm.calendarEmail || null
         };
 
         try {
@@ -675,9 +681,16 @@ export default function FirmSettings() {
                                                             </div>
                                                             <div className="fs-doctor-meta">
                                                                 <span className="fs-doc-name">{fullDoctorName}</span>
-                                                                <span className="fs-doc-sub">
-                                                                    {doc.isActive ? 'Randevuya Açık' : 'Randevuya Kapalı'}
-                                                                </span>
+                                                                <div className="fs-doc-sub-row">
+                                                                    <span className="fs-doc-sub">
+                                                                        {doc.isActive ? 'Randevuya Açık' : 'Randevuya Kapalı'}
+                                                                    </span>
+                                                                    {doc.calendarEmail && (
+                                                                        <span className="fs-cal-badge" title={`Google Takvim: ${doc.calendarEmail}`}>
+                                                                            <Calendar size={10} /> {doc.calendarEmail}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -1428,6 +1441,47 @@ export default function FirmSettings() {
                                             </div>
                                         </div>
                                     )}
+                                </div>
+
+                                {/* ── Google Takvim Entegrasyonu ── */}
+                                <div className="fs-calendar-box">
+                                    <div className="fs-calendar-head">
+                                        <label className="fs-calendar-label">
+                                            <Calendar size={14} className="text-blue" />
+                                            <span>Google Takvim Entegrasyonu</span>
+                                        </label>
+                                        <p className="fs-calendar-desc">
+                                            Bu hekime alınan randevuların otomatik işleneceği Google Takvim hesabını belirleyin.
+                                        </p>
+                                    </div>
+
+                                    <div className="fs-field" style={{ marginBottom: doctorForm.calendarEmail || googleCalendars.length === 0 ? 8 : 0 }}>
+                                        <select 
+                                            className="fs-input"
+                                            value={doctorForm.calendarEmail}
+                                            onChange={e => setDoctorForm(prev => ({ ...prev, calendarEmail: e.target.value }))}
+                                        >
+                                            <option value="">🌐 Takvim Senkronizasyonu Yok (Sadece CRM)</option>
+                                            {googleCalendars.map(cal => (
+                                                <option key={cal.id} value={cal.googleEmail}>
+                                                    📅 {cal.googleEmail} ({cal.user?.name ? `${cal.user.name} - ` : ''}Bağlı Hesap)
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {doctorForm.calendarEmail ? (
+                                        <div className="fs-calendar-active-note">
+                                            <CheckCircle2 size={13} className="text-emerald" />
+                                            <span>
+                                                Randevular otomatik olarak <strong>{doctorForm.calendarEmail}</strong> Google Takvimi'ne yazılacak ve Google Meet bağlantısı üretilecektir.
+                                            </span>
+                                        </div>
+                                    ) : googleCalendars.length === 0 ? (
+                                        <div className="fs-calendar-warning-note">
+                                            <span>ℹ️ Bu çalışma alanına bağlı aktif bir Google Takvim bulunamadı. Sol menüden <strong>Ayarlar &gt; Entegrasyonlar</strong> sayfasından Google Takvim bağlayabilirsiniz.</span>
+                                        </div>
+                                    ) : null}
                                 </div>
 
                                 <div className="fs-row-3">

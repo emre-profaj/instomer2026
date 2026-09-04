@@ -205,8 +205,48 @@ export async function syncAppointmentToGoogle(appointmentId, targetUserId = null
 
         let effectiveUserId = targetUserId || appointment.assignedToId;
         let calendar = null;
+        let matchedDoctorEmail = null;
 
-        if (effectiveUserId) {
+        // 🩺 1. Eğer randevuda doktor varsa, hekime özel Google Takvim eşleşmesini kontrol et
+        if (appointment.doctorName) {
+            try {
+                const locRule = await prisma.workspaceRule.findFirst({
+                    where: { workspaceId: appointment.workspaceId, ruleType: 'CLINIC_LOCATIONS' }
+                });
+                if (locRule?.config) {
+                    const parsed = typeof locRule.config === 'string' ? JSON.parse(locRule.config) : locRule.config;
+                    if (parsed.doctorCalendars) {
+                        const doc = await prisma.appointmentDoctor.findFirst({
+                            where: {
+                                name: appointment.doctorName,
+                                branch: { workspaceId: appointment.workspaceId }
+                            }
+                        });
+                        if (doc && parsed.doctorCalendars[doc.id]) {
+                            matchedDoctorEmail = parsed.doctorCalendars[doc.id];
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('⚠️ [GoogleCalendar] Doctor calendar lookup error:', err.message);
+            }
+        }
+
+        if (matchedDoctorEmail) {
+            const docCal = await prisma.userGoogleCalendar.findFirst({
+                where: { workspaceId: appointment.workspaceId, googleEmail: matchedDoctorEmail, isActive: true }
+            });
+            if (docCal) {
+                calendar = await getCalendarClientForUser(docCal.userId, appointment.workspaceId, docCal.googleEmail);
+                if (calendar) {
+                    effectiveUserId = docCal.userId;
+                    console.log(`📅 [GoogleCalendar] Doctor ${appointment.doctorName} mapped to Google Calendar: ${matchedDoctorEmail}`);
+                }
+            }
+        }
+
+        // 2. Temsilcinin takvimine yazmayı dene
+        if (!calendar && effectiveUserId) {
             calendar = await getCalendarClientForUser(effectiveUserId, appointment.workspaceId);
         }
 
@@ -215,7 +255,7 @@ export async function syncAppointmentToGoogle(appointmentId, targetUserId = null
             if (calendar) effectiveUserId = appointment.createdById;
         }
 
-        // Eğer henüz takvim bulunamadıysa (bot/sistem veya atanmamış randevularda), workspace'teki ilk aktif takvimi kullan
+        // 3. Fallback: Workspace'teki ilk aktif takvim
         if (!calendar) {
             const fallbackCal = await prisma.userGoogleCalendar.findFirst({
                 where: { workspaceId: appointment.workspaceId, isActive: true },

@@ -13,7 +13,8 @@ const getLocationsConfig = async (workspaceId) => {
             return {
                 locations: parsed.locations || [],
                 doctorLocations: parsed.doctorLocations || {},
-                doctorTeams: parsed.doctorTeams || {}
+                doctorTeams: parsed.doctorTeams || {},
+                doctorCalendars: parsed.doctorCalendars || {}
             };
         } catch (_) {}
     }
@@ -31,7 +32,8 @@ const getLocationsConfig = async (workspaceId) => {
             }
         ],
         doctorLocations: {},
-        doctorTeams: {}
+        doctorTeams: {},
+        doctorCalendars: {}
     };
 };
 
@@ -250,7 +252,7 @@ export const deleteBranch = async (req, res) => {
 export const createDoctor = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { branchId, locationId, name, title, userId, teamId, workingDays, workStart, workEnd, slotMinutes } = req.body;
+        const { branchId, locationId, name, title, userId, teamId, calendarEmail, workingDays, workStart, workEnd, slotMinutes } = req.body;
 
         if (!branchId || !name) {
             return res.status(400).json({ error: 'Branş ve doktor adı gereklidir' });
@@ -273,7 +275,7 @@ export const createDoctor = async (req, res) => {
             }
         });
 
-        // Save locationId & teamId in CLINIC_LOCATIONS config
+        // Save locationId, teamId & calendarEmail in CLINIC_LOCATIONS config
         const locConfig = await getLocationsConfig(workspaceId);
         let configChanged = false;
 
@@ -293,11 +295,21 @@ export const createDoctor = async (req, res) => {
             configChanged = true;
         }
 
+        if (calendarEmail !== undefined) {
+            locConfig.doctorCalendars = locConfig.doctorCalendars || {};
+            if (calendarEmail) {
+                locConfig.doctorCalendars[doctor.id] = calendarEmail;
+            } else {
+                delete locConfig.doctorCalendars[doctor.id];
+            }
+            configChanged = true;
+        }
+
         if (configChanged) {
             await saveLocationsConfig(workspaceId, locConfig);
         }
 
-        res.status(201).json({ doctor: { ...doctor, locationId, teamId: teamId || null } });
+        res.status(201).json({ doctor: { ...doctor, locationId, teamId: teamId || null, calendarEmail: calendarEmail || null } });
     } catch (error) {
         console.error('Create doctor error:', error);
         res.status(500).json({ error: 'Doktor oluşturulurken hata oluştu' });
@@ -307,7 +319,7 @@ export const createDoctor = async (req, res) => {
 export const updateDoctor = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { branchId, locationId, name, title, userId, teamId, workingDays, workStart, workEnd, slotMinutes, isActive } = req.body;
+        const { branchId, locationId, name, title, userId, teamId, calendarEmail, workingDays, workStart, workEnd, slotMinutes, isActive } = req.body;
 
         // Verify doctor's branch belongs to workspace
         const doctor = await prisma.appointmentDoctor.findFirst({
@@ -334,7 +346,7 @@ export const updateDoctor = async (req, res) => {
             data: updateData
         });
 
-        // Update location & team mapping
+        // Update location, team & calendar mapping
         const locConfig = await getLocationsConfig(workspaceId);
         let configChanged = false;
 
@@ -358,11 +370,21 @@ export const updateDoctor = async (req, res) => {
             configChanged = true;
         }
 
+        if (calendarEmail !== undefined) {
+            locConfig.doctorCalendars = locConfig.doctorCalendars || {};
+            if (calendarEmail) {
+                locConfig.doctorCalendars[id] = calendarEmail;
+            } else {
+                delete locConfig.doctorCalendars[id];
+            }
+            configChanged = true;
+        }
+
         if (configChanged) {
             await saveLocationsConfig(workspaceId, locConfig);
         }
 
-        res.json({ doctor: { ...updated, locationId, teamId: teamId || null } });
+        res.json({ doctor: { ...updated, locationId, teamId: teamId || null, calendarEmail: calendarEmail || null } });
     } catch (error) {
         console.error('Update doctor error:', error);
         res.status(500).json({ error: 'Doktor güncellenirken hata oluştu' });
@@ -383,7 +405,7 @@ export const deleteDoctor = async (req, res) => {
 
         await prisma.appointmentDoctor.delete({ where: { id } });
 
-        // Clean from doctorLocations & doctorTeams
+        // Clean from doctorLocations, doctorTeams & doctorCalendars
         const locConfig = await getLocationsConfig(workspaceId);
         let configChanged = false;
 
@@ -394,6 +416,11 @@ export const deleteDoctor = async (req, res) => {
 
         if (locConfig.doctorTeams?.[id]) {
             delete locConfig.doctorTeams[id];
+            configChanged = true;
+        }
+
+        if (locConfig.doctorCalendars?.[id]) {
+            delete locConfig.doctorCalendars[id];
             configChanged = true;
         }
 
@@ -483,18 +510,20 @@ export const getFirmSettings = async (req, res) => {
             };
         });
 
-        // Enrich doctors with location and team
+        // Enrich doctors with location, team, and calendar
         const enrichedBranches = branches.map(b => ({
             ...b,
             doctors: (b.doctors || []).map(d => {
                 const locId = locConfig.doctorLocations?.[d.id] || (locConfig.locations[0]?.id || null);
                 const teamId = locConfig.doctorTeams?.[d.id] || null;
+                const calEmail = locConfig.doctorCalendars?.[d.id] || null;
                 return {
                     ...d,
                     locationId: locId,
                     locationName: locMap[locId] || locConfig.locations[0]?.name || 'Merkez Şube',
                     teamId,
-                    team: teamId ? teamMap[teamId] || null : null
+                    team: teamId ? teamMap[teamId] || null : null,
+                    calendarEmail: calEmail
                 };
             })
         }));
@@ -510,6 +539,20 @@ export const getFirmSettings = async (req, res) => {
         });
         const users = members.map(m => ({ ...m.user, workspaceRole: m.role }));
 
+        // Get connected Google Calendars in workspace
+        const googleCalendars = await prisma.userGoogleCalendar.findMany({
+            where: { workspaceId, isActive: true },
+            select: {
+                id: true,
+                userId: true,
+                googleEmail: true,
+                calendarId: true,
+                isActive: true,
+                user: { select: { id: true, name: true, email: true } }
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
         res.json({
             workspace,
             sector: sectorConfig.sector || 'HEALTH',
@@ -517,7 +560,8 @@ export const getFirmSettings = async (req, res) => {
             locations: locConfig.locations,
             branches: enrichedBranches,
             users,
-            teams: Object.values(teamMap)
+            teams: Object.values(teamMap),
+            googleCalendars
         });
     } catch (error) {
         console.error('getFirmSettings error:', error);
@@ -742,12 +786,14 @@ export const getAllDoctors = async (req, res) => {
         const enrichedDoctors = doctors.map(d => {
             const locId = locConfig.doctorLocations?.[d.id] || (locConfig.locations[0]?.id || null);
             const teamId = locConfig.doctorTeams?.[d.id] || null;
+            const calEmail = locConfig.doctorCalendars?.[d.id] || null;
             return {
                 ...d,
                 locationId: locId,
                 locationName: locMap[locId] || locConfig.locations[0]?.name || 'Merkez Şube',
                 teamId,
-                team: teamId ? teamMap[teamId] || null : null
+                team: teamId ? teamMap[teamId] || null : null,
+                calendarEmail: calEmail
             };
         });
 

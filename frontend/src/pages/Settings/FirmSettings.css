@@ -1212,3 +1212,79 @@
     color: #64748b;
     margin: 6px 0 0;
 }
+
+/* ── 11. GOOGLE CALENDAR ASSIGNMENT & BADGE ── */
+.fs-calendar-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+}
+
+.fs-calendar-head {
+    margin-bottom: 10px;
+}
+
+.fs-calendar-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 2px;
+}
+
+.fs-calendar-desc {
+    font-size: 11.5px;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.fs-calendar-active-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    font-size: 11.5px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    margin-top: 8px;
+    line-height: 1.35;
+}
+
+.fs-calendar-warning-note {
+    background: #fffbeb;
+    border: 1px dashed #fcd34d;
+    color: #92400e;
+    font-size: 11.5px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-top: 8px;
+    line-height: 1.35;
+}
+
+.fs-doc-sub-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 1px;
+}
+
+.fs-cal-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 5px;
+    border-radius: 4px;
+}
