@@ -205,19 +205,62 @@ const Calendar = () => {
         status: 'SCHEDULED'
     });
 
+// Probel doktor isimlerinde doktor adını başa alır: "Bey.Cer.Plk-Tekin Özcan - Tekin Özcan" -> "Tekin Özcan - Bey.Cer.Plk"
+function formatDoctorDisplayName(rawName) {
+    if (!rawName) return '';
+    const str = String(rawName).trim();
+    if (!str.includes(' - ')) return str;
+
+    const parts = str.split(' - ');
+    const docPart = parts[parts.length - 1].trim();
+    let polkPart = parts.slice(0, -1).join(' - ').trim();
+
+    const isPolk = (s) => /plk|polk|pol\b|poliklinik|hst\b|cer\b/i.test(s);
+    const isDocTitle = (s) => /dr\b|doktor|uzm\b|prof\b|doç\b/i.test(s);
+
+    if (isPolk(docPart) && !isPolk(polkPart)) {
+        return str;
+    }
+
+    const hasClinicPattern = isPolk(polkPart) || isDocTitle(docPart) || (docPart && polkPart.toLowerCase().includes(docPart.toLowerCase()));
+    if (!hasClinicPattern) {
+        return str;
+    }
+
+    if (docPart && polkPart.toLowerCase().includes(docPart.toLowerCase())) {
+        const idx = polkPart.toLowerCase().indexOf(docPart.toLowerCase());
+        polkPart = (polkPart.substring(0, idx) + polkPart.substring(idx + docPart.length))
+            .replace(/[-.\s]+$/, '')
+            .replace(/^[-.\s]+/, '')
+            .trim();
+    }
+
+    if (docPart && polkPart && polkPart.toLowerCase() !== docPart.toLowerCase()) {
+        return `${docPart} - ${polkPart}`;
+    }
+    return docPart || str;
+}
+
     // Group resources by branch (description) or unassigned
     const groupedResources = useMemo(() => {
         const groups = {};
         const unassigned = [];
 
         resources.forEach(r => {
+            const displayName = r.type === 'PERSON' ? formatDoctorDisplayName(r.name) : r.name;
+            const resObj = { ...r, displayName };
             const branchName = r.description?.trim();
             if (branchName) {
                 if (!groups[branchName]) groups[branchName] = [];
-                groups[branchName].push(r);
+                groups[branchName].push(resObj);
             } else {
-                unassigned.push(r);
+                unassigned.push(resObj);
             }
+        });
+
+        // Doktorları kendi branşları altında alfabetik sırala
+        Object.keys(groups).forEach(b => {
+            groups[b].sort((a, bRes) => (a.displayName || a.name || '').localeCompare(bRes.displayName || bRes.name || '', 'tr'));
         });
 
         return { groups, unassigned };
@@ -1795,7 +1838,7 @@ const Calendar = () => {
                                 <optgroup key={branchName} label={`🏥 ${branchName}`}>
                                     {branchDocs.map(resource => (
                                         <option key={resource.id} value={resource.id}>
-                                            {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.name}
+                                            {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.displayName || resource.name}
                                         </option>
                                     ))}
                                 </optgroup>
@@ -1989,7 +2032,7 @@ const Calendar = () => {
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && <span className="todo-agent">👤 {apt.assignedTo.name}</span>}
                                             {apt.isGoogleEvent && <span className="todo-agent" style={{ color: gColor, fontWeight: 500 }}>Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
-                                            {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {apt.doctorName}</span>}
+                                            {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {formatDoctorDisplayName(apt.doctorName)}</span>}
                                         </div>
                                         <div className="todo-time">{formatTime(apt.startTime)}</div>
                                     </div>
@@ -2311,7 +2354,7 @@ const Calendar = () => {
                                                                 {apt.contactPhone && <div className="tooltip-row"><Phone size={14} /><span>{apt.contactPhone}</span></div>}
                                                                 {apt.assignedTo && <div className="tooltip-row tooltip-agent"><User size={14} /><span>Temsilci: {apt.assignedTo.name}</span></div>}
                                                                 {apt.createdBy && <div className="tooltip-row" style={{ color: '#8b5cf6' }}><User size={14} /><span>Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span></div>}
-                                                                {apt.doctorName && <div className="tooltip-row" style={{ color: '#059669' }}><User size={14} /><span>🩺 Dr. {apt.doctorName}</span></div>}
+                                                                {apt.doctorName && <div className="tooltip-row" style={{ color: '#059669' }}><User size={14} /><span>🩺 Dr. {formatDoctorDisplayName(apt.doctorName)}</span></div>}
                                                                 {aptResource && <div className="tooltip-row"><Building2 size={14} /><span>{aptResource.name}</span></div>}
                                                                 {apt.notes && <div className="tooltip-notes"><FileText size={14} /><span>{apt.notes}</span></div>}
                                                             </div>
@@ -2556,11 +2599,11 @@ const Calendar = () => {
                                                     <td>
                                                         {aptResource ? (
                                                             <span className="activities-resource-badge" style={{ borderLeftColor: aptResource.color }}>
-                                                                {aptResource.type === 'PERSON' ? `👨‍⚕️ ${aptResource.name}` : aptResource.name}
+                                                                {aptResource.type === 'PERSON' ? `👨‍⚕️ ${formatDoctorDisplayName(aptResource.name)}` : aptResource.name}
                                                             </span>
                                                         ) : item.doctorName ? (
                                                             <span className="activities-resource-badge" style={{ borderLeftColor: '#10b981' }}>
-                                                                👨‍⚕️ {item.doctorName}
+                                                                👨‍⚕️ {formatDoctorDisplayName(item.doctorName)}
                                                             </span>
                                                         ) : (
                                                             <span className="activities-empty">—</span>
@@ -3028,7 +3071,7 @@ const Calendar = () => {
                                                         setFormData(prev => ({
                                                             ...prev,
                                                             resourceId: resId,
-                                                            doctorName: selectedRes ? selectedRes.name : '',
+                                                            doctorName: selectedRes ? (selectedRes.displayName || selectedRes.name) : '',
                                                             branch: selectedRes?.description || prev.branch
                                                         }));
                                                     }}
@@ -3038,7 +3081,7 @@ const Calendar = () => {
                                                         <optgroup key={branchName} label={`🏥 ${branchName}`}>
                                                             {branchDocs.map(resource => (
                                                                 <option key={resource.id} value={resource.id}>
-                                                                    {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.name}
+                                                                    {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.displayName || resource.name}
                                                                 </option>
                                                             ))}
                                                         </optgroup>

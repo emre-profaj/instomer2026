@@ -217,6 +217,50 @@ export async function getBranches(workspaceId, cinsiyet = 1, dogumTarihi = '') {
 
 /**
  * Seçilen branştaki doktor/poliklinik listesini getirir.
+/**
+ * Probel'den gelen doktor/poliklinik metninde doktor adını başa alır.
+ * Örn: "Bey.Cer.Plk-Tekin Özcan - Tekin Özcan" -> "Tekin Özcan - Bey.Cer.Plk"
+ * Örn: "Cerrahi Onkoloji Pol.Aydan Eroğlu - Aydan Eroğlu" -> "Aydan Eroğlu - Cerrahi Onkoloji Pol"
+ */
+export function formatDoctorNameFirst(rawName, explicitDoctorName = null) {
+    if (!rawName && !explicitDoctorName) return '';
+    const str = String(rawName || explicitDoctorName).trim();
+    if (!str.includes(' - ')) return str;
+
+    const parts = str.split(' - ');
+    const docPart = (explicitDoctorName && explicitDoctorName.trim()) || parts[parts.length - 1].trim();
+    let polkPart = parts.slice(0, -1).join(' - ').trim();
+
+    const isPolk = (s) => /plk|polk|pol\b|poliklinik|hst\b|cer\b/i.test(s);
+    const isDocTitle = (s) => /dr\b|doktor|uzm\b|prof\b|doç\b/i.test(s);
+
+    // Eğer zaten "Doktor - Poliklinik" sırasındaysa tersine çevirme
+    if (isPolk(docPart) && !isPolk(polkPart)) {
+        return str;
+    }
+
+    const hasClinicPattern = isPolk(polkPart) || isDocTitle(docPart) || (docPart && polkPart.toLowerCase().includes(docPart.toLowerCase()));
+    if (!hasClinicPattern) {
+        return str;
+    }
+
+    // Poliklinik kısmında doktor ismi tekrar ediyorsa temizle (örn: "Bey.Cer.Plk-Tekin Özcan" -> "Bey.Cer.Plk")
+    if (docPart && polkPart.toLowerCase().includes(docPart.toLowerCase())) {
+        const idx = polkPart.toLowerCase().indexOf(docPart.toLowerCase());
+        polkPart = (polkPart.substring(0, idx) + polkPart.substring(idx + docPart.length))
+            .replace(/[-.\s]+$/, '')
+            .replace(/^[-.\s]+/, '')
+            .trim();
+    }
+
+    if (docPart && polkPart && polkPart.toLowerCase() !== docPart.toLowerCase()) {
+        return `${docPart} - ${polkPart}`;
+    }
+    return docPart || str;
+}
+
+/**
+ * Belirli bir branş için doktorları getirir.
  * 
  * @param {string} workspaceId
  * @param {string|number} bransKodu - API'den gelen BRANS_KODU
@@ -240,14 +284,19 @@ export async function getDoctors(workspaceId, bransKodu) {
             return { success: false, message: 'Bu branşta doktor/poliklinik bulunamadı.' };
         }
 
-        const doctors = filtered.map((p, index) => ({
-            sira: index + 1,
-            poliklinik_kodu: p.POLIKLINIK_KODU,
-            doktor_kodu: p.DOKTOR_KODU,
-            servis_kodu: p.SERVIS_KODU || p.POLIKLINIK_KODU,
-            brans_kodu: p.BRANS_KODU,
-            doktor_adi: p.POLIKLINIK_ADI || p.DOKTOR_ADI || `Doktor ${index + 1}`
-        }));
+        const doctors = filtered.map((p, index) => {
+            const rawName = p.POLIKLINIK_ADI || p.DOKTOR_ADI || `Doktor ${index + 1}`;
+            const formattedDoctorName = formatDoctorNameFirst(rawName, p.DOKTOR_ADI);
+            return {
+                sira: index + 1,
+                poliklinik_kodu: p.POLIKLINIK_KODU,
+                doktor_kodu: p.DOKTOR_KODU,
+                servis_kodu: p.SERVIS_KODU || p.POLIKLINIK_KODU,
+                brans_kodu: p.BRANS_KODU,
+                doktor_adi: formattedDoctorName,
+                raw_poliklinik_adi: p.POLIKLINIK_ADI || ''
+            };
+        });
 
         const doctorListText = doctors.map(d => `${d.sira}. ${d.doktor_adi} (Kod: ${d.doktor_kodu}, Servis: ${d.servis_kodu})`).join('\n');
 
@@ -552,7 +601,10 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                         const existingResource = await prisma.calendarResource.findFirst({
                             where: {
                                 workspaceId,
-                                name: { equals: docName, mode: 'insensitive' }
+                                OR: [
+                                    { name: { equals: docName, mode: 'insensitive' } },
+                                    ...(doc.raw_poliklinik_adi ? [{ name: { equals: doc.raw_poliklinik_adi, mode: 'insensitive' } }] : [])
+                                ]
                             }
                         });
 
@@ -569,6 +621,7 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                             savedResource = await prisma.calendarResource.update({
                                 where: { id: existingResource.id },
                                 data: {
+                                    name: docName,
                                     description: branch.brans_adi,
                                     type: 'PERSON',
                                     isActive: true
@@ -588,7 +641,10 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                             const existingDoctor = await prisma.appointmentDoctor.findFirst({
                                 where: {
                                     branchId: apptBranch.id,
-                                    name: { equals: docName, mode: 'insensitive' }
+                                    OR: [
+                                        { name: { equals: docName, mode: 'insensitive' } },
+                                        ...(doc.raw_poliklinik_adi ? [{ name: { equals: doc.raw_poliklinik_adi, mode: 'insensitive' } }] : [])
+                                    ]
                                 }
                             });
                             if (!existingDoctor) {
@@ -599,6 +655,11 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                                         isActive: true
                                     }
                                 });
+                            } else if (existingDoctor.name !== docName) {
+                                await prisma.appointmentDoctor.update({
+                                    where: { id: existingDoctor.id },
+                                    data: { name: docName }
+                                }).catch(() => {});
                             }
                         }
 

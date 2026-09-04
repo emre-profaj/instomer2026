@@ -58,10 +58,36 @@ export const getResources = async (req, res) => {
         if (type) where.type = type;
         if (isActive !== undefined) where.isActive = isActive === 'true';
 
-        const resources = await prisma.calendarResource.findMany({
+        let resources = await prisma.calendarResource.findMany({
             where,
             orderBy: [{ description: 'asc' }, { name: 'asc' }]
         });
+
+        // 👨‍⚕️ Probel doktor isimlerinde doktor adını her zaman başa al
+        try {
+            const { formatDoctorNameFirst } = await import('../services/probel_appointment.service.js');
+            resources = resources.map(r => {
+                if (r.type === 'PERSON') {
+                    const formatted = formatDoctorNameFirst(r.name);
+                    if (formatted && formatted !== r.name) {
+                        prisma.calendarResource.update({
+                            where: { id: r.id },
+                            data: { name: formatted }
+                        }).catch(() => {});
+                        return { ...r, name: formatted };
+                    }
+                }
+                return r;
+            });
+
+            // Branş içinde doktor isimlerine göre alfabetik sırala
+            resources.sort((a, b) => {
+                const descA = a.description || '';
+                const descB = b.description || '';
+                if (descA !== descB) return descA.localeCompare(descB, 'tr');
+                return (a.name || '').localeCompare(b.name || '', 'tr');
+            });
+        } catch (_) {}
 
         res.json({ resources });
     } catch (error) {
