@@ -1073,16 +1073,23 @@ const Calendar = () => {
 
     const handleDelete = async () => {
         if (!selectedAppointment) return;
-        if (!confirm('Are you sure you want to delete this appointment?')) return;
+        if (!confirm('Bu randevuyu silmek istediğinizden emin misiniz?')) return;
 
+        const aptId = selectedAppointment.id;
         try {
-            await appointmentAPI.delete(currentWorkspace.id, selectedAppointment.id);
+            // Optimistic update: Anında ekrandan kaldır ve modalı kapat
+            setAppointments(prev => prev.filter(a => a.id !== aptId));
+            setUpcomingAppointments(prev => prev.filter(a => a.id !== aptId));
             setIsModalOpen(false);
-            await loadAppointments();
+            setSelectedAppointment(null);
+
+            await appointmentAPI.delete(currentWorkspace.id, aptId);
+            await loadAppointments(true);
             await loadUpcomingAppointments();
         } catch (error) {
             console.error('Delete appointment error:', error);
-            alert('Could not delete appointment');
+            alert('Randevu silinemedi');
+            loadAppointments(true);
         }
     };
 

@@ -430,19 +430,20 @@ export const deleteAppointment = async (req, res) => {
             return res.status(404).json({ error: 'Randevu bulunamadı' });
         }
 
-        // Soft delete — veri kaybını önlemek için status güncellenir, kayıt silinmez
-        await prisma.appointment.update({
-            where: { id },
-            data: { status: 'CANCELLED', updatedAt: new Date() }
-        });
-
         // 📅 Google Takvim Senkronizasyonu (Etkinliği Google Takvim'den kaldır)
         if (existing.googleEventId && existing.assignedToId) {
-            import('../services/googleCalendar.service.js').then(({ deleteGoogleEvent }) => {
-                deleteGoogleEvent(existing.id, existing.assignedToId, existing.googleEventId, existing.workspaceId)
-                    .catch(e => console.error('[GoogleCalendar Hook] Delete error:', e.message));
-            });
+            try {
+                const { deleteGoogleEvent } = await import('../services/googleCalendar.service.js');
+                await deleteGoogleEvent(existing.id, existing.assignedToId, existing.googleEventId, existing.workspaceId);
+            } catch (e) {
+                console.error('[GoogleCalendar Hook] Delete error:', e.message);
+            }
         }
+
+        // Randevuyu veritabanından kalıcı olarak sil
+        await prisma.appointment.delete({
+            where: { id }
+        });
 
         // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara randevu silinmesini bildir
         try {
@@ -457,7 +458,7 @@ export const deleteAppointment = async (req, res) => {
             console.error('Appointment socket delete error:', socketErr);
         }
 
-        res.json({ success: true, message: 'Randevu iptal edildi' });
+        res.json({ success: true, message: 'Randevu başarıyla silindi' });
     } catch (error) {
         console.error('Delete appointment error:', error);
         res.status(500).json({ error: 'Randevu silinirken hata oluştu' });
