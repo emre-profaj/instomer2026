@@ -730,6 +730,9 @@ model Team {
   aiFallbackEnabled      Boolean? // null = workspace ayarını kullan, true/false = override
   aiFallbackDelayMinutes Int? // null = workspace ayarını kullan
 
+  // Şube ilişkisi
+  branchId         String?
+
   createdAt        DateTime               @default(now())
   transfers        ConversationTransfer[]
   members          TeamMember[]
@@ -741,6 +744,7 @@ model Team {
 
   @@index([workspaceId])
   @@index([parentId])
+  @@index([branchId])
   @@map("teams")
 }
 
@@ -900,17 +904,24 @@ model UserGoogleCalendar {
   @@map("user_google_calendars")
 }
 
-// Randevu Asistanı — Branş Tanımları
+// Randevu Asistanı — Branş / Şube Tanımları
 model AppointmentBranch {
   id          String              @id @default(uuid())
   workspaceId String
-  name        String // "Dahiliye", "Ortopedi", "Göz"
+  name        String // "Dahiliye", "Ortopedi", "Bornova Şube"
   isActive    Boolean             @default(true)
   order       Int                 @default(0)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  doctors     AppointmentDoctor[]
+
+  // Varsayılan atamalar
+  defaultTeamId   String?
+  defaultFunnelId String?
+
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  doctors         AppointmentDoctor[]
+  productBranches ProductBranch[]
+  cases           Case[]              @relation("CaseBranch")
 
   @@index([workspaceId])
   @@map("appointment_branches")
@@ -947,11 +958,13 @@ model CalendarResource {
   availableStart String? // "09:00"
   availableEnd   String? // "18:00"
   availableDays  String? // JSON: [1,2,3,4,5]
+  branchId       String? // Şube ilişkisi
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([branchId])
   @@map("calendar_resources")
 }
 
@@ -1375,8 +1388,13 @@ model TopicCategory {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  caseTypeId String?
-  caseType   CaseType? @relation(fields: [caseTypeId], references: [id], onDelete: SetNull)
+  // Sektöre özel alanlar: JSON [{key, type, options, unit, required}]
+  customFields    String?  @db.Text
+  // Varsayılan akış ve takım ataması
+  defaultFunnelId String?
+  defaultTeamId   String?
+  // Legacy — alan veritabanında kalıyor, ilişki kaldırıldı
+  caseTypeId      String?
 
   workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   parent        TopicCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
@@ -1387,7 +1405,6 @@ model TopicCategory {
 
   @@index([workspaceId])
   @@index([parentId])
-  @@index([caseTypeId])
   @@map("topic_categories")
 }
 
@@ -1402,7 +1419,6 @@ model CaseType {
   isActive    Boolean @default(true)
   order       Int     @default(0)
 
-  categories TopicCategory[]
   cases      Case[]
 
   createdAt DateTime  @default(now())
@@ -1926,11 +1942,16 @@ model Case {
   leadScore       Int            @default(0)
   leadTemperature String         @default("COLD")
 
+  // Şube
+  branchId String?
+  branch   AppointmentBranch? @relation("CaseBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
   @@index([workspaceId])
   @@index([contactId])
   @@index([workspaceId, contactId, status])
   @@index([workspaceId, status])
   @@index([caseNumber])
+  @@index([branchId])
   @@map("cases")
 }
 
@@ -1956,14 +1977,22 @@ model Product {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  category  TopicCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  features  ProductFeature[]
-  media     ProductMedia[]
+  // Ürün grubu hiyerarşisi
+  parentId  String? // Üst ürün grubu
+  isGroup   Boolean  @default(false) // true ise bu bir ürün grubu
+
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category        TopicCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  parent          Product?         @relation("ProductHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Product[]        @relation("ProductHierarchy")
+  features        ProductFeature[]
+  media           ProductMedia[]
+  productBranches ProductBranch[]
 
   @@index([workspaceId])
   @@index([workspaceId, groupName])
   @@index([categoryId])
+  @@index([parentId])
   @@map("products")
 }
 
@@ -2352,4 +2381,23 @@ model SystemAnnouncement {
   updatedAt DateTime @updatedAt
 
   @@map("system_announcements")
+}
+
+// Ürün-Şube ilişkisi: Şubeye özel fiyat ve bulunurluk
+model ProductBranch {
+  id          String  @id @default(uuid())
+  productId   String
+  branchId    String
+  price       Float?          // Şubeye özel fiyat (null ise baz fiyat kullanılır)
+  isAvailable Boolean @default(true) // Bu şubede mevcut mu?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch      AppointmentBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, branchId])
+  @@index([productId])
+  @@index([branchId])
+  @@map("product_branches")
 }
