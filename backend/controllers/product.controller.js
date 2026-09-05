@@ -23,6 +23,12 @@ export const getProducts = async (req, res) => {
             prisma.product.findMany({
                 where,
                 orderBy: { createdAt: 'desc' },
+                include: {
+                    category: true,
+                    parent: true,
+                    children: true,
+                    productBranches: true
+                },
                 skip,
                 take: parseInt(limit)
             }),
@@ -53,6 +59,10 @@ export const getProduct = async (req, res) => {
         const product = await prisma.product.findFirst({
             where: { id: productId, workspaceId },
             include: {
+                category: true,
+                parent: true,
+                children: true,
+                productBranches: true,
                 features: true,
                 media: true
             }
@@ -77,7 +87,8 @@ export const createProduct = async (req, res) => {
             name, description, groupName, categoryId, unit,
             price, priceUSD, priceEUR, priceGBP,
             discountedPrice, tax1Type, tax1Rate,
-            tax2Type, tax2Rate, isActive, aiContext, features
+            tax2Type, tax2Rate, isActive, aiContext, features,
+            parentId, isGroup
         } = req.body;
 
         if (!name) {
@@ -102,6 +113,8 @@ export const createProduct = async (req, res) => {
                 tax2Type: tax2Type || null,
                 tax2Rate: tax2Rate ? parseFloat(tax2Rate) : 0,
                 isActive: isActive !== undefined ? isActive : true,
+                parentId: parentId || null,
+                isGroup: isGroup || false,
                 aiContext: aiContext || null,
                 ...(features && Array.isArray(features) && features.length > 0 && {
                     features: {
@@ -141,7 +154,7 @@ export const updateProduct = async (req, res) => {
         const updateData = {};
         const fields = [
             'name', 'description', 'groupName', 'categoryId', 'unit',
-            'tax1Type', 'tax2Type', 'isActive', 'aiContext'
+            'tax1Type', 'tax2Type', 'isActive', 'aiContext', 'parentId'
         ];
         const floatFields = [
             'price', 'priceUSD', 'priceEUR', 'priceGBP',
@@ -156,6 +169,7 @@ export const updateProduct = async (req, res) => {
                 updateData[field] = req.body[field] !== null ? parseFloat(req.body[field]) : null;
             }
         });
+        if (req.body.isGroup !== undefined) updateData.isGroup = req.body.isGroup;
 
         const product = await prisma.product.update({
             where: { id: productId },
@@ -181,10 +195,30 @@ export const updateProduct = async (req, res) => {
             }
         }
 
+        // Update product branches if provided
+        if (req.body.productBranches && Array.isArray(req.body.productBranches)) {
+            // First delete existing
+            await prisma.productBranch.deleteMany({
+                where: { productId }
+            });
+            
+            // Then create new ones
+            if (req.body.productBranches.length > 0) {
+                await prisma.productBranch.createMany({
+                    data: req.body.productBranches.map(pb => ({
+                        productId,
+                        branchId: pb.branchId,
+                        price: pb.price !== undefined && pb.price !== null ? parseFloat(pb.price) : null,
+                        isAvailable: pb.isAvailable !== undefined ? pb.isAvailable : true
+                    }))
+                });
+            }
+        }
+
         // Fetch updated product with relations
         const updatedProduct = await prisma.product.findFirst({
             where: { id: productId },
-            include: { features: true, media: true }
+            include: { features: true, media: true, category: true, parent: true, children: true, productBranches: true }
         });
 
         res.json({ success: true, data: updatedProduct });
@@ -221,24 +255,65 @@ export const getProductGroups = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        const groups = await prisma.product.groupBy({
-            by: ['groupName'],
+        const groups = await prisma.product.findMany({
             where: {
                 workspaceId,
-                groupName: { not: null }
+                isGroup: true
             },
-            _count: { id: true },
-            orderBy: { groupName: 'asc' }
+            include: {
+                category: true,
+                children: true
+            },
+            orderBy: { name: 'asc' }
         });
 
-        const result = groups.map(g => ({
-            groupName: g.groupName,
-            count: g._count.id
-        }));
+        const groupedByCategory = groups.reduce((acc, product) => {
+            const catId = product.categoryId || 'uncategorized';
+            if (!acc[catId]) {
+                acc[catId] = {
+                    categoryId: catId,
+                    categoryName: product.category?.name || 'Kategorisiz',
+                    products: []
+                };
+            }
+            acc[catId].products.push(product);
+            return acc;
+        }, {});
 
-        res.json({ success: true, groups: result });
+        res.json({ success: true, groups: Object.values(groupedByCategory) });
     } catch (error) {
         console.error('getProductGroups error:', error);
         res.status(500).json({ success: false, error: 'Ürün grupları yüklenirken hata oluştu' });
+    }
+};
+
+// ─── Şubeye özel ürün listesi ──────────────────────────────────
+export const getProductsByBranch = async (req, res) => {
+    try {
+        const { workspaceId, branchId } = req.params;
+
+        const products = await prisma.product.findMany({
+            where: { workspaceId },
+            include: {
+                category: true,
+                productBranches: {
+                    where: { branchId }
+                }
+            }
+        });
+
+        const productsWithPricing = products.map(product => {
+            const branchPricing = product.productBranches[0];
+            return {
+                ...product,
+                branchPrice: branchPricing?.price ?? product.price,
+                isAvailableInBranch: branchPricing?.isAvailable ?? true
+            };
+        });
+
+        res.json({ success: true, data: productsWithPricing });
+    } catch (error) {
+        console.error('getProductsByBranch error:', error);
+        res.status(500).json({ success: false, error: 'Şube ürünleri yüklenirken hata oluştu' });
     }
 };

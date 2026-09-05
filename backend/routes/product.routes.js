@@ -6,7 +6,8 @@ import {
     createProduct,
     updateProduct,
     deleteProduct,
-    getProductGroups
+    getProductGroups,
+    getProductsByBranch
 } from '../controllers/product.controller.js';
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.use(authenticateJWT);
 // Workspace bazlı ürün route'ları
 router.get('/:workspaceId/products', requireWorkspaceAccess, getProducts);
 router.get('/:workspaceId/products/groups', requireWorkspaceAccess, getProductGroups);
+router.get('/:workspaceId/products/branch/:branchId', requireWorkspaceAccess, getProductsByBranch);
 router.get('/:workspaceId/products/:productId', requireWorkspaceAccess, getProduct);
 router.post('/:workspaceId/products', requireWorkspaceAccess, createProduct);
 router.put('/:workspaceId/products/:productId', requireWorkspaceAccess, updateProduct);

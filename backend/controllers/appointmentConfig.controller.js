@@ -179,7 +179,7 @@ export const getBranches = async (req, res) => {
 export const createBranch = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name } = req.body;
+        const { name, defaultTeamId, defaultFunnelId } = req.body;
 
         if (!name) {
             return res.status(400).json({ error: 'Branş adı gereklidir' });
@@ -194,7 +194,9 @@ export const createBranch = async (req, res) => {
             data: {
                 workspaceId,
                 name,
-                order: (maxOrder._max.order || 0) + 1
+                order: (maxOrder._max.order || 0) + 1,
+                defaultTeamId: defaultTeamId || null,
+                defaultFunnelId: defaultFunnelId || null
             },
             include: { doctors: true }
         });
@@ -209,7 +211,7 @@ export const createBranch = async (req, res) => {
 export const updateBranch = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, isActive, order } = req.body;
+        const { name, isActive, order, defaultTeamId, defaultFunnelId } = req.body;
 
         const existing = await prisma.appointmentBranch.findFirst({ where: { id, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Branş bulunamadı' });
@@ -218,6 +220,8 @@ export const updateBranch = async (req, res) => {
         if (name !== undefined) updateData.name = name;
         if (isActive !== undefined) updateData.isActive = isActive;
         if (order !== undefined) updateData.order = order;
+        if (defaultTeamId !== undefined) updateData.defaultTeamId = defaultTeamId || null;
+        if (defaultFunnelId !== undefined) updateData.defaultFunnelId = defaultFunnelId || null;
 
         const branch = await prisma.appointmentBranch.update({
             where: { id },

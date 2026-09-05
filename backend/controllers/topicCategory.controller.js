@@ -20,10 +20,8 @@ const getEffectiveAiApiKey = async (workspaceId) => {
 export const getCategories = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { caseTypeId } = req.query;
         
         const where = { workspaceId };
-        if (caseTypeId) where.caseTypeId = caseTypeId;
         
         const categories = await prisma.topicCategory.findMany({
             where,
@@ -50,7 +48,7 @@ export const getCategories = async (req, res) => {
 export const createCategory = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, description, icon, color, keywords, parentId, isActive, caseTypeId } = req.body;
+        const { name, description, icon, color, keywords, parentId, isActive, caseTypeId, customFields, defaultFunnelId, defaultTeamId } = req.body;
 
         const category = await prisma.topicCategory.create({
             data: {
@@ -62,7 +60,10 @@ export const createCategory = async (req, res) => {
                 keywords: keywords ? JSON.stringify(keywords) : null,
                 parentId: parentId || null,
                 isActive: isActive ?? true,
-                caseTypeId: caseTypeId || null
+                caseTypeId: caseTypeId || null,
+                customFields: customFields ? JSON.stringify(customFields) : null,
+                defaultFunnelId: defaultFunnelId || null,
+                defaultTeamId: defaultTeamId || null
             }
         });
         res.status(201).json(category);
@@ -75,7 +76,7 @@ export const createCategory = async (req, res) => {
 export const updateCategory = async (req, res) => {
     try {
         const { categoryId } = req.params;
-        const { name, description, icon, color, keywords, isActive, parentId, caseTypeId } = req.body;
+        const { name, description, icon, color, keywords, isActive, parentId, caseTypeId, customFields, defaultFunnelId, defaultTeamId } = req.body;
 
         const data = {};
         if (name !== undefined) data.name = name;
@@ -86,6 +87,9 @@ export const updateCategory = async (req, res) => {
         if (isActive !== undefined) data.isActive = isActive;
         if (parentId !== undefined) data.parentId = parentId || null;
         if (caseTypeId !== undefined) data.caseTypeId = caseTypeId || null;
+        if (customFields !== undefined) data.customFields = customFields ? JSON.stringify(customFields) : null;
+        if (defaultFunnelId !== undefined) data.defaultFunnelId = defaultFunnelId || null;
+        if (defaultTeamId !== undefined) data.defaultTeamId = defaultTeamId || null;
 
         const category = await prisma.topicCategory.update({
             where: { id: categoryId },

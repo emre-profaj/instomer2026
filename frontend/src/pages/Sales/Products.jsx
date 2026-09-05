@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { productAPI } from '../../services/api';
+import { productAPI, funnelAPI, teamAPI } from '../../services/api';
 import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown } from 'lucide-react';
 
-import { importFromExcel, getTopicCategories } from '../../services/topicCategory.api';
+import { importFromExcel, getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
 import './Sales.css';
 
 const TAX_OPTIONS = [
@@ -32,6 +32,20 @@ const Products = () => {
     const [categories, setCategories] = useState([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [funnels, setFunnels] = useState([]);
+    const [teams, setTeams] = useState([]);
+    
+    // Category Modal State
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [editingCategory, setEditingCategory] = useState(null);
+    const [categoryForm, setCategoryForm] = useState({ name: '', description: '', icon: '📁', color: '#6366f1', keywords: '', customFields: [], defaultFunnelId: '', defaultTeamId: '' });
+
+    // Group Modal State
+    const [showGroupModal, setShowGroupModal] = useState(false);
+    const [editingGroup, setEditingGroup] = useState(null);
+    const [groupForm, setGroupForm] = useState({ name: '', description: '', categoryId: '' });
+
     const pageSize = 25;
 
     // Modal state
@@ -46,7 +60,7 @@ const Products = () => {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        groupName: '',
+        parentId: '',
         categoryId: '',
         unit: 'Adet',
         price: '',
@@ -74,10 +88,30 @@ const Products = () => {
             fetchProducts();
             fetchGroups();
             fetchCategories();
+            fetchFunnels();
+            fetchTeams();
         }
-    }, [currentWorkspace?.id, search, groupFilter, page]);
+    }, [currentWorkspace?.id, search, groupFilter, categoryFilter, page, activeTab]);
 
-    const fetchCategories = async () => {
+    async function fetchFunnels() {
+        try {
+            const res = await funnelAPI.getAll(currentWorkspace.id);
+            setFunnels(res.data.funnels || res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch funnels:', err);
+        }
+    };
+
+    async function fetchTeams() {
+        try {
+            const res = await teamAPI.getWorkspaceTeams(currentWorkspace.id);
+            setTeams(res.data.teams || res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch teams:', err);
+        }
+    };
+
+    async function fetchCategories() {
         try {
             const res = await getTopicCategories(currentWorkspace.id);
             setCategories(res.data.categories || res.data || []);
@@ -86,12 +120,19 @@ const Products = () => {
         }
     };
 
-    const fetchProducts = async () => {
+    async function fetchProducts() {
         try {
             setLoading(true);
             const params = { limit: pageSize, offset: (page - 1) * pageSize };
             if (search) params.search = search;
-            if (groupFilter) params.group = groupFilter;
+            if (activeTab === 'productGroups') {
+                params.isGroup = true;
+                if (categoryFilter) params.categoryId = categoryFilter;
+            } else if (activeTab === 'products') {
+                params.isGroup = false;
+                if (categoryFilter) params.categoryId = categoryFilter;
+                if (groupFilter) params.parentId = groupFilter;
+            }
             const res = await productAPI.getAll(currentWorkspace.id, params);
             setProducts(res.data.products || []);
             setTotal(res.data.pagination?.total || res.data.total || 0);
@@ -102,12 +143,12 @@ const Products = () => {
         }
     };
 
-    const fetchGroups = async () => {
+    async function fetchGroups() {
         try {
-            const res = await productAPI.getGroups(currentWorkspace.id);
-            const raw = res.data.groups || res.data.data || [];
+            const res = await productAPI.getAll(currentWorkspace.id, { isGroup: true, limit: 1000 });
+            const raw = res.data.products || [];
             // groups could be [{groupName:'x', count:1}] or ['x','y'] — normalize to string array
-            setGroups(raw.map(g => typeof g === 'string' ? g : (g.groupName || g.name || '')).filter(Boolean));
+            setGroups(raw);
         } catch (err) {
             console.error('Failed to fetch groups:', err);
         }
@@ -115,12 +156,63 @@ const Products = () => {
 
     const resetForm = () => {
         setFormData({
-            name: '', description: '', groupName: '', categoryId: '', unit: 'Adet',
+            name: '', description: '', parentId: '', categoryId: '', unit: 'Adet',
             price: '', priceUSD: '', priceEUR: '', priceGBP: '',
             discountedPrice: '', tax1Type: '', tax1Rate: 0, tax2Type: '', tax2Rate: 0,
             aiContext: '', features: [],
         });
         setEditingProduct(null);
+    };
+
+
+    const handleSaveCategory = async (e) => {
+        e.preventDefault();
+        try {
+            if (editingCategory) {
+                await updateTopicCategory(currentWorkspace.id, editingCategory.id, categoryForm);
+                showToast('Kategori güncellendi');
+            } else {
+                await createTopicCategory(currentWorkspace.id, categoryForm);
+                showToast('Kategori eklendi');
+            }
+            setShowCategoryModal(false);
+            fetchCategories();
+        } catch (err) {
+            console.error(err);
+            showToast('Kategori kaydedilemedi', 'error');
+        }
+    };
+
+    const handleDeleteCategory = async (id) => {
+        if (!window.confirm('Kategoriyi silmek istediğinize emin misiniz?')) return;
+        try {
+            await deleteTopicCategory(currentWorkspace.id, id);
+            showToast('Kategori silindi');
+            fetchCategories();
+        } catch (err) {
+            console.error(err);
+            showToast('Hata oluştu', 'error');
+        }
+    };
+
+    const handleSaveGroup = async (e) => {
+        e.preventDefault();
+        try {
+            const data = { ...groupForm, isGroup: true };
+            if (editingGroup) {
+                await productAPI.update(currentWorkspace.id, editingGroup.id, data);
+                showToast('Grup güncellendi');
+            } else {
+                await productAPI.create(currentWorkspace.id, data);
+                showToast('Grup eklendi');
+            }
+            setShowGroupModal(false);
+            fetchProducts();
+            fetchGroups();
+        } catch (err) {
+            console.error(err);
+            showToast('Hata oluştu', 'error');
+        }
     };
 
     const openAddModal = () => {
@@ -133,7 +225,7 @@ const Products = () => {
         setFormData({
             name: product.name || '',
             description: product.description || '',
-            groupName: product.groupName || '',
+            parentId: product.parentId || '',
             categoryId: product.categoryId || '',
             unit: product.unit || 'Adet',
             price: product.price || '',
@@ -244,7 +336,7 @@ const Products = () => {
         if (products.length === 0) return;
         const headers = ['Ürün Adı', 'Açıklama', 'Grup', 'Birim', 'Fiyat (TL)', 'İndirimli Fiyat', 'Vergi 1', 'Vergi 2'];
         const rows = products.map(p => [
-            p.name, p.description || '', p.groupName || '', p.unit || '',
+            p.name, p.description || '', (groups.find(g => g.id === p.parentId)?.name) || '', p.unit || '',
             p.price || 0, p.discountedPrice || '', getTaxLabel(p.tax1Type), getTaxLabel(p.tax2Type)
         ]);
         const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
@@ -384,7 +476,31 @@ const Products = () => {
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '20px', padding: '0 24px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
                 <button
-                    onClick={() => setActiveTab('products')}
+                    onClick={() => { setActiveTab('categories'); setPage(1); setSearch(''); }}
+                    style={{
+                        padding: '12px 0', border: 'none', background: 'none',
+                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                        color: activeTab === 'categories' ? '#6366f1' : '#64748b',
+                        borderBottom: activeTab === 'categories' ? '2px solid #6366f1' : '2px solid transparent',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Kategoriler
+                </button>
+                <button
+                    onClick={() => { setActiveTab('productGroups'); setPage(1); setSearch(''); setCategoryFilter(''); }}
+                    style={{
+                        padding: '12px 0', border: 'none', background: 'none',
+                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                        color: activeTab === 'productGroups' ? '#6366f1' : '#64748b',
+                        borderBottom: activeTab === 'productGroups' ? '2px solid #6366f1' : '2px solid transparent',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Ürün Grupları
+                </button>
+                <button
+                    onClick={() => { setActiveTab('products'); setPage(1); setSearch(''); setCategoryFilter(''); setGroupFilter(''); }}
                     style={{
                         padding: '12px 0', border: 'none', background: 'none',
                         fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
@@ -396,6 +512,82 @@ const Products = () => {
                     Ürünler
                 </button>
             </div>
+
+            
+            {activeTab === 'categories' && (
+                <div style={{ overflow: 'auto', flex: 1, padding: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                        <button onClick={() => { setCategoryForm({ name: '', description: '', icon: '📁', color: '#6366f1', keywords: '', customFields: [], defaultFunnelId: '', defaultTeamId: '' }); setEditingCategory(null); setShowCategoryModal(true); }} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                            <Plus size={16} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Yeni Kategori
+                        </button>
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                        <thead>
+                            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Kategori</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Açıklama</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Renk</th>
+                                <th style={{ padding: '12px 16px', textAlign: 'right', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {categories.map(c => (
+                                <tr key={c.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                    <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                                        <span style={{ fontSize: '1.2rem' }}>{c.icon}</span> {c.name}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '0.85rem' }}>{c.description}</td>
+                                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                        <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: c.color || '#ccc', margin: '0 auto' }}></div>
+                                    </td>
+                                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                        <button onClick={() => { setEditingCategory(c); setCategoryForm({ ...c, customFields: c.customFields || [] }); setShowCategoryModal(true); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', marginRight: '8px' }}><Edit2 size={16} /></button>
+                                        <button onClick={() => handleDeleteCategory(c.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626' }}><Trash2 size={16} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {activeTab === 'productGroups' && (
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', gap: '10px', padding: '12px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', outline: 'none' }}>
+                            <option value="">Tüm Kategoriler</option>
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <div style={{ flex: 1 }}></div>
+                        <button onClick={() => { setGroupForm({ name: '', description: '', categoryId: categoryFilter || '' }); setEditingGroup(null); setShowGroupModal(true); }} style={{ padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                            <Plus size={16} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Yeni Grup
+                        </button>
+                    </div>
+                    <div style={{ overflow: 'auto', flex: 1, padding: '24px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                            <thead>
+                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Grup Adı</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>Kategori</th>
+                                    <th style={{ padding: '12px 16px', textAlign: 'right', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase' }}>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {products.map(p => (
+                                    <tr key={p.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{p.name}</td>
+                                        <td style={{ padding: '12px 16px', color: '#64748b' }}>{categories.find(c => c.id === p.categoryId)?.name || '—'}</td>
+                                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                            <button onClick={() => { setEditingGroup(p); setGroupForm({ name: p.name, description: p.description, categoryId: p.categoryId }); setShowGroupModal(true); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', marginRight: '8px' }}><Edit2 size={16} /></button>
+                                            <button onClick={() => setDeleteConfirm(p.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626' }}><Trash2 size={16} /></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
 
             {activeTab === 'products' && (
                 <>
@@ -418,17 +610,13 @@ const Products = () => {
                         }}
                     />
                 </div>
-                <select
-                    value={groupFilter}
-                    onChange={(e) => { setGroupFilter(e.target.value); setPage(1); }}
-                    style={{
-                        padding: '8px 12px', border: '1px solid #e2e8f0',
-                        borderRadius: '8px', fontSize: '0.82rem', outline: 'none',
-                        background: '#fff', color: '#334155', cursor: 'pointer'
-                    }}
-                >
+                <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
+                    <option value="">Tüm Kategoriler</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select value={groupFilter} onChange={e => { setGroupFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
                     <option value="">Tüm Gruplar</option>
-                    {groups.map((g, i) => { const label = typeof g === 'string' ? g : (g?.groupName || g?.name || ''); return label ? <option key={label + i} value={label}>{label}</option> : null; })}
+                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
                 {(search || groupFilter) && (
                     <button
@@ -470,6 +658,7 @@ const Products = () => {
                         <thead>
                             <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                                 <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ürün Adı</th>
+                                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kategori</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Grup</th>
                                 <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Birim</th>
@@ -493,19 +682,24 @@ const Products = () => {
                                     <td style={{ padding: '10px 16px' }}>
                                         <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.82rem' }}>{p.name}</div>
                                     </td>
+                                    <td style={{ padding: '10px 8px' }}>
+                                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                            {categories.find(c => c.id === p.categoryId)?.name || '—'}
+                                        </div>
+                                    </td>
                                     <td style={{ padding: '10px 8px', maxWidth: '200px' }}>
                                         <div style={{ fontSize: '0.78rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {p.description || '—'}
                                         </div>
                                     </td>
                                     <td style={{ padding: '10px 8px' }}>
-                                        {p.groupName ? (
+                                        {(groups.find(g => g.id === p.parentId)?.name) ? (
                                             <span style={{
                                                 display: 'inline-block', padding: '2px 8px',
                                                 background: '#ede9fe', color: '#7c3aed',
                                                 borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600
                                             }}>
-                                                {p.groupName}
+                                                {(groups.find(g => g.id === p.parentId)?.name)}
                                             </span>
                                         ) : <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>—</span>}
                                     </td>
@@ -602,6 +796,124 @@ const Products = () => {
                 </div>
             )}
                 </>
+            )}
+
+            
+            {/* Category Modal */}
+            {showCategoryModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '400px' }}>
+                        <h3>{editingCategory ? 'Kategori Düzenle' : 'Yeni Kategori'}</h3>
+                        <form onSubmit={handleSaveCategory}>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>İkon</label>
+                                <input value={categoryForm.icon} onChange={e => setCategoryForm({...categoryForm, icon: e.target.value})} style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Ad</label>
+                                <input value={categoryForm.name} onChange={e => setCategoryForm({...categoryForm, name: e.target.value})} required style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Açıklama</label>
+                                <input value={categoryForm.description} onChange={e => setCategoryForm({...categoryForm, description: e.target.value})} style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Renk</label>
+                                <input type="color" value={categoryForm.color} onChange={e => setCategoryForm({...categoryForm, color: e.target.value})} style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Anahtar Kelimeler</label>
+                                <input value={categoryForm.keywords} onChange={e => setCategoryForm({...categoryForm, keywords: e.target.value})} style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Varsayılan Huni</label>
+                                <select value={categoryForm.defaultFunnelId} onChange={e => setCategoryForm({...categoryForm, defaultFunnelId: e.target.value})} style={{ width: '100%', padding: '8px' }}>
+                                    <option value="">Seçiniz</option>
+                                    {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                </select>
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Varsayılan Ekip</label>
+                                <select value={categoryForm.defaultTeamId} onChange={e => setCategoryForm({...categoryForm, defaultTeamId: e.target.value})} style={{ width: '100%', padding: '8px' }}>
+                                    <option value="">Seçiniz</option>
+                                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                </select>
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <label>Özel Alanlar (Custom Fields)</label>
+                                    <button type="button" onClick={() => setCategoryForm({...categoryForm, customFields: [...(categoryForm.customFields||[]), { key: '', type: 'text', required: false, options: '', unit: '' }]})}>+ Ekle</button>
+                                </div>
+                                {(categoryForm.customFields||[]).map((cf, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+                                        <input placeholder="Anahtar (örn: size)" value={cf.key} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].key = e.target.value; setCategoryForm({...categoryForm, customFields: newCf}); }} style={{ width: '80px', padding: '4px' }} />
+                                        <select value={cf.type} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].type = e.target.value; setCategoryForm({...categoryForm, customFields: newCf}); }} style={{ width: '80px', padding: '4px' }}>
+                                            <option value="text">Metin</option>
+                                            <option value="number">Sayı</option>
+                                            <option value="select">Seçim</option>
+                                        </select>
+                                        <input placeholder="Birim" value={cf.unit} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].unit = e.target.value; setCategoryForm({...categoryForm, customFields: newCf}); }} style={{ width: '60px', padding: '4px' }} />
+                                        <label><input type="checkbox" checked={cf.required} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].required = e.target.checked; setCategoryForm({...categoryForm, customFields: newCf}); }} /> Zorunlu</label>
+                                        <button type="button" onClick={() => { const newCf = [...categoryForm.customFields]; newCf.splice(idx, 1); setCategoryForm({...categoryForm, customFields: newCf}); }}>X</button>
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                <button type="button" onClick={() => setShowCategoryModal(false)} style={{ padding: '8px 16px' }}>İptal</button>
+                                <button type="submit" style={{ padding: '8px 16px', background: '#6366f1', color: '#fff' }}>Kaydet</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Group Modal */}
+            {showGroupModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '400px' }}>
+                        <h3>{editingGroup ? 'Grup Düzenle' : 'Yeni Grup'}</h3>
+                        <form onSubmit={handleSaveGroup}>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Kategori</label>
+                                <select value={groupForm.categoryId} onChange={e => setGroupForm({...groupForm, categoryId: e.target.value})} required style={{ width: '100%', padding: '8px' }}>
+                                    <option value="">Seçiniz</option>
+                                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Grup Adı</label>
+                                <input value={groupForm.name} onChange={e => setGroupForm({...groupForm, name: e.target.value})} required style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label>Açıklama</label>
+                                <input value={groupForm.description} onChange={e => setGroupForm({...groupForm, description: e.target.value})} style={{ width: '100%', padding: '8px' }} />
+                            </div>
+                            <div style={{ marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <label>Özel Alanlar (Custom Fields)</label>
+                                    <button type="button" onClick={() => setCategoryForm({...categoryForm, customFields: [...(categoryForm.customFields||[]), { key: '', type: 'text', required: false, options: '', unit: '' }]})}>+ Ekle</button>
+                                </div>
+                                {(categoryForm.customFields||[]).map((cf, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+                                        <input placeholder="Anahtar (örn: size)" value={cf.key} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].key = e.target.value; setCategoryForm({...categoryForm, customFields: newCf}); }} style={{ width: '80px', padding: '4px' }} />
+                                        <select value={cf.type} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].type = e.target.value; setCategoryForm({...categoryForm, customFields: newCf}); }} style={{ width: '80px', padding: '4px' }}>
+                                            <option value="text">Metin</option>
+                                            <option value="number">Sayı</option>
+                                            <option value="select">Seçim</option>
+                                        </select>
+                                        <input placeholder="Birim" value={cf.unit} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].unit = e.target.value; setCategoryForm({...categoryForm, customFields: newCf}); }} style={{ width: '60px', padding: '4px' }} />
+                                        <label><input type="checkbox" checked={cf.required} onChange={e => { const newCf = [...categoryForm.customFields]; newCf[idx].required = e.target.checked; setCategoryForm({...categoryForm, customFields: newCf}); }} /> Zorunlu</label>
+                                        <button type="button" onClick={() => { const newCf = [...categoryForm.customFields]; newCf.splice(idx, 1); setCategoryForm({...categoryForm, customFields: newCf}); }}>X</button>
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                <button type="button" onClick={() => setShowGroupModal(false)} style={{ padding: '8px 16px' }}>İptal</button>
+                                <button type="submit" style={{ padding: '8px 16px', background: '#6366f1', color: '#fff' }}>Kaydet</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
             {/* Delete Confirm */}
@@ -773,21 +1085,10 @@ const Products = () => {
                                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
                                         Ürün/Hizmet Grubu
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={formData.groupName}
-                                        onChange={e => setFormData(prev => ({ ...prev, groupName: e.target.value }))}
-                                        placeholder="Grup adı..."
-                                        list="group-suggestions"
-                                        style={{
-                                            width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                            border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                            boxSizing: 'border-box'
-                                        }}
-                                    />
-                                    <datalist id="group-suggestions">
-                                        {groups.map((g, i) => { const v = typeof g === 'string' ? g : (g?.groupName || g?.name || ''); return v ? <option key={v + i} value={v} /> : null; })}
-                                    </datalist>
+                                    <select value={formData.parentId} onChange={e => setFormData(prev => ({ ...prev, parentId: e.target.value }))} style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+                                        <option value="">Grup Yok</option>
+                                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                    </select>
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
