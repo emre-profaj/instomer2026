@@ -484,7 +484,7 @@ export const getCase = async (req, res) => {
 export const createCase = async (req, res) => {
     try {
         const { workspaceId, contactId } = req.params;
-        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId } = req.body;
+        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId, branchId } = req.body;
 
         if (!title?.trim()) {
             return res.status(400).json({ error: 'Case başlığı gerekli' });
@@ -504,7 +504,8 @@ export const createCase = async (req, res) => {
                 assignedToId: assignedToId || null,
                 assignedTeamId: assignedTeamId || null,
                 priority: priority || 'NORMAL',
-                caseTypeId: caseTypeId || null
+                caseTypeId: caseTypeId || null,
+                branchId: branchId || null
             }
         });
 
@@ -546,7 +547,7 @@ export const createCase = async (req, res) => {
 export const updateCase = async (req, res) => {
     try {
         const { workspaceId, caseId } = req.params;
-        const { title, description, status, priority, type, funnelType, funnelStageId, lostReason, assignedToId, assignedTeamId, products, categoryId } = req.body;
+        const { title, description, status, priority, type, funnelType, funnelStageId, lostReason, assignedToId, assignedTeamId, products, categoryId, branchId } = req.body;
 
         const existing = await prisma.case.findUnique({ where: { id: caseId } });
         if (!existing) {
@@ -565,6 +566,7 @@ export const updateCase = async (req, res) => {
         if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
         if (assignedToId !== undefined) updateData.assignedToId = assignedToId || null;
         if (assignedTeamId !== undefined) updateData.assignedTeamId = assignedTeamId || null;
+        if (branchId !== undefined) updateData.branchId = branchId || null;
         if (products !== undefined) {
             // JSON array formatı doğrula
             if (typeof products === 'string') {

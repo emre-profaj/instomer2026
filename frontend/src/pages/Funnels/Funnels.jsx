@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI } from '../../services/api';
+import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI, appointmentConfigAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
@@ -65,13 +65,39 @@ const Funnels = () => {
     // Entry rules modal
     const [entryRulesModal, setEntryRulesModal] = useState({ isOpen: false, stage: null });
 
+    // Branches
+    const [branches, setBranches] = useState([]);
+    const [selectedBranchId, setSelectedBranchId] = useState(() => {
+        if (!currentWorkspace) return 'ALL';
+        return localStorage.getItem(`funnels_branchFilter_${currentWorkspace.id}`) || 'ALL';
+    });
+
+    useEffect(() => {
+        if (currentWorkspace) {
+            appointmentConfigAPI.getBranches(currentWorkspace.id)
+                .then(res => setBranches(res.data.branches || []))
+                .catch(() => {});
+        }
+    }, [currentWorkspace]);
+
+    useEffect(() => {
+        if (currentWorkspace) {
+            localStorage.setItem(`funnels_branchFilter_${currentWorkspace.id}`, selectedBranchId);
+        }
+    }, [selectedBranchId, currentWorkspace]);
+
     useEffect(() => {
         if (currentWorkspace) {
             loadFunnels();
             loadTeamsAndMembers();
-            loadStageCounts();
         }
     }, [currentWorkspace]);
+
+    useEffect(() => {
+        if (currentWorkspace) {
+            loadStageCounts();
+        }
+    }, [currentWorkspace, selectedBranchId]);
 
     const loadTeamsAndMembers = async () => {
         try {
@@ -111,7 +137,8 @@ const Funnels = () => {
 
     const loadStageCounts = async () => {
         try {
-            const res = await funnelAPI.getStageCounts(currentWorkspace.id);
+            const params = selectedBranchId !== 'ALL' ? { branchId: selectedBranchId } : undefined;
+            const res = await funnelAPI.getStageCounts(currentWorkspace.id, params);
             setStageCounts(res.data?.counts || {});
         } catch (err) { console.error('Stage counts not available:', err); }
     };
@@ -477,6 +504,30 @@ const Funnels = () => {
                     {t('funnels.management')}
                 </h2>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}>Şube:</span>
+                        <select
+                            value={selectedBranchId}
+                            onChange={(e) => setSelectedBranchId(e.target.value)}
+                            style={{
+                                padding: '6px 12px',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: '#334155',
+                                background: '#ffffff',
+                                outline: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value="ALL">Tüm Şubeler</option>
+                            {branches.map(branch => (
+                                <option key={branch.id} value={branch.id}>
+                                    {branch.name} {!branch.isActive ? '(Pasif)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 16px', borderRadius: 8, fontSize: 14, fontWeight: 500 }}>
                         <Plus size={16} />
                         Yeni Akış

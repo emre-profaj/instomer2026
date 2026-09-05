@@ -365,7 +365,7 @@ export const funnelAPI = {
     createStage: (workspaceId, funnelId, data) => api.post(`/funnels/${workspaceId}/${funnelId}/stages`, data),
     updateStage: (workspaceId, funnelId, stageId, data) => api.put(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`, data),
     deleteStage: (workspaceId, funnelId, stageId) => api.delete(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`),
-    getStageCounts: (workspaceId) => api.get(`/funnels/${workspaceId}/stage-counts`)
+    getStageCounts: (workspaceId, params) => api.get(`/funnels/${workspaceId}/stage-counts`, { params })
 };
 
 // AI API

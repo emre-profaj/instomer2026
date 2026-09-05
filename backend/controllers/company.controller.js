@@ -414,6 +414,36 @@ export const createWorkspaceInCompany = async (req, res) => {
             }
         });
 
+        // Create default 'Insta' AI bot
+        await prisma.aIBot.create({
+            data: {
+                workspaceId: workspace.id,
+                name: 'Insta',
+                role: 'AI Asistan',
+                isActive: true,
+                whatsappEnabled: true,
+                instagramEnabled: true,
+                facebookEnabled: true,
+                widgetEnabled: true,
+                botType: 'CHATS',
+                prompt: `Sen Insta, profesyonel bir AI müşteri asistanısın.
+
+Görevlerin:
+- Müşteri sorularını yanıtla
+- Ürün ve hizmetler hakkında bilgi ver
+- Randevu ve görüşme planla
+- Şikayetleri kayıt altına al
+- Satış fırsatlarını takip et
+
+Kuralların:
+- Her zaman nazik ve profesyonel ol
+- Bilmediğin konularda bir temsilciye yönlendir
+- Müşterinin ihtiyacını anlamaya çalış
+- Kısa ve net yanıtlar ver
+- Türkçe konuş`
+            }
+        });
+
         res.status(201).json({ workspace });
     } catch (error) {
         console.error('Create workspace in company error:', error);

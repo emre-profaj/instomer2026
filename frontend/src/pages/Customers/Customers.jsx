@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI, aiAPI } from '../../services/api';
+import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI, aiAPI, appointmentConfigAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import * as XLSX from 'xlsx';
 import {
@@ -150,6 +150,8 @@ const Customers = () => {
     const [availableFunnels, setAvailableFunnels] = useState([]);
     const [sourceFilter, setSourceFilter] = useState(sf.sourceFilter || 'ALL');
     const [categoryFilter, setCategoryFilter] = useState(sf.categoryFilter || 'ALL');
+    const [branchFilter, setBranchFilter] = useState(sf.branchFilter || 'ALL');
+    const [branches, setBranches] = useState([]);
     const [callStatusFilter, setCallStatusFilter] = useState(sf.callStatusFilter || 'ALL');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '', confirmText: '', type: 'danger' });
     const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
@@ -318,7 +320,7 @@ const Customers = () => {
         const filtersToSave = {
             assignmentFilter, quickFilterMode, search, statusFilter,
             funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
-            sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
+            sourceFilter, categoryFilter, branchFilter, callStatusFilter, tagFilter, topicCategoryFilter,
             contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
             onlyOpenCases, sortField, sortDir, limit, scoreFilter, segmentFilter
         };
@@ -327,7 +329,7 @@ const Customers = () => {
         } catch { /* storage full — ignore */ }
     }, [assignmentFilter, quickFilterMode, search, statusFilter,
         funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
-        sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
+        sourceFilter, categoryFilter, branchFilter, callStatusFilter, tagFilter, topicCategoryFilter,
         contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
         onlyOpenCases, sortField, sortDir, limit, scoreFilter, segmentFilter]);
 
@@ -397,6 +399,14 @@ const Customers = () => {
             .catch(() => {});
     }, [currentWorkspace]);
 
+    // Fetch branches
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        appointmentConfigAPI.getBranches(currentWorkspace.id)
+            .then(res => setBranches(res.data.branches || []))
+            .catch(() => {});
+    }, [currentWorkspace]);
+
     // Fetch Retell agents for bulk call modal
     useEffect(() => {
         if (showBulkCall && currentWorkspace) {
@@ -418,7 +428,7 @@ const Customers = () => {
                 silentReloadContacts();
             }
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter, segmentFilter]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, branchFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter, segmentFilter]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -450,6 +460,7 @@ const Customers = () => {
         status: statusFilter,
         source: sourceFilter,
         category: categoryFilter,
+        branchId: branchFilter !== 'ALL' ? branchFilter : undefined,
         tag: tagFilter,
         contactInfo: contactInfoFilter,
         callStatus: callStatusFilter,
@@ -473,7 +484,7 @@ const Customers = () => {
         hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
         ...overrides
     }), [
-        search, statusFilter, sourceFilter, categoryFilter, tagFilter,
+        search, statusFilter, sourceFilter, categoryFilter, branchFilter, tagFilter,
         contactInfoFilter, callStatusFilter, importGroupFilter, segmentFilter,
         selectedFunnelIds, funnelFilter, mergedFunnelIds, funnelStageFilter,
         showArchived, onlyOpenCases, assignmentFilter, sortField, sortDir,
@@ -2134,6 +2145,35 @@ const Customers = () => {
                                                 <option value="ALL">Tüm Etiketler</option>
                                                 {availableTags.map(tag => (
                                                     <option key={tag} value={tag}>{tag}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Şube Filtresi */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                            <label style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Şube</label>
+                                            <select
+                                                value={branchFilter}
+                                                onChange={(e) => {
+                                                    setBranchFilter(e.target.value);
+                                                    setPage(1);
+                                                }}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '6px 8px',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '6px',
+                                                    fontSize: '11px',
+                                                    color: '#334155',
+                                                    background: '#ffffff',
+                                                    outline: 'none'
+                                                }}
+                                            >
+                                                <option value="ALL">Tüm Şubeler</option>
+                                                {branches.map(branch => (
+                                                    <option key={branch.id} value={branch.id}>
+                                                        {branch.name} {!branch.isActive ? '(Pasif)' : ''}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>

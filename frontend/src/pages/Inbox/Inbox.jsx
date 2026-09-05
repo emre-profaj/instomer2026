@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI, caseAPI, mediaAPI } from '../../services/api';
+import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, appointmentConfigAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI, caseAPI, mediaAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import { io } from 'socket.io-client';
 import DOMPurify from 'dompurify';
@@ -461,6 +461,23 @@ const Inbox = () => {
     });
     const [stageFilterOpen, setStageFilterOpen] = useState(false);
     const stageFilterRef = useRef(null);
+    const [branches, setBranches] = useState([]);
+    const [selectedBranchId, setSelectedBranchId] = useState(() => {
+        try {
+            const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
+            return localStorage.getItem(`inbox_branchFilter_${ws.id || 'default'}`) || '';
+        } catch { return ''; }
+    });
+    
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        appointmentConfigAPI.getBranches(currentWorkspace.id)
+            .then(res => {
+                setBranches(res.data.branches || []);
+            })
+            .catch(err => console.error('Error fetching branches:', err));
+    }, [currentWorkspace?.id]);
+
     const [funnelFilter, setFunnelFilter] = useState(() => {
         try {
             const ws = JSON.parse(localStorage.getItem('currentWorkspace') || '{}');
@@ -515,6 +532,18 @@ const Inbox = () => {
             localStorage.removeItem(`inbox_funnelFilter_${wsId}`);
         }
     }, [funnelFilter, currentWorkspace?.id]);
+
+    useEffect(() => {
+        const wsId = currentWorkspace?.id || (() => {
+            try { return JSON.parse(localStorage.getItem('currentWorkspace') || '{}')?.id; } catch { return 'default'; }
+        })() || 'default';
+
+        if (selectedBranchId) {
+            localStorage.setItem(`inbox_branchFilter_${wsId}`, selectedBranchId);
+        } else {
+            localStorage.removeItem(`inbox_branchFilter_${wsId}`);
+        }
+    }, [selectedBranchId, currentWorkspace?.id]);
 
     useEffect(() => {
         const wsId = currentWorkspace?.id || (() => {
@@ -583,6 +612,7 @@ const Inbox = () => {
         if (prevWsIdRef.current && prevWsIdRef.current !== currentWorkspace.id) {
             const wsId = currentWorkspace.id;
             setFunnelFilter(localStorage.getItem(`inbox_funnelFilter_${wsId}`) || null);
+            setSelectedBranchId(localStorage.getItem(`inbox_branchFilter_${wsId}`) || '');
             setStatusFilter(localStorage.getItem(`inbox_statusFilter_${wsId}`) || null);
             setAgentFilter(localStorage.getItem(`inbox_agentFilter_${wsId}`) || null);
             setQuickFilter(localStorage.getItem(`inbox_quickFilter_${wsId}`) || null);
@@ -749,6 +779,14 @@ const Inbox = () => {
             items = items.filter(item => {
                 const fVal = item.funnelType || item.case?.funnelType || item.contact?.funnelType;
                 return fVal === funnelFilter;
+            });
+        }
+
+        // Apply branch filter if selected
+        if (selectedBranchId) {
+            items = items.filter(item => {
+                const bVal = item.case?.branchId || item.contact?.branchId;
+                return bVal === selectedBranchId;
             });
         }
 
@@ -1929,6 +1967,7 @@ const Inbox = () => {
             }
 
             if (funnelFilter) params.funnelType = funnelFilter;
+            if (selectedBranchId) params.branchId = selectedBranchId;
             if (statusFilter) {
                 params.funnelStageId = statusFilter;
             }
@@ -2220,6 +2259,7 @@ const Inbox = () => {
                 }
 
                 if (funnelFilter) params.funnelType = funnelFilter;
+                if (selectedBranchId) params.branchId = selectedBranchId;
                 if (statusFilter) {
                     params.funnelStageId = statusFilter;
                 }
@@ -4151,6 +4191,42 @@ const Inbox = () => {
                                     </option>
                                 );
                             })}
+                        </select>
+
+                        {/* Branch Filter */}
+                        <select
+                            value={selectedBranchId || ''}
+                            onChange={(e) => {
+                                setSelectedBranchId(e.target.value);
+                                setCurrentPage(1);
+                                if (currentPageRef) currentPageRef.current = 1;
+                            }}
+                            style={{
+                                height: '28px',
+                                borderRadius: '14px',
+                                border: selectedBranchId ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '0 12px',
+                                cursor: 'pointer',
+                                background: selectedBranchId ? '#eef2ff' : '#ffffff',
+                                color: selectedBranchId ? '#4f46e5' : '#1e293b',
+                                minWidth: '150px',
+                                flexShrink: 0,
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right 8px center',
+                                paddingRight: '24px'
+                            }}
+                        >
+                            <option value="">Tüm Şubeler</option>
+                            {branches.map(branch => (
+                                <option key={branch.id} value={branch.id}>
+                                    {branch.name} {!branch.isActive ? '(Pasif)' : ''}
+                                </option>
+                            ))}
                         </select>
                     </div>
                 </div>

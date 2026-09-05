@@ -694,6 +694,30 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     // Kategori eşleştirmesi
                     if (topicCategoryId) {
                         caseUpdateData.categoryId = topicCategoryId;
+                        
+                        // Şube tespiti
+                        try {
+                            const contactMsgs = await prisma.message.findMany({
+                                where: { conversationId, isFromContact: true },
+                                select: { content: true }
+                            });
+                            const customerOnlyText = contactMsgs.map(m => m.content || '').join(' ').toLowerCase();
+                            
+                            const branches = await prisma.appointmentBranch.findMany({
+                                where: { workspaceId, isActive: true },
+                                select: { id: true, name: true }
+                            });
+                            
+                            for (const branch of branches) {
+                                if (branch.name && customerOnlyText.includes(branch.name.toLowerCase())) {
+                                    caseUpdateData.branchId = branch.id;
+                                    console.log(`📍 [Classifier] Şube eşleşti: ${branch.name}`);
+                                    break;
+                                }
+                            }
+                        } catch (branchErr) {
+                            console.error('⚠️ [Classifier] Şube eşleştirme hatası:', branchErr.message);
+                        }
                     }
 
                     // Ürün eşleştirmesi — mevcut ürünlerle birleştir (duplicate olmasın)

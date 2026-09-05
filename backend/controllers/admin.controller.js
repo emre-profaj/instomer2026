@@ -61,6 +61,38 @@ export const createUser = async (req, res) => {
 
         await logAdminActivity(req, 'CREATE_USER', 'USER', user.id, user.name, { email: user.email });
 
+        const newWorkspace = user.workspaceMembers[0]?.workspace;
+        if (newWorkspace) {
+            await prisma.aIBot.create({
+                data: {
+                    workspaceId: newWorkspace.id,
+                    name: 'Insta',
+                    role: 'AI Asistan',
+                    isActive: true,
+                    whatsappEnabled: true,
+                    instagramEnabled: true,
+                    facebookEnabled: true,
+                    widgetEnabled: true,
+                    botType: 'CHATS',
+                    prompt: `Sen Insta, profesyonel bir AI müşteri asistanısın.
+
+Görevlerin:
+- Müşteri sorularını yanıtla
+- Ürün ve hizmetler hakkında bilgi ver
+- Randevu ve görüşme planla
+- Şikayetleri kayıt altına al
+- Satış fırsatlarını takip et
+
+Kuralların:
+- Her zaman nazik ve profesyonel ol
+- Bilmediğin konularda bir temsilciye yönlendir
+- Müşterinin ihtiyacını anlamaya çalış
+- Kısa ve net yanıtlar ver
+- Türkçe konuş`
+                }
+            });
+        }
+
         res.status(201).json({
             message: 'User created successfully',
             user: {
@@ -226,6 +258,35 @@ export const createWorkspace = async (req, res) => {
         });
 
         await logAdminActivity(req, 'CREATE_WORKSPACE', 'WORKSPACE', workspace.id, workspace.name);
+
+        await prisma.aIBot.create({
+            data: {
+                workspaceId: workspace.id,
+                name: 'Insta',
+                role: 'AI Asistan',
+                isActive: true,
+                whatsappEnabled: true,
+                instagramEnabled: true,
+                facebookEnabled: true,
+                widgetEnabled: true,
+                botType: 'CHATS',
+                prompt: `Sen Insta, profesyonel bir AI müşteri asistanısın.
+
+Görevlerin:
+- Müşteri sorularını yanıtla
+- Ürün ve hizmetler hakkında bilgi ver
+- Randevu ve görüşme planla
+- Şikayetleri kayıt altına al
+- Satış fırsatlarını takip et
+
+Kuralların:
+- Her zaman nazik ve profesyonel ol
+- Bilmediğin konularda bir temsilciye yönlendir
+- Müşterinin ihtiyacını anlamaya çalış
+- Kısa ve net yanıtlar ver
+- Türkçe konuş`
+            }
+        });
 
         res.status(201).json({ message: 'Workspace created successfully', workspace });
     } catch (error) {
