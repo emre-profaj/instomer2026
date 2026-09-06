@@ -1,0 +1,310 @@
+.appnotes-page {
+    padding: 24px 32px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header */
+.appnotes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.appnotes-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.appnotes-header-left h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+.appnotes-icon {
+    color: #6366f1;
+}
+.appnotes-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.appnotes-add-btn:hover { background: #4f46e5; }
+
+/* Tabs */
+.appnotes-tabs {
+    display: flex;
+    gap: 4px;
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+    width: fit-content;
+}
+.appnotes-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.appnotes-tab.active {
+    background: white;
+    color: #6366f1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Modal */
+.appnotes-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.appnotes-modal {
+    background: white;
+    border-radius: 16px;
+    width: 520px;
+    max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.appnotes-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.appnotes-modal-header h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.appnotes-modal-header button { background: none; border: none; cursor: pointer; color: #94a3b8; }
+.appnotes-modal-body { padding: 20px; }
+.appnotes-field { margin-bottom: 14px; }
+.appnotes-field label { display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 4px; }
+.appnotes-field input,
+.appnotes-field textarea,
+.appnotes-field select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.appnotes-field input:focus,
+.appnotes-field textarea:focus,
+.appnotes-field select:focus { border-color: #6366f1; }
+.appnotes-field-row { display: flex; gap: 12px; }
+.appnotes-field-row .appnotes-field { flex: 1; }
+.appnotes-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid #e2e8f0;
+}
+.appnotes-btn-cancel {
+    padding: 8px 16px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.appnotes-btn-save {
+    padding: 8px 20px;
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.appnotes-btn-save:hover { background: #4f46e5; }
+
+/* Loading & Empty */
+.appnotes-loading, .appnotes-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #94a3b8;
+}
+.appnotes-empty p { font-size: 16px; font-weight: 600; color: #64748b; margin: 12px 0 4px; }
+.appnotes-empty span { font-size: 13px; }
+
+/* Timeline (Changelog) */
+.appnotes-timeline { }
+.appnotes-version-group {
+    margin-bottom: 28px;
+}
+.appnotes-version-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.appnotes-version-badge {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.appnotes-version-date {
+    color: #94a3b8;
+    font-size: 12px;
+}
+.appnotes-version-items {
+    border-left: 2px solid #e2e8f0;
+    margin-left: 16px;
+    padding-left: 20px;
+}
+.appnotes-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 0;
+    position: relative;
+}
+.appnotes-item-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+    margin-left: -25px;
+}
+.appnotes-item-content { flex: 1; }
+.appnotes-item-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+.appnotes-item-desc { font-size: 13px; color: #64748b; margin-top: 2px; white-space: pre-wrap; }
+.appnotes-item-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.appnotes-item:hover .appnotes-item-actions { opacity: 1; }
+.appnotes-item-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 4px;
+    border-radius: 4px;
+}
+.appnotes-item-actions button:hover { color: #6366f1; background: #f1f5f9; }
+
+/* Kanban (What's Next) */
+.appnotes-kanban {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+@media (max-width: 1024px) {
+    .appnotes-kanban { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+    .appnotes-kanban { grid-template-columns: 1fr; }
+}
+.appnotes-kanban-col {
+    background: #f8fafc;
+    border-radius: 12px;
+    overflow: hidden;
+}
+.appnotes-kanban-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1e293b;
+    border-top: 3px solid;
+}
+.appnotes-kanban-count {
+    background: #e2e8f0;
+    color: #64748b;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    margin-left: auto;
+}
+.appnotes-kanban-items {
+    padding: 0 8px 8px;
+    min-height: 60px;
+}
+.appnotes-kanban-card {
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: box-shadow 0.2s;
+}
+.appnotes-kanban-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.appnotes-kanban-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.appnotes-kanban-card-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+.appnotes-kanban-card-desc { font-size: 12px; color: #64748b; margin-top: 6px; white-space: pre-wrap; }
+.appnotes-kanban-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+.appnotes-kanban-date { font-size: 11px; color: #94a3b8; }
+.appnotes-kanban-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.appnotes-status-select {
+    border: none;
+    background: none;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    padding: 2px;
+}
+.appnotes-kanban-card-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 2px;
+}
+.appnotes-kanban-card-actions button:hover { color: #6366f1; }
+.appnotes-kanban-empty {
+    text-align: center;
+    padding: 20px;
+    color: #cbd5e1;
+    font-size: 12px;
+}
+.appnotes-priority { display: flex; align-items: center; }

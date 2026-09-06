@@ -57,6 +57,7 @@ import RealEstateOffers from './pages/RealEstate/RealEstateOffers';
 import RealEstatePortfolio from './pages/RealEstate/RealEstatePortfolio';
 import RealEstateCampaigns from './pages/RealEstate/RealEstateCampaigns';
 import Marketing from './pages/Marketing/Marketing';
+import AppNotes from './pages/AppNotes/AppNotes';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -159,6 +160,7 @@ function App() {
               <Route path="real-estate/portfolio" element={<RealEstatePortfolio />} />
               <Route path="real-estate/campaigns" element={<RealEstateCampaigns />} />
               <Route path="marketing" element={<Marketing />} />
+              <Route path="app-notes" element={<AppNotes />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

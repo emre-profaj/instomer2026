@@ -2483,3 +2483,22 @@ model ProductBranch {
   @@index([branchId])
   @@map("product_branches")
 }
+
+// Changelog & WhatsNext — sistem notları
+model AppNote {
+  id          String   @id @default(uuid())
+  workspaceId String
+  type        String   // CHANGELOG, WHATSNEXT
+  title       String
+  content     String?  @db.Text
+  version     String?  // "v2.4.0" (changelog için)
+  status      String   @default("TODO") // TODO, IN_PROGRESS, DONE, IDEA (whatsnext için)
+  priority    Int      @default(0) // 0=normal, 1=high, 2=critical
+  authorId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId, type])
+  @@index([workspaceId, type, createdAt])
+  @@map("app_notes")
+}
