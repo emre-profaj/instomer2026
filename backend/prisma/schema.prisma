@@ -520,6 +520,7 @@ model Conversation {
   // Inbox & Marketing
   isBulkSend           Boolean            @default(false)
   isSystemChat         Boolean            @default(false) // Instomer sistem duyuruları — inbox'ta en üstte sabitlenir
+  source               String?            // Conversation kaynağı: WHATSAPP, INSTAGRAM, FORM, MARKETING, LEAD, etc.
   campaignId           String?
   campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id])
   lastContactMessageAt DateTime?

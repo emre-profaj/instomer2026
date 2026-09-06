@@ -12,7 +12,7 @@ import {
     Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal, Paperclip
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal, Paperclip, Megaphone
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConversationPopup from '../../components/ConversationPopup/ConversationPopup';
@@ -363,7 +363,7 @@ const Inbox = () => {
     const { showAssignment } = useToast();
 
     // Filter states - All channels selected by default (uncheck to hide)
-    const allFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes', 'fb_comments', 'ig_comments'];
+    const allFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'marketing', 'notes', 'fb_comments', 'ig_comments'];
     const [viewMode, setViewMode] = useState('chat'); // 'chat' | 'pipeline'
     const [activeFilters, setActiveFilters] = useState(allFilters); // All filters active by default
     const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
@@ -1981,7 +1981,7 @@ const Inbox = () => {
             const pagination = response.data.pagination;
 
             // Use same filtering logic as loadInboxItems
-            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes'];
+            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'marketing', 'notes'];
             const loadAll = activeFilters.length === allFilters.length;
             const hasChannelFilter = channelFilters.some(f => activeFilters.includes(f));
 
@@ -2039,6 +2039,7 @@ const Inbox = () => {
                             (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
                             (activeFilters.includes('leads') && conv.channel === 'LEAD' && conv.facebookPageId) ||
                             (activeFilters.includes('phone_calls') && conv.channel === 'PHONE') ||
+                            (activeFilters.includes('marketing') && conv.source === 'MARKETING') ||
                             (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
                     }
                     if (!channelMatch) return false;
@@ -2215,7 +2216,7 @@ const Inbox = () => {
             let items = [];
 
             // Load based on active filters (if all are selected = show all, unchecked = hide)
-            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes'];
+            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'marketing', 'notes'];
             const commentFilters = ['fb_comments', 'ig_comments'];
 
             // loadAll only when ALL filters are active (nothing hidden)
@@ -2279,6 +2280,7 @@ const Inbox = () => {
                     else if (onlyFilter === 'instagram') params.channel = 'INSTAGRAM';
                     else if (onlyFilter === 'web_widget') params.channel = 'WIDGET';
                     else if (onlyFilter === 'emails') params.channel = 'EMAIL';
+                    else if (onlyFilter === 'marketing') params.source = 'MARKETING';
                 }
 
                 const response = await conversationAPI.getAll(currentWorkspace.id, params);
@@ -2410,6 +2412,7 @@ const Inbox = () => {
                                 conv.channel === 'LEAD' &&
                                 conv.facebookPageId) ||
                             (activeFilters.includes('phone_calls') && conv.channel === 'PHONE') ||
+                            (activeFilters.includes('marketing') && conv.source === 'MARKETING') ||
                             (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
                     } else {
                         channelMatch = false;
@@ -3843,7 +3846,7 @@ const Inbox = () => {
                                         <button
                                             className="fp-toggle-all"
                                             onClick={() => {
-                                                const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes'];
+                                                const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'marketing', 'notes'];
                                                 const allChecked = channelFilters.every(f => activeFilters.includes(f));
                                                 if (allChecked) {
                                                     setActiveFilters(prev => prev.filter(f => !channelFilters.includes(f)));
@@ -3852,7 +3855,7 @@ const Inbox = () => {
                                                 }
                                             }}
                                         >
-                                            {['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes'].every(f => activeFilters.includes(f)) ? 'Kaldır' : 'Seç'}
+                                            {['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'marketing', 'notes'].every(f => activeFilters.includes(f)) ? 'Kaldır' : 'Seç'}
                                         </button>
                                     </div>
                                     <div className="fp-chips">
@@ -3865,6 +3868,7 @@ const Inbox = () => {
                                             { key: 'emails', label: 'E-posta', icon: <Mail size={13} className="icon-email" /> },
                                             { key: 'leads', label: 'Leads', icon: <UserCheck size={13} className="icon-leads" /> },
                                             { key: 'phone_calls', label: 'Arama', icon: <Phone size={13} className="icon-phone" /> },
+                                            { key: 'marketing', label: 'Marketing', icon: <Megaphone size={13} className="icon-marketing" /> },
                                         ].map(ch => (
                                             <button
                                                 key={ch.key}

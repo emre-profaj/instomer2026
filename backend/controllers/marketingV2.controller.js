@@ -134,6 +134,27 @@ export const deleteCampaign = async (req, res) => {
 // 2. GROUPS (Ad Sets) CRUD
 // ══════════════════════════════════════════════════════════════════════════
 
+export const getAllGroups = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        const groups = await prisma.campaignGroup.findMany({
+            where: { campaign: { workspaceId } },
+            include: {
+                campaign: { select: { id: true, name: true } },
+                groupMessages: { include: { message: true } },
+                list: true
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        res.json({ success: true, groups });
+    } catch (error) {
+        console.error('❌ [getAllGroups]', error);
+        res.status(500).json({ error: 'Gruplar getirilemedi' });
+    }
+};
+
 export const getGroups = async (req, res) => {
     try {
         const { workspaceId, campaignId } = req.params;
@@ -494,7 +515,12 @@ export const executeGroupSend = async (req, res) => {
                             
                             if (!conversation) {
                                 conversation = await prisma.conversation.create({
-                                    data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN', isBulkSend: true, campaignId: group.campaignId }
+                                    data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN', isBulkSend: true, campaignId: group.campaignId, source: 'MARKETING' }
+                                });
+                            } else if (!conversation.campaignId) {
+                                await prisma.conversation.update({
+                                    where: { id: conversation.id },
+                                    data: { campaignId: group.campaignId, source: 'MARKETING' }
                                 });
                             }
 

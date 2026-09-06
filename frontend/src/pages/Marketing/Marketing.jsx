@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import {
-    Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, 
+    Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
     BarChart2, Phone, Mail, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown
 } from 'lucide-react';
 import './Marketing.css';
@@ -211,15 +211,15 @@ function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClo
     const [name, setName] = useState(initial?.name || '');
     const [campaignId, setCampaignId] = useState(initial?.campaignId || '');
     const [channel, setChannel] = useState(initial?.channel || 'WHATSAPP');
-    const [contactGroupId, setContactGroupId] = useState(initial?.contactGroupId || '');
-    const [sendRate, setSendRate] = useState(initial?.sendRate || 60);
+    const [listId, setListId] = useState(initial?.listId || '');
+    const [sendRate, setSendRate] = useState(initial?.sendRate || 20);
     const [scheduledAt, setScheduledAt] = useState(initial?.scheduledAt ? initial.scheduledAt.substring(0,16) : '');
     const [saving, setSaving] = useState(false);
 
     const handleSave = async () => {
-        if (!name.trim() || !campaignId || !contactGroupId) return alert('Lütfen zorunlu alanları doldurun');
+        if (!name.trim() || !campaignId || !listId) return alert('Lütfen zorunlu alanları doldurun');
         setSaving(true);
-        await onSave({ name, campaignId, channel, contactGroupId, sendRate: Number(sendRate), scheduledAt });
+        await onSave({ name, campaignId, channel, listId, sendRate: Number(sendRate), scheduledAt });
         setSaving(false);
     };
 
@@ -252,14 +252,14 @@ function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClo
                     </div>
                     <div className="grp-field">
                         <label className="grp-label">Hedef Kitle (Liste)</label>
-                        <select className="grp-input" value={contactGroupId} onChange={e => setContactGroupId(e.target.value)}>
+                        <select className="grp-input" value={listId} onChange={e => setListId(e.target.value)}>
                             <option value="">Seçiniz...</option>
                             {contactGroups.map(cg => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
                         </select>
                     </div>
                     <div className="grp-field" style={{ display: 'flex', gap: 10 }}>
                         <div style={{ flex: 1 }}>
-                            <label className="grp-label">Gönderim Hızı (saat/adet)</label>
+                            <label className="grp-label">Gönderim Hızı (dakika/adet)</label>
                             <input className="grp-input" type="number" value={sendRate} onChange={e => setSendRate(e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
@@ -294,7 +294,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
         setLoading(true);
         try {
             const [setsRes, campRes, cgRes, msgRes] = await Promise.all([
-                api.get(`/marketing-v2/${wsId}/ad-sets`),
+                api.get(`/marketing-v2/${wsId}/groups`),
                 api.get(`/marketing-v2/${wsId}/campaigns`),
                 api.get(`/contact-groups/${wsId}/groups`),
                 api.get(`/marketing-v2/${wsId}/messages`)
@@ -314,9 +314,9 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
     const handleSave = async (data) => {
         try {
             if (editItem) {
-                await api.put(`/marketing-v2/${wsId}/ad-sets/${editItem.id}`, data);
+                await api.put(`/marketing-v2/${wsId}/groups/${editItem.id}`, data);
             } else {
-                await api.post(`/marketing-v2/${wsId}/ad-sets`, data);
+                await api.post(`/marketing-v2/${wsId}/groups`, data);
             }
             setShowForm(false);
             setEditItem(null);
@@ -327,7 +327,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
     const handleDelete = async (id) => {
         if (!window.confirm('Emin misiniz?')) return;
         try {
-            await api.delete(`/marketing-v2/${wsId}/ad-sets/${id}`);
+            await api.delete(`/marketing-v2/${wsId}/groups/${id}`);
             fetchData();
         } catch (e) { alert('Silinemedi'); }
     };
@@ -335,7 +335,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
     const handleExecute = async (id) => {
         if (!window.confirm('Bu grubun gönderimini başlatmak istediğinize emin misiniz?')) return;
         try {
-            await api.post(`/marketing-v2/${wsId}/ad-sets/${id}/execute`);
+            await api.post(`/marketing-v2/${wsId}/groups/${id}/execute`);
             alert('Gönderim başlatıldı!');
             fetchData();
         } catch (e) { alert('Başlatılamadı'); }
@@ -347,14 +347,14 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
 
     const linkMessage = async (setId, messageId) => {
         try {
-            await api.post(`/marketing-v2/${wsId}/ad-sets/${setId}/messages`, { messageId });
+            await api.post(`/marketing-v2/${wsId}/groups/${setId}/messages`, { messageId });
             fetchData();
         } catch (e) { alert('Mesaj eklenemedi'); }
     };
     
     const unlinkMessage = async (setId, messageId) => {
         try {
-            await api.delete(`/marketing-v2/${wsId}/ad-sets/${setId}/messages/${messageId}`);
+            await api.delete(`/marketing-v2/${wsId}/groups/${setId}/messages/${messageId}`);
             fetchData();
         } catch (e) { alert('Mesaj çıkarılamadı'); }
     };
@@ -412,7 +412,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                                 <span style={{ fontSize: 12 }}>{s.channel}</span>
                                             </div>
                                         </td>
-                                        <td>{contactGroups.find(c => c.id === s.contactGroupId)?.name || '-'}</td>
+                                        <td>{contactGroups.find(c => c.id === s.listId)?.name || '-'}</td>
                                         <td>
                                             <span style={{ padding: '4px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: s.status === 'COMPLETED' ? '#dcfce7' : s.status === 'SENDING' ? '#dbeafe' : '#f3f4f6', color: s.status === 'COMPLETED' ? '#166534' : s.status === 'SENDING' ? '#1e40af' : '#4b5563' }}>
                                                 {s.status || 'DRAFT'}
@@ -430,9 +430,9 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                         <tr style={{ background: '#fafafa' }}>
                                             <td colSpan={6} style={{ padding: '20px 40px' }}>
                                                 <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 13, color: '#374151' }}>Bağlı Mesajlar</div>
-                                                {s.messages && s.messages.length > 0 ? (
+                                                {s.groupMessages && s.groupMessages.length > 0 ? (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                                                        {s.messages.map(m => {
+                                                        {s.groupMessages.map(m => {
                                                             const msgObj = messages.find(x => x.id === m.messageId);
                                                             return (
                                                                 <div key={m.messageId} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6 }}>
@@ -450,7 +450,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                                                     <select className="mkt-filter-select" style={{ width: 250 }} id={`msg-select-${s.id}`}>
                                                         <option value="">Mesaj Seçin...</option>
-                                                        {messages.filter(m => m.channel === s.channel && !s.messages?.some(sm => sm.messageId === m.id)).map(m => (
+                                                        {messages.filter(m => m.channel === s.channel && !s.groupMessages?.some(sm => sm.messageId === m.id)).map(m => (
                                                             <option key={m.id} value={m.id}>{m.name}</option>
                                                         ))}
                                                     </select>

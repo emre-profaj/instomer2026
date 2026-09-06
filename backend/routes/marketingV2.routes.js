@@ -13,6 +13,7 @@ router.put('/:workspaceId/campaigns/:id', marketingV2Controller.updateCampaign);
 router.delete('/:workspaceId/campaigns/:id', marketingV2Controller.deleteCampaign);
 
 // GROUPS (Ad Sets)
+router.get('/:workspaceId/groups', marketingV2Controller.getAllGroups);
 router.get('/:workspaceId/campaigns/:campaignId/groups', marketingV2Controller.getGroups);
 router.post('/:workspaceId/campaigns/:campaignId/groups', marketingV2Controller.createGroup);
 router.put('/:workspaceId/groups/:groupId', marketingV2Controller.updateGroup);
