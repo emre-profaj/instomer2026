@@ -1,6 +1,6 @@
 .appnotes-page {
     padding: 24px 32px;
-    max-width: 1200px;
+    max-width: 900px;
     margin: 0 auto;
 }
 
@@ -22,24 +22,7 @@
     color: #1e293b;
     margin: 0;
 }
-.appnotes-icon {
-    color: #6366f1;
-}
-.appnotes-add-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: #6366f1;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.appnotes-add-btn:hover { background: #4f46e5; }
+.appnotes-icon { color: #6366f1; }
 
 /* Tabs */
 .appnotes-tabs {
@@ -48,7 +31,7 @@
     background: #f1f5f9;
     border-radius: 10px;
     padding: 4px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
     width: fit-content;
 }
 .appnotes-tab {
@@ -71,240 +54,309 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-/* Modal */
-.appnotes-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
+/* ─── Quick Add Bar ─── */
+.appnotes-quick-add {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+}
+.appnotes-quick-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.appnotes-quick-module {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-size: 12px;
+    background: white;
+    color: #475569;
+    outline: none;
+    cursor: pointer;
+    min-width: 100px;
+}
+.appnotes-quick-version {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-size: 13px;
+    background: white;
+    outline: none;
+    width: 70px !important;
+}
+.appnotes-quick-input {
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+    outline: none;
+    background: white;
+    transition: border-color 0.2s;
+}
+.appnotes-quick-input:focus { border-color: #6366f1; }
+.appnotes-quick-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: #6366f1;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    transition: background 0.2s;
+    flex-shrink: 0;
 }
-.appnotes-modal {
-    background: white;
-    border-radius: 16px;
-    width: 520px;
-    max-width: 90vw;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+.appnotes-quick-btn:hover { background: #4f46e5; }
+.appnotes-quick-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── Similar Notes Warning ─── */
+.appnotes-similar {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    font-size: 12px;
 }
-.appnotes-modal-header {
+.appnotes-similar-label {
+    font-weight: 600;
+    color: #92400e;
+    display: block;
+    margin-bottom: 4px;
+}
+.appnotes-similar-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid #e2e8f0;
+    gap: 6px;
+    padding: 3px 0;
+    color: #78716c;
 }
-.appnotes-modal-header h2 { margin: 0; font-size: 16px; font-weight: 700; }
-.appnotes-modal-header button { background: none; border: none; cursor: pointer; color: #94a3b8; }
-.appnotes-modal-body { padding: 20px; }
-.appnotes-field { margin-bottom: 14px; }
-.appnotes-field label { display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 4px; }
-.appnotes-field input,
-.appnotes-field textarea,
-.appnotes-field select {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-    font-family: inherit;
-    box-sizing: border-box;
-}
-.appnotes-field input:focus,
-.appnotes-field textarea:focus,
-.appnotes-field select:focus { border-color: #6366f1; }
-.appnotes-field-row { display: flex; gap: 12px; }
-.appnotes-field-row .appnotes-field { flex: 1; }
-.appnotes-modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 12px 20px;
-    border-top: 1px solid #e2e8f0;
-}
-.appnotes-btn-cancel {
-    padding: 8px 16px;
-    border: 1px solid #e2e8f0;
-    background: white;
-    border-radius: 8px;
-    font-size: 13px;
-    cursor: pointer;
-}
-.appnotes-btn-save {
-    padding: 8px 20px;
-    background: #6366f1;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-}
-.appnotes-btn-save:hover { background: #4f46e5; }
+.appnotes-similar-status { font-size: 12px; }
 
-/* Loading & Empty */
+/* ─── Filters ─── */
+.appnotes-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.appnotes-filters select {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #475569;
+    background: white;
+    outline: none;
+    cursor: pointer;
+}
+.appnotes-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+/* ─── Loading / Empty ─── */
 .appnotes-loading, .appnotes-empty {
     text-align: center;
     padding: 60px 20px;
     color: #94a3b8;
 }
-.appnotes-empty p { font-size: 16px; font-weight: 600; color: #64748b; margin: 12px 0 4px; }
+.appnotes-empty p { font-size: 15px; font-weight: 600; color: #64748b; margin: 0 0 4px; }
 .appnotes-empty span { font-size: 13px; }
 
-/* Timeline (Changelog) */
-.appnotes-timeline { }
-.appnotes-version-group {
-    margin-bottom: 28px;
+/* ─── Changelog Version Sections ─── */
+.appnotes-ver-section {
+    margin-bottom: 32px;
 }
-.appnotes-version-header {
+.appnotes-ver-title {
+    margin-bottom: 16px;
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
 }
-.appnotes-version-badge {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+.appnotes-ver-badge {
+    display: inline-block;
+    background: #10b981;
     color: white;
-    padding: 4px 14px;
-    border-radius: 20px;
+    padding: 4px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+.appnotes-ver-date {
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+/* Module sub-header */
+.appnotes-mod-section {
+    margin-bottom: 18px;
+    padding-left: 8px;
+}
+.appnotes-mod-title {
     font-size: 13px;
     font-weight: 700;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #f1f5f9;
 }
-.appnotes-version-date {
-    color: #94a3b8;
-    font-size: 12px;
+
+/* ─── Note Row (flat list) ─── */
+.appnotes-list {
+    /* clean container */
 }
-.appnotes-version-items {
-    border-left: 2px solid #e2e8f0;
-    margin-left: 16px;
-    padding-left: 20px;
-}
-.appnotes-item {
+.appnotes-row {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 8px 0;
-    position: relative;
+    gap: 10px;
+    padding: 10px 12px;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.15s, border-color 0.15s;
+    cursor: default;
 }
-.appnotes-item-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-top: 6px;
+.appnotes-row:hover {
+    background: #f8fafc;
+    border-left-color: #6366f1;
+}
+.appnotes-row.editing {
+    background: #f8fafc;
+    border-left-color: #6366f1;
+    padding: 14px 12px;
+}
+.appnotes-row-status {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px;
     flex-shrink: 0;
-    margin-left: -25px;
+    margin-top: 1px;
+    transition: transform 0.15s;
 }
-.appnotes-item-content { flex: 1; }
-.appnotes-item-title { font-size: 14px; font-weight: 600; color: #1e293b; }
-.appnotes-item-desc { font-size: 13px; color: #64748b; margin-top: 2px; white-space: pre-wrap; }
-.appnotes-item-actions {
+.appnotes-row-status:hover { transform: scale(1.2); }
+.appnotes-row-body { flex: 1; min-width: 0; }
+.appnotes-row-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
     display: flex;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
-.appnotes-item:hover .appnotes-item-actions { opacity: 1; }
-.appnotes-item-actions button {
+.appnotes-row-desc {
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 3px;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+.appnotes-row-date {
+    font-size: 11px;
+    color: #94a3b8;
+    white-space: nowrap;
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+.appnotes-row-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+.appnotes-row:hover .appnotes-row-actions { opacity: 1; }
+.appnotes-row-actions button {
     background: none;
     border: none;
     cursor: pointer;
     color: #94a3b8;
     padding: 4px;
     border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
 }
-.appnotes-item-actions button:hover { color: #6366f1; background: #f1f5f9; }
+.appnotes-row-actions button:hover { color: #6366f1; background: #ede9fe; }
 
-/* Kanban (What's Next) */
-.appnotes-kanban {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+/* Module badge */
+.appnotes-module-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    padding: 1px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
 }
-@media (max-width: 1024px) {
-    .appnotes-kanban { grid-template-columns: repeat(2, 1fr); }
+
+/* ─── Inline Edit ─── */
+.appnotes-row-edit {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-@media (max-width: 640px) {
-    .appnotes-kanban { grid-template-columns: 1fr; }
+.appnotes-edit-title {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-weight: 600;
+    outline: none;
+    font-family: inherit;
 }
-.appnotes-kanban-col {
-    background: #f8fafc;
-    border-radius: 12px;
-    overflow: hidden;
+.appnotes-edit-title:focus { border-color: #6366f1; }
+.appnotes-edit-content {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
 }
-.appnotes-kanban-header {
+.appnotes-edit-content:focus { border-color: #6366f1; }
+.appnotes-edit-meta {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 14px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #1e293b;
-    border-top: 3px solid;
+    flex-wrap: wrap;
 }
-.appnotes-kanban-count {
-    background: #e2e8f0;
-    color: #64748b;
-    padding: 1px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    margin-left: auto;
-}
-.appnotes-kanban-items {
-    padding: 0 8px 8px;
-    min-height: 60px;
-}
-.appnotes-kanban-card {
+.appnotes-edit-meta select,
+.appnotes-edit-meta input {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    outline: none;
     background: white;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    transition: box-shadow 0.2s;
 }
-.appnotes-kanban-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.appnotes-kanban-card-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.appnotes-kanban-card-title { font-size: 13px; font-weight: 600; color: #1e293b; }
-.appnotes-kanban-card-desc { font-size: 12px; color: #64748b; margin-top: 6px; white-space: pre-wrap; }
-.appnotes-kanban-card-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 10px;
-}
-.appnotes-kanban-date { font-size: 11px; color: #94a3b8; }
-.appnotes-kanban-card-actions {
+.appnotes-edit-save {
     display: flex;
     align-items: center;
     gap: 4px;
-}
-.appnotes-status-select {
+    padding: 5px 12px;
+    background: #6366f1;
+    color: white;
     border: none;
-    background: none;
-    font-size: 11px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    outline: none;
-    padding: 2px;
 }
-.appnotes-kanban-card-actions button {
+.appnotes-edit-save:hover { background: #4f46e5; }
+.appnotes-edit-cancel {
     background: none;
     border: none;
     cursor: pointer;
     color: #94a3b8;
-    padding: 2px;
+    padding: 4px;
 }
-.appnotes-kanban-card-actions button:hover { color: #6366f1; }
-.appnotes-kanban-empty {
-    text-align: center;
-    padding: 20px;
-    color: #cbd5e1;
-    font-size: 12px;
-}
-.appnotes-priority { display: flex; align-items: center; }

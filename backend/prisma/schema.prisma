@@ -2489,6 +2489,7 @@ model AppNote {
   id          String   @id @default(uuid())
   workspaceId String
   type        String   // CHANGELOG, WHATSNEXT
+  module      String?  // KISILER, PAZARLAMA, INBOX, TAKIMLAR, SATIS, AYARLAR, OTOMASYONLAR, RAPORLAR, GENEL
   title       String
   content     String?  @db.Text
   version     String?  // "v2.4.0" (changelog için)

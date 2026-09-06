@@ -27,7 +27,7 @@ export const getNotes = async (req, res) => {
 export const createNote = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { type, title, content, version, status, priority } = req.body;
+        const { type, module, title, content, version, status, priority } = req.body;
 
         if (!title?.trim() || !type) {
             return res.status(400).json({ error: 'Başlık ve tip zorunlu' });
@@ -37,6 +37,7 @@ export const createNote = async (req, res) => {
             data: {
                 workspaceId,
                 type,
+                module: module || null,
                 title: title.trim(),
                 content: content || null,
                 version: version || null,
@@ -56,7 +57,7 @@ export const createNote = async (req, res) => {
 export const updateNote = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, content, version, status, priority } = req.body;
+        const { title, content, version, status, priority, module } = req.body;
 
         const note = await prisma.appNote.update({
             where: { id },
@@ -65,7 +66,8 @@ export const updateNote = async (req, res) => {
                 ...(content !== undefined && { content }),
                 ...(version !== undefined && { version }),
                 ...(status !== undefined && { status }),
-                ...(priority !== undefined && { priority })
+                ...(priority !== undefined && { priority }),
+                ...(module !== undefined && { module })
             }
         });
 
