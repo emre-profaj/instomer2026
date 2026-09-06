@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { teamAPI, workspaceAPI, aiAPI, retellAPI } from '../../services/api';
+import { teamAPI, workspaceAPI, aiAPI, retellAPI, appointmentConfigAPI } from '../../services/api';
 import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical, Bot, Phone, Clock, Mail, Calendar, Zap } from 'lucide-react';
 import './Teams.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
@@ -49,12 +49,17 @@ const Teams = () => {
     const [retellAgents, setRetellAgents] = useState([]);
     const [selectedRetellAgentToAdd, setSelectedRetellAgentToAdd] = useState('');
 
+    // Şube states
+    const [branches, setBranches] = useState([]);
+    const [teamBranchId, setTeamBranchId] = useState('');
+
     useEffect(() => {
         if (currentWorkspace) {
             loadTeams();
             loadWorkspaceMembers();
             loadBots();
             loadRetellAgents();
+            loadBranches();
         }
     }, [currentWorkspace]);
 
@@ -98,6 +103,15 @@ const Teams = () => {
         }
     };
 
+    const loadBranches = async () => {
+        try {
+            const response = await appointmentConfigAPI.getBranches(currentWorkspace.id);
+            setBranches(response.data.branches || []);
+        } catch (error) {
+            console.error('Error loading branches:', error);
+        }
+    };
+
     const handleCreateTeam = async (e) => {
         e.preventDefault();
         const distPayload = {
@@ -115,6 +129,7 @@ const Teams = () => {
                     name: teamName,
                     description: teamDescription,
                     assignmentRule: teamAssignmentRule,
+                    branchId: teamBranchId || null,
                     ...distPayload
                 });
                 if (response.data && response.data.team) {
@@ -127,6 +142,7 @@ const Teams = () => {
                     description: teamDescription,
                     assignmentRule: teamAssignmentRule,
                     parentId: parentIdForCreate || null,
+                    branchId: teamBranchId || null,
                     ...distPayload
                 });
                 if (response.data && response.data.team) {
@@ -183,6 +199,7 @@ const Teams = () => {
             setTriggerOnAppointment(team.triggerOnAppointment || false);
             setTriggerTimeoutMinutes(team.triggerTimeoutMinutes ? String(team.triggerTimeoutMinutes) : '');
             setParentIdForCreate(null);
+            setTeamBranchId(team.branchId || '');
         } else {
             setSelectedTeam(null);
             setTeamName('');
@@ -190,6 +207,7 @@ const Teams = () => {
             setTeamAssignmentRule('POOL');
             resetDistributionState();
             setParentIdForCreate(parentId);
+            setTeamBranchId('');
         }
         setIsCreateModalOpen(true);
     };
@@ -202,6 +220,7 @@ const Teams = () => {
         setTeamAssignmentRule('POOL');
         resetDistributionState();
         setParentIdForCreate(null);
+        setTeamBranchId('');
     };
 
     const toggleExpand = (teamId) => {
@@ -474,6 +493,11 @@ const Teams = () => {
                                 <h3>{team.name}</h3>
                             </div>
                             <p className="team-description">{team.description || t('teams.noDescription')}</p>
+                            {team.branchId && (
+                                <span style={{ fontSize: '0.7rem', background: '#eef2ff', color: '#4f46e5', padding: '2px 8px', borderRadius: '10px', marginTop: '4px', display: 'inline-block' }}>
+                                    🏢 {branches.find(b => b.id === team.branchId)?.name || 'Şube'}
+                                </span>
+                            )}
                         </div>
                         <div className="team-actions">
                             <button
@@ -668,6 +692,22 @@ const Teams = () => {
                                     rows={3}
                                 />
                             </div>
+                            {/* Şube Seçimi */}
+                            {branches.length > 0 && (
+                                <div className="form-group">
+                                    <label>🏢 Şube</label>
+                                    <select
+                                        className="form-input"
+                                        value={teamBranchId}
+                                        onChange={(e) => setTeamBranchId(e.target.value)}
+                                    >
+                                        <option value="">Şube seçilmedi (tüm şubeler)</option>
+                                        {branches.filter(b => b.isActive).map(b => (
+                                            <option key={b.id} value={b.id}>{b.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                             {/* Havuz Dağıtım Kuralları */}
                             <div className="form-group">
                                 <label className="dist-modal-label">

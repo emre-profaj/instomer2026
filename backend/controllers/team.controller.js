@@ -27,6 +27,7 @@ export const createTeam = async (req, res) => {
             triggerOnEmail: req.body.triggerOnEmail || false,
             triggerOnAppointment: req.body.triggerOnAppointment || false,
             triggerTimeoutMinutes: req.body.triggerTimeoutMinutes || null,
+            branchId: req.body.branchId || null,
             members: {
                 create: {
                     userId: req.user.id,
@@ -248,6 +249,7 @@ export const updateTeam = async (req, res) => {
                 ...(req.body.hasOwnProperty('triggerOnEmail') && { triggerOnEmail: req.body.triggerOnEmail }),
                 ...(req.body.hasOwnProperty('triggerOnAppointment') && { triggerOnAppointment: req.body.triggerOnAppointment }),
                 ...(req.body.hasOwnProperty('triggerTimeoutMinutes') && { triggerTimeoutMinutes: req.body.triggerTimeoutMinutes }),
+                ...(req.body.hasOwnProperty('branchId') && { branchId: req.body.branchId || null }),
             },
             include: {
                 _count: { select: { members: true } },
