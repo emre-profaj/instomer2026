@@ -169,7 +169,7 @@ const Customers = () => {
     const [quickStats, setQuickStats] = useState({ periodCount: 0, withPhoneCount: 0, agentCalledCount: 0, aiCalledCount: 0, noActivityCount: 0, noPhoneCount: 0, totalAllTime: 0 });
 
     // Column sorting
-    const [sortField, setSortField] = useState(sf.sortField || 'createdAt');
+    const [sortField, setSortField] = useState(sf.sortField || 'lastMessageAt');
     const [sortDir, setSortDir] = useState(sf.sortDir || 'desc');
 
     // Analytics panel
