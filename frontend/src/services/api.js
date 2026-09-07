@@ -635,7 +635,11 @@ export const companyAPI = {
     // Company user management
     getCompanyUsers: (companyId) => api.get(`/companies/${companyId}/users`),
     assignUserToWorkspaces: (companyId, data) => api.post(`/companies/${companyId}/users/assign`, data),
-    removeUserFromWorkspace: (companyId, data) => api.post(`/companies/${companyId}/users/remove`, data)
+    removeUserFromWorkspace: (companyId, data) => api.post(`/companies/${companyId}/users/remove`, data),
+
+    // AI Usage Reports
+    getAiUsage: (companyId, month) => api.get(`/companies/${companyId}/ai-usage`, { params: { month } }),
+    getAllAiUsage: (month) => api.get('/companies/ai-usage/all', { params: { month } }),
 };
 
 // Web Widget API

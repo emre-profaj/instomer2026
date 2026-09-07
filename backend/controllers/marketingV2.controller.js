@@ -28,11 +28,27 @@ export const getCampaigns = async (req, res) => {
                 ...c,
                 isLegacy,
                 groupsCount: c._count.groups,
-                recipientsCount: c._count.recipients
+                recipientsCount: c._count.recipients,
+                stats: {
+                    sent: c.sentCount || 0,
+                    delivered: c.deliveredCount || 0,
+                    read: c.readCount || 0,
+                    failed: c.failedCount || 0,
+                    replied: c.repliedCount || 0
+                }
             };
         });
 
-        res.json({ success: true, campaigns: mapped });
+        // Aggregate stats for top bar
+        const stats = {
+            total: mapped.length,
+            active: mapped.filter(c => c.status === 'ACTIVE').length,
+            sent: mapped.reduce((sum, c) => sum + (c.sentCount || 0), 0),
+            delivered: mapped.reduce((sum, c) => sum + (c.deliveredCount || 0), 0),
+            read: mapped.reduce((sum, c) => sum + (c.readCount || 0), 0)
+        };
+
+        res.json({ success: true, campaigns: mapped, stats });
     } catch (error) {
         console.error('❌ [getCampaigns]', error);
         res.status(500).json({ error: 'Kampanyalar getirilemedi' });

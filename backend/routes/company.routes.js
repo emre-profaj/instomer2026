@@ -13,7 +13,9 @@ import {
     getAllUsers,
     getCompanyUsers,
     assignUserToWorkspaces,
-    removeUserFromWorkspace
+    removeUserFromWorkspace,
+    getCompanyAiUsage,
+    getAllCompaniesAiUsage
 } from '../controllers/company.controller.js';
 
 const router = express.Router();
@@ -41,5 +43,9 @@ router.get('/my/companies', getMyCompanies);
 router.get('/:companyId/users', getCompanyUsers);
 router.post('/:companyId/users/assign', assignUserToWorkspaces);
 router.post('/:companyId/users/remove', removeUserFromWorkspace);
+
+// AI Usage Reports
+router.get('/ai-usage/all', getAllCompaniesAiUsage); // Admin: tüm hesaplar
+router.get('/:companyId/ai-usage', getCompanyAiUsage); // Tek hesap
 
 export default router;

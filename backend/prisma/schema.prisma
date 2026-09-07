@@ -65,9 +65,13 @@ model Company {
   dailyAiChatLimit     Int         @default(50)
   aiSubscriptionType   String      @default("FREE") // FREE, BASIC, PRO, UNLIMITED
   aiSubscriptionEndsAt DateTime?
+  // AI Model + Key (hesap varsayılanı — workspace override edebilir)
+  aiModel              String      @default("gemini-2.5-flash")
+  aiApiKey             String?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   workspaces           Workspace[]
+  aiUsageLogs          AIUsageLog[]
 
   @@index([ownerId])
   @@map("companies")
@@ -82,6 +86,13 @@ model Workspace {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   aiApiKey            String?
+  // AI Model (null = Company'den miras, değer varsa override)
+  aiModel             String?
+  // AI Özellik Toggle'ları
+  aiClassifierEnabled Boolean  @default(true)   // Sınıflandırıcı
+  aiAutoReplyEnabled  Boolean  @default(true)   // Bot otomatik yanıt
+  aiScorerEnabled     Boolean  @default(true)   // Lead puanlayıcı
+  aiFollowUpEnabled   Boolean  @default(true)   // Takip mesajları
   stageAutoMode       Boolean  @default(false)
   // Company Info (workspace'e özel şirket bilgileri)
   companyName         String?
@@ -149,6 +160,7 @@ model Workspace {
   telsamConfig         TelsamConfig?
   automationLogs       AutomationLog[]
   userGoogleCalendars  UserGoogleCalendar[]
+  aiUsageLogs          AIUsageLog[]
 
   // Google Calendar Integration (Workspace level credentials)
   googleClientId       String?
@@ -168,7 +180,7 @@ model Workspace {
 
   // AI Devralma Ayarları (workspace seviyesi — genel varsayılan)
   aiFallbackEnabled               Boolean @default(false) // İnsan aramadığında AI devreye girsin mi?
-  aiFallbackDelayMinutes          Int     @default(60) // Kaç dk sonra AI devralır
+  aiFallbackDelayMinutes          Int     @default(5) // Kaç dk sonra AI devralır
   aiFallbackPoolEnabled           Boolean @default(false) // Havuzdaki sahipsiz görevleri AI alsın mı?
   retellMaxOverdueDays            Int     @default(3) // X günden eski gecikmiş görevleri yoksay
   retellScheduledCallTimeoutHours Int     @default(2) // Planlanan arama X saatten gecikmişse iptal et
@@ -299,6 +311,14 @@ model AIBot {
 
   // Handoff: Custom message when bot can't answer and transfers to agent
   handoffMessage String? // e.g. "Bu konuda tam emin değilim. Sizi bir temsilcimize aktarmayı deneyeceğim..."
+
+  // AI Devralma / Müdahale Kapsamı
+  fallbackEnabled      Boolean @default(false)  // Sahipsiz/geciken konuşmalara müdahale etsin mi?
+  fallbackDelayMinutes Int     @default(5)       // Kaç dk yanıt yoksa devralır
+  fallbackScope        String  @default("UNASSIGNED") // UNASSIGNED | MY_TEAMS | ALL
+  // UNASSIGNED = Sadece kimseye atanmamış konuşmalar
+  // MY_TEAMS   = Atandığı takımların konuşmaları (atanmış ama yanıt yoksa)
+  // ALL        = Tüm konuşmalar (workspace geneli, yanıt yoksa devralır)
 
   // Health System API integrations assigned to this bot
   apiIntegrations ApiIntegration[] @relation("ApiIntegrationBot")
@@ -2510,4 +2530,28 @@ model AppNote {
   @@index([workspaceId, type])
   @@index([workspaceId, type, createdAt])
   @@map("app_notes")
+}
+
+// AI Token Kullanım Logu — her Gemini çağrısında kaydedilir
+model AIUsageLog {
+  id             String   @id @default(cuid())
+  companyId      String?
+  workspaceId    String
+  service        String   // classifier | auto_reply | scorer | follow_up | bot | manual | note_analysis | routing
+  model          String   // gemini-2.5-flash, gemini-2.0-flash-lite, gemini-2.5-pro
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  totalTokens    Int      @default(0)
+  costUsd        Float    @default(0) // Hesaplanmış USD maliyet
+  conversationId String?
+  metadata       String?  @db.Text // Ek bilgi (JSON)
+  createdAt      DateTime @default(now())
+
+  company        Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([companyId, service])
+  @@map("ai_usage_logs")
 }

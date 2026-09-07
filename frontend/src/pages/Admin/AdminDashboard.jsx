@@ -63,6 +63,7 @@ const AdminDashboard = () => {
         maxWorkspaces: 3,
         dailyAiChatLimit: 50,
         aiSubscriptionType: 'FREE',
+        aiModel: 'gemini-2.5-flash',
         // Yeni kullanıcı oluşturma alanları
         createNewUser: false,
         newUserName: '',
@@ -220,7 +221,8 @@ const AdminDashboard = () => {
                 ownerId,
                 maxWorkspaces: createCompanyForm.maxWorkspaces,
                 dailyAiChatLimit: createCompanyForm.dailyAiChatLimit,
-                aiSubscriptionType: createCompanyForm.aiSubscriptionType
+                aiSubscriptionType: createCompanyForm.aiSubscriptionType,
+                aiModel: createCompanyForm.aiModel
             });
 
             alert('Firma başarıyla oluşturuldu!');
@@ -231,6 +233,7 @@ const AdminDashboard = () => {
                 maxWorkspaces: 3,
                 dailyAiChatLimit: 50,
                 aiSubscriptionType: 'FREE',
+                aiModel: 'gemini-2.5-flash',
                 createNewUser: false,
                 newUserName: '',
                 newUserEmail: '',
@@ -872,7 +875,8 @@ const AdminDashboard = () => {
                                         ownerId: selectedCompany.ownerId,
                                         maxWorkspaces: selectedCompany.maxWorkspaces,
                                         dailyAiChatLimit: selectedCompany.dailyAiChatLimit,
-                                        aiSubscriptionType: selectedCompany.aiSubscriptionType
+                                        aiSubscriptionType: selectedCompany.aiSubscriptionType,
+                                        aiModel: selectedCompany.aiModel || 'gemini-2.5-flash'
                                     });
                                     setIsEditCompanyModalOpen(true);
                                 }}
@@ -906,6 +910,18 @@ const AdminDashboard = () => {
                         <span className="info-value">
                             <span className={`subscription-badge ${selectedCompany.aiSubscriptionType?.toLowerCase()}`}>
                                 {selectedCompany.aiSubscriptionType} ({selectedCompany.dailyAiChatLimit >= 999999 ? 'Sınırsız' : `${selectedCompany.dailyAiChatLimit}/gün`})
+                            </span>
+                        </span>
+                    </div>
+                    <div className="info-row">
+                        <span className="info-label">🤖 AI Model:</span>
+                        <span className="info-value">
+                            <span style={{ 
+                                background: selectedCompany.aiModel === 'gemini-2.5-pro' ? '#fef2f2' : selectedCompany.aiModel === 'gemini-2.0-flash-lite' ? '#f0fdf4' : '#eff6ff',
+                                color: selectedCompany.aiModel === 'gemini-2.5-pro' ? '#dc2626' : selectedCompany.aiModel === 'gemini-2.0-flash-lite' ? '#16a34a' : '#2563eb',
+                                padding: '2px 10px', borderRadius: '12px', fontSize: 12, fontWeight: 600
+                            }}>
+                                {selectedCompany.aiModel === 'gemini-2.0-flash-lite' ? '⚡ Lite' : selectedCompany.aiModel === 'gemini-2.5-pro' ? '🔴 Pro' : '🔵 Standart'}
                             </span>
                         </span>
                     </div>
@@ -1049,6 +1065,17 @@ const AdminDashboard = () => {
                                             <option value="BASIC">BASIC (200/gün)</option>
                                             <option value="PRO">PRO (1000/gün)</option>
                                             <option value="UNLIMITED">UNLIMITED (Sınırsız)</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>🤖 AI Model (Hesap Varsayılanı)</label>
+                                        <select
+                                            value={editCompanyForm.aiModel || 'gemini-2.5-flash'}
+                                            onChange={(e) => setEditCompanyForm({ ...editCompanyForm, aiModel: e.target.value })}
+                                        >
+                                            <option value="gemini-2.0-flash-lite">⚡ Lite — En ucuz ($0.02/M)</option>
+                                            <option value="gemini-2.5-flash">🔵 Standart — Dengeli ($0.15/M)</option>
+                                            <option value="gemini-2.5-pro">🔴 Pro — En iyi ($1.25/M)</option>
                                         </select>
                                     </div>
                                 </div>

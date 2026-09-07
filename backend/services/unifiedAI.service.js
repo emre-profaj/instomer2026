@@ -80,6 +80,60 @@ export async function executeUnifiedAICall({
             return `${role}: ${m.content?.substring(0, 300) || ''}`;
         }).join('\n');
 
+        // ── 3b. Temsilci notları ve aktiviteleri ──
+        let activityLog = '';
+        try {
+            const conv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { contactId: true }
+            });
+            if (conv?.contactId) {
+                const recentActivities = await prisma.contactActivity.findMany({
+                    where: { 
+                        contactId: conv.contactId, workspaceId
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 8,
+                    select: { type: true, title: true, description: true, result: true, status: true, dueDate: true, callSuccessful: true }
+                });
+                if (recentActivities.length > 0) {
+                    const labels = { 
+                        NOTE: '📝 Not', CALL: '📞 Arama', MEETING: '🤝 Toplantı', 
+                        TASK: '✅ Görev', REMINDER: '🔔 Hatırlatıcı',
+                        PROPOSAL: '📄 Teklif', ORDER: '🛒 Sipariş', 
+                        INVOICE: '🧾 Fatura', PAYMENT: '💰 Ödeme'
+                    };
+                    activityLog = recentActivities.reverse().map(a => {
+                        let line = `${labels[a.type] || a.type}: ${a.title || a.description || ''}`;
+                        if (a.description && a.title) line += ` — ${a.description}`;
+                        if (a.result) line += ` [Sonuç: ${a.result}]`;
+                        if (a.dueDate) line += ` [Tarih: ${new Date(a.dueDate).toLocaleDateString('tr-TR')}]`;
+                        if (a.callSuccessful !== null) line += a.callSuccessful ? ' ✅ Ulaşıldı' : ' ❌ Ulaşılamadı';
+                        return line;
+                    }).join('\n');
+                }
+
+                // Randevular
+                const appointments = await prisma.appointment.findMany({
+                    where: { contactId: conv.contactId, workspaceId },
+                    orderBy: { startTime: 'desc' },
+                    take: 5,
+                    select: { title: true, startTime: true, status: true, branch: true, procedure: true, doctorName: true, notes: true }
+                });
+                if (appointments.length > 0) {
+                    const statusLabels = { SCHEDULED: '🟡 Planlandı', COMPLETED: '✅ Tamamlandı', CANCELLED: '❌ İptal', NO_SHOW: '⚠️ Gelmedi' };
+                    activityLog += '\n📅 RANDEVULAR:\n' +
+                        appointments.reverse().map(a => {
+                            let line = `📅 ${a.title} — ${new Date(a.startTime).toLocaleDateString('tr-TR')} ${new Date(a.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+                            line += ` ${statusLabels[a.status] || a.status}`;
+                            if (a.branch) line += ` | ${a.branch}`;
+                            if (a.doctorName) line += ` | Dr. ${a.doctorName}`;
+                            return line;
+                        }).join('\n');
+                }
+            }
+        } catch (e) { /* aktivite yükleme hatası — atla */ }
+
         // ── 4. Akış kontekstini formatla ──
         const funnelContext = funnels.map(f => {
             const stages = f.stages.map(s => s.name).join(' → ');
@@ -137,6 +191,7 @@ ${contact.name || contact.phone ? '🚫🚫🚫 ÖNEMLİ: Müşterinin bilgileri
 
 📋 SOHBET GEÇMİŞİ:
 ${chatLog || '(İlk mesaj)'}
+${activityLog ? `\n📝 TEMSİLCİ NOTLARI VE AKTİVİTELER:\n${activityLog}` : ''}
 
 ═══════════════════════════════════════
 ANA SİSTEM TALİMATI (Bot):

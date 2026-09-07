@@ -3268,8 +3268,15 @@ ${systemPrompt}${appointmentContextPrompt}`;
 export const updateSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { aiApiKey } = req.body;
-        await prisma.workspace.update({ where: { id: workspaceId }, data: { aiApiKey } });
+        const { aiApiKey, aiModel, aiClassifierEnabled, aiAutoReplyEnabled, aiScorerEnabled, aiFollowUpEnabled } = req.body;
+        const data = {};
+        if (aiApiKey !== undefined) data.aiApiKey = aiApiKey || null;
+        if (aiModel !== undefined) data.aiModel = aiModel || null; // null = Company'den miras
+        if (aiClassifierEnabled !== undefined) data.aiClassifierEnabled = aiClassifierEnabled;
+        if (aiAutoReplyEnabled !== undefined) data.aiAutoReplyEnabled = aiAutoReplyEnabled;
+        if (aiScorerEnabled !== undefined) data.aiScorerEnabled = aiScorerEnabled;
+        if (aiFollowUpEnabled !== undefined) data.aiFollowUpEnabled = aiFollowUpEnabled;
+        await prisma.workspace.update({ where: { id: workspaceId }, data });
         res.json({ message: 'Saved' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to save settings' });
@@ -3279,8 +3286,28 @@ export const updateSettings = async (req, res) => {
 export const getSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { aiApiKey: true } });
-        res.json({ aiApiKey: ws?.aiApiKey || '' });
+        const ws = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: {
+                aiApiKey: true,
+                aiModel: true,
+                aiClassifierEnabled: true,
+                aiAutoReplyEnabled: true,
+                aiScorerEnabled: true,
+                aiFollowUpEnabled: true,
+                companyId: true,
+                company: { select: { aiModel: true } }
+            }
+        });
+        res.json({
+            aiApiKey: ws?.aiApiKey || '',
+            aiModel: ws?.aiModel || null,
+            effectiveModel: ws?.aiModel || ws?.company?.aiModel || 'gemini-2.5-flash',
+            aiClassifierEnabled: ws?.aiClassifierEnabled ?? true,
+            aiAutoReplyEnabled: ws?.aiAutoReplyEnabled ?? true,
+            aiScorerEnabled: ws?.aiScorerEnabled ?? true,
+            aiFollowUpEnabled: ws?.aiFollowUpEnabled ?? true,
+        });
     } catch (error) {
         res.status(500).json({ error: 'Failed to get settings' });
     }

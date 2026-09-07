@@ -49,7 +49,7 @@ export const createCompany = async (req, res) => {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
-        const { name, description, ownerId, maxWorkspaces, dailyAiChatLimit, aiSubscriptionType } = req.body;
+        const { name, description, ownerId, maxWorkspaces, dailyAiChatLimit, aiSubscriptionType, aiModel } = req.body;
 
         if (!name || !ownerId) {
             return res.status(400).json({ error: 'Name and ownerId are required' });
@@ -79,7 +79,8 @@ export const createCompany = async (req, res) => {
                 ownerId,
                 maxWorkspaces: maxWorkspaces || 3,
                 dailyAiChatLimit: dailyAiChatLimit || 50,
-                aiSubscriptionType: aiSubscriptionType || 'FREE'
+                aiSubscriptionType: aiSubscriptionType || 'FREE',
+                aiModel: aiModel || 'gemini-2.5-flash'
             },
             include: {
                 owner: {
@@ -127,7 +128,7 @@ export const updateCompany = async (req, res) => {
         }
 
         const { companyId } = req.params;
-        const { name, description, ownerId, maxWorkspaces, dailyAiChatLimit, aiSubscriptionType, aiSubscriptionEndsAt } = req.body;
+        const { name, description, ownerId, maxWorkspaces, dailyAiChatLimit, aiSubscriptionType, aiSubscriptionEndsAt, aiModel, aiApiKey } = req.body;
 
         const existingCompany = await prisma.company.findUnique({ where: { id: companyId } });
         if (!existingCompany) {
@@ -160,6 +161,8 @@ export const updateCompany = async (req, res) => {
         if (aiSubscriptionEndsAt !== undefined) {
             updateData.aiSubscriptionEndsAt = aiSubscriptionEndsAt ? new Date(aiSubscriptionEndsAt) : null;
         }
+        if (aiModel !== undefined) updateData.aiModel = aiModel;
+        if (aiApiKey !== undefined) updateData.aiApiKey = aiApiKey || null;
 
         const company = await prisma.company.update({
             where: { id: companyId },
@@ -668,5 +671,146 @@ export const removeUserFromWorkspace = async (req, res) => {
     } catch (error) {
         console.error('Remove user from workspace error:', error);
         res.status(500).json({ error: 'Failed to remove user from workspace' });
+    }
+};
+
+// Company bazlı AI kullanım raporu
+export const getCompanyAiUsage = async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const { month } = req.query; // "2026-09" formatı
+
+        // Ay aralığı
+        const now = new Date();
+        let startDate, endDate;
+        if (month) {
+            const [y, m] = month.split('-').map(Number);
+            startDate = new Date(y, m - 1, 1);
+            endDate = new Date(y, m, 1);
+        } else {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        }
+
+        // Workspace kırılımı
+        const byWorkspace = await prisma.aIUsageLog.groupBy({
+            by: ['workspaceId'],
+            where: { companyId, createdAt: { gte: startDate, lt: endDate } },
+            _sum: { inputTokens: true, outputTokens: true, totalTokens: true, costUsd: true },
+            _count: true,
+        });
+
+        // Service kırılımı
+        const byService = await prisma.aIUsageLog.groupBy({
+            by: ['service'],
+            where: { companyId, createdAt: { gte: startDate, lt: endDate } },
+            _sum: { inputTokens: true, outputTokens: true, totalTokens: true, costUsd: true },
+            _count: true,
+        });
+
+        // Toplam
+        const totals = await prisma.aIUsageLog.aggregate({
+            where: { companyId, createdAt: { gte: startDate, lt: endDate } },
+            _sum: { inputTokens: true, outputTokens: true, totalTokens: true, costUsd: true },
+            _count: true,
+        });
+
+        // Workspace isimleri
+        const workspaces = await prisma.workspace.findMany({
+            where: { companyId },
+            select: { id: true, name: true, aiModel: true }
+        });
+        const wsMap = Object.fromEntries(workspaces.map(w => [w.id, w]));
+
+        res.json({
+            companyId,
+            month: month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+            totals: {
+                calls: totals._count || 0,
+                inputTokens: totals._sum.inputTokens || 0,
+                outputTokens: totals._sum.outputTokens || 0,
+                totalTokens: totals._sum.totalTokens || 0,
+                costUsd: Math.round((totals._sum.costUsd || 0) * 10000) / 10000,
+            },
+            byWorkspace: byWorkspace.map(bw => ({
+                workspaceId: bw.workspaceId,
+                workspaceName: wsMap[bw.workspaceId]?.name || 'Bilinmiyor',
+                aiModel: wsMap[bw.workspaceId]?.aiModel || null,
+                calls: bw._count,
+                totalTokens: bw._sum.totalTokens || 0,
+                costUsd: Math.round((bw._sum.costUsd || 0) * 10000) / 10000,
+            })),
+            byService: byService.map(bs => ({
+                service: bs.service,
+                calls: bs._count,
+                totalTokens: bs._sum.totalTokens || 0,
+                costUsd: Math.round((bs._sum.costUsd || 0) * 10000) / 10000,
+            })),
+        });
+    } catch (error) {
+        console.error('AI usage report error:', error);
+        res.status(500).json({ error: 'Failed to get AI usage report' });
+    }
+};
+
+// Admin: Tüm hesapların AI kullanım özeti
+export const getAllCompaniesAiUsage = async (req, res) => {
+    try {
+        if (req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        const { month } = req.query;
+        const now = new Date();
+        let startDate, endDate;
+        if (month) {
+            const [y, m] = month.split('-').map(Number);
+            startDate = new Date(y, m - 1, 1);
+            endDate = new Date(y, m, 1);
+        } else {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        }
+
+        const byCompany = await prisma.aIUsageLog.groupBy({
+            by: ['companyId'],
+            where: { createdAt: { gte: startDate, lt: endDate }, companyId: { not: null } },
+            _sum: { totalTokens: true, costUsd: true },
+            _count: true,
+        });
+
+        const companies = await prisma.company.findMany({
+            select: { id: true, name: true, aiModel: true, aiSubscriptionType: true, _count: { select: { workspaces: true } } }
+        });
+        const compMap = Object.fromEntries(companies.map(c => [c.id, c]));
+
+        // Toplam (company'siz dahil)
+        const globalTotal = await prisma.aIUsageLog.aggregate({
+            where: { createdAt: { gte: startDate, lt: endDate } },
+            _sum: { totalTokens: true, costUsd: true },
+            _count: true,
+        });
+
+        res.json({
+            month: month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+            globalTotal: {
+                calls: globalTotal._count || 0,
+                totalTokens: globalTotal._sum.totalTokens || 0,
+                costUsd: Math.round((globalTotal._sum.costUsd || 0) * 10000) / 10000,
+            },
+            companies: byCompany.map(bc => ({
+                companyId: bc.companyId,
+                companyName: compMap[bc.companyId]?.name || 'Bilinmiyor',
+                aiModel: compMap[bc.companyId]?.aiModel || 'gemini-2.5-flash',
+                plan: compMap[bc.companyId]?.aiSubscriptionType || 'FREE',
+                workspaceCount: compMap[bc.companyId]?._count?.workspaces || 0,
+                calls: bc._count,
+                totalTokens: bc._sum.totalTokens || 0,
+                costUsd: Math.round((bc._sum.costUsd || 0) * 10000) / 10000,
+            })).sort((a, b) => b.costUsd - a.costUsd),
+        });
+    } catch (error) {
+        console.error('Admin AI usage report error:', error);
+        res.status(500).json({ error: 'Failed to get admin AI usage report' });
     }
 };

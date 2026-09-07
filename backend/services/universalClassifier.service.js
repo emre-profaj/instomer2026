@@ -145,6 +145,70 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
 
         if (!chatLog) return defaultResult;
 
+        // Temsilci notları ve aktiviteleri — conversation'ın kişisinden al
+        let activityLog = '';
+        try {
+            const conv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { contactId: true }
+            });
+            if (conv?.contactId) {
+                const recentActivities = await prisma.contactActivity.findMany({
+                    where: { 
+                        contactId: conv.contactId, 
+                        workspaceId
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 8,
+                    select: { 
+                        type: true, title: true, description: true, result: true,
+                        status: true, dueDate: true, createdAt: true,
+                        callSuccessful: true, callSentiment: true
+                    }
+                });
+                if (recentActivities.length > 0) {
+                    const typeLabels = { 
+                        NOTE: '📝 Not', CALL: '📞 Arama', MEETING: '🤝 Toplantı', 
+                        TASK: '✅ Görev', REMINDER: '🔔 Hatırlatıcı',
+                        PROPOSAL: '📄 Teklif', ORDER: '🛒 Sipariş', 
+                        INVOICE: '🧾 Fatura', PAYMENT: '💰 Ödeme'
+                    };
+                    activityLog = '\n\n### TEMSİLCİ NOTLARI VE AKTİVİTELER ###\n' +
+                        recentActivities.reverse().map(a => {
+                            let line = `${typeLabels[a.type] || a.type}: ${a.title || a.description || ''}`;
+                            if (a.description && a.title) line += ` — ${a.description}`;
+                            if (a.result) line += ` [Sonuç: ${a.result}]`;
+                            if (a.status && a.status !== 'PLANNED') line += ` (${a.status})`;
+                            if (a.dueDate) line += ` [Tarih: ${new Date(a.dueDate).toLocaleDateString('tr-TR')}]`;
+                            if (a.callSuccessful !== null) line += a.callSuccessful ? ' ✅ Ulaşıldı' : ' ❌ Ulaşılamadı';
+                            if (a.callSentiment) line += ` (${a.callSentiment})`;
+                            return line;
+                        }).join('\n');
+                }
+
+                // Randevular
+                const appointments = await prisma.appointment.findMany({
+                    where: { contactId: conv.contactId, workspaceId },
+                    orderBy: { startTime: 'desc' },
+                    take: 5,
+                    select: { title: true, startTime: true, status: true, branch: true, procedure: true, doctorName: true, notes: true }
+                });
+                if (appointments.length > 0) {
+                    const statusLabels = { SCHEDULED: '🟡 Planlandı', COMPLETED: '✅ Tamamlandı', CANCELLED: '❌ İptal', NO_SHOW: '⚠️ Gelmedi' };
+                    activityLog += '\n\n### RANDEVULAR ###\n' +
+                        appointments.reverse().map(a => {
+                            let line = `📅 ${a.title} — ${new Date(a.startTime).toLocaleDateString('tr-TR')} ${new Date(a.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+                            line += ` ${statusLabels[a.status] || a.status}`;
+                            if (a.branch) line += ` | Branş: ${a.branch}`;
+                            if (a.procedure) line += ` | İşlem: ${a.procedure}`;
+                            if (a.doctorName) line += ` | Dr. ${a.doctorName}`;
+                            if (a.notes) line += ` | Not: ${a.notes}`;
+                            return line;
+                        }).join('\n');
+                }
+            }
+        } catch (e) { console.warn('⚠️ [Classifier] Aktivite yükleme hatası:', e.message); }
+
         // Kişi bilgileri
         const contactInfo = contact
             ? `İsim: ${contact.name || 'Bilinmiyor'}, Telefon: ${contact.phone || 'Yok'}, E-posta: ${contact.email || 'Yok'}`
@@ -168,6 +232,7 @@ ${contactInfo}
 
 ### KONUŞMA ###
 ${chatLog}
+${activityLog}
 ${customFunnelContext}
 ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşağıdaki kategorilerden en uygun olanını seç. Kategori altındaki ürünlerden müşterinin ilgilendiği ürünleri de eşleştir:\n${topicCategories.map(c => {
     let kws = '';
@@ -509,16 +574,63 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // --- GUARD: Manuel kilit kontrolü ---
+        // --- GUARD: Sahiplik kontrolü ---
+        // Kimseye atanmamış → AI HEMEN müdahale (süre yok)
+        // Birine atanmış + yazmış → AI GERİ ÇEKİLİR
+        // Birine atanmış + yazmamış + süre dolmamış → AI BEKLİYOR
+        // Birine atanmış + yazmamış + süre dolmuş → AI DEVRALIR
         let skipFunnelAssignment = false;
-        const contactRecord = await prisma.contact.findUnique({
-            where: { id: contactId },
-            select: { stageManuallySet: true }
-        });
+        
+        const [contactRecord, conversationRecord] = await Promise.all([
+            prisma.contact.findUnique({
+                where: { id: contactId },
+                select: { stageManuallySet: true }
+            }),
+            prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { assignedToId: true, assignedTeamId: true, assignedAt: true, updatedAt: true }
+            })
+        ]);
+        
+        // Manuel kilit her zaman geçerli
         if (contactRecord?.stageManuallySet) {
-            console.log(`🛡️ [Classifier] Contact aşaması manuel olarak kilitlenmiş — akış/takım değişikliği yapılmıyor`);
+            console.log(`🛡️ [Classifier] Contact aşaması manuel kilitli — akış değiştirilmiyor`);
             skipFunnelAssignment = true;
         }
+        
+        if (!skipFunnelAssignment && conversationRecord?.assignedToId) {
+            // Birine atanmış — yazdı mı?
+            const agentMessageCount = await prisma.message.count({
+                where: {
+                    conversationId,
+                    isFromContact: false,
+                    senderId: conversationRecord.assignedToId
+                }
+            });
+            
+            if (agentMessageCount > 0) {
+                // Agent aktif olarak ilgileniyor
+                console.log(`🛡️ [Classifier] Agent ilgileniyor (${agentMessageCount} mesaj) — AI karışmıyor`);
+                skipFunnelAssignment = true;
+            } else {
+                // Agent atanmış ama yazmamış — süre kontrolü
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { aiFallbackDelayMinutes: true }
+                });
+                const fallbackMinutes = ws?.aiFallbackDelayMinutes || 5;
+                const assignedAt = conversationRecord.assignedAt || conversationRecord.updatedAt;
+                const minutesSinceAssign = assignedAt ? (Date.now() - new Date(assignedAt).getTime()) / 60000 : 999;
+                
+                if (minutesSinceAssign < fallbackMinutes) {
+                    console.log(`⏳ [Classifier] Agent ${Math.round(minutesSinceAssign)}dk önce atandı, bekleniyor (limit: ${fallbackMinutes}dk)`);
+                    skipFunnelAssignment = true;
+                } else {
+                    console.log(`⚠️ [Classifier] Agent ${Math.round(minutesSinceAssign)}dk'dır sessiz — AI devralıyor`);
+                }
+            }
+        }
+        // assignedToId yok → AI hemen müdahale, süre beklemiyor ✅
 
         // --- Akış atama (skipFunnelAssignment false ise) ---
         // AI'ın matchedFunnelId'sini kullan (akışlardaki classificationCriteria'ya göre eşleşir)

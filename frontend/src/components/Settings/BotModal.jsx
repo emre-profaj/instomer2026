@@ -146,6 +146,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
 
     const [prompt, setPrompt] = useState(bot.prompt || '');
     const [handoffMessage, setHandoffMessage] = useState(bot.handoffMessage || '');
+    const [fallbackEnabled, setFallbackEnabled] = useState(bot.fallbackEnabled || false);
+    const [fallbackDelayMinutes, setFallbackDelayMinutes] = useState(bot.fallbackDelayMinutes ?? 5);
+    const [fallbackScope, setFallbackScope] = useState(bot.fallbackScope || 'UNASSIGNED');
     const [updating, setUpdating] = useState(false);
 
     // Built-in tools state
@@ -277,6 +280,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         setRole(bot.role || '');
         setPrompt(bot.prompt || '');
         setHandoffMessage(bot.handoffMessage || '');
+        setFallbackEnabled(bot.fallbackEnabled || false);
+        setFallbackDelayMinutes(bot.fallbackDelayMinutes ?? 5);
+        setFallbackScope(bot.fallbackScope || 'UNASSIGNED');
         setSchedulerEnabled(bot.schedulerEnabled || false);
         setScheduleStartTime(bot.scheduleStartTime || '09:00');
         setScheduleEndTime(bot.scheduleEndTime || '18:00');
@@ -385,6 +391,10 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 automations: selectedAutomations.length > 0 ? selectedAutomations : null,
                 // Handoff message
                 handoffMessage: handoffMessage || null,
+                // AI Devralma
+                fallbackEnabled,
+                fallbackDelayMinutes: parseInt(fallbackDelayMinutes) || 5,
+                fallbackScope,
                 // Built-in tools
                 enabledTools: JSON.stringify(enabledTools)
             });
@@ -566,6 +576,67 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                     placeholder="Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır..."
                     style={{ fontSize: '13px' }}
                 />
+            </div>
+
+            {/* AI Devralma / Müdahale Kapsamı */}
+            <div className="bot-settings-section">
+                <div className="section-header-toggle">
+                    <div className="section-title-group">
+                        <span style={{ fontSize: 18 }}>⚡</span>
+                        <span>Yazışma Devralma</span>
+                    </div>
+                    <label className="toggle-switch">
+                        <input
+                            type="checkbox"
+                            checked={fallbackEnabled}
+                            onChange={(e) => setFallbackEnabled(e.target.checked)}
+                        />
+                        <span className="toggle-slider"></span>
+                    </label>
+                </div>
+                {fallbackEnabled && (
+                    <div className="section-content">
+                        <p className="section-description">
+                            Kimsenin üzerine almadığı veya yanıt verilmeyen konuşmalarda AI otomatik devralır.
+                        </p>
+
+                        <div className="form-group" style={{ marginBottom: '12px' }}>
+                            <label className="form-label" style={{ fontSize: 13 }}>🎯 Devralma Kapsamı</label>
+                            <select
+                                className="input-modern"
+                                value={fallbackScope}
+                                onChange={(e) => setFallbackScope(e.target.value)}
+                            >
+                                <option value="UNASSIGNED">Sadece atanmamış konuşmalar</option>
+                                <option value="MY_TEAMS">Kendi takımımdaki tüm konuşmalar</option>
+                                <option value="ALL">Tüm konuşmalar (workspace geneli)</option>
+                            </select>
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '12px' }}>
+                            <label className="form-label" style={{ fontSize: 13 }}>
+                                ⏱️ Bekleme Süresi: <strong>{fallbackDelayMinutes} dakika</strong>
+                            </label>
+                            <p className="section-description" style={{ margin: '0 0 6px 0', fontSize: '11px', color: '#888' }}>
+                                Atanmış ama yanıt verilmeyen konuşmalarda AI kaç dakika beklesin. Atanmamışlarda anında devralır.
+                            </p>
+                            <input
+                                type="range"
+                                min="1"
+                                max="120"
+                                value={fallbackDelayMinutes}
+                                onChange={(e) => setFallbackDelayMinutes(parseInt(e.target.value))}
+                                style={{ width: '100%' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#999' }}>
+                                <span>1 dk</span>
+                                <span>30 dk</span>
+                                <span>60 dk</span>
+                                <span>120 dk</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Scheduler Section */}

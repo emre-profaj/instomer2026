@@ -1277,9 +1277,17 @@ export const getSegments = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Called from WhatsApp webhook status handler to update read/delivered
 // ─────────────────────────────────────────────────────────────────────────────
-export const updateCampaignRecipientStatus = async (messageId, status) => {
+export const updateCampaignRecipientStatus = async (whatsappMsgId, status) => {
     try {
-        const recipient = await prisma.marketingRecipient.findUnique({ where: { messageId } });
+        // WhatsApp webhook sends wamid, but MarketingRecipient.messageId stores DB UUID
+        // First resolve wamid → DB message record
+        const dbMessage = await prisma.message.findFirst({
+            where: { OR: [{ whatsappMessageId: whatsappMsgId }, { facebookMessageId: whatsappMsgId }] },
+            select: { id: true }
+        });
+        if (!dbMessage) return;
+
+        const recipient = await prisma.marketingRecipient.findUnique({ where: { messageId: dbMessage.id } });
         if (!recipient) return;
 
         const updateData = {};
@@ -1288,7 +1296,7 @@ export const updateCampaignRecipientStatus = async (messageId, status) => {
         else if (status === 'failed') { updateData.status = 'FAILED'; updateData.failedAt = new Date(); }
 
         if (Object.keys(updateData).length > 0) {
-            await prisma.marketingRecipient.update({ where: { messageId }, data: updateData });
+            await prisma.marketingRecipient.update({ where: { messageId: dbMessage.id }, data: updateData });
 
             // Update campaign aggregate counts
             const [delivered, read, failed] = await Promise.all([
@@ -1300,10 +1308,23 @@ export const updateCampaignRecipientStatus = async (messageId, status) => {
                 where: { id: recipient.campaignId },
                 data: { deliveredCount: delivered, readCount: read, failedCount: failed }
             });
+
+            // Update group aggregate counts (if recipient belongs to a group)
+            if (recipient.groupId) {
+                const [groupDelivered, groupRead, groupFailed] = await Promise.all([
+                    prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: 'DELIVERED' } }),
+                    prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: 'READ' } }),
+                    prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: 'FAILED' } })
+                ]);
+                await prisma.campaignGroup.update({
+                    where: { id: recipient.groupId },
+                    data: { deliveredCount: groupDelivered, readCount: groupRead, failedCount: groupFailed }
+                });
+            }
         }
     } catch (err) {
         // Non-critical — don't throw
-        console.warn(`⚠️ [Campaign] Could not update recipient status for ${messageId}:`, err.message);
+        console.warn(`⚠️ [Campaign] Could not update recipient status for ${whatsappMsgId}:`, err.message);
     }
 };
 
