@@ -1,9 +1,9 @@
 import express from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { authenticateJWT } from '../middleware/auth.middleware.js';
 import * as marketingV2Controller from '../controllers/marketingV2.controller.js';
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(authenticateJWT);
 
 // CAMPAIGNS
 router.get('/:workspaceId/campaigns', marketingV2Controller.getCampaigns);

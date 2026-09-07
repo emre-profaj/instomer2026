@@ -57,6 +57,7 @@ export const authenticateJWT = (req, res, next) => {
     })(req, res, next);
 };
 export const authenticate = authenticateJWT;
+export const requireAuth = authenticateJWT;
 
 export const requireRole = (...roles) => {
     return (req, res, next) => {

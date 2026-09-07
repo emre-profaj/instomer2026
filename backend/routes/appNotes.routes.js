@@ -1,9 +1,9 @@
 import express from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { authenticateJWT } from '../middleware/auth.middleware.js';
 import * as appNotesController from '../controllers/appNotes.controller.js';
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(authenticateJWT);
 
 router.get('/:workspaceId/notes', appNotesController.getNotes);
 router.post('/:workspaceId/notes', appNotesController.createNote);
