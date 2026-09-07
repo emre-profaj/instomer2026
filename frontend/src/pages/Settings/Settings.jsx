@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, companyAPI } from '../../services/api';
 import AIIntegrationSettings from '../../components/Settings/AIIntegrationSettings';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
-import { Trash2, Shield, Bot, AlertCircle, Plus, Building2 } from 'lucide-react';
+import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, HelpCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import './Settings.css';
 
 const Settings = () => {
+    const navigate = useNavigate();
     const { currentWorkspace, user, switchWorkspace } = useAuth();
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState('workspaces');
@@ -121,6 +123,9 @@ const Settings = () => {
                 </button>
                 <button className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
                     <Bot size={16} /> {t('settings.aiIntegration')}
+                </button>
+                <button className="tab-btn" onClick={() => navigate('/support')} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b', fontWeight: 600 }}>
+                    <HelpCircle size={16} /> Destek ve Talepler
                 </button>
             </div>
 

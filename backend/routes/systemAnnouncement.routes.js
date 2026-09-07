@@ -261,7 +261,7 @@ router.post('/conversation/:conversationId/reply', async (req, res) => {
                 conversationId: conv.id,
                 content: content.trim(),
                 isFromContact: true, // Instomer tarafından
-                type: 'TEXT',
+                messageType: 'TEXT',
             }
         });
 
@@ -284,10 +284,298 @@ router.post('/conversation/:conversationId/reply', async (req, res) => {
             });
         }
 
+        // Workspace üyelerine bildirim oluştur (çan simgesi için)
+        try {
+            const members = await prisma.workspaceMember.findMany({
+                where: { workspaceId: conv.workspaceId },
+                select: { userId: true }
+            });
+            for (const m of members) {
+                await prisma.notification.create({
+                    data: {
+                        workspaceId: conv.workspaceId,
+                        userId: m.userId,
+                        type: 'SUPPORT_REPLY',
+                        title: '💬 Instomer Destek',
+                        body: content.trim().substring(0, 120),
+                        data: JSON.stringify({ conversationId: conv.id, isSupport: true })
+                    }
+                });
+                if (io) {
+                    io.to(`user:${m.userId}`).emit('notification', {
+                        title: '💬 Instomer Destek',
+                        body: content.trim().substring(0, 120)
+                    });
+                }
+            }
+        } catch (notifErr) {
+            console.error('[SystemAnnouncement] Notification error:', notifErr);
+        }
+
         res.status(201).json({ message });
     } catch (error) {
         console.error('[SystemAnnouncement] Reply error:', error);
         res.status(500).json({ error: 'Yanıt gönderilemedi' });
+    }
+});
+
+// ══════════════════════════════════════════════════
+// PATCH /conversation/:conversationId/status — SUPER_ADMIN: Talep durumunu güncelle
+// ══════════════════════════════════════════════════
+router.patch('/conversation/:conversationId/status', async (req, res) => {
+    try {
+        if (req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Yetkisiz' });
+        }
+
+        const { status } = req.body;
+        const validStatuses = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ error: 'Geçersiz durum' });
+        }
+
+        const updated = await prisma.conversation.update({
+            where: { id: req.params.conversationId },
+            data: { status }
+        });
+
+        // Socket ile bildir
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`workspace:${updated.workspaceId}`).emit('conversation_status_updated', {
+                conversationId: updated.id,
+                status
+            });
+        }
+
+        res.json({ conversation: updated });
+    } catch (error) {
+        console.error('[SystemAnnouncement] Status update error:', error);
+        res.status(500).json({ error: 'Durum güncellenemedi' });
+    }
+});
+
+// ══════════════════════════════════════════════════
+// GET /my-chat/:workspaceId — KULLANICI: Workspace Destek Sohbetini Getir/Oluştur
+// ══════════════════════════════════════════════════
+router.get('/my-chat/:workspaceId', async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        // Üyelik kontrolü (SUPER_ADMIN değilse üye olmalı)
+        if (req.user.role !== 'SUPER_ADMIN') {
+            const member = await prisma.workspaceMember.findUnique({
+                where: { userId_workspaceId: { userId: req.user.id, workspaceId } }
+            });
+            if (!member) {
+                return res.status(403).json({ error: 'Bu workspace için yetkiniz yok' });
+            }
+        }
+
+        // 1. Mevcut sistem destek sohbetini bul
+        let conv = await prisma.conversation.findFirst({
+            where: {
+                workspaceId,
+                isInternalChat: true,
+                isSystemChat: true,
+                channel: 'SYSTEM'
+            },
+            include: {
+                contact: true,
+                messages: {
+                    orderBy: { createdAt: 'asc' },
+                    include: {
+                        sender: { select: { id: true, name: true, avatar: true, email: true } }
+                    }
+                }
+            }
+        });
+
+        // 2. Yoksa oluştur
+        if (!conv) {
+            let systemContact = await prisma.contact.findFirst({
+                where: { workspaceId, source: 'SYSTEM' }
+            });
+
+            if (!systemContact) {
+                systemContact = await prisma.contact.create({
+                    data: {
+                        workspaceId,
+                        name: 'Instomer',
+                        fullName: 'Instomer Destek',
+                        source: 'SYSTEM',
+                        category: 'PARTNER',
+                        email: 'destek@instomer.com',
+                        tags: JSON.stringify(['sistem']),
+                    }
+                });
+            }
+
+            conv = await prisma.conversation.create({
+                data: {
+                    workspaceId,
+                    contactId: systemContact.id,
+                    channel: 'SYSTEM',
+                    isInternalChat: true,
+                    isSystemChat: true,
+                    participantIds: JSON.stringify(['SYSTEM']),
+                    status: 'OPEN',
+                    botEnabled: false,
+                    lastMessageAt: new Date(),
+                }
+            });
+
+            // Hoş geldin karşılama mesajı
+            await prisma.message.create({
+                data: {
+                    conversationId: conv.id,
+                    content: '👋 Merhaba! Instomer Destek Merkezine hoş geldiniz.\n\nSistemle ilgili merak ettiklerinizi, önerilerinizi veya karşılaştığınız teknik sorunları buradan doğrudan Instomer ekibine iletebilirsiniz.\n\nEkibimiz en kısa sürede size dönüş yapacaktır.',
+                    isFromContact: true,
+                    messageType: 'TEXT',
+                }
+            });
+
+            // Tekrar çek
+            conv = await prisma.conversation.findUnique({
+                where: { id: conv.id },
+                include: {
+                    contact: true,
+                    messages: {
+                        orderBy: { createdAt: 'asc' },
+                        include: {
+                            sender: { select: { id: true, name: true, avatar: true, email: true } }
+                        }
+                    }
+                }
+            });
+        }
+
+        res.json({ conversation: conv });
+    } catch (error) {
+        console.error('[SystemAnnouncement] my-chat fetch error:', error);
+        res.status(500).json({ error: 'Destek sohbeti yüklenemedi' });
+    }
+});
+
+// ══════════════════════════════════════════════════
+// POST /my-chat/:workspaceId/message — KULLANICI: Destek Ekibine Mesaj Gönder
+// ══════════════════════════════════════════════════
+router.post('/my-chat/:workspaceId/message', async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { content, mediaUrl, mediaType, fileName } = req.body;
+
+        if (!content?.trim() && !mediaUrl) {
+            return res.status(400).json({ error: 'Mesaj veya dosya içeriği gerekli' });
+        }
+
+        // Üyelik kontrolü
+        if (req.user.role !== 'SUPER_ADMIN') {
+            const member = await prisma.workspaceMember.findUnique({
+                where: { userId_workspaceId: { userId: req.user.id, workspaceId } }
+            });
+            if (!member) {
+                return res.status(403).json({ error: 'Bu workspace için yetkiniz yok' });
+            }
+        }
+
+        // Sistem sohbetini bul
+        let conv = await prisma.conversation.findFirst({
+            where: {
+                workspaceId,
+                isInternalChat: true,
+                isSystemChat: true,
+                channel: 'SYSTEM'
+            }
+        });
+
+        if (!conv) {
+            return res.status(404).json({ error: 'Destek sohbeti bulunamadı. Lütfen sayfayı yenileyin.' });
+        }
+
+        // Mesaj içeriğini hazırla (dosya varsa dosya adını içeriğe ekle)
+        let messageContent = content ? content.trim() : '';
+        if (fileName && !messageContent) {
+            messageContent = `📎 ${fileName}`;
+        } else if (fileName && messageContent) {
+            messageContent = `${messageContent}\n📎 ${fileName}`;
+        }
+
+        // Mesajı kullanıcıdan olarak oluştur
+        const message = await prisma.message.create({
+            data: {
+                conversationId: conv.id,
+                content: messageContent || '[Ek Dosya]',
+                isFromContact: false, // Kullanıcı tarafından
+                senderId: req.user.id,
+                messageType: mediaUrl ? (mediaType?.toUpperCase() === 'IMAGE' ? 'IMAGE' : 'FILE') : 'TEXT',
+                mediaUrl: mediaUrl || null,
+                mediaType: mediaType || null
+            },
+            include: {
+                sender: { select: { id: true, name: true, avatar: true, email: true } }
+            }
+        });
+
+        // Conversation durumunu güncelle
+        await prisma.conversation.update({
+            where: { id: conv.id },
+            data: {
+                lastMessageAt: new Date(),
+                status: 'OPEN'
+            }
+        });
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { id: true, name: true }
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+            // Workspace içi kullanıcılara ilet
+            io.to(`workspace:${workspaceId}`).emit('new_message', {
+                conversationId: conv.id,
+                message,
+                workspaceId
+            });
+
+            // Super Admin'lere gerçek zamanlı canlı duyuru gönder
+            io.emit('superadmin_support_message', {
+                conversationId: conv.id,
+                workspaceId,
+                workspaceName: workspace?.name,
+                message
+            });
+        }
+
+        // Super Admin'lere bildirim oluştur
+        try {
+            const superAdmins = await prisma.user.findMany({
+                where: { role: 'SUPER_ADMIN' },
+                select: { id: true }
+            });
+
+            for (const admin of superAdmins) {
+                await prisma.notification.create({
+                    data: {
+                        userId: admin.id,
+                        workspaceId,
+                        type: 'SYSTEM_REPLY',
+                        title: `💬 ${workspace?.name || 'Firma'} Destek Talebi`,
+                        body: (content || fileName || 'Yeni dosya gönderildi').substring(0, 100),
+                        data: JSON.stringify({ conversationId: conv.id, workspaceId })
+                    }
+                });
+            }
+        } catch (notifErr) {
+            console.error('[SystemAnnouncement] Super Admin notification error:', notifErr);
+        }
+
+        res.status(201).json({ message });
+    } catch (error) {
+        console.error('[SystemAnnouncement] my-chat send message error:', error);
+        res.status(500).json({ error: 'Mesaj gönderilemedi' });
     }
 });
 

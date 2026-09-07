@@ -222,6 +222,16 @@ export const AuthProvider = ({ children }) => {
             window.dispatchEvent(new CustomEvent('websocket:new_notification', { detail: data }));
         });
 
+        // Destek ve Talep canlı güncellemeleri
+        socket.on('superadmin_support_message', (data) => {
+            console.log('🛡️ [AuthContext] Superadmin support message:', data);
+            window.dispatchEvent(new CustomEvent('websocket:superadmin_support_message', { detail: data }));
+        });
+
+        socket.on('conversation_status_updated', (data) => {
+            window.dispatchEvent(new CustomEvent('websocket:conversation_status_updated', { detail: data }));
+        });
+
         // Randevu ve Aktivite canlı güncellemeleri
         socket.on('appointment_updated', (data) => {
             console.log('📅 [AuthContext] Appointment updated:', data);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, HelpCircle } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -70,7 +70,8 @@ const Sidebar = () => {
         { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' },
         { path: '/automations', icon: Zap, label: t('nav.automations') },
         { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' },
-        { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' }
+        { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' },
+        { path: '/support', icon: HelpCircle, label: 'Destek ve Talepler' }
     ];
 
     const salesSubItems = [
