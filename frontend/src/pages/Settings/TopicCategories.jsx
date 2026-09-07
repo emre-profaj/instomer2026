@@ -31,6 +31,8 @@ const TopicCategories = ({ caseTypeId }) => {
     const [chatInput, setChatInput] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
     const [chatHistory, setChatHistory] = useState([]);
+    const [branches, setBranches] = useState([]);
+    const [branchFilter, setBranchFilter] = useState('ALL');
 
     const handleAiChat = async () => {
         const msg = chatInput.trim();
@@ -63,7 +65,15 @@ const TopicCategories = ({ caseTypeId }) => {
 
     useEffect(() => {
         fetchCategories();
-    }, [fetchCategories]);
+        // Şubeleri yükle
+        if (workspaceId) {
+            import('../../services/api').then(({ default: api }) => {
+                api.get(`/appointment-config/${workspaceId}/branches`)
+                    .then(res => setBranches(res.data.branches || res.data || []))
+                    .catch(() => {});
+            });
+        }
+    }, [fetchCategories, workspaceId]);
 
     const handleAutoGenerate = async () => {
         if (!window.confirm('Bilgi bankası ve mevcut konuşmalardan otomatik kategoriler oluşturulacak. Devam etmek istiyor musunuz?')) return;
@@ -171,9 +181,10 @@ const TopicCategories = ({ caseTypeId }) => {
                 description: newCategory.description.trim() || null,
                 icon: newCategory.icon || null,
                 keywords,
-                caseTypeId: caseTypeId || null
+                caseTypeId: caseTypeId || null,
+                branchId: newCategory.branchId || null
             });
-            setNewCategory({ name: '', description: '', icon: '', keywords: '' });
+            setNewCategory({ name: '', description: '', icon: '', keywords: '', branchId: '' });
             setShowAddForm(false);
             await fetchCategories();
         } catch (err) {
@@ -187,7 +198,8 @@ const TopicCategories = ({ caseTypeId }) => {
             name: cat.name,
             description: cat.description || '',
             icon: cat.icon || '',
-            keywords: cat.keywords ? JSON.parse(cat.keywords).join(', ') : ''
+            keywords: cat.keywords ? JSON.parse(cat.keywords).join(', ') : '',
+            branchId: cat.branchId || ''
         });
     };
 
@@ -200,7 +212,8 @@ const TopicCategories = ({ caseTypeId }) => {
                 name: editForm.name,
                 description: editForm.description || null,
                 icon: editForm.icon || null,
-                keywords
+                keywords,
+                branchId: editForm.branchId || null
             });
             setEditingId(null);
             await fetchCategories();
@@ -325,6 +338,20 @@ const TopicCategories = ({ caseTypeId }) => {
                         className="tc-input"
                         style={{ maxWidth: 300, padding: '8px 12px', fontSize: '14px' }}
                     />
+                    {branches.length > 0 && (
+                        <select
+                            value={branchFilter}
+                            onChange={e => setBranchFilter(e.target.value)}
+                            className="tc-input"
+                            style={{ maxWidth: 180, padding: '8px 12px', fontSize: '13px' }}
+                        >
+                            <option value="ALL">🏢 Tüm Şubeler</option>
+                            <option value="NONE">Genel (şubesiz)</option>
+                            {branches.filter(b => b.isActive).map(b => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                        </select>
+                    )}
                     {searchFilter && (
                         <button
                             className="tc-btn tc-btn-secondary"
@@ -388,6 +415,21 @@ const TopicCategories = ({ caseTypeId }) => {
                                 className="tc-input"
                             />
                         </div>
+                        {branches.length > 0 && (
+                            <div className="tc-form-field tc-form-field-full">
+                                <label>🏢 Şube</label>
+                                <select
+                                    value={newCategory.branchId || ''}
+                                    onChange={e => setNewCategory({ ...newCategory, branchId: e.target.value })}
+                                    className="tc-input"
+                                >
+                                    <option value="">Tüm Şubeler (Genel)</option>
+                                    {branches.filter(b => b.isActive).map(b => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                     </div>
                     <div className="tc-form-actions">
                         <button className="tc-btn tc-btn-secondary" onClick={() => setShowAddForm(false)}>İptal</button>
@@ -424,6 +466,7 @@ const TopicCategories = ({ caseTypeId }) => {
                                 <th>Kategori</th>
                                 <th>Açıklama</th>
                                 <th>Anahtar Kelimeler</th>
+                                {branches.length > 0 && <th style={{ width: 120 }}>Şube</th>}
                                 <th style={{ width: 100 }}>Konuşma</th>
                                 <th style={{ width: 80 }}>Aktif</th>
                                 <th style={{ width: 120 }}>İşlem</th>
@@ -432,6 +475,7 @@ const TopicCategories = ({ caseTypeId }) => {
                         <tbody>
                             {categories
                                 .filter(cat => {
+                                    if (branchFilter !== 'ALL' && cat.branchId !== (branchFilter === 'NONE' ? null : branchFilter)) return false;
                                     if (!searchFilter) return true;
                                     const q = searchFilter.toLowerCase();
                                     const name = (cat.name || '').toLowerCase();
@@ -506,6 +550,27 @@ const TopicCategories = ({ caseTypeId }) => {
                                             </div>
                                         )}
                                     </td>
+                                    {branches.length > 0 && (
+                                        <td>
+                                            {editingId === cat.id ? (
+                                                <select
+                                                    value={editForm.branchId || ''}
+                                                    onChange={e => setEditForm({ ...editForm, branchId: e.target.value })}
+                                                    className="tc-input"
+                                                    style={{ fontSize: 12, padding: '4px 6px' }}
+                                                >
+                                                    <option value="">Genel</option>
+                                                    {branches.filter(b => b.isActive).map(b => (
+                                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span style={{ fontSize: 12, color: cat.branchId ? '#6366f1' : '#94a3b8' }}>
+                                                    {cat.branchId ? branches.find(b => b.id === cat.branchId)?.name || '—' : 'Genel'}
+                                                </span>
+                                            )}
+                                        </td>
+                                    )}
                                     <td className="tc-cell-count">
                                         <span className="tc-count-badge">{cat._count?.conversations || 0}</span>
                                     </td>

@@ -695,25 +695,48 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     if (topicCategoryId) {
                         caseUpdateData.categoryId = topicCategoryId;
                         
-                        // Şube tespiti
+                        // Şube tespiti — geliştirilmiş
                         try {
-                            const contactMsgs = await prisma.message.findMany({
-                                where: { conversationId, isFromContact: true },
-                                select: { content: true }
-                            });
-                            const customerOnlyText = contactMsgs.map(m => m.content || '').join(' ').toLowerCase();
-                            
                             const branches = await prisma.appointmentBranch.findMany({
                                 where: { workspaceId, isActive: true },
-                                select: { id: true, name: true }
+                                select: { id: true, name: true, defaultTeamId: true, defaultFunnelId: true }
                             });
                             
-                            for (const branch of branches) {
-                                if (branch.name && customerOnlyText.includes(branch.name.toLowerCase())) {
-                                    caseUpdateData.branchId = branch.id;
-                                    console.log(`📍 [Classifier] Şube eşleşti: ${branch.name}`);
-                                    break;
+                            let matchedBranch = null;
+                            
+                            if (branches.length === 1) {
+                                // Tek şube → otomatik ata
+                                matchedBranch = branches[0];
+                                console.log(`📍 [Classifier] Tek şube, otomatik atandı: ${matchedBranch.name}`);
+                            } else if (branches.length > 1) {
+                                // Çoklu şube → metin eşleştirme
+                                const contactMsgs = await prisma.message.findMany({
+                                    where: { conversationId, isFromContact: true },
+                                    select: { content: true }
+                                });
+                                const customerOnlyText = contactMsgs.map(m => m.content || '').join(' ').toLowerCase();
+                                
+                                // Ayrıca AI'ın branchInfo çıktısını da kullan
+                                const branchInfoText = (result.branchInfo || '').toLowerCase();
+                                const searchText = `${customerOnlyText} ${branchInfoText}`;
+                                
+                                for (const branch of branches) {
+                                    if (branch.name && searchText.includes(branch.name.toLowerCase())) {
+                                        matchedBranch = branch;
+                                        console.log(`📍 [Classifier] Şube eşleşti: ${matchedBranch.name}`);
+                                        break;
+                                    }
                                 }
+                            }
+                            
+                            if (matchedBranch) {
+                                caseUpdateData.branchId = matchedBranch.id;
+                                
+                                // Conversation'a da branchId ata
+                                await prisma.conversation.update({
+                                    where: { id: conversationId },
+                                    data: { branchId: matchedBranch.id }
+                                });
                             }
                         } catch (branchErr) {
                             console.error('⚠️ [Classifier] Şube eşleştirme hatası:', branchErr.message);

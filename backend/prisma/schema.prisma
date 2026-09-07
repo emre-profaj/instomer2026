@@ -525,6 +525,10 @@ model Conversation {
   campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id])
   lastContactMessageAt DateTime?
 
+  // Şube bağlantısı
+  branchId             String?
+  branch               AppointmentBranch? @relation("ConversationBranch", fields: [branchId], references: [id], onDelete: SetNull)
+
   // Performance indexes for high-frequency cron queries
   @@index([workspaceId])
   @@index([workspaceId, isStarred])
@@ -923,6 +927,8 @@ model AppointmentBranch {
   doctors         AppointmentDoctor[]
   productBranches ProductBranch[]
   cases           Case[]              @relation("CaseBranch")
+  categories      TopicCategory[]     @relation("CategoryBranch")
+  conversations   Conversation[]      @relation("ConversationBranch")
 
   @@index([workspaceId])
   @@map("appointment_branches")
@@ -1396,16 +1402,20 @@ model TopicCategory {
   defaultTeamId   String?
   // Legacy — alan veritabanında kalıyor, ilişki kaldırıldı
   caseTypeId      String?
+  // Şube bağlantısı (null = tüm şubelerde görünür)
+  branchId        String?
 
-  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent        TopicCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children      TopicCategory[] @relation("CategoryHierarchy")
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  branch        AppointmentBranch?   @relation("CategoryBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  parent        TopicCategory?       @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      TopicCategory[]      @relation("CategoryHierarchy")
   conversations Conversation[]
   cases         Case[]
   products      Product[]
 
   @@index([workspaceId])
   @@index([parentId])
+  @@index([branchId])
   @@map("topic_categories")
 }
 
