@@ -48,7 +48,7 @@ export const getCategories = async (req, res) => {
 export const createCategory = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, description, icon, color, keywords, parentId, isActive, caseTypeId, customFields, defaultFunnelId, defaultTeamId, branchId } = req.body;
+        const { name, description, icon, color, keywords, parentId, isActive, caseTypeId, customFields, defaultFunnelId, defaultTeamId, branchIds } = req.body;
 
         const category = await prisma.topicCategory.create({
             data: {
@@ -64,7 +64,7 @@ export const createCategory = async (req, res) => {
                 customFields: customFields ? JSON.stringify(customFields) : null,
                 defaultFunnelId: defaultFunnelId || null,
                 defaultTeamId: defaultTeamId || null,
-                branchId: branchId || null
+                branchIds: branchIds ? JSON.stringify(branchIds) : null
             }
         });
         res.status(201).json(category);
@@ -77,7 +77,7 @@ export const createCategory = async (req, res) => {
 export const updateCategory = async (req, res) => {
     try {
         const { categoryId } = req.params;
-        const { name, description, icon, color, keywords, isActive, parentId, caseTypeId, customFields, defaultFunnelId, defaultTeamId, branchId } = req.body;
+        const { name, description, icon, color, keywords, isActive, parentId, caseTypeId, customFields, defaultFunnelId, defaultTeamId, branchIds } = req.body;
 
         const data = {};
         if (name !== undefined) data.name = name;
@@ -91,7 +91,7 @@ export const updateCategory = async (req, res) => {
         if (customFields !== undefined) data.customFields = customFields ? JSON.stringify(customFields) : null;
         if (defaultFunnelId !== undefined) data.defaultFunnelId = defaultFunnelId || null;
         if (defaultTeamId !== undefined) data.defaultTeamId = defaultTeamId || null;
-        if (branchId !== undefined) data.branchId = branchId || null;
+        if (branchIds !== undefined) data.branchIds = branchIds ? JSON.stringify(branchIds) : null;
 
         const category = await prisma.topicCategory.update({
             where: { id: categoryId },

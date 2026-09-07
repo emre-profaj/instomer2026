@@ -735,8 +735,9 @@ model Team {
   aiFallbackEnabled      Boolean? // null = workspace ayarını kullan, true/false = override
   aiFallbackDelayMinutes Int? // null = workspace ayarını kullan
 
-  // Şube ilişkisi
-  branchId         String?
+  // Şube ilişkileri — JSON array: ["branch-id-1","branch-id-2"]
+  // null veya [] = tüm şubelerde aktif
+  branchIds        String?  @db.Text
 
   createdAt        DateTime               @default(now())
   transfers        ConversationTransfer[]
@@ -749,7 +750,6 @@ model Team {
 
   @@index([workspaceId])
   @@index([parentId])
-  @@index([branchId])
   @@map("teams")
 }
 
@@ -927,7 +927,6 @@ model AppointmentBranch {
   doctors         AppointmentDoctor[]
   productBranches ProductBranch[]
   cases           Case[]              @relation("CaseBranch")
-  categories      TopicCategory[]     @relation("CategoryBranch")
   conversations   Conversation[]      @relation("ConversationBranch")
 
   @@index([workspaceId])
@@ -1402,11 +1401,11 @@ model TopicCategory {
   defaultTeamId   String?
   // Legacy — alan veritabanında kalıyor, ilişki kaldırıldı
   caseTypeId      String?
-  // Şube bağlantısı (null = tüm şubelerde görünür)
-  branchId        String?
+  // Şube bağlantıları — JSON array: ["branch-id-1","branch-id-2"]
+  // null veya [] = tüm şubelerde görünür
+  branchIds       String?  @db.Text
 
   workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  branch        AppointmentBranch?   @relation("CategoryBranch", fields: [branchId], references: [id], onDelete: SetNull)
   parent        TopicCategory?       @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children      TopicCategory[]      @relation("CategoryHierarchy")
   conversations Conversation[]
@@ -1415,7 +1414,6 @@ model TopicCategory {
 
   @@index([workspaceId])
   @@index([parentId])
-  @@index([branchId])
   @@map("topic_categories")
 }
 

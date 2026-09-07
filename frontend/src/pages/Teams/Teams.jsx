@@ -51,7 +51,7 @@ const Teams = () => {
 
     // Şube states
     const [branches, setBranches] = useState([]);
-    const [teamBranchId, setTeamBranchId] = useState('');
+    const [teamBranchIds, setTeamBranchIds] = useState([]);
 
     useEffect(() => {
         if (currentWorkspace) {
@@ -129,7 +129,7 @@ const Teams = () => {
                     name: teamName,
                     description: teamDescription,
                     assignmentRule: teamAssignmentRule,
-                    branchId: teamBranchId || null,
+                    branchIds: teamBranchIds.length > 0 ? teamBranchIds : null,
                     ...distPayload
                 });
                 if (response.data && response.data.team) {
@@ -142,7 +142,7 @@ const Teams = () => {
                     description: teamDescription,
                     assignmentRule: teamAssignmentRule,
                     parentId: parentIdForCreate || null,
-                    branchId: teamBranchId || null,
+                    branchIds: teamBranchIds.length > 0 ? teamBranchIds : null,
                     ...distPayload
                 });
                 if (response.data && response.data.team) {
@@ -199,7 +199,9 @@ const Teams = () => {
             setTriggerOnAppointment(team.triggerOnAppointment || false);
             setTriggerTimeoutMinutes(team.triggerTimeoutMinutes ? String(team.triggerTimeoutMinutes) : '');
             setParentIdForCreate(null);
-            setTeamBranchId(team.branchId || '');
+            let parsedBranchIds = [];
+            try { parsedBranchIds = team.branchIds ? JSON.parse(team.branchIds) : []; } catch {}
+            setTeamBranchIds(parsedBranchIds);
         } else {
             setSelectedTeam(null);
             setTeamName('');
@@ -493,11 +495,15 @@ const Teams = () => {
                                 <h3>{team.name}</h3>
                             </div>
                             <p className="team-description">{team.description || t('teams.noDescription')}</p>
-                            {team.branchId && (
-                                <span style={{ fontSize: '0.7rem', background: '#eef2ff', color: '#4f46e5', padding: '2px 8px', borderRadius: '10px', marginTop: '4px', display: 'inline-block' }}>
-                                    🏢 {branches.find(b => b.id === team.branchId)?.name || 'Şube'}
-                                </span>
-                            )}
+                            {(() => {
+                                let ids = [];
+                                try { ids = team.branchIds ? JSON.parse(team.branchIds) : []; } catch {}
+                                return ids.length > 0 && branches.length > 1 ? (
+                                    <span style={{ fontSize: '0.7rem', background: '#eef2ff', color: '#4f46e5', padding: '2px 8px', borderRadius: '10px', marginTop: '4px', display: 'inline-block' }}>
+                                        🏢 {ids.map(id => branches.find(b => b.id === id)?.name).filter(Boolean).join(', ')}
+                                    </span>
+                                ) : null;
+                            })()}
                         </div>
                         <div className="team-actions">
                             <button
@@ -693,19 +699,27 @@ const Teams = () => {
                                 />
                             </div>
                             {/* Şube Seçimi */}
-                            {branches.length > 0 && (
+                            {branches.length > 1 && (
                                 <div className="form-group">
-                                    <label>🏢 Şube</label>
-                                    <select
-                                        className="form-input"
-                                        value={teamBranchId}
-                                        onChange={(e) => setTeamBranchId(e.target.value)}
-                                    >
-                                        <option value="">Şube seçilmedi (tüm şubeler)</option>
+                                    <label>🏢 Şubeler</label>
+                                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', padding: '8px 0' }}>
                                         {branches.filter(b => b.isActive).map(b => (
-                                            <option key={b.id} value={b.id}>{b.name}</option>
+                                            <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: 13 }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={teamBranchIds.includes(b.id)}
+                                                    onChange={e => {
+                                                        setTeamBranchIds(e.target.checked
+                                                            ? [...teamBranchIds, b.id]
+                                                            : teamBranchIds.filter(x => x !== b.id)
+                                                        );
+                                                    }}
+                                                />
+                                                {b.name}
+                                            </label>
                                         ))}
-                                    </select>
+                                    </div>
+                                    <span style={{ fontSize: 11, color: '#94a3b8' }}>Seçilmezse tüm şubelerde aktif</span>
                                 </div>
                             )}
                             {/* Havuz Dağıtım Kuralları */}

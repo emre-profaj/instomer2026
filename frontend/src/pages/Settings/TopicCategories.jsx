@@ -182,9 +182,9 @@ const TopicCategories = ({ caseTypeId }) => {
                 icon: newCategory.icon || null,
                 keywords,
                 caseTypeId: caseTypeId || null,
-                branchId: newCategory.branchId || null
+                branchIds: newCategory.branchIds?.length > 0 ? newCategory.branchIds : null
             });
-            setNewCategory({ name: '', description: '', icon: '', keywords: '', branchId: '' });
+            setNewCategory({ name: '', description: '', icon: '', keywords: '', branchIds: [] });
             setShowAddForm(false);
             await fetchCategories();
         } catch (err) {
@@ -194,12 +194,14 @@ const TopicCategories = ({ caseTypeId }) => {
 
     const handleEdit = (cat) => {
         setEditingId(cat.id);
+        let parsedBranchIds = [];
+        try { parsedBranchIds = cat.branchIds ? JSON.parse(cat.branchIds) : []; } catch {}
         setEditForm({
             name: cat.name,
             description: cat.description || '',
             icon: cat.icon || '',
             keywords: cat.keywords ? JSON.parse(cat.keywords).join(', ') : '',
-            branchId: cat.branchId || ''
+            branchIds: parsedBranchIds
         });
     };
 
@@ -213,7 +215,7 @@ const TopicCategories = ({ caseTypeId }) => {
                 description: editForm.description || null,
                 icon: editForm.icon || null,
                 keywords,
-                branchId: editForm.branchId || null
+                branchIds: editForm.branchIds?.length > 0 ? editForm.branchIds : null
             });
             setEditingId(null);
             await fetchCategories();
@@ -338,7 +340,7 @@ const TopicCategories = ({ caseTypeId }) => {
                         className="tc-input"
                         style={{ maxWidth: 300, padding: '8px 12px', fontSize: '14px' }}
                     />
-                    {branches.length > 0 && (
+                    {branches.length > 1 && (
                         <select
                             value={branchFilter}
                             onChange={e => setBranchFilter(e.target.value)}
@@ -415,19 +417,28 @@ const TopicCategories = ({ caseTypeId }) => {
                                 className="tc-input"
                             />
                         </div>
-                        {branches.length > 0 && (
+                        {branches.length > 1 && (
                             <div className="tc-form-field tc-form-field-full">
-                                <label>🏢 Şube</label>
-                                <select
-                                    value={newCategory.branchId || ''}
-                                    onChange={e => setNewCategory({ ...newCategory, branchId: e.target.value })}
-                                    className="tc-input"
-                                >
-                                    <option value="">Tüm Şubeler (Genel)</option>
+                                <label>🏢 Şubeler</label>
+                                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', padding: '8px 0' }}>
                                     {branches.filter(b => b.isActive).map(b => (
-                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                        <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: 13 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={(newCategory.branchIds || []).includes(b.id)}
+                                                onChange={e => {
+                                                    const ids = newCategory.branchIds || [];
+                                                    setNewCategory({
+                                                        ...newCategory,
+                                                        branchIds: e.target.checked ? [...ids, b.id] : ids.filter(x => x !== b.id)
+                                                    });
+                                                }}
+                                            />
+                                            {b.name}
+                                        </label>
                                     ))}
-                                </select>
+                                </div>
+                                <span style={{ fontSize: 11, color: '#94a3b8' }}>Seçilmezse tüm şubelerde görünür</span>
                             </div>
                         )}
                     </div>
@@ -466,7 +477,7 @@ const TopicCategories = ({ caseTypeId }) => {
                                 <th>Kategori</th>
                                 <th>Açıklama</th>
                                 <th>Anahtar Kelimeler</th>
-                                {branches.length > 0 && <th style={{ width: 120 }}>Şube</th>}
+                                {branches.length > 1 && <th style={{ width: 120 }}>Şube</th>}
                                 <th style={{ width: 100 }}>Konuşma</th>
                                 <th style={{ width: 80 }}>Aktif</th>
                                 <th style={{ width: 120 }}>İşlem</th>
@@ -475,7 +486,15 @@ const TopicCategories = ({ caseTypeId }) => {
                         <tbody>
                             {categories
                                 .filter(cat => {
-                                    if (branchFilter !== 'ALL' && cat.branchId !== (branchFilter === 'NONE' ? null : branchFilter)) return false;
+                                    if (branchFilter !== 'ALL') {
+                                        let catBranchIds = [];
+                                        try { catBranchIds = cat.branchIds ? JSON.parse(cat.branchIds) : []; } catch {}
+                                        if (branchFilter === 'NONE') {
+                                            if (catBranchIds.length > 0) return false;
+                                        } else {
+                                            if (catBranchIds.length > 0 && !catBranchIds.includes(branchFilter)) return false;
+                                        }
+                                    }
                                     if (!searchFilter) return true;
                                     const q = searchFilter.toLowerCase();
                                     const name = (cat.name || '').toLowerCase();
@@ -550,25 +569,34 @@ const TopicCategories = ({ caseTypeId }) => {
                                             </div>
                                         )}
                                     </td>
-                                    {branches.length > 0 && (
+                                    {branches.length > 1 && (
                                         <td>
                                             {editingId === cat.id ? (
-                                                <select
-                                                    value={editForm.branchId || ''}
-                                                    onChange={e => setEditForm({ ...editForm, branchId: e.target.value })}
-                                                    className="tc-input"
-                                                    style={{ fontSize: 12, padding: '4px 6px' }}
-                                                >
-                                                    <option value="">Genel</option>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     {branches.filter(b => b.isActive).map(b => (
-                                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                                        <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 11, cursor: 'pointer' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={(editForm.branchIds || []).includes(b.id)}
+                                                                onChange={e => {
+                                                                    const ids = editForm.branchIds || [];
+                                                                    setEditForm({
+                                                                        ...editForm,
+                                                                        branchIds: e.target.checked ? [...ids, b.id] : ids.filter(x => x !== b.id)
+                                                                    });
+                                                                }}
+                                                            />
+                                                            {b.name}
+                                                        </label>
                                                     ))}
-                                                </select>
-                                            ) : (
-                                                <span style={{ fontSize: 12, color: cat.branchId ? '#6366f1' : '#94a3b8' }}>
-                                                    {cat.branchId ? branches.find(b => b.id === cat.branchId)?.name || '—' : 'Genel'}
-                                                </span>
-                                            )}
+                                                </div>
+                                            ) : (() => {
+                                                let ids = [];
+                                                try { ids = cat.branchIds ? JSON.parse(cat.branchIds) : []; } catch {}
+                                                return ids.length > 0
+                                                    ? <span style={{ fontSize: 11, color: '#6366f1' }}>{ids.map(id => branches.find(b => b.id === id)?.name).filter(Boolean).join(', ')}</span>
+                                                    : <span style={{ fontSize: 11, color: '#94a3b8' }}>Tümü</span>;
+                                            })()}
                                         </td>
                                     )}
                                     <td className="tc-cell-count">
