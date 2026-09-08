@@ -37,9 +37,7 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
-        { path: '/activities/calendar', icon: Activity, label: 'Aktiviteler' },
-        { path: '/base', icon: Building2, label: 'Base' },
-        { path: '/automations-hub', icon: Zap, label: 'Otomasyonlar' }
+        { path: '/activities/calendar', icon: Activity, label: 'Aktiviteler' }
     ];
 
     const realEstateSubItems = [
@@ -419,6 +417,24 @@ const Sidebar = () => {
                                     )}
                                 </div>
                             )}
+
+                            {/* Base & Otomasyonlar */}
+                            <Link
+                                to="/base"
+                                className={`nav-item ${location.pathname === '/base' ? 'active' : ''}`}
+                                title="Base"
+                            >
+                                <Building2 size={20} className="nav-icon" />
+                                {!isCollapsed && <span>Base</span>}
+                            </Link>
+                            <Link
+                                to="/automations-hub"
+                                className={`nav-item ${location.pathname === '/automations-hub' ? 'active' : ''}`}
+                                title="Otomasyonlar"
+                            >
+                                <Zap size={20} className="nav-icon" />
+                                {!isCollapsed && <span>Otomasyonlar</span>}
+                            </Link>
 
                             {/* Settings */}
                             {(workspaceRole === 'OWNER' || user?.role === 'SUPER_ADMIN') && (
