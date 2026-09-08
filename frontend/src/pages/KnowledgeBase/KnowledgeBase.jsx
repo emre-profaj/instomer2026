@@ -599,6 +599,9 @@ const KnowledgeBase = () => {
                         <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
                             <Globe size={16} /> Web Sitesi Tara
                         </button>
+                        <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => setActiveTab('feed')}>
+                            <Link size={16} /> Dinamik Feed
+                        </button>
                     </div>
                     <div className="base-nav-group">
                         <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
@@ -1448,6 +1451,48 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
             )}
 
 
+
+            {/* Feed Tab */}
+            {activeTab === 'feed' && (
+                <div className="card kb-add-form">
+                    <div className="form-group">
+                        <label>JSON API veya Feed URL'si</label>
+                        <input
+                            type="url"
+                            className="input"
+                            placeholder="https://api.hastane.com/doktorlar.json"
+                            value={newUrl}
+                            onChange={(e) => setNewUrl(e.target.value)}
+                        />
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                            * Girdiğiniz JSON verisi Yapay Zekanın anlayacağı düz metinlere dönüştürülüp eklenecektir. (Stok, Fiyat veya Doktor listeleri için idealdir)
+                        </p>
+                    </div>
+                    <div className="form-group" style={{ marginTop: '16px' }}>
+                        <label>Otomatik Güncelleme Sıklığı</label>
+                        <select
+                            className="input"
+                            value={urlSyncInterval}
+                            onChange={(e) => setUrlSyncInterval(e.target.value)}
+                        >
+                            <option value="">Sadece Bir Kez Çek</option>
+                            <option value="1">Her Saat</option>
+                            <option value="12">Günde 2 Kez (12 Saat)</option>
+                            <option value="24">Her Gün (24 Saat)</option>
+                        </select>
+                    </div>
+                    <div className="kb-form-actions">
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleAddUrlEntry}
+                            disabled={scraping || !newUrl.trim()}
+                        >
+                            {scraping ? <RefreshCw className="spinning" size={16} /> : <Link size={16} />}
+                            {scraping ? 'Veri Çekiliyor...' : 'Feed Bağla ve Ekle'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* List Tab */}
             {activeTab === 'list' && (
