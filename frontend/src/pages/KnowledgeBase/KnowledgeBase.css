@@ -1,9 +1,118 @@
+/* Base Layout — sol sidebar + sağ içerik */
+.base-layout {
+    display: flex;
+    gap: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+.base-sidebar {
+    width: 220px;
+    min-width: 220px;
+    height: 100%;
+    overflow-y: auto;
+    border-right: 1px solid var(--border-color, #e5e7eb);
+    background: var(--bg-secondary, #f9fafb);
+    padding: 16px 0;
+}
+
+.base-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px 16px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary, #111827);
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    margin-bottom: 8px;
+}
+
+.base-nav {
+    display: flex;
+    flex-direction: column;
+}
+
+.base-nav-group {
+    padding: 8px 0;
+}
+
+.base-nav-group + .base-nav-group {
+    border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.base-nav-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9ca3af;
+    padding: 4px 16px 4px;
+}
+
+.base-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 16px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    color: var(--text-secondary, #4b5563);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+}
+
+.base-nav-item:hover {
+    background: var(--bg-hover, #f3f4f6);
+    color: var(--text-primary, #111827);
+}
+
+.base-nav-item.active {
+    background: var(--primary-bg, #eef2ff);
+    color: var(--primary, #6366f1);
+    border-left-color: var(--primary, #6366f1);
+    font-weight: 500;
+}
+
+.base-nav-item svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.base-nav-item.active svg {
+    opacity: 1;
+}
+
+.base-nav-badge {
+    margin-left: auto;
+    background: var(--primary, #6366f1);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.base-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-lg, 24px);
+    height: 100%;
+}
+
+/* Eski knowledge-base-page stilleri (base-content içindeki kartlar için) */
 .knowledge-base-page {
     width: 100%;
     max-width: 100%;
-    padding: var(--spacing-lg) var(--spacing-lg) 40px var(--spacing-lg);
-    overflow-y: auto;
-    height: 100%;
 }
 
 .page-header {

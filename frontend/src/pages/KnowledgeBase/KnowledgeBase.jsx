@@ -415,87 +415,60 @@ const KnowledgeBase = () => {
     }
 
     return (
-        <div className="knowledge-base-page">
-            <div className="page-header">
-                <div>
-                    <h1>Knowledge Base</h1>
-                    <p className="text-muted">{t('knowledgeBase.description')}</p>
+        <div className="knowledge-base-page base-layout">
+            {/* Sol Sidebar */}
+            <div className="base-sidebar">
+                <div className="base-sidebar-header">
+                    <Building2 size={20} />
+                    <span>Base</span>
                 </div>
+                <nav className="base-nav">
+                    <div className="base-nav-group">
+                        <span className="base-nav-label">Bilgi</span>
+                        <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => setActiveTab('company')}>
+                            <Building2 size={16} /> Şirket Bilgileri
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => setActiveTab('branches')}>
+                            <MapPin size={16} /> Şubeler
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
+                            <Layers size={16} /> Kategoriler
+                        </button>
+                    </div>
+                    <div className="base-nav-group">
+                        <span className="base-nav-label">Ürün & Hizmet</span>
+                        <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => setActiveTab('productGroups')}>
+                            <FolderTree size={16} /> Ürün Grupları
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => setActiveTab('products')}>
+                            <Package size={16} /> Ürünler
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => setActiveTab('resources')}>
+                            <UserCircle size={16} /> Kaynaklar
+                        </button>
+                    </div>
+                    <div className="base-nav-group">
+                        <span className="base-nav-label">İçerik</span>
+                        <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => setActiveTab('text')}>
+                            <FileText size={16} /> Metin Ekle
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
+                            <Upload size={16} /> Dosya Ekle
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
+                            <Globe size={16} /> Web Sitesi Tara
+                        </button>
+                    </div>
+                    <div className="base-nav-group">
+                        <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
+                            <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
+                        </button>
+                    </div>
+                </nav>
             </div>
 
-            {/* Tabs */}
-            <div className="kb-tabs">
-                <button
-                    className={`kb-tab ${activeTab === 'company' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('company')}
-                >
-                    <Building2 size={16} />
-                    Şirket Bilgileri
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'branches' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('branches')}
-                >
-                    <MapPin size={16} />
-                    Şubeler
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'categories' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('categories')}
-                >
-                    <Layers size={16} />
-                    Kategoriler
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'productGroups' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('productGroups')}
-                >
-                    <FolderTree size={16} />
-                    Ürün Grupları
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'products' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('products')}
-                >
-                    <Package size={16} />
-                    Ürünler
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'resources' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('resources')}
-                >
-                    <UserCircle size={16} />
-                    Kaynaklar
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'text' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('text')}
-                >
-                    <FileText size={16} />
-                    Metin Ekle
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'files' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('files')}
-                >
-                    <Upload size={16} />
-                    Dosya Ekle
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'url' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('url')}
-                >
-                    <Globe size={16} />
-                    Web Sitesi Tara
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'list' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('list')}
-                >
-                    <Database size={16} />
-                    Tüm Bilgiler ({knowledgeEntries.length})
-                </button>
-            </div>
+            {/* Sağ İçerik */}
+            <div className="base-content">
 
             {/* Company Tab */}
             {activeTab === 'company' && (
@@ -1183,6 +1156,7 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
                     </div>
                 </div>
             )}
+            </div> {/* base-content */}
         </div>
     );
 };
