@@ -564,50 +564,40 @@ const KnowledgeBase = () => {
                     <span>Base</span>
                 </div>
                 <nav className="base-nav">
-                    <div className="base-nav-group">
-                        <span className="base-nav-label">Bilgi</span>
-                        <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => setActiveTab('company')}>
-                            <Building2 size={16} /> Şirket Bilgileri
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => setActiveTab('branches')}>
-                            <MapPin size={16} /> Şubeler
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
-                            <Layers size={16} /> Kategoriler
-                        </button>
-                    </div>
-                    <div className="base-nav-group">
-                        <span className="base-nav-label">Ürün & Hizmet</span>
-                        <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => setActiveTab('productGroups')}>
-                            <FolderTree size={16} /> Ürün Grupları
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => setActiveTab('products')}>
-                            <Package size={16} /> Ürünler
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => setActiveTab('resources')}>
-                            <UserCircle size={16} /> Kaynaklar
-                        </button>
-                    </div>
-                    <div className="base-nav-group">
-                        <span className="base-nav-label">İçerik</span>
-                        <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => setActiveTab('text')}>
-                            <FileText size={16} /> Metin Ekle
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
-                            <Upload size={16} /> Dosya Ekle
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
-                            <Globe size={16} /> Web Sitesi Tara
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => setActiveTab('feed')}>
-                            <Link size={16} /> Dinamik Feed
-                        </button>
-                    </div>
-                    <div className="base-nav-group">
-                        <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
-                            <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
-                        </button>
-                    </div>
+                    <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => setActiveTab('company')}>
+                        <Building2 size={16} /> Şirket Bilgileri
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => setActiveTab('branches')}>
+                        <MapPin size={16} /> Şubeler
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
+                        <Layers size={16} /> Kategoriler
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => setActiveTab('productGroups')}>
+                        <FolderTree size={16} /> Ürün Grupları
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => setActiveTab('products')}>
+                        <Package size={16} /> Ürünler
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => setActiveTab('resources')}>
+                        <UserCircle size={16} /> Kaynaklar
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => setActiveTab('text')}>
+                        <FileText size={16} /> Metin Ekle
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
+                        <Upload size={16} /> Dosya Ekle
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
+                        <Globe size={16} /> Web Sitesi Tara
+                    </button>
+                    <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => setActiveTab('feed')}>
+                        <Link size={16} /> Dinamik Feed
+                    </button>
+                    <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', margin: '8px 0' }} />
+                    <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
+                        <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
+                    </button>
                 </nav>
             </div>
 
