@@ -103,7 +103,8 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 assignedTeamId: true,
                 funnelType: true,
                 funnelStageId: true,
-                topicCategoryId: true
+                topicCategoryId: true,
+                campaignId: true
             }
         });
 
@@ -181,6 +182,7 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 funnelStageId: conv.funnelStageId || null,
                 categoryId: conv.topicCategoryId || null,
                 caseTypeId,
+                campaignId: conv.campaignId || null,
                 priority: 'NORMAL'
             }
         });
@@ -222,7 +224,8 @@ export const getContactCases = async (req, res) => {
                 funnelStageId: true,
                 channel: true,
                 createdAt: true,
-                topicCategoryId: true
+                topicCategoryId: true,
+                campaignId: true
             }
         });
 
@@ -252,6 +255,7 @@ export const getContactCases = async (req, res) => {
                             funnelStageId: conv.funnelStageId || null,
                             categoryId: conv.topicCategoryId || null,
                             caseTypeId,
+                            campaignId: conv.campaignId || null,
                             priority: 'NORMAL'
                         }
                     });
@@ -277,6 +281,9 @@ export const getContactCases = async (req, res) => {
                     select: {
                         id: true,
                         channel: true,
+                        source: true,
+                        isBulkSend: true,
+                        campaignId: true,
                         aiTopic: true,
                         status: true,
                         lastMessageAt: true,
@@ -301,6 +308,9 @@ export const getContactCases = async (req, res) => {
                 },
                 caseType: {
                     select: { id: true, name: true, color: true, icon: true }
+                },
+                campaign: {
+                    select: { id: true, name: true }
                 }
             },
             orderBy: { updatedAt: 'desc' }

@@ -585,9 +585,9 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 }}
                                 style={{
                                 display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-                                background: '#f8fafc', border: '1px solid #e2e8f0',
-                                borderRadius: 10, padding: '0 10px', height: 32,
-                                cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600, color: '#374151',
+                                background: '#ffffff', border: '1px solid #e2e8f0',
+                                borderRadius: inline ? 8 : 10, padding: inline ? '0 8px' : '0 10px', height: inline ? 28 : 32,
+                                cursor: 'pointer', fontSize: inline ? '0.72rem' : '0.76rem', fontWeight: 600, color: '#374151',
                                 whiteSpace: 'nowrap', overflow: 'hidden'
                                 }}
                             >
