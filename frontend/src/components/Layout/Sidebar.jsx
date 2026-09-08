@@ -38,7 +38,8 @@ const Sidebar = () => {
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
         { path: '/activities/calendar', icon: Activity, label: 'Aktiviteler' },
-        { path: '/base', icon: Building2, label: 'Base' }
+        { path: '/base', icon: Building2, label: 'Base' },
+        { path: '/automations-hub', icon: Zap, label: 'Otomasyonlar' }
     ];
 
     const realEstateSubItems = [
@@ -67,7 +68,7 @@ const Sidebar = () => {
         { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
         { path: '/templates', icon: FileSignature, label: 'Şablonlar (Mesaj/E-posta)' },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
-        { path: '/automations', icon: Zap, label: t('nav.automations') },
+        { path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
         { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' },
         { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' }
     ];
@@ -180,7 +181,7 @@ const Sidebar = () => {
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
         setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
-        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/automations', '/notification-settings', '/app-notes'].some(p => path === p));
+        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/integrations', '/notification-settings', '/app-notes'].some(p => path === p));
     }, [location.pathname]);
 
 

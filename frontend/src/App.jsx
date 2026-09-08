@@ -42,6 +42,7 @@ import Calendar from './pages/Calendar/Calendar';
 
 
 import Automations from './pages/Automations/Automations';
+import OtomasyonlarHub from './pages/Automations/OtomasyonlarHub';
 import NotificationSettings from './pages/Settings/NotificationSettings';
 import FirmSettings from './pages/Settings/FirmSettings';
 // Functions page removed - merged into Integrations
@@ -145,7 +146,8 @@ function App() {
               <Route path="calendar" element={<CalendarRedirect />} />
               <Route path="activities/calendar" element={<Calendar />} />
 
-              <Route path="automations" element={<Automations />} />
+              <Route path="automations-hub" element={<OtomasyonlarHub />} />
+              <Route path="automations" element={<Navigate to="/automations-hub" replace />} />
               <Route path="notification-settings" element={<NotificationSettings />} />
               {/* Functions route removed - merged into Integrations */}
               <Route path="web-forms" element={<WebForms />} />

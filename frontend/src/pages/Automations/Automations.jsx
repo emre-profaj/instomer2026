@@ -10,10 +10,10 @@ import {
 import './Automations.css';
 import FlowBuilder from './FlowBuilder';
 
-const Automations = () => {
+const Automations = ({ initialTab }) => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
-    const [activeTab, setActiveTab] = useState('automations');
+    const [activeTab, setActiveTab] = useState(initialTab || 'automations');
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
 
