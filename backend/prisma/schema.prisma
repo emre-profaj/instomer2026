@@ -961,7 +961,8 @@ model AppointmentBranch {
   @@map("appointment_branches")
 }
 
-// Randevu Asistanı — Doktor Tanımları
+// @deprecated — CalendarResource + ResourceBranch kullanın. Bu model geriye uyumluluk için korunuyor.
+// Randevu Asistanı — Doktor Tanımları (Legacy)
 model AppointmentDoctor {
   id          String            @id @default(uuid())
   branchId    String

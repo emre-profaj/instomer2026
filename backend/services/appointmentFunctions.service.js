@@ -105,18 +105,33 @@ export async function checkAvailability(workspaceId, params = {}) {
                     type: 'doctor'
                 });
             } else {
-                // User olarak ara
-                const user = await prisma.user.findUnique({ where: { id: params.person_id } });
-                if (user) {
-                    const wh = tryParseJSON(user.workingHours) || {};
+                // CalendarResource olarak ara
+                const resource = await prisma.calendarResource.findUnique({
+                    where: { id: params.person_id }
+                });
+                if (resource) {
                     providers.push({
-                        id: user.id, name: user.name,
-                        workStart: wh.start || '09:00',
-                        workEnd: wh.end || '18:00',
-                        workingDays: wh.days || ['monday','tuesday','wednesday','thursday','friday'],
-                        slotMinutes: wh.slotMinutes || 30,
-                        type: 'user'
+                        id: resource.id, name: resource.name,
+                        workStart: resource.workStart || '09:00',
+                        workEnd: resource.workEnd || '18:00',
+                        workingDays: tryParseJSON(resource.workingDays) || ['monday','tuesday','wednesday','thursday','friday'],
+                        slotMinutes: resource.slotMinutes || 30,
+                        type: 'doctor'
                     });
+                } else {
+                    // User olarak ara
+                    const user = await prisma.user.findUnique({ where: { id: params.person_id } });
+                    if (user) {
+                        const wh = tryParseJSON(user.workingHours) || {};
+                        providers.push({
+                            id: user.id, name: user.name,
+                            workStart: wh.start || '09:00',
+                            workEnd: wh.end || '18:00',
+                            workingDays: wh.days || ['monday','tuesday','wednesday','thursday','friday'],
+                            slotMinutes: wh.slotMinutes || 30,
+                            type: 'user'
+                        });
+                    }
                 }
             }
         } else if (params.person_name) {
@@ -137,6 +152,27 @@ export async function checkAvailability(workspaceId, params = {}) {
                     slotMinutes: d.slotMinutes || 30,
                     type: 'doctor'
                 });
+            }
+            if (!providers.length) {
+                // CalendarResource'da ara
+                const resources = await prisma.calendarResource.findMany({
+                    where: {
+                        name: { contains: params.person_name, mode: 'insensitive' },
+                        workspaceId,
+                        type: 'PERSON',
+                        isActive: true
+                    }
+                });
+                for (const r of resources) {
+                    providers.push({
+                        id: r.id, name: r.name,
+                        workStart: r.workStart || '09:00',
+                        workEnd: r.workEnd || '18:00',
+                        workingDays: tryParseJSON(r.workingDays) || ['monday','tuesday','wednesday','thursday','friday'],
+                        slotMinutes: r.slotMinutes || 30,
+                        type: 'doctor'
+                    });
+                }
             }
             if (!providers.length) {
                 // User'da ara
@@ -421,6 +457,15 @@ export async function bookAppointment(workspaceId, params = {}) {
                     providerName = doctor.name;
                     if (doctor.userId) {
                         assignedToId = doctor.userId;
+                    }
+                } else {
+                    const resource = await prisma.calendarResource.findUnique({ where: { id: params.provider_id } });
+                    if (resource) {
+                        doctorName = resource.name;
+                        providerName = resource.name;
+                        if (resource.userId) {
+                            assignedToId = resource.userId;
+                        }
                     }
                 }
             } else {

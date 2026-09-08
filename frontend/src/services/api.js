@@ -570,7 +570,17 @@ export const resourceAPI = {
     create: (workspaceId, data) => api.post(`/resources/${workspaceId}`, data),
     update: (workspaceId, resourceId, data) => api.put(`/resources/${workspaceId}/${resourceId}`, data),
     delete: (workspaceId, resourceId) => api.delete(`/resources/${workspaceId}/${resourceId}`),
-    syncHealthDoctors: (workspaceId) => api.post(`/resources/${workspaceId}/sync-health-doctors`)
+    syncHealthDoctors: (workspaceId) => api.post(`/resources/${workspaceId}/sync-health-doctors`),
+    addProduct: (workspaceId, resourceId, data) => api.post(`/resources/${workspaceId}/${resourceId}/products`, data),
+    removeProduct: (workspaceId, resourceId, rpId) => api.delete(`/resources/${workspaceId}/${resourceId}/products/${rpId}`)
+};
+
+// Topic Category API
+export const topicCategoryAPI = {
+    getAll: (workspaceId) => api.get(`/topic-categories/${workspaceId}`),
+    create: (workspaceId, data) => api.post(`/topic-categories/${workspaceId}`, data),
+    update: (workspaceId, categoryId, data) => api.put(`/topic-categories/${workspaceId}/${categoryId}`, data),
+    delete: (workspaceId, categoryId) => api.delete(`/topic-categories/${workspaceId}/${categoryId}`)
 };
 
 // Automation & Template API
@@ -684,7 +694,9 @@ export const productAPI = {
     delete: (workspaceId, productId) => api.delete(`/workspaces/${workspaceId}/products/${productId}`),
     bulkDelete: (workspaceId, productIds) => api.post(`/workspaces/${workspaceId}/products/bulk-delete`, { productIds }),
     bulkUpdate: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/products/bulk-update`, data),
-    getGroups: (workspaceId) => api.get(`/workspaces/${workspaceId}/products/groups`)
+    getGroups: (workspaceId) => api.get(`/workspaces/${workspaceId}/products/groups`),
+    addMedia: (workspaceId, productId, data) => api.post(`/workspaces/${workspaceId}/products/${productId}/media`, data),
+    deleteMedia: (workspaceId, productId, mediaId) => api.delete(`/workspaces/${workspaceId}/products/${productId}/media/${mediaId}`)
 };
 
 // WooCommerce REST API Integration

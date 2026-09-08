@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI } from '../../services/api';
+import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI } from '../../services/api';
+import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
 import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle } from 'lucide-react';
 import './KnowledgeBase.css';
 
@@ -9,6 +10,24 @@ const KnowledgeBase = () => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState('company');
+
+    // Categories States
+    const [categories, setCategories] = useState([]);
+    const [categoriesLoading, setCategoriesLoading] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newCategoryDefaultTeamId, setNewCategoryDefaultTeamId] = useState('');
+    const [newCategoryDefaultFunnelId, setNewCategoryDefaultFunnelId] = useState('');
+    const [editingCategory, setEditingCategory] = useState(null);
+    const [editCategoryName, setEditCategoryName] = useState('');
+    const [editCategoryDefaultTeamId, setEditCategoryDefaultTeamId] = useState('');
+    const [editCategoryDefaultFunnelId, setEditCategoryDefaultFunnelId] = useState('');
+
+    // Resources States  
+    const [resources, setResources] = useState([]);
+    const [resourcesLoading, setResourcesLoading] = useState(false);
+    const [showResourceForm, setShowResourceForm] = useState(false);
+    const [editingResource, setEditingResource] = useState(null);
+    const [resourceForm, setResourceForm] = useState({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
 
     // Knowledge Base States
     const [knowledgeEntries, setKnowledgeEntries] = useState([]);
@@ -66,6 +85,13 @@ const KnowledgeBase = () => {
     const [editBranchAddress, setEditBranchAddress] = useState('');
     const [editBranchPhone, setEditBranchPhone] = useState('');
 
+    // Product States
+    const [products, setProducts] = useState([]);
+    const [productsLoading, setProductsLoading] = useState(false);
+    
+    // Selected Branch
+    const [selectedBranch, setSelectedBranch] = useState(null);
+
     useEffect(() => {
         if (currentWorkspace) {
             loadKnowledgeBase();
@@ -73,8 +99,38 @@ const KnowledgeBase = () => {
             loadBranches();
             loadTeams();
             loadFunnels();
+            loadCategories();
+            loadProducts();
+            loadResources();
         }
     }, [currentWorkspace]);
+
+    const loadCategories = async () => {
+        try {
+            setCategoriesLoading(true);
+            const res = await getTopicCategories(currentWorkspace.id);
+            setCategories(res.data?.categories || res.data || []);
+        } catch (err) { console.error('Error loading categories:', err); }
+        finally { setCategoriesLoading(false); }
+    };
+
+    const loadProducts = async () => {
+        try {
+            setProductsLoading(true);
+            const res = await productAPI.getAll(currentWorkspace.id);
+            setProducts(res.data?.products || []);
+        } catch (err) { console.error('Error loading products:', err); }
+        finally { setProductsLoading(false); }
+    };
+
+    const loadResources = async () => {
+        try {
+            setResourcesLoading(true);
+            const res = await resourceAPI.getAll(currentWorkspace.id);
+            setResources(res.data?.resources || res.data || []);
+        } catch (err) { console.error('Error loading resources:', err); }
+        finally { setResourcesLoading(false); }
+    };
 
     const loadTeams = async () => {
         try {
@@ -150,6 +206,91 @@ const KnowledgeBase = () => {
         } catch (err) {
             console.error('Error deleting branch:', err);
             alert(err.response?.data?.error || 'Şube silinirken hata oluştu');
+        }
+    };
+
+    // Category CRUD
+    const handleCreateCategory = async () => {
+        if (!newCategoryName.trim()) return;
+        try {
+            await createTopicCategory(currentWorkspace.id, {
+                name: newCategoryName,
+                defaultTeamId: newCategoryDefaultTeamId || null,
+                defaultFunnelId: newCategoryDefaultFunnelId || null
+            });
+            setNewCategoryName('');
+            setNewCategoryDefaultTeamId('');
+            setNewCategoryDefaultFunnelId('');
+            loadCategories();
+        } catch (err) {
+            console.error('Error creating category:', err);
+            alert('Kategori eklenirken hata oluştu');
+        }
+    };
+
+    const handleUpdateCategory = async (id) => {
+        if (!editCategoryName.trim()) return;
+        try {
+            await updateTopicCategory(currentWorkspace.id, id, {
+                name: editCategoryName,
+                defaultTeamId: editCategoryDefaultTeamId || null,
+                defaultFunnelId: editCategoryDefaultFunnelId || null
+            });
+            setEditingCategory(null);
+            loadCategories();
+        } catch (err) {
+            console.error('Error updating category:', err);
+            alert('Kategori güncellenirken hata oluştu');
+        }
+    };
+
+    const handleDeleteCategory = async (id, name) => {
+        if (!confirm(`"${name}" kategorisini silmek istediğinize emin misiniz?`)) return;
+        try {
+            await deleteTopicCategory(currentWorkspace.id, id);
+            loadCategories();
+        } catch (err) {
+            console.error('Error deleting category:', err);
+            alert('Kategori silinirken hata oluştu');
+        }
+    };
+
+    // Resource CRUD
+    const handleCreateResource = async () => {
+        if (!resourceForm.name.trim()) return;
+        try {
+            await resourceAPI.create(currentWorkspace.id, resourceForm);
+            setShowResourceForm(false);
+            setResourceForm({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+            loadResources();
+        } catch (err) {
+            console.error('Error creating resource:', err);
+            alert('Kaynak eklenirken hata oluştu');
+        }
+    };
+
+    const handleUpdateResource = async (id) => {
+        if (!resourceForm.name.trim()) return;
+        try {
+            await resourceAPI.update(currentWorkspace.id, id, resourceForm);
+            setEditingResource(null);
+            setShowResourceForm(false);
+            setResourceForm({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+            loadResources();
+        } catch (err) {
+            console.error('Error updating resource:', err);
+            alert('Kaynak güncellenirken hata oluştu');
+        }
+    };
+
+    const handleDeleteResource = async (id, name) => {
+        if (!confirm(`"${name}" kaynağını silmek istediğinize emin misiniz?`)) return;
+        try {
+            await resourceAPI.delete(currentWorkspace.id, id);
+            loadResources();
+        } catch (err) {
+            console.error('Error deleting resource:', err);
+            alert('Kaynak silinirken hata oluştu');
         }
     };
 
@@ -624,25 +765,65 @@ const KnowledgeBase = () => {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {branches.map(branch => (
-                                        <div key={branch.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <div>
-                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{branch.name}</h4>
-                                                {branch.address && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📍 {branch.address}</div>}
-                                                {branch.phone && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📞 {branch.phone}</div>}
-                                                {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '8px' }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
-                                                {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
+                                        <div key={branch.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div 
+                                                style={{ 
+                                                    padding: '16px', 
+                                                    background: selectedBranch?.id === branch.id ? '#eef2ff' : '#f8fafc', 
+                                                    borderRadius: '8px', 
+                                                    border: selectedBranch?.id === branch.id ? '1px solid #6366f1' : '1px solid #e2e8f0', 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    alignItems: 'flex-start',
+                                                    cursor: 'pointer'
+                                                }}
+                                                onClick={() => setSelectedBranch(selectedBranch?.id === branch.id ? null : branch)}
+                                            >
+                                                <div>
+                                                    <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{branch.name}</h4>
+                                                    {branch.address && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📍 {branch.address}</div>}
+                                                    {branch.phone && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📞 {branch.phone}</div>}
+                                                    {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '8px' }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
+                                                    {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                                                    <button className="btn-icon" onClick={() => {
+                                                        setEditingBranch(branch.id);
+                                                        setEditBranchName(branch.name);
+                                                        setEditBranchAddress(branch.address || '');
+                                                        setEditBranchPhone(branch.phone || '');
+                                                        setEditBranchTeamId(branch.defaultTeamId || '');
+                                                        setEditBranchFunnelId(branch.defaultFunnelId || '');
+                                                    }}><Pencil size={16} /></button>
+                                                    <button className="btn-icon btn-danger" onClick={() => handleDeleteBranch(branch.id, branch.name)}><Trash2 size={16} /></button>
+                                                </div>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button className="btn-icon" onClick={() => {
-                                                    setEditingBranch(branch.id);
-                                                    setEditBranchName(branch.name);
-                                                    setEditBranchAddress(branch.address || '');
-                                                    setEditBranchPhone(branch.phone || '');
-                                                    setEditBranchTeamId(branch.defaultTeamId || '');
-                                                    setEditBranchFunnelId(branch.defaultFunnelId || '');
-                                                }}><Pencil size={16} /></button>
-                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteBranch(branch.id, branch.name)}><Trash2 size={16} /></button>
-                                            </div>
+                                            
+                                            {selectedBranch?.id === branch.id && (
+                                                <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', marginLeft: '16px' }}>
+                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu Şubedeki Ürünler</h5>
+                                                    <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
+                                                        {products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).length > 0 ? (
+                                                            products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).map(p => (
+                                                                <li key={p.id}>{p.name}</li>
+                                                            ))
+                                                        ) : (
+                                                            <li>Ürün bulunamadı.</li>
+                                                        )}
+                                                    </ul>
+
+                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu Şubedeki Kaynaklar</h5>
+                                                    <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
+                                                        {resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id))).length > 0 ? (
+                                                            resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id))).map(r => (
+                                                                <li key={r.id}>{r.name}</li>
+                                                            ))
+                                                        ) : (
+                                                            <li>Kaynak bulunamadı.</li>
+                                                        )}
+                                                    </ul>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -697,15 +878,78 @@ const KnowledgeBase = () => {
 
             {/* Categories Tab */}
             {activeTab === 'categories' && (
-                <div className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0 }}>📂 Kategoriler</h3>
-                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Konu kategorileri, varsayılan takım ve akış eşleştirmesi</p>
+                <div className="card" style={{ padding: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                        <Layers size={24} style={{ color: '#6366f1' }} />
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Kategoriler</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Konu kategorileri, varsayılan takım ve akış eşleştirmesi</p>
+                        </div>
                     </div>
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                        <Layers size={48} strokeWidth={1} />
-                        <p style={{ marginTop: '12px' }}>Kategori yönetimi yakında burada olacak</p>
-                        <p style={{ fontSize: '13px' }}>Şu an için <a href="/casetypes" style={{ color: '#6366f1' }}>Vaka Tipleri ve Konular</a> sayfasından yönetebilirsiniz.</p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
+                        <div>
+                            {categoriesLoading ? (
+                                <div className="loading">Yükleniyor...</div>
+                            ) : categories.length === 0 ? (
+                                <div className="empty-state">Henüz kategori eklenmemiş.</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {categories.map(category => (
+                                        <div key={category.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{category.name}</h4>
+                                                {category.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '4px' }}>Takım: {teams.find(t => t.id === category.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
+                                                {category.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === category.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button className="btn-icon" onClick={() => {
+                                                    setEditingCategory(category.id);
+                                                    setEditCategoryName(category.name);
+                                                    setEditCategoryDefaultTeamId(category.defaultTeamId || '');
+                                                    setEditCategoryDefaultFunnelId(category.defaultFunnelId || '');
+                                                }}><Pencil size={16} /></button>
+                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteCategory(category.id, category.name)}><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
+                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingCategory ? 'Kategoriyi Düzenle' : 'Yeni Kategori Ekle'}</h4>
+                                
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Kategori Adı *</label>
+                                    <input type="text" className="input" value={editingCategory ? editCategoryName : newCategoryName} onChange={e => editingCategory ? setEditCategoryName(e.target.value) : setNewCategoryName(e.target.value)} placeholder="Örn: Teknik Destek" />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Varsayılan Takım</label>
+                                    <select className="input" value={editingCategory ? editCategoryDefaultTeamId : newCategoryDefaultTeamId} onChange={e => editingCategory ? setEditCategoryDefaultTeamId(e.target.value) : setNewCategoryDefaultTeamId(e.target.value)}>
+                                        <option value="">-- Seçiniz --</option>
+                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Varsayılan Akış</label>
+                                    <select className="input" value={editingCategory ? editCategoryDefaultFunnelId : newCategoryDefaultFunnelId} onChange={e => editingCategory ? setEditCategoryDefaultFunnelId(e.target.value) : setNewCategoryDefaultFunnelId(e.target.value)}>
+                                        <option value="">-- Seçiniz --</option>
+                                        {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                    </select>
+                                </div>
+
+                                {editingCategory ? (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleUpdateCategory(editingCategory)}>Kaydet</button>
+                                        <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditingCategory(null)}>İptal</button>
+                                    </div>
+                                ) : (
+                                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>Kategori Ekle</button>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -714,14 +958,56 @@ const KnowledgeBase = () => {
             {activeTab === 'productGroups' && (
                 <div className="card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0 }}>📁 Ürün Grupları</h3>
-                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Ürün grupları ve alt ürünler</p>
+                        <div>
+                            <h3 style={{ margin: 0 }}>📁 Ürün Grupları</h3>
+                            <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Ürün grupları ve alt ürünler</p>
+                        </div>
+                        <a href="/products" className="btn btn-outline" style={{ textDecoration: 'none' }}>Ürünler Sayfasına Git</a>
                     </div>
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                        <FolderTree size={48} strokeWidth={1} />
-                        <p style={{ marginTop: '12px' }}>Ürün grubu yönetimi yakında burada olacak</p>
-                        <p style={{ fontSize: '13px' }}>Gruplar: 2+1, Masaj, Ameliyat gibi üst kategoriler. Alt ürünler gruba bağlıdır.</p>
-                    </div>
+                    
+                    {productsLoading ? (
+                        <div className="loading">Yükleniyor...</div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {products.filter(p => p.isGroup).map(group => {
+                                const children = products.filter(p => p.parentId === group.id);
+                                const isExpanded = expandedEntries[group.id];
+                                return (
+                                    <div key={group.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#f8fafc' }}>
+                                        <div 
+                                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                                            onClick={() => setExpandedEntries(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                                        >
+                                            <div>
+                                                <h4 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', color: '#1e293b' }}>{group.name}</h4>
+                                                <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '12px' }}>
+                                                    <span>Alt Ürün: {children.length}</span>
+                                                    {group.categoryName && <span>Kategori: {group.categoryName}</span>}
+                                                </div>
+                                            </div>
+                                            <div style={{ color: '#6366f1' }}>
+                                                {isExpanded ? 'Gizle' : 'Göster'}
+                                            </div>
+                                        </div>
+                                        
+                                        {isExpanded && children.length > 0 && (
+                                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {children.map(child => (
+                                                    <div key={child.id} style={{ padding: '8px 12px', background: '#fff', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span>{child.name}</span>
+                                                        <span style={{ color: '#64748b' }}>{child.price ? `${child.price} ₺` : 'Fiyat Yok'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {products.filter(p => p.isGroup).length === 0 && (
+                                <div className="empty-state">Henüz ürün grubu bulunmuyor.</div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -729,28 +1015,192 @@ const KnowledgeBase = () => {
             {activeTab === 'products' && (
                 <div className="card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0 }}>🏷️ Ürünler</h3>
-                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Ürün ve hizmet yönetimi, katalog, broşür</p>
+                        <div>
+                            <h3 style={{ margin: 0 }}>🏷️ Ürünler</h3>
+                            <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Tüm ürün ve hizmetleriniz</p>
+                        </div>
+                        <a href="/products" className="btn btn-outline" style={{ textDecoration: 'none' }}>Detaylı düzenleme için Ürünler sayfasına gidin</a>
                     </div>
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                        <Package size={48} strokeWidth={1} />
-                        <p style={{ marginTop: '12px' }}>Ürün yönetimi yakında burada olacak</p>
-                        <p style={{ fontSize: '13px' }}>Şu an için <a href="/products" style={{ color: '#6366f1' }}>Ürün ve Hizmetler</a> sayfasından yönetebilirsiniz.</p>
-                    </div>
+                    
+                    {productsLoading ? (
+                        <div className="loading">Yükleniyor...</div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {products.length === 0 ? (
+                                <div className="empty-state">Henüz ürün eklenmemiş.</div>
+                            ) : (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Ürün Adı</th>
+                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Grup / Üst</th>
+                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Kategori</th>
+                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Fiyat</th>
+                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Durum</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {products.map(product => {
+                                                const parent = product.parentId ? products.find(p => p.id === product.parentId) : null;
+                                                return (
+                                                    <tr key={product.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                        <td style={{ padding: '12px 8px', fontWeight: 500 }}>{product.name}</td>
+                                                        <td style={{ padding: '12px 8px', color: '#64748b' }}>{parent ? parent.name : '-'}</td>
+                                                        <td style={{ padding: '12px 8px', color: '#64748b' }}>{product.categoryName || '-'}</td>
+                                                        <td style={{ padding: '12px 8px', color: '#10b981' }}>{product.price ? `${product.price} ₺` : '-'}</td>
+                                                        <td style={{ padding: '12px 8px' }}>
+                                                            <span style={{ 
+                                                                padding: '4px 8px', 
+                                                                borderRadius: '12px', 
+                                                                fontSize: '0.8rem', 
+                                                                background: product.isActive !== false ? '#dcfce3' : '#fee2e2', 
+                                                                color: product.isActive !== false ? '#166534' : '#991b1b' 
+                                                            }}>
+                                                                {product.isActive !== false ? 'Aktif' : 'Pasif'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
             {/* Resources Tab */}
             {activeTab === 'resources' && (
-                <div className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ margin: 0 }}>👤 Kaynaklar</h3>
-                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Doktorlar, terapistler, uzmanlar — randevu alınabilen kaynaklar</p>
+                <div className="card" style={{ padding: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                        <UserCircle size={24} style={{ color: '#6366f1' }} />
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Kaynaklar</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Doktorlar, terapistler, uzmanlar — randevu alınabilen kaynaklar</p>
+                        </div>
                     </div>
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                        <UserCircle size={48} strokeWidth={1} />
-                        <p style={{ marginTop: '12px' }}>Kaynak yönetimi yakında burada olacak</p>
-                        <p style={{ fontSize: '13px' }}>Doktor, terapist, berber gibi randevu alınabilen kaynakları buradan yönetebileceksiniz.</p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
+                        <div>
+                            {resourcesLoading ? (
+                                <div className="loading">Yükleniyor...</div>
+                            ) : resources.length === 0 ? (
+                                <div className="empty-state">Henüz kaynak eklenmemiş.</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {resources.map(resource => (
+                                        <div key={resource.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                                    <h4 style={{ margin: 0, fontSize: '1rem', color: '#1e293b' }}>{resource.name}</h4>
+                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: '#e0e7ff', color: '#4f46e5' }}>{resource.type}</span>
+                                                </div>
+                                                {resource.title && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>{resource.title}</div>}
+                                                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                                                    Mesai: {resource.availableStart} - {resource.availableEnd} ({resource.slotMinutes} dk)
+                                                </div>
+                                                {resource.branchIds && resource.branchIds.length > 0 && (
+                                                    <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '4px' }}>
+                                                        Şubeler: {resource.branchIds.map(id => branches.find(b => b.id === id)?.name).filter(Boolean).join(', ')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button className="btn-icon" onClick={() => {
+                                                    setEditingResource(resource.id);
+                                                    setResourceForm({
+                                                        name: resource.name,
+                                                        title: resource.title || '',
+                                                        type: resource.type || 'PERSON',
+                                                        branchIds: resource.branchIds || [],
+                                                        availableStart: resource.availableStart || '09:00',
+                                                        availableEnd: resource.availableEnd || '18:00',
+                                                        slotMinutes: resource.slotMinutes || 30
+                                                    });
+                                                    setShowResourceForm(true);
+                                                }}><Pencil size={16} /></button>
+                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteResource(resource.id, resource.name)}><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            {!showResourceForm && !editingResource ? (
+                                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowResourceForm(true)}>Yeni Kaynak Ekle</button>
+                            ) : (
+                                <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
+                                    <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingResource ? 'Kaynağı Düzenle' : 'Yeni Kaynak Ekle'}</h4>
+                                    
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Ad Soyad *</label>
+                                        <input type="text" className="input" value={resourceForm.name} onChange={e => setResourceForm({...resourceForm, name: e.target.value})} placeholder="Örn: Dr. Ahmet Yılmaz" />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Ünvan (İsteğe bağlı)</label>
+                                        <input type="text" className="input" value={resourceForm.title} onChange={e => setResourceForm({...resourceForm, title: e.target.value})} placeholder="Örn: Uzman Psikolog" />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Tip</label>
+                                        <select className="input" value={resourceForm.type} onChange={e => setResourceForm({...resourceForm, type: e.target.value})}>
+                                            <option value="PERSON">Kişi (Person)</option>
+                                            <option value="THERAPIST">Terapist (Therapist)</option>
+                                            <option value="SPECIALIST">Uzman (Specialist)</option>
+                                            <option value="STAFF">Personel (Staff)</option>
+                                            <option value="ROOM">Oda (Room)</option>
+                                            <option value="EQUIPMENT">Ekipman (Equipment)</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Çalıştığı Şubeler</label>
+                                        <select 
+                                            multiple 
+                                            className="input" 
+                                            style={{ height: '80px' }}
+                                            value={resourceForm.branchIds} 
+                                            onChange={e => {
+                                                const options = Array.from(e.target.options);
+                                                const selected = options.filter(o => o.selected).map(o => o.value);
+                                                setResourceForm({...resourceForm, branchIds: selected});
+                                            }}
+                                        >
+                                            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                        </select>
+                                        <small style={{ color: '#64748b' }}>Birden fazla seçmek için Ctrl/Cmd tuşuna basılı tutun.</small>
+                                    </div>
+                                    
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                                        <div className="form-group">
+                                            <label>Mesai Başlangıç</label>
+                                            <input type="time" className="input" value={resourceForm.availableStart} onChange={e => setResourceForm({...resourceForm, availableStart: e.target.value})} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Mesai Bitiş</label>
+                                            <input type="time" className="input" value={resourceForm.availableEnd} onChange={e => setResourceForm({...resourceForm, availableEnd: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                                        <label>Randevu Süresi (Dakika)</label>
+                                        <input type="number" className="input" value={resourceForm.slotMinutes} onChange={e => setResourceForm({...resourceForm, slotMinutes: parseInt(e.target.value) || 30})} />
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => editingResource ? handleUpdateResource(editingResource) : handleCreateResource()} disabled={!resourceForm.name.trim()}>Kaydet</button>
+                                        <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => {
+                                            setEditingResource(null);
+                                            setShowResourceForm(false);
+                                            setResourceForm({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+                                        }}>İptal</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

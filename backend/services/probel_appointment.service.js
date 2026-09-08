@@ -636,8 +636,27 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                             });
                         }
 
+                        if (apptBranch && savedResource) {
+                            // Upsert ResourceBranch
+                            await prisma.resourceBranch.upsert({
+                                where: {
+                                    resourceId_branchId: {
+                                        resourceId: savedResource.id,
+                                        branchId: apptBranch.id
+                                    }
+                                },
+                                update: { isAvailable: true },
+                                create: {
+                                    resourceId: savedResource.id,
+                                    branchId: apptBranch.id,
+                                    isAvailable: true
+                                }
+                            });
+                        }
+
                         // 4. AppointmentDoctor tablosunda da var mı?
                         if (apptBranch) {
+                            // @deprecated — will be removed
                             const existingDoctor = await prisma.appointmentDoctor.findFirst({
                                 where: {
                                     branchId: apptBranch.id,
