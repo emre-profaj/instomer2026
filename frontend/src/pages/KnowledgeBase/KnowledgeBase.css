@@ -75,10 +75,10 @@
 }
 
 .base-nav-item.active {
-    background: var(--primary-bg, #eef2ff);
-    color: var(--primary, #6366f1);
-    border-left-color: var(--primary, #6366f1);
-    font-weight: 500;
+    background: var(--primary-light, #fef2f2);
+    color: var(--primary, #ef4444);
+    border-left-color: var(--primary, #ef4444);
+    font-weight: 600;
 }
 
 .base-nav-item svg {
@@ -88,11 +88,12 @@
 
 .base-nav-item.active svg {
     opacity: 1;
+    color: var(--primary, #ef4444);
 }
 
 .base-nav-badge {
     margin-left: auto;
-    background: var(--primary, #6366f1);
+    background: var(--primary, #ef4444);
     color: white;
     font-size: 11px;
     font-weight: 600;

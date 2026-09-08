@@ -742,10 +742,10 @@ const KnowledgeBase = () => {
             {activeTab === 'branches' && (
                 <div className="card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <MapPin size={24} style={{ color: '#6366f1' }} />
+                        <MapPin size={24} style={{ color: 'var(--primary, #ef4444)' }} />
                         <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Şubeler</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Klinik şubelerinizi ve lokasyonlarınızı yönetin.</p>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Şubeler</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Klinik şubelerinizi ve lokasyonlarınızı yönetin.</p>
                         </div>
                     </div>
 
@@ -762,22 +762,23 @@ const KnowledgeBase = () => {
                                             <div 
                                                 style={{ 
                                                     padding: '16px', 
-                                                    background: selectedBranch?.id === branch.id ? '#eef2ff' : '#f8fafc', 
+                                                    background: selectedBranch?.id === branch.id ? 'var(--primary-light, #fef2f2)' : '#fff', 
                                                     borderRadius: '8px', 
-                                                    border: selectedBranch?.id === branch.id ? '1px solid #6366f1' : '1px solid #e2e8f0', 
+                                                    border: selectedBranch?.id === branch.id ? '1px solid var(--primary, #ef4444)' : '1px solid var(--border-color, #e5e7eb)', 
                                                     display: 'flex', 
                                                     justifyContent: 'space-between', 
                                                     alignItems: 'flex-start',
-                                                    cursor: 'pointer'
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s ease'
                                                 }}
                                                 onClick={() => setSelectedBranch(selectedBranch?.id === branch.id ? null : branch)}
                                             >
                                                 <div>
-                                                    <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{branch.name}</h4>
-                                                    {branch.address && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📍 {branch.address}</div>}
-                                                    {branch.phone && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📞 {branch.phone}</div>}
-                                                    {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '8px' }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
-                                                    {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
+                                                    <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{branch.name}</h4>
+                                                    {branch.address && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📍 {branch.address}</div>}
+                                                    {branch.phone && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📞 {branch.phone}</div>}
+                                                    {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '8px', fontWeight: 500 }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
+                                                    {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
                                                     <button className="btn-icon" onClick={() => {
@@ -873,10 +874,10 @@ const KnowledgeBase = () => {
             {activeTab === 'categories' && (
                 <div className="card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <Layers size={24} style={{ color: '#6366f1' }} />
+                        <Layers size={24} style={{ color: 'var(--primary, #ef4444)' }} />
                         <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Kategoriler</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Konu kategorileri, varsayılan takım ve akış eşleştirmesi</p>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Kategoriler</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Konu kategorileri, varsayılan takım ve akış eşleştirmesi</p>
                         </div>
                     </div>
 
@@ -889,11 +890,11 @@ const KnowledgeBase = () => {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {categories.map(category => (
-                                        <div key={category.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div key={category.id} style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid var(--border-color, #e5e7eb)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div>
-                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{category.name}</h4>
-                                                {category.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '4px' }}>Takım: {teams.find(t => t.id === category.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
-                                                {category.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === category.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
+                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{category.name}</h4>
+                                                {category.defaultTeamId && <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '4px', fontWeight: 500 }}>Takım: {teams.find(t => t.id === category.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
+                                                {category.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Akış: {funnels.find(f => f.id === category.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                                 <button className="btn-icon" onClick={() => {
@@ -978,7 +979,7 @@ const KnowledgeBase = () => {
                                                     {group.categoryName && <span>Kategori: {group.categoryName}</span>}
                                                 </div>
                                             </div>
-                                            <div style={{ color: '#6366f1' }}>
+                                            <div style={{ color: 'var(--primary, #ef4444)', fontWeight: 500, fontSize: '0.85rem', cursor: 'pointer' }}>
                                                 {isExpanded ? 'Gizle' : 'Göster'}
                                             </div>
                                         </div>
@@ -1069,10 +1070,10 @@ const KnowledgeBase = () => {
             {activeTab === 'resources' && (
                 <div className="card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <UserCircle size={24} style={{ color: '#6366f1' }} />
+                        <UserCircle size={24} style={{ color: 'var(--primary, #ef4444)' }} />
                         <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Kaynaklar</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Doktorlar, terapistler, uzmanlar — randevu alınabilen kaynaklar</p>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Kaynaklar</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Doktorlar, terapistler, uzmanlar — randevu alınabilen kaynaklar</p>
                         </div>
                     </div>
 
@@ -1085,18 +1086,18 @@ const KnowledgeBase = () => {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {resources.map(resource => (
-                                        <div key={resource.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div key={resource.id} style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid var(--border-color, #e5e7eb)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                                    <h4 style={{ margin: 0, fontSize: '1rem', color: '#1e293b' }}>{resource.name}</h4>
-                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: '#e0e7ff', color: '#4f46e5' }}>{resource.type}</span>
+                                                    <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{resource.name}</h4>
+                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: 'var(--primary-light, #fef2f2)', color: 'var(--primary-dark, #dc2626)', fontWeight: 500 }}>{resource.type}</span>
                                                 </div>
-                                                {resource.title && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>{resource.title}</div>}
-                                                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                                                {resource.title && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>{resource.title}</div>}
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)' }}>
                                                     Mesai: {resource.availableStart} - {resource.availableEnd} ({resource.slotMinutes} dk)
                                                 </div>
                                                 {resource.branchIds && resource.branchIds.length > 0 && (
-                                                    <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '4px' }}>
+                                                    <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '4px', fontWeight: 500 }}>
                                                         Şubeler: {resource.branchIds.map(id => branches.find(b => b.id === id)?.name).filter(Boolean).join(', ')}
                                                     </div>
                                                 )}
