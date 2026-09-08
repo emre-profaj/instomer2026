@@ -56,6 +56,10 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
         isQualifiedLead: false,
         marketingOptOut: false,
         matchedFunnelId: null,
+        matchedBranchId: null,
+        topicCategoryId: null,
+        matchedProductIds: [],
+        matchedProductGroupId: null,
         reasoning: 'Sınıflandırma yapılamadı'
     };
 
@@ -75,12 +79,33 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
             }
         });
 
-        // Konu kategorilerini ve ürünlerini yükle
+        // Şubeleri yükle (AI prompt'a verilecek)
+        let branches = [];
+        try {
+            branches = await prisma.appointmentBranch.findMany({
+                where: { workspaceId, isActive: true },
+                select: { id: true, name: true, address: true }
+            });
+        } catch { /* Tablo yoksa atla */ }
+
+        // Konu kategorilerini ve ürünlerini yükle (hiyerarşik: grup → ürün)
         let topicCategories = [];
         try {
             topicCategories = await prisma.topicCategory.findMany({
                 where: { workspaceId, isActive: true },
-                select: { id: true, name: true, keywords: true, products: { where: { isActive: true }, select: { id: true, name: true, price: true, groupName: true } } }
+                select: {
+                    id: true, name: true, keywords: true, branchIds: true,
+                    products: {
+                        where: { isActive: true, parentId: null },
+                        select: {
+                            id: true, name: true, price: true, isGroup: true,
+                            children: {
+                                where: { isActive: true },
+                                select: { id: true, name: true, price: true }
+                            }
+                        }
+                    }
+                }
             });
         } catch { /* Tablo yoksa veya hata varsa atla */ }
         const categoryMap = new Map(topicCategories.map(c => [c.id, c]));
@@ -234,14 +259,29 @@ ${contactInfo}
 ${chatLog}
 ${activityLog}
 ${customFunnelContext}
-${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşağıdaki kategorilerden en uygun olanını seç. Kategori altındaki ürünlerden müşterinin ilgilendiği ürünleri de eşleştir:\n${topicCategories.map(c => {
+${branches.length > 0 ? `\n### ŞUBELER ###\nAşağıdaki şubelerden müşterinin ilgilendiği veya bahsettiği şubeyi eşleştir. Eğer müşteri şube belirtmemişse null yaz:\n${branches.map(b => `- "${b.name}" (ID: ${b.id})${b.address ? ' — ' + b.address : ''}`).join('\n')}\n` : ''}
+${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşağıdaki kategorilerden en uygun olanını seç. Kategori altındaki ürün grupları ve ürünlerden müşterinin ilgilendiği ürünleri de eşleştir:\n${topicCategories.map(c => {
     let kws = '';
     try { kws = c.keywords ? JSON.parse(c.keywords).join(', ') : ''; } catch {}
     let productList = '';
     if (c.products && c.products.length > 0) {
-        productList = '\n  Ürünler: ' + c.products.map(p => `"${p.name}" (ID: ${p.id}, ${p.price > 0 ? p.price + ' TL' : 'Fiyat belirtilmemiş'}${p.groupName ? ', Grup: ' + p.groupName : ''})`).join(', ');
+        productList = '\n' + c.products.map(p => {
+            if (p.isGroup && p.children && p.children.length > 0) {
+                const childList = p.children.map(ch => `      • "${ch.name}" (ID: ${ch.id}${ch.price > 0 ? ', ' + ch.price + ' TL' : ''})`).join('\n');
+                return `    📁 Ürün Grubu: "${p.name}" (ID: ${p.id})\n${childList}`;
+            }
+            return `    • "${p.name}" (ID: ${p.id}${p.price > 0 ? ', ' + p.price + ' TL' : ''})`;
+        }).join('\n');
     }
-    return `- "${c.name}" (ID: ${c.id})${kws ? ' → ' + kws : ''}${productList}`;
+    let branchInfo = '';
+    if (c.branchIds) {
+        try {
+            const bIds = JSON.parse(c.branchIds);
+            const bNames = bIds.map(bid => branches.find(b => b.id === bid)?.name).filter(Boolean);
+            if (bNames.length > 0) branchInfo = ` [Şubeler: ${bNames.join(', ')}]`;
+        } catch {}
+    }
+    return `- "${c.name}" (ID: ${c.id})${branchInfo}${kws ? ' → ' + kws : ''}${productList}`;
 }).join('\n')}\n` : ''}
 
 ### GÖREV ###
@@ -277,9 +317,11 @@ ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşa
 3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz.
    ⚠️ KRİTİK ŞUBE KURALI: Şube bazlı akışları (örn: "Bornova Kadın", "Gaziemir Erkek") SADECE MÜŞTERİ o şubeyi açıkça belirtmişse veya sormuşsa eşleştir! Eğer müşteri henüz şube adı ("Bornova", "Gaziemir") söylememişse, botun/temsilcinin tek taraflı fiyat yazmış olması müşterinin tercihi sayılmaz → matchedFunnelId için null yaz (Genel kalsın).
 
-4. topicCategoryId: Yukarıdaki KONU KATEGORİLERİ bölümünden konuşmaya en uygun kategorinin ID'sini yaz. Yoksa null.
-5. matchedProductIds: Yukarıdaki ürünler bölümünden müşterinin ilgilendiği ürünlerin ID'lerini dizi olarak yaz. Konuşmada belirli bir ürün/hizmet geçiyorsa eşleştir. Yoksa boş dizi [].
-6. marketingOptOut: Müşteri açıkça pazarlama/tanıtım mesajı almak istemediğini belirtiyorsa true. Örnekler: "bana yazmayın", "mesaj atmayın", "rahatsız etmeyin", "aranmak istemiyorum", "listeden çıkarın", "üyelikten çıkmak istiyorum". Normal konuşmalarda false.
+4. matchedBranchId: Yukarıdaki ŞUBELER bölümünden müşterinin açıkça bahsettiği veya ilgilendiği şubenin ID'sini yaz. Müşteri şube belirtmemişse null. Tek şube varsa ve müşteri konuyla ilgileniyorsa o şubeyi yaz.
+5. topicCategoryId: Yukarıdaki KONU KATEGORİLERİ bölümünden konuşmaya en uygun kategorinin ID'sini yaz. Yoksa null.
+6. matchedProductIds: Yukarıdaki ürünler bölümünden müşterinin ilgilendiği ürünlerin ID'lerini dizi olarak yaz. Ürün grubu DEĞİL, ürün ID'lerini yaz. Konuşmada belirli bir ürün/hizmet geçiyorsa eşleştir. Yoksa boş dizi [].
+7. matchedProductGroupId: Müşterinin ilgilendiği ürün grubunun ID'si (📁 ile işaretli olanlar). Yoksa null.
+8. marketingOptOut: Müşteri açıkça pazarlama/tanıtım mesajı almak istemediğini belirtiyorsa true. Örnekler: "bana yazmayın", "mesaj atmayın", "rahatsız etmeyin", "aranmak istemiyorum", "listeden çıkarın", "üyelikten çıkmak istiyorum". Normal konuşmalarda false.
 SADECE JSON döndür, başka bir şey yazma:
 {
   "classification": "FIRSAT",
@@ -299,8 +341,10 @@ SADECE JSON döndür, başka bir şey yazma:
     "source": null
   },
    "matchedFunnelId": null,
+   "matchedBranchId": null,
    "topicCategoryId": null,
    "matchedProductIds": [],
+   "matchedProductGroupId": null,
    "marketingOptOut": false,
    "reasoning": "Müşteri konut tipini belirterek bilgi talep ediyor, aranma zamanı vermiş - satış fırsatı"
 }`;
@@ -532,7 +576,7 @@ SADECE JSON döndür:
 // =============================================
 export const executeClassificationActions = async (workspaceId, conversationId, contactId, classificationResult) => {
     try {
-        const { classification, extractedData, matchedFunnelId, isQualifiedLead, matchedProductIds, topicCategoryId } = classificationResult;
+        const { classification, extractedData, matchedFunnelId, isQualifiedLead, matchedProductIds, topicCategoryId, matchedBranchId, matchedProductGroupId } = classificationResult;
 
         // Conversation'dan channel bilgisini al
         const convForChannel = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { channel: true } });
@@ -777,12 +821,12 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // --- Case'İ tip, ürün ve kategori ile güncelle ---
-        if (classification || matchedProductIds?.length > 0 || topicCategoryId) {
+        // --- Case'İ tip, şube, ürün ve kategori ile güncelle ---
+        if (classification || matchedProductIds?.length > 0 || topicCategoryId || matchedBranchId) {
             try {
                 let conv = await prisma.conversation.findUnique({
                     where: { id: conversationId },
-                    select: { caseId: true }
+                    select: { caseId: true, topicCategoryId: true, branchId: true }
                 });
 
                 // Case henüz yoksa oluştur (race condition fix)
@@ -790,8 +834,111 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     const { ensureCaseForConversation } = await import('../controllers/case.controller.js');
                     const newCase = await ensureCaseForConversation(workspaceId, conversationId);
                     if (newCase) {
-                        conv = { caseId: newCase.id };
+                        conv = { ...conv, caseId: newCase.id };
                         console.log(`📦 [Classifier] Case otomatik oluşturuldu: ${newCase.caseNumber}`);
+                    }
+                }
+
+                // --- Conversation bilgilerini güncelle (topicCategoryId, branchId) ---
+                const convUpdateData = {};
+                if (topicCategoryId && !conv?.topicCategoryId) {
+                    convUpdateData.topicCategoryId = topicCategoryId;
+                }
+
+                // --- ŞUBE EŞLEŞTİRME (bağımsız, kategori gerektirmez) ---
+                let resolvedBranchId = null;
+                try {
+                    // 1. AI'ın matchedBranchId'si varsa doğrudan kullan
+                    if (matchedBranchId) {
+                        // Şubenin var olduğunu doğrula
+                        const branchExists = await prisma.appointmentBranch.findFirst({
+                            where: { id: matchedBranchId, workspaceId, isActive: true },
+                            select: { id: true, name: true }
+                        });
+                        if (branchExists) {
+                            resolvedBranchId = branchExists.id;
+                            console.log(`📍 [Classifier] AI şube eşleştirdi: ${branchExists.name}`);
+                        }
+                    }
+
+                    // 2. AI eşleştiremedi → fallback: metin eşleştirme
+                    if (!resolvedBranchId) {
+                        const allBranches = await prisma.appointmentBranch.findMany({
+                            where: { workspaceId, isActive: true },
+                            select: { id: true, name: true }
+                        });
+
+                        if (allBranches.length === 1) {
+                            resolvedBranchId = allBranches[0].id;
+                            console.log(`📍 [Classifier] Tek şube, otomatik atandı: ${allBranches[0].name}`);
+                        } else if (allBranches.length > 1) {
+                            // Metin eşleştirme: müşteri mesajları + AI'ın branchInfo çıktısı
+                            const branchInfoText = (extractedData?.branchInfo || '').toLowerCase();
+                            if (branchInfoText) {
+                                for (const branch of allBranches) {
+                                    if (branch.name && branchInfoText.includes(branch.name.toLowerCase())) {
+                                        resolvedBranchId = branch.id;
+                                        console.log(`📍 [Classifier] Şube metin eşleşti: ${branch.name}`);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (resolvedBranchId && !conv?.branchId) {
+                        convUpdateData.branchId = resolvedBranchId;
+                    }
+                } catch (branchErr) {
+                    console.error('⚠️ [Classifier] Şube eşleştirme hatası:', branchErr.message);
+                }
+
+                // Conversation'ı güncelle
+                if (Object.keys(convUpdateData).length > 0) {
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: convUpdateData
+                    });
+                    console.log(`📝 [Classifier] Conversation güncellendi: ${JSON.stringify(convUpdateData)}`);
+                }
+
+                // --- Kategori'nin varsayılan takım/akış bilgisini kullan ---
+                if (topicCategoryId && !skipFunnelAssignment) {
+                    try {
+                        const category = await prisma.topicCategory.findUnique({
+                            where: { id: topicCategoryId },
+                            select: { defaultTeamId: true, defaultFunnelId: true, name: true }
+                        });
+
+                        if (category) {
+                            // Eğer AI akış eşleştiremedi ama kategorinin varsayılan akışı varsa → onu kullan
+                            if (!targetFunnelId && category.defaultFunnelId) {
+                                targetFunnelId = category.defaultFunnelId;
+                                console.log(`📊 [Classifier] Kategori "${category.name}" varsayılan akışı kullanılıyor: ${category.defaultFunnelId}`);
+                                
+                                // Stage belirle
+                                const catFunnel = await prisma.funnel.findUnique({
+                                    where: { id: category.defaultFunnelId },
+                                    include: { stages: { orderBy: { order: 'asc' } } }
+                                });
+                                if (catFunnel?.stages?.length > 0) {
+                                    targetStageId = catFunnel.stages[0].id;
+                                }
+                            }
+
+                            // Kategori varsayılan takımı → conversation'a ata (atanmamışsa)
+                            if (category.defaultTeamId && !conversationRecord?.assignedTeamId) {
+                                try {
+                                    await prisma.conversation.update({
+                                        where: { id: conversationId },
+                                        data: { assignedTeamId: category.defaultTeamId }
+                                    });
+                                    console.log(`👥 [Classifier] Kategori "${category.name}" varsayılan takım atandı`);
+                                } catch (_) {}
+                            }
+                        }
+                    } catch (catErr) {
+                        console.error('⚠️ [Classifier] Kategori varsayılan değer hatası:', catErr.message);
                     }
                 }
 
@@ -806,53 +953,11 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     // Kategori eşleştirmesi
                     if (topicCategoryId) {
                         caseUpdateData.categoryId = topicCategoryId;
-                        
-                        // Şube tespiti — geliştirilmiş
-                        try {
-                            const branches = await prisma.appointmentBranch.findMany({
-                                where: { workspaceId, isActive: true },
-                                select: { id: true, name: true, defaultTeamId: true, defaultFunnelId: true }
-                            });
-                            
-                            let matchedBranch = null;
-                            
-                            if (branches.length === 1) {
-                                // Tek şube → otomatik ata
-                                matchedBranch = branches[0];
-                                console.log(`📍 [Classifier] Tek şube, otomatik atandı: ${matchedBranch.name}`);
-                            } else if (branches.length > 1) {
-                                // Çoklu şube → metin eşleştirme
-                                const contactMsgs = await prisma.message.findMany({
-                                    where: { conversationId, isFromContact: true },
-                                    select: { content: true }
-                                });
-                                const customerOnlyText = contactMsgs.map(m => m.content || '').join(' ').toLowerCase();
-                                
-                                // Ayrıca AI'ın branchInfo çıktısını da kullan
-                                const branchInfoText = (result.branchInfo || '').toLowerCase();
-                                const searchText = `${customerOnlyText} ${branchInfoText}`;
-                                
-                                for (const branch of branches) {
-                                    if (branch.name && searchText.includes(branch.name.toLowerCase())) {
-                                        matchedBranch = branch;
-                                        console.log(`📍 [Classifier] Şube eşleşti: ${matchedBranch.name}`);
-                                        break;
-                                    }
-                                }
-                            }
-                            
-                            if (matchedBranch) {
-                                caseUpdateData.branchId = matchedBranch.id;
-                                
-                                // Conversation'a da branchId ata
-                                await prisma.conversation.update({
-                                    where: { id: conversationId },
-                                    data: { branchId: matchedBranch.id }
-                                });
-                            }
-                        } catch (branchErr) {
-                            console.error('⚠️ [Classifier] Şube eşleştirme hatası:', branchErr.message);
-                        }
+                    }
+
+                    // Şube eşleştirmesi
+                    if (resolvedBranchId) {
+                        caseUpdateData.branchId = resolvedBranchId;
                     }
 
                     // Ürün eşleştirmesi — mevcut ürünlerle birleştir (duplicate olmasın)
@@ -870,12 +975,13 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             if (!existingIds.has(productId)) {
                                 const product = await prisma.product.findUnique({
                                     where: { id: productId },
-                                    select: { name: true, price: true }
+                                    select: { name: true, price: true, parentId: true, parent: { select: { name: true } } }
                                 });
                                 if (product) {
                                     existingProducts.push({
                                         productId,
                                         name: product.name,
+                                        groupName: product.parent?.name || null,
                                         quantity: 1,
                                         unitPrice: product.price || 0
                                     });
@@ -890,11 +996,11 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             where: { id: conv.caseId },
                             data: caseUpdateData
                         });
-                        console.log(`📦 [Classifier] Case güncellendi: ${matchedProductIds?.length || 0} ürün, kategori: ${topicCategoryId || '-'}`);
+                        console.log(`📦 [Classifier] Case güncellendi: şube=${resolvedBranchId || '-'}, kategori=${topicCategoryId || '-'}, ürün=${matchedProductIds?.length || 0}${matchedProductGroupId ? ', grup=' + matchedProductGroupId : ''}`);
                     }
                 }
             } catch (caseErr) {
-                console.error('⚠️ [Classifier] Case ürün güncelleme hatası:', caseErr.message);
+                console.error('⚠️ [Classifier] Case güncelleme hatası:', caseErr.message);
             }
         }
 
