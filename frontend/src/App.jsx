@@ -127,7 +127,8 @@ function App() {
               <Route path="casetypes" element={<CaseTypesAndTopics />} />
               <Route path="templates" element={<Templates />} />
               <Route path="integrations" element={<Integrations />} />
-              <Route path="knowledge-base" element={<KnowledgeBase />} />
+              <Route path="knowledge-base" element={<Navigate to="/base" replace />} />
+              <Route path="base" element={<KnowledgeBase />} />
               <Route path="general-report" element={<CeoReport />} />
               <Route path="general-report/general" element={<GeneralReport />} />
               <Route path="general-report/team" element={<TeamReport />} />

@@ -53,23 +53,23 @@ model User {
 
 // Firma (Company) - Birden fazla workspace içeren üst organizasyon
 model Company {
-  id                   String      @id @default(uuid())
+  id                   String       @id @default(uuid())
   name                 String
-  slug                 String      @unique
+  slug                 String       @unique
   description          String?
   logo                 String?
   ownerId              String // Firma sahibi (OWNER)
-  owner                User        @relation("CompanyOwner", fields: [ownerId], references: [id])
-  maxWorkspaces        Int         @default(3) // Firma altında oluşturulabilecek maksimum workspace sayısı
+  owner                User         @relation("CompanyOwner", fields: [ownerId], references: [id])
+  maxWorkspaces        Int          @default(3) // Firma altında oluşturulabilecek maksimum workspace sayısı
   // AI Kullanım Limitleri (Firma bazlı)
-  dailyAiChatLimit     Int         @default(50)
-  aiSubscriptionType   String      @default("FREE") // FREE, BASIC, PRO, UNLIMITED
+  dailyAiChatLimit     Int          @default(50)
+  aiSubscriptionType   String       @default("FREE") // FREE, BASIC, PRO, UNLIMITED
   aiSubscriptionEndsAt DateTime?
   // AI Model + Key (hesap varsayılanı — workspace override edebilir)
-  aiModel              String      @default("gemini-2.5-flash")
+  aiModel              String       @default("gemini-2.5-flash")
   aiApiKey             String?
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
   workspaces           Workspace[]
   aiUsageLogs          AIUsageLog[]
 
@@ -89,10 +89,10 @@ model Workspace {
   // AI Model (null = Company'den miras, değer varsa override)
   aiModel             String?
   // AI Özellik Toggle'ları
-  aiClassifierEnabled Boolean  @default(true)   // Sınıflandırıcı
-  aiAutoReplyEnabled  Boolean  @default(true)   // Bot otomatik yanıt
-  aiScorerEnabled     Boolean  @default(true)   // Lead puanlayıcı
-  aiFollowUpEnabled   Boolean  @default(true)   // Takip mesajları
+  aiClassifierEnabled Boolean  @default(true) // Sınıflandırıcı
+  aiAutoReplyEnabled  Boolean  @default(true) // Bot otomatik yanıt
+  aiScorerEnabled     Boolean  @default(true) // Lead puanlayıcı
+  aiFollowUpEnabled   Boolean  @default(true) // Takip mesajları
   stageAutoMode       Boolean  @default(false)
   // Company Info (workspace'e özel şirket bilgileri)
   companyName         String?
@@ -163,8 +163,8 @@ model Workspace {
   aiUsageLogs          AIUsageLog[]
 
   // Google Calendar Integration (Workspace level credentials)
-  googleClientId       String?
-  googleClientSecret   String?
+  googleClientId     String?
+  googleClientSecret String?
 
   // Retell AI Voice
   retellApiKey          String?
@@ -316,8 +316,8 @@ model AIBot {
   handoffMessage String? // e.g. "Bu konuda tam emin değilim. Sizi bir temsilcimize aktarmayı deneyeceğim..."
 
   // AI Devralma / Müdahale Kapsamı
-  fallbackEnabled      Boolean @default(false)  // Sahipsiz/geciken konuşmalara müdahale etsin mi?
-  fallbackDelayMinutes Int     @default(5)       // Kaç dk yanıt yoksa devralır
+  fallbackEnabled      Boolean @default(false) // Sahipsiz/geciken konuşmalara müdahale etsin mi?
+  fallbackDelayMinutes Int     @default(5) // Kaç dk yanıt yoksa devralır
   fallbackScope        String  @default("UNASSIGNED") // UNASSIGNED | MY_TEAMS | ALL
   // UNASSIGNED = Sadece kimseye atanmamış konuşmalar
   // MY_TEAMS   = Atandığı takımların konuşmaları (atanmış ama yanıt yoksa)
@@ -500,57 +500,57 @@ model Conversation {
   routingState          String? // JSON: { currentQuestionIndex, answers: { fieldName: value }, completed }
   appointmentState      String? // JSON: { step, data: { patientName, phone, branch, procedure, doctor, preferredDate, preferredTime } }
   // Evrensel Sınıflandırma
-  classificationData    String?                @db.Text // JSON: {classification, extractedData, isQualifiedLead, reasoning}
+  classificationData    String?   @db.Text // JSON: {classification, extractedData, isQualifiedLead, reasoning}
   classifiedAt          DateTime? // Son sınıflandırma zamanı
-  isQualifiedLead       Boolean                @default(false) // Hızlı filtreleme: İsim+Telefon+Konu tamam mı
+  isQualifiedLead       Boolean   @default(false) // Hızlı filtreleme: İsim+Telefon+Konu tamam mı
   // Follow-up tracking
   lastBotMessageAt      DateTime? // When bot last sent a message
-  inactivityWarningSent Boolean                @default(false) // LEGACY: 40s inactivity warning sent?
+  inactivityWarningSent Boolean   @default(false) // LEGACY: 40s inactivity warning sent?
   reminderSentAt        DateTime? // LEGACY: 1-day reminder sent? (null = not sent)
   // Smart Reminder System
-  reminderCount         Int                    @default(0) // Which reminder step was last sent (0-5)
+  reminderCount         Int       @default(0) // Which reminder step was last sent (0-5)
   lastReminderAt        DateTime? // When last reminder was sent
   // Active Flow tracking
   activeFlowId          String? // Which flow is currently processing this conversation
   // Case (talep akışı) bağlantısı
   caseId                String?
-  case                  Case?                  @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  case                  Case?     @relation(fields: [caseId], references: [id], onDelete: SetNull)
   // Yıldızlama / Sabitleme (Pin/Star to top)
-  isStarred             Boolean                @default(false)
+  isStarred             Boolean   @default(false)
   starredAt             DateTime?
   starredById           String?
 
   // Arşivleme
-  isArchived            Boolean                @default(false)
-  archivedAt            DateTime?
-  archivedById          String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  transfers             ConversationTransfer[]
-  contact               Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  facebookPage          FacebookPage?          @relation(fields: [facebookPageId], references: [id])
-  assignedTo            User?                  @relation(fields: [assignedToId], references: [id])
-  whatsappPhoneNumber   WhatsappPhoneNumber?   @relation(fields: [whatsappPhoneNumberId], references: [id])
-  emailChannel          EmailChannel?          @relation(fields: [emailChannelId], references: [id])
-  internalNotes         InternalNote[]
-  messages              Message[]
-  events                ConversationEvent[]
-  formSubmissions       FormSubmission[]
-  deals                 Deal[]
-  scheduledMessages     ScheduledMessage[]
+  isArchived          Boolean                @default(false)
+  archivedAt          DateTime?
+  archivedById        String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  transfers           ConversationTransfer[]
+  contact             Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  workspace           Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage        FacebookPage?          @relation(fields: [facebookPageId], references: [id])
+  assignedTo          User?                  @relation(fields: [assignedToId], references: [id])
+  whatsappPhoneNumber WhatsappPhoneNumber?   @relation(fields: [whatsappPhoneNumberId], references: [id])
+  emailChannel        EmailChannel?          @relation(fields: [emailChannelId], references: [id])
+  internalNotes       InternalNote[]
+  messages            Message[]
+  events              ConversationEvent[]
+  formSubmissions     FormSubmission[]
+  deals               Deal[]
+  scheduledMessages   ScheduledMessage[]
 
   // Inbox & Marketing
   isBulkSend           Boolean            @default(false)
   isSystemChat         Boolean            @default(false) // Instomer sistem duyuruları — inbox'ta en üstte sabitlenir
-  source               String?            // Conversation kaynağı: WHATSAPP, INSTAGRAM, FORM, MARKETING, LEAD, etc.
+  source               String? // Conversation kaynağı: WHATSAPP, INSTAGRAM, FORM, MARKETING, LEAD, etc.
   campaignId           String?
   campaign             MarketingCampaign? @relation(fields: [campaignId], references: [id])
   lastContactMessageAt DateTime?
 
   // Şube bağlantısı
-  branchId             String?
-  branch               AppointmentBranch? @relation("ConversationBranch", fields: [branchId], references: [id], onDelete: SetNull)
+  branchId String?
+  branch   AppointmentBranch? @relation("ConversationBranch", fields: [branchId], references: [id], onDelete: SetNull)
 
   // Performance indexes for high-frequency cron queries
   @@index([workspaceId])
@@ -760,7 +760,7 @@ model Team {
 
   // Şube ilişkileri — JSON array: ["branch-id-1","branch-id-2"]
   // null veya [] = tüm şubelerde aktif
-  branchIds        String?  @db.Text
+  branchIds String? @db.Text
 
   createdAt        DateTime               @default(now())
   transfers        ConversationTransfer[]
@@ -910,20 +910,20 @@ model Appointment {
 
 // Temsilci Bazlı Google Takvim Entegrasyonu
 model UserGoogleCalendar {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   userId       String
   workspaceId  String
   googleEmail  String
-  accessToken  String    @db.Text
-  refreshToken String?   @db.Text
+  accessToken  String   @db.Text
+  refreshToken String?  @db.Text
   expiryDate   BigInt?
-  calendarId   String    @default("primary")
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  calendarId   String   @default("primary")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId, googleEmail])
   @@index([userId])
@@ -934,23 +934,28 @@ model UserGoogleCalendar {
 
 // Randevu Asistanı — Branş / Şube Tanımları
 model AppointmentBranch {
-  id          String              @id @default(uuid())
+  id          String   @id @default(uuid())
   workspaceId String
   name        String // "Dahiliye", "Ortopedi", "Bornova Şube"
-  isActive    Boolean             @default(true)
-  order       Int                 @default(0)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Varsayılan atamalar
   defaultTeamId   String?
   defaultFunnelId String?
 
-  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  doctors         AppointmentDoctor[]
-  productBranches ProductBranch[]
-  cases           Case[]              @relation("CaseBranch")
-  conversations   Conversation[]      @relation("ConversationBranch")
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  doctors          AppointmentDoctor[]
+  productBranches  ProductBranch[]
+  resourceBranches ResourceBranch[]
+  cases            Case[]              @relation("CaseBranch")
+  conversations    Conversation[]      @relation("ConversationBranch")
+
+  // Şube adresi ve iletişim
+  address String?
+  phone   String?
 
   @@index([workspaceId])
   @@map("appointment_branches")
@@ -977,24 +982,72 @@ model AppointmentDoctor {
 }
 
 model CalendarResource {
-  id             String    @id @default(uuid())
+  id             String  @id @default(uuid())
   workspaceId    String
   name           String
   description    String?
-  type           String    @default("ROOM") // ROOM, PERSON, EQUIPMENT, OTHER
-  color          String    @default("#8b5cf6")
-  isActive       Boolean   @default(true)
+  type           String  @default("ROOM") // ROOM, PERSON, THERAPIST, SPECIALIST, STAFF, EQUIPMENT, OTHER
+  color          String  @default("#8b5cf6")
+  isActive       Boolean @default(true)
   availableStart String? // "09:00"
   availableEnd   String? // "18:00"
   availableDays  String? // JSON: [1,2,3,4,5]
-  branchId       String? // Şube ilişkisi
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  branchId       String? // Legacy tekil şube ilişkisi (ResourceBranch'e taşınacak)
+
+  // AppointmentDoctor'dan taşınan alanlar
+  title       String? // "Prof. Dr.", "Uzm. Dr.", "Terapist"
+  userId      String? // Sistem kullanıcısı (temsilci) bağlantısı
+  slotMinutes Int     @default(30)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Çoklu şube desteği
+  resourceBranches ResourceBranch[]
+  // Hangi ürünleri/hizmetleri yapabiliyor
+  resourceProducts ResourceProduct[]
 
   @@index([workspaceId])
   @@index([branchId])
+  @@index([userId])
   @@map("calendar_resources")
+}
+
+// Kaynak ↔ Şube (many-to-many)
+model ResourceBranch {
+  id          String   @id @default(uuid())
+  resourceId  String
+  branchId    String
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  resource CalendarResource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  branch   AppointmentBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, branchId])
+  @@index([resourceId])
+  @@index([branchId])
+  @@map("resource_branches")
+}
+
+// Kaynak ↔ Ürün/Hizmet (fiyat ve süre ile)
+model ResourceProduct {
+  id         String   @id @default(uuid())
+  resourceId String
+  productId  String
+  branchId   String? // Şube bazlı fiyat (null = genel fiyat)
+  price      Float? // Bu kaynak bu hizmeti kaça yapıyor
+  duration   Int? // Dakika cinsinden süre
+  createdAt  DateTime @default(now())
+
+  resource CalendarResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  product  Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, productId, branchId])
+  @@index([resourceId])
+  @@index([productId])
+  @@map("resource_products")
 }
 
 // WhatsApp Message Templates
@@ -1418,7 +1471,7 @@ model TopicCategory {
   updatedAt   DateTime @updatedAt
 
   // Sektöre özel alanlar: JSON [{key, type, options, unit, required}]
-  customFields    String?  @db.Text
+  customFields    String? @db.Text
   // Varsayılan akış ve takım ataması
   defaultFunnelId String?
   defaultTeamId   String?
@@ -1426,11 +1479,11 @@ model TopicCategory {
   caseTypeId      String?
   // Şube bağlantıları — JSON array: ["branch-id-1","branch-id-2"]
   // null veya [] = tüm şubelerde görünür
-  branchIds       String?  @db.Text
+  branchIds       String? @db.Text
 
-  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent        TopicCategory?       @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children      TopicCategory[]      @relation("CategoryHierarchy")
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent        TopicCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      TopicCategory[] @relation("CategoryHierarchy")
   conversations Conversation[]
   cases         Case[]
   products      Product[]
@@ -1451,7 +1504,7 @@ model CaseType {
   isActive    Boolean @default(true)
   order       Int     @default(0)
 
-  cases      Case[]
+  cases Case[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2010,16 +2063,17 @@ model Product {
   updatedAt       DateTime @updatedAt
 
   // Ürün grubu hiyerarşisi
-  parentId  String? // Üst ürün grubu
-  isGroup   Boolean  @default(false) // true ise bu bir ürün grubu
+  parentId String? // Üst ürün grubu
+  isGroup  Boolean @default(false) // true ise bu bir ürün grubu
 
-  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  category        TopicCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  parent          Product?         @relation("ProductHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children        Product[]        @relation("ProductHierarchy")
-  features        ProductFeature[]
-  media           ProductMedia[]
-  productBranches ProductBranch[]
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category         TopicCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  parent           Product?          @relation("ProductHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children         Product[]         @relation("ProductHierarchy")
+  features         ProductFeature[]
+  media            ProductMedia[]
+  productBranches  ProductBranch[]
+  resourceProducts ResourceProduct[]
 
   @@index([workspaceId])
   @@index([workspaceId, groupName])
@@ -2060,7 +2114,7 @@ model MarketingCampaign {
   name           String
   description    String?
   status         String               @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED
-  budget         Float?               // Toplam bütçe (TL)
+  budget         Float? // Toplam bütçe (TL)
   startDate      DateTime?
   endDate        DateTime?
   // Legacy — geriye uyumluluk
@@ -2083,8 +2137,8 @@ model MarketingCampaign {
   recipients     MarketingRecipient[] // Legacy
   conversations  Conversation[]
   cases          Case[]
-  groups         CampaignGroup[]      // Yeni: reklam grupları (Ad Sets)
-  messagesLegacy CampaignMessage[]    // Legacy: eski mesajlar
+  groups         CampaignGroup[] // Yeni: reklam grupları (Ad Sets)
+  messagesLegacy CampaignMessage[] // Legacy: eski mesajlar
 
   @@index([workspaceId])
   @@index([workspaceId, status])
@@ -2093,35 +2147,35 @@ model MarketingCampaign {
 
 // Reklam Grubu (Ad Set) — hedef kitle + kanal + mesajlar
 model CampaignGroup {
-  id              String            @id @default(uuid())
-  campaignId      String
-  name            String            // "VIP WhatsApp", "Yeni Lead Arama"
-  channel         String            @default("WHATSAPP") // WHATSAPP, AI_CALL, EMAIL, SMS, GOOGLE_ADS, META_ADS
+  id             String    @id @default(uuid())
+  campaignId     String
+  name           String // "VIP WhatsApp", "Yeni Lead Arama"
+  channel        String    @default("WHATSAPP") // WHATSAPP, AI_CALL, EMAIL, SMS, GOOGLE_ADS, META_ADS
   // Hedef kitle
-  listId          String?           // ContactGroup ID
-  segmentId       String?           // Smart segment slug
-  segmentName     String?           // Segment adı snapshot
+  listId         String? // ContactGroup ID
+  segmentId      String? // Smart segment slug
+  segmentName    String? // Segment adı snapshot
   // Bütçe ve zamanlama (reklam kanalları için)
-  budget          Float?            // Günlük bütçe
-  scheduledAt     DateTime?         // Planlı başlangıç
+  budget         Float? // Günlük bütçe
+  scheduledAt    DateTime? // Planlı başlangıç
   // Gönderim ayarları
-  sendRate        Int               @default(20) // Dakikada mesaj sayısı
+  sendRate       Int       @default(20) // Dakikada mesaj sayısı
   // İstatistikler
-  status          String            @default("DRAFT") // DRAFT, SENDING, COMPLETED, FAILED, PAUSED
-  totalCount      Int               @default(0)
-  sentCount       Int               @default(0)
-  deliveredCount  Int               @default(0)
-  readCount       Int               @default(0)
-  failedCount     Int               @default(0)
-  repliedCount    Int               @default(0)
-  sentAt          DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  status         String    @default("DRAFT") // DRAFT, SENDING, COMPLETED, FAILED, PAUSED
+  totalCount     Int       @default(0)
+  sentCount      Int       @default(0)
+  deliveredCount Int       @default(0)
+  readCount      Int       @default(0)
+  failedCount    Int       @default(0)
+  repliedCount   Int       @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  campaign        MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  list            ContactGroup?     @relation(fields: [listId], references: [id], onDelete: SetNull)
-  groupMessages   CampaignGroupMessage[]
-  recipients      MarketingRecipient[]
+  campaign      MarketingCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  list          ContactGroup?          @relation(fields: [listId], references: [id], onDelete: SetNull)
+  groupMessages CampaignGroupMessage[]
+  recipients    MarketingRecipient[]
 
   @@index([campaignId])
   @@index([listId])
@@ -2130,27 +2184,27 @@ model CampaignGroup {
 
 // Bağımsız Mesaj — tekrar kullanılabilir içerik
 model MarketingMessage {
-  id              String            @id @default(uuid())
-  workspaceId     String
-  name            String            // "Yaz fırsatları", "Satış senaryosu"
-  channel         String            @default("WHATSAPP") // WHATSAPP, AI_CALL, EMAIL, SMS
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String // "Yaz fırsatları", "Satış senaryosu"
+  channel       String   @default("WHATSAPP") // WHATSAPP, AI_CALL, EMAIL, SMS
   // WhatsApp
-  templateId      String?           // WA şablon ID
-  templateName    String?           // WA şablon adı
+  templateId    String? // WA şablon ID
+  templateName  String? // WA şablon adı
   // E-posta
-  emailSubject    String?
-  emailBody       String?           @db.Text
+  emailSubject  String?
+  emailBody     String?  @db.Text
   // AI Arama
-  retellAgentId   String?
+  retellAgentId String?
   // Serbest mesaj
-  content         String?           @db.Text
-  mediaUrl        String?
+  content       String?  @db.Text
+  mediaUrl      String?
   // Meta
-  isActive        Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  groupMessages   CampaignGroupMessage[]
+  groupMessages CampaignGroupMessage[]
 
   @@index([workspaceId])
   @@index([workspaceId, channel])
@@ -2159,14 +2213,14 @@ model MarketingMessage {
 
 // Grup ↔ Mesaj ilişkisi (çoka çok)
 model CampaignGroupMessage {
-  id              String            @id @default(uuid())
-  groupId         String
-  messageId       String
-  order           Int               @default(0)
-  createdAt       DateTime          @default(now())
+  id        String   @id @default(uuid())
+  groupId   String
+  messageId String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
 
-  group           CampaignGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  message         MarketingMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  group   CampaignGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  message MarketingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, messageId])
   @@index([groupId])
@@ -2176,23 +2230,23 @@ model CampaignGroupMessage {
 
 // Legacy: Kampanya Mesajı (eski yapı — kaldırılmayacak, uyumluluk)
 model CampaignMessage {
-  id              String            @id @default(uuid())
-  campaignId      String
-  channel         String
-  name            String?
-  templateId      String?
-  templateName    String?
-  emailSubject    String?
-  emailBody       String?           @db.Text
-  retellAgentId   String?
+  id               String            @id @default(uuid())
+  campaignId       String
+  channel          String
+  name             String?
+  templateId       String?
+  templateName     String?
+  emailSubject     String?
+  emailBody        String?           @db.Text
+  retellAgentId    String?
   retellTemplateId String?
-  content         String?           @db.Text
-  mediaUrl        String?
-  order           Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  campaignLegacy  MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  sends           CampaignSend[]
+  content          String?           @db.Text
+  mediaUrl         String?
+  order            Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  campaignLegacy   MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sends            CampaignSend[]
 
   @@index([campaignId])
   @@map("campaign_messages")
@@ -2200,27 +2254,27 @@ model CampaignMessage {
 
 // Legacy: Kampanya Gönderimi
 model CampaignSend {
-  id              String            @id @default(uuid())
-  messageId       String
-  segmentId       String?
-  segmentName     String?
-  tagIds          String?
-  groupId         String?
-  filterSnapshot  String?           @db.Text
-  scheduledAt     DateTime?
-  sentAt          DateTime?
-  sendRate        Int               @default(20)
-  status          String            @default("PENDING")
-  totalCount      Int               @default(0)
-  sentCount       Int               @default(0)
-  deliveredCount  Int               @default(0)
-  readCount       Int               @default(0)
-  failedCount     Int               @default(0)
-  repliedCount    Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  message         CampaignMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  recipients      MarketingRecipient[]
+  id             String               @id @default(uuid())
+  messageId      String
+  segmentId      String?
+  segmentName    String?
+  tagIds         String?
+  groupId        String?
+  filterSnapshot String?              @db.Text
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  sendRate       Int                  @default(20)
+  status         String               @default("PENDING")
+  totalCount     Int                  @default(0)
+  sentCount      Int                  @default(0)
+  deliveredCount Int                  @default(0)
+  readCount      Int                  @default(0)
+  failedCount    Int                  @default(0)
+  repliedCount   Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  message        CampaignMessage      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  recipients     MarketingRecipient[]
 
   @@index([messageId])
   @@index([status, scheduledAt])
@@ -2230,8 +2284,8 @@ model CampaignSend {
 model MarketingRecipient {
   id          String            @id @default(uuid())
   campaignId  String
-  sendId      String?           // Legacy CampaignSend
-  groupId     String?           // Yeni: CampaignGroup
+  sendId      String? // Legacy CampaignSend
+  groupId     String? // Yeni: CampaignGroup
   contactId   String?
   phone       String?
   email       String?
@@ -2256,15 +2310,15 @@ model MarketingRecipient {
 }
 
 model ContactGroup {
-  id          String               @id @default(uuid())
-  workspaceId String
-  name        String
-  description String?
-  icon        String               @default("👥")
-  color       String               @default("#2563eb")
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  members     ContactGroupMember[]
+  id             String               @id @default(uuid())
+  workspaceId    String
+  name           String
+  description    String?
+  icon           String               @default("👥")
+  color          String               @default("#2563eb")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  members        ContactGroupMember[]
   campaignGroups CampaignGroup[]
 
   @@index([workspaceId])
@@ -2485,11 +2539,11 @@ model ScheduledMessage {
 // Sistem duyuruları — SUPER_ADMIN tarafından tüm workspace'lere yayınlanan mesajlar
 model SystemAnnouncement {
   id        String   @id @default(uuid())
-  title     String   // Duyuru başlığı
+  title     String // Duyuru başlığı
   message   String   @db.Text // Duyuru içeriği
   type      String   @default("UPDATE") // UPDATE, IMPROVEMENT, MAINTENANCE, INFO
   isActive  Boolean  @default(true)
-  createdBy String   // SUPER_ADMIN user ID
+  createdBy String // SUPER_ADMIN user ID
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2498,16 +2552,16 @@ model SystemAnnouncement {
 
 // Ürün-Şube ilişkisi: Şubeye özel fiyat ve bulunurluk
 model ProductBranch {
-  id          String  @id @default(uuid())
+  id          String   @id @default(uuid())
   productId   String
   branchId    String
-  price       Float?          // Şubeye özel fiyat (null ise baz fiyat kullanılır)
-  isAvailable Boolean @default(true) // Bu şubede mevcut mu?
+  price       Float? // Şubeye özel fiyat (null ise baz fiyat kullanılır)
+  isAvailable Boolean  @default(true) // Bu şubede mevcut mu?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  branch      AppointmentBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  AppointmentBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@unique([productId, branchId])
   @@index([productId])
@@ -2519,11 +2573,11 @@ model ProductBranch {
 model AppNote {
   id          String   @id @default(uuid())
   workspaceId String
-  type        String   // CHANGELOG, WHATSNEXT
-  module      String?  // KISILER, PAZARLAMA, INBOX, TAKIMLAR, SATIS, AYARLAR, OTOMASYONLAR, RAPORLAR, GENEL
+  type        String // CHANGELOG, WHATSNEXT
+  module      String? // KISILER, PAZARLAMA, INBOX, TAKIMLAR, SATIS, AYARLAR, OTOMASYONLAR, RAPORLAR, GENEL
   title       String
   content     String?  @db.Text
-  version     String?  // "v2.4.0" (changelog için)
+  version     String? // "v2.4.0" (changelog için)
   status      String   @default("TODO") // TODO, IN_PROGRESS, DONE, IDEA (whatsnext için)
   priority    Int      @default(0) // 0=normal, 1=high, 2=critical
   authorId    String?
@@ -2540,8 +2594,8 @@ model AIUsageLog {
   id             String   @id @default(cuid())
   companyId      String?
   workspaceId    String
-  service        String   // classifier | auto_reply | scorer | follow_up | bot | manual | note_analysis | routing
-  model          String   // gemini-2.5-flash, gemini-2.0-flash-lite, gemini-2.5-pro
+  service        String // classifier | auto_reply | scorer | follow_up | bot | manual | note_analysis | routing
+  model          String // gemini-2.5-flash, gemini-2.0-flash-lite, gemini-2.5-pro
   inputTokens    Int      @default(0)
   outputTokens   Int      @default(0)
   totalTokens    Int      @default(0)
@@ -2550,8 +2604,8 @@ model AIUsageLog {
   metadata       String?  @db.Text // Ek bilgi (JSON)
   createdAt      DateTime @default(now())
 
-  company        Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([companyId, createdAt])
   @@index([workspaceId, createdAt])

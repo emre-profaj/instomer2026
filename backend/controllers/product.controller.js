@@ -91,6 +91,23 @@ export const getProduct = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Ürün bulunamadı' });
         }
 
+        // Media inheritance from parent group
+        let allMedia = [...(product.media || [])];
+        if (product.parentId) {
+            const parentMedia = await prisma.productMedia.findMany({
+                where: { productId: product.parentId }
+            });
+            if (parentMedia.length > 0) {
+                const ownTypes = new Set(product.media.map(m => m.mediaType));
+                for (const pm of parentMedia) {
+                    if (!ownTypes.has(pm.mediaType)) {
+                        allMedia.push({ ...pm, inherited: true });
+                    }
+                }
+            }
+        }
+        product.allMedia = allMedia;
+
         res.json({ success: true, data: product });
     } catch (error) {
         console.error('getProduct error:', error);
@@ -406,5 +423,64 @@ export const getProductsByBranch = async (req, res) => {
     } catch (error) {
         console.error('getProductsByBranch error:', error);
         res.status(500).json({ success: false, error: 'Şube ürünleri yüklenirken hata oluştu' });
+    }
+};
+
+// ─── Ürün medyası ekle ──────────────────────────────────────────
+export const addProductMedia = async (req, res) => {
+    try {
+        const { workspaceId, productId } = req.params;
+        const { mediaUrl, mediaType } = req.body;
+        
+        // Validate product belongs to workspace
+        const product = await prisma.product.findFirst({
+            where: { id: productId, workspaceId }
+        });
+        
+        if (!product) {
+            return res.status(404).json({ success: false, error: 'Ürün bulunamadı' });
+        }
+        
+        // Create ProductMedia record
+        const productMedia = await prisma.productMedia.create({
+            data: {
+                productId,
+                mediaUrl,
+                mediaType
+            }
+        });
+        
+        // Return the media record
+        res.status(201).json({ success: true, data: productMedia });
+    } catch (error) {
+        console.error('addProductMedia error:', error);
+        res.status(500).json({ success: false, error: 'Ürün medyası eklenirken hata oluştu' });
+    }
+};
+
+// ─── Ürün medyası sil ───────────────────────────────────────────
+export const deleteProductMedia = async (req, res) => {
+    try {
+        const { workspaceId, productId, mediaId } = req.params;
+        
+        // Validate product belongs to workspace
+        const product = await prisma.product.findFirst({
+            where: { id: productId, workspaceId }
+        });
+        
+        if (!product) {
+            return res.status(404).json({ success: false, error: 'Ürün bulunamadı' });
+        }
+        
+        // Delete the ProductMedia record
+        await prisma.productMedia.deleteMany({
+            where: { id: mediaId, productId }
+        });
+        
+        // Return success
+        res.json({ success: true, message: 'Medya silindi' });
+    } catch (error) {
+        console.error('deleteProductMedia error:', error);
+        res.status(500).json({ success: false, error: 'Ürün medyası silinirken hata oluştu' });
     }
 };

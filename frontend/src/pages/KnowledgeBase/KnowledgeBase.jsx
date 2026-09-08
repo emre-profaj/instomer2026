@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -440,6 +440,34 @@ const KnowledgeBase = () => {
                     Şubeler
                 </button>
                 <button
+                    className={`kb-tab ${activeTab === 'categories' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('categories')}
+                >
+                    <Layers size={16} />
+                    Kategoriler
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'productGroups' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('productGroups')}
+                >
+                    <FolderTree size={16} />
+                    Ürün Grupları
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'products' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('products')}
+                >
+                    <Package size={16} />
+                    Ürünler
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'resources' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('resources')}
+                >
+                    <UserCircle size={16} />
+                    Kaynaklar
+                </button>
+                <button
                     className={`kb-tab ${activeTab === 'text' ? 'active' : ''}`}
                     onClick={() => setActiveTab('text')}
                 >
@@ -451,21 +479,14 @@ const KnowledgeBase = () => {
                     onClick={() => setActiveTab('files')}
                 >
                     <Upload size={16} />
-                    Dosya Yükle
+                    Dosya Ekle
                 </button>
                 <button
                     className={`kb-tab ${activeTab === 'url' ? 'active' : ''}`}
                     onClick={() => setActiveTab('url')}
                 >
                     <Globe size={16} />
-                    Web Sayfası Tara
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'feed' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('feed')}
-                >
-                    <Link size={16} />
-                    Dinamik Feed
+                    Web Sitesi Tara
                 </button>
                 <button
                     className={`kb-tab ${activeTab === 'list' ? 'active' : ''}`}
@@ -697,6 +718,66 @@ const KnowledgeBase = () => {
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Categories Tab */}
+            {activeTab === 'categories' && (
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ margin: 0 }}>📂 Kategoriler</h3>
+                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Konu kategorileri, varsayılan takım ve akış eşleştirmesi</p>
+                    </div>
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+                        <Layers size={48} strokeWidth={1} />
+                        <p style={{ marginTop: '12px' }}>Kategori yönetimi yakında burada olacak</p>
+                        <p style={{ fontSize: '13px' }}>Şu an için <a href="/casetypes" style={{ color: '#6366f1' }}>Vaka Tipleri ve Konular</a> sayfasından yönetebilirsiniz.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Product Groups Tab */}
+            {activeTab === 'productGroups' && (
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ margin: 0 }}>📁 Ürün Grupları</h3>
+                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Ürün grupları ve alt ürünler</p>
+                    </div>
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+                        <FolderTree size={48} strokeWidth={1} />
+                        <p style={{ marginTop: '12px' }}>Ürün grubu yönetimi yakında burada olacak</p>
+                        <p style={{ fontSize: '13px' }}>Gruplar: 2+1, Masaj, Ameliyat gibi üst kategoriler. Alt ürünler gruba bağlıdır.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Products Tab */}
+            {activeTab === 'products' && (
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ margin: 0 }}>🏷️ Ürünler</h3>
+                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Ürün ve hizmet yönetimi, katalog, broşür</p>
+                    </div>
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+                        <Package size={48} strokeWidth={1} />
+                        <p style={{ marginTop: '12px' }}>Ürün yönetimi yakında burada olacak</p>
+                        <p style={{ fontSize: '13px' }}>Şu an için <a href="/products" style={{ color: '#6366f1' }}>Ürün ve Hizmetler</a> sayfasından yönetebilirsiniz.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Resources Tab */}
+            {activeTab === 'resources' && (
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ margin: 0 }}>👤 Kaynaklar</h3>
+                        <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Doktorlar, terapistler, uzmanlar — randevu alınabilen kaynaklar</p>
+                    </div>
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+                        <UserCircle size={48} strokeWidth={1} />
+                        <p style={{ marginTop: '12px' }}>Kaynak yönetimi yakında burada olacak</p>
+                        <p style={{ fontSize: '13px' }}>Doktor, terapist, berber gibi randevu alınabilen kaynakları buradan yönetebileceksiniz.</p>
                     </div>
                 </div>
             )}

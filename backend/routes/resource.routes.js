@@ -5,7 +5,9 @@ import {
     createResource,
     updateResource,
     deleteResource,
-    syncHealthDoctors
+    syncHealthDoctors,
+    addResourceProduct,
+    removeResourceProduct
 } from '../controllers/resource.controller.js';
 
 const router = express.Router();
@@ -26,5 +28,11 @@ router.put('/:workspaceId/:resourceId', requireWorkspaceAccess, updateResource);
 
 // Delete resource
 router.delete('/:workspaceId/:resourceId', requireWorkspaceAccess, deleteResource);
+
+// Add product to resource
+router.post('/:workspaceId/:resourceId/products', requireWorkspaceAccess, addResourceProduct);
+
+// Remove product from resource
+router.delete('/:workspaceId/:resourceId/products/:rpId', requireWorkspaceAccess, removeResourceProduct);
 
 export default router;

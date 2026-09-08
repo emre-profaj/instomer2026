@@ -9,7 +9,9 @@ import {
     bulkDeleteProducts,
     bulkUpdateProducts,
     getProductGroups,
-    getProductsByBranch
+    getProductsByBranch,
+    addProductMedia,
+    deleteProductMedia
 } from '../controllers/product.controller.js';
 
 const router = express.Router();
@@ -27,5 +29,9 @@ router.get('/:workspaceId/products/:productId', requireWorkspaceAccess, getProdu
 router.post('/:workspaceId/products', requireWorkspaceAccess, createProduct);
 router.put('/:workspaceId/products/:productId', requireWorkspaceAccess, updateProduct);
 router.delete('/:workspaceId/products/:productId', requireWorkspaceAccess, deleteProduct);
+
+// Medya route'ları
+router.post('/:workspaceId/products/:productId/media', requireWorkspaceAccess, addProductMedia);
+router.delete('/:workspaceId/products/:productId/media/:mediaId', requireWorkspaceAccess, deleteProductMedia);
 
 export default router;

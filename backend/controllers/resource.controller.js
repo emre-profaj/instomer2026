@@ -60,6 +60,7 @@ export const getResources = async (req, res) => {
 
         let resources = await prisma.calendarResource.findMany({
             where,
+            include: { resourceBranches: { include: { branch: true } }, resourceProducts: { include: { product: true } } },
             orderBy: [{ description: 'asc' }, { name: 'asc' }]
         });
 
@@ -113,7 +114,7 @@ export const syncHealthDoctors = async (req, res) => {
 export const createResource = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, description, type, color, availableStart, availableEnd, availableDays } = req.body;
+        const { name, description, type, color, availableStart, availableEnd, availableDays, title, userId, slotMinutes, branchIds } = req.body;
 
         if (!name) {
             return res.status(400).json({ error: 'Kaynak adı gereklidir' });
@@ -123,13 +124,20 @@ export const createResource = async (req, res) => {
             data: {
                 workspaceId,
                 name,
+                title: title || null,
+                userId: userId || null,
+                slotMinutes: slotMinutes !== undefined ? slotMinutes : 30,
                 description: description || null,
                 type: type || 'ROOM',
                 color: color || '#8b5cf6',
                 availableStart: availableStart || null,
                 availableEnd: availableEnd || null,
-                availableDays: availableDays || null
-            }
+                availableDays: availableDays || null,
+                resourceBranches: branchIds && branchIds.length > 0 ? {
+                    create: branchIds.map(branchId => ({ branchId }))
+                } : undefined
+            },
+            include: { resourceBranches: { include: { branch: true } }, resourceProducts: { include: { product: true } } }
         });
 
         res.status(201).json({ resource });
@@ -143,7 +151,7 @@ export const createResource = async (req, res) => {
 export const updateResource = async (req, res) => {
     try {
         const { workspaceId, resourceId } = req.params;
-        const { name, description, type, color, isActive, availableStart, availableEnd, availableDays } = req.body;
+        const { name, description, type, color, isActive, availableStart, availableEnd, availableDays, title, userId, slotMinutes, branchIds } = req.body;
 
         const existing = await prisma.calendarResource.findFirst({
             where: { id: resourceId, workspaceId }
@@ -155,6 +163,9 @@ export const updateResource = async (req, res) => {
 
         const updateData = {};
         if (name !== undefined) updateData.name = name;
+        if (title !== undefined) updateData.title = title;
+        if (userId !== undefined) updateData.userId = userId;
+        if (slotMinutes !== undefined) updateData.slotMinutes = slotMinutes;
         if (description !== undefined) updateData.description = description;
         if (type !== undefined) updateData.type = type;
         if (color !== undefined) updateData.color = color;
@@ -163,9 +174,17 @@ export const updateResource = async (req, res) => {
         if (availableEnd !== undefined) updateData.availableEnd = availableEnd;
         if (availableDays !== undefined) updateData.availableDays = availableDays;
 
+        if (branchIds !== undefined) {
+            updateData.resourceBranches = {
+                deleteMany: {},
+                ...(branchIds.length > 0 && { create: branchIds.map(branchId => ({ branchId })) })
+            };
+        }
+
         const resource = await prisma.calendarResource.update({
             where: { id: resourceId },
-            data: updateData
+            data: updateData,
+            include: { resourceBranches: { include: { branch: true } }, resourceProducts: { include: { product: true } } }
         });
 
         res.json({ resource });
@@ -200,5 +219,61 @@ export const deleteResource = async (req, res) => {
     } catch (error) {
         console.error('Delete resource error:', error);
         res.status(500).json({ error: 'Kaynak silinirken hata oluştu' });
+    }
+};
+
+// Add product/service to a resource
+export const addResourceProduct = async (req, res) => {
+    try {
+        const { workspaceId, resourceId } = req.params;
+        const { productId, branchId, price, duration } = req.body;
+
+        const existingResource = await prisma.calendarResource.findFirst({
+            where: { id: resourceId, workspaceId }
+        });
+
+        if (!existingResource) {
+            return res.status(404).json({ error: 'Kaynak bulunamadı' });
+        }
+
+        const resourceProduct = await prisma.resourceProduct.create({
+            data: {
+                resourceId,
+                productId,
+                branchId: branchId || null,
+                price: price !== undefined ? price : null,
+                duration: duration !== undefined ? duration : null
+            },
+            include: { product: true }
+        });
+
+        res.status(201).json({ resourceProduct });
+    } catch (error) {
+        console.error('Add resource product error:', error);
+        res.status(500).json({ error: 'Ürün/hizmet eklenirken hata oluştu' });
+    }
+};
+
+// Remove product/service from a resource
+export const removeResourceProduct = async (req, res) => {
+    try {
+        const { workspaceId, resourceId, rpId } = req.params;
+
+        const existingResource = await prisma.calendarResource.findFirst({
+            where: { id: resourceId, workspaceId }
+        });
+
+        if (!existingResource) {
+            return res.status(404).json({ error: 'Kaynak bulunamadı' });
+        }
+
+        await prisma.resourceProduct.delete({
+            where: { id: rpId, resourceId }
+        });
+
+        res.json({ success: true, message: 'Ürün/hizmet kaldırıldı' });
+    } catch (error) {
+        console.error('Remove resource product error:', error);
+        res.status(500).json({ error: 'Ürün/hizmet kaldırılırken hata oluştu' });
     }
 };
