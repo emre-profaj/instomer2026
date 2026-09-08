@@ -4,6 +4,7 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  bulkDeleteCategories,
   reorderCategories,
   autoGenerateCategories,
   backfillConversations,
@@ -22,6 +23,7 @@ router.get('/:workspaceId', requireWorkspaceAccess, getCategories);
 router.post('/:workspaceId', requireWorkspaceAccess, createCategory);
 router.put('/:workspaceId/:categoryId', requireWorkspaceAccess, updateCategory);
 router.delete('/:workspaceId/:categoryId', requireWorkspaceAccess, deleteCategory);
+router.post('/:workspaceId/bulk-delete', requireWorkspaceAccess, bulkDeleteCategories);
 router.put('/:workspaceId/reorder', requireWorkspaceAccess, reorderCategories);
 
 // AI-powered auto-generation

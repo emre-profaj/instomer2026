@@ -642,26 +642,31 @@ export const updateCompanyInfo = async (req, res) => {
             companyPhone,
             companyEmail,
             companyWebsite,
+            invoiceTaxOffice,
+            invoiceTaxNumber,
+            invoiceIban,
+            industry
+        } = req.body;
+
+        const updateData = {
+            companyName,
+            companyDescription,
+            companyAddress,
+            companyPhone,
+            companyEmail,
+            companyWebsite,
             companyWorkingHours,
             invoiceTaxOffice,
             invoiceTaxNumber,
             invoiceIban
-        } = req.body;
+        };
+        if (industry !== undefined) {
+            updateData.industry = industry;
+        }
 
         const workspace = await prisma.workspace.update({
             where: { id: workspaceId },
-            data: {
-                companyName,
-                companyDescription,
-                companyAddress,
-                companyPhone,
-                companyEmail,
-                companyWebsite,
-                companyWorkingHours,
-                invoiceTaxOffice,
-                invoiceTaxNumber,
-                invoiceIban
-            },
+            data: updateData,
             select: {
                 companyName: true,
                 companyDescription: true,
@@ -673,7 +678,8 @@ export const updateCompanyInfo = async (req, res) => {
                 companyLogo: true,
                 invoiceTaxOffice: true,
                 invoiceTaxNumber: true,
-                invoiceIban: true
+                invoiceIban: true,
+                industry: true
             }
         });
 

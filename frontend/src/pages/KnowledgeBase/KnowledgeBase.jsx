@@ -1,9 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, knowledgeBaseAPI, retellAPI, productAPI, appointmentConfigAPI, teamAPI, funnelAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, Package, Check, MapPin, Tag } from 'lucide-react';
-import TopicCategories from '../Settings/TopicCategories';
+import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI } from '../../services/api';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -50,14 +49,6 @@ const KnowledgeBase = () => {
     });
     const [savingCompany, setSavingCompany] = useState(false);
 
-    // Product KB Integration States
-    const [productKbEnabled, setProductKbEnabled] = useState(false);
-    const [productKbGroups, setProductKbGroups] = useState([]); // available groups
-    const [productKbSelectedGroups, setProductKbSelectedGroups] = useState([]); // 'ALL' or array of group names
-    const [productKbIncludePrice, setProductKbIncludePrice] = useState(false);
-    const [productKbSaving, setProductKbSaving] = useState(false);
-    const [productKbSynced, setProductKbSynced] = useState(false);
-
     // Branches States
     const [branches, setBranches] = useState([]);
     const [branchesLoading, setBranchesLoading] = useState(false);
@@ -79,8 +70,6 @@ const KnowledgeBase = () => {
         if (currentWorkspace) {
             loadKnowledgeBase();
             loadCompanyInfo();
-            loadProductKbSettings();
-            loadProductGroups();
             loadBranches();
             loadTeams();
             loadFunnels();
@@ -101,22 +90,13 @@ const KnowledgeBase = () => {
         } catch (err) { console.error('Error loading funnels:', err); }
     };
 
-    const loadProductGroups = async () => {
-        try {
-            const res = await productAPI.getGroups(currentWorkspace.id);
-            setProductKbGroups((res.data.groups || []).map(g => g.groupName).filter(Boolean));
-        } catch (err) {
-            console.error('Error loading product groups:', err);
-        }
-    };
-
     const loadBranches = async () => {
-        setBranchesLoading(true);
         try {
+            setBranchesLoading(true);
             const res = await appointmentConfigAPI.getBranches(currentWorkspace.id);
-            setBranches(res.data.branches || []);
+            setBranches(res.data?.branches || []);
         } catch (err) {
-            console.error('Load branches error:', err);
+            console.error('Error loading branches:', err);
         } finally {
             setBranchesLoading(false);
         }
@@ -126,9 +106,9 @@ const KnowledgeBase = () => {
         if (!newBranchName.trim()) return;
         try {
             await appointmentConfigAPI.createBranch(currentWorkspace.id, {
-                name: newBranchName.trim(),
-                address: newBranchAddress.trim(),
-                phone: newBranchPhone.trim(),
+                name: newBranchName,
+                address: newBranchAddress,
+                phone: newBranchPhone,
                 defaultTeamId: newBranchTeamId || null,
                 defaultFunnelId: newBranchFunnelId || null
             });
@@ -139,7 +119,8 @@ const KnowledgeBase = () => {
             setNewBranchFunnelId('');
             loadBranches();
         } catch (err) {
-            alert('Hata: ' + err.message);
+            console.error('Error creating branch:', err);
+            alert(err.response?.data?.error || 'Şube eklenirken hata oluştu');
         }
     };
 
@@ -147,16 +128,17 @@ const KnowledgeBase = () => {
         if (!editBranchName.trim()) return;
         try {
             await appointmentConfigAPI.updateBranch(currentWorkspace.id, id, {
-                name: editBranchName.trim(),
-                address: editBranchAddress.trim(),
-                phone: editBranchPhone.trim(),
+                name: editBranchName,
+                address: editBranchAddress,
+                phone: editBranchPhone,
                 defaultTeamId: editBranchTeamId || null,
                 defaultFunnelId: editBranchFunnelId || null
             });
             setEditingBranch(null);
             loadBranches();
         } catch (err) {
-            alert('Hata: ' + err.message);
+            console.error('Error updating branch:', err);
+            alert(err.response?.data?.error || 'Şube güncellenirken hata oluştu');
         }
     };
 
@@ -166,96 +148,11 @@ const KnowledgeBase = () => {
             await appointmentConfigAPI.deleteBranch(currentWorkspace.id, id);
             loadBranches();
         } catch (err) {
-            alert('Hata: ' + err.message);
+            console.error('Error deleting branch:', err);
+            alert(err.response?.data?.error || 'Şube silinirken hata oluştu');
         }
     };
 
-    const loadProductKbSettings = async () => {
-        try {
-            // Load saved product KB settings from knowledge base (stored as a special entry)
-            const response = await knowledgeBaseAPI.getAll(currentWorkspace.id);
-            const entries = response.data.entries || [];
-            const productEntry = entries.find(e => e.sourceType === 'PRODUCT_CATALOG');
-            if (productEntry) {
-                setProductKbEnabled(true);
-                try {
-                    const meta = JSON.parse(productEntry.title || '{}');
-                    setProductKbIncludePrice(meta.includePrice || false);
-                    setProductKbSelectedGroups(meta.selectedGroups || []);
-                } catch { }
-            }
-        } catch (err) {
-            console.error('Error loading product KB settings:', err);
-        }
-    };
-
-    const handleSaveProductKb = async () => {
-        setProductKbSaving(true);
-        setProductKbSynced(false);
-        try {
-            // First delete existing product catalog entries
-            const response = await knowledgeBaseAPI.getAll(currentWorkspace.id);
-            const entries = response.data.entries || [];
-            const existingProductEntries = entries.filter(e => e.sourceType === 'PRODUCT_CATALOG');
-            for (const entry of existingProductEntries) {
-                await knowledgeBaseAPI.delete(currentWorkspace.id, entry.id);
-            }
-
-            if (productKbEnabled) {
-                // Fetch products based on group selection
-                const params = { limit: 9999 };
-                const res = await productAPI.getAll(currentWorkspace.id, params);
-                let products = res.data.products || [];
-
-                // Filter by selected groups
-                if (productKbSelectedGroups.length > 0) {
-                    products = products.filter(p => productKbSelectedGroups.includes(p.groupName));
-                }
-
-                // Build content text
-                let content = '=== ÜRÜN VE HİZMET KATALOĞU ===\n\n';
-                if (products.length === 0) {
-                    content += 'Henüz ürün/hizmet eklenmemiş.\n';
-                } else {
-                    for (const p of products) {
-                        content += `Ürün: ${p.name}\n`;
-                        if (p.description) content += `Açıklama: ${p.description}\n`;
-                        if (p.groupName) content += `Grup: ${p.groupName}\n`;
-                        if (p.unit) content += `Birim: ${p.unit}\n`;
-                        if (productKbIncludePrice) {
-                            content += `Fiyat: ${p.price ? p.price.toLocaleString('tr-TR') + ' ₺' : 'Belirtilmemiş'}\n`;
-                            if (p.discountedPrice) content += `İndirimli Fiyat: ${p.discountedPrice.toLocaleString('tr-TR')} ₺\n`;
-                            if (p.priceUSD) content += `USD Fiyat: $${p.priceUSD}\n`;
-                            if (p.priceEUR) content += `EUR Fiyat: €${p.priceEUR}\n`;
-                        }
-                        content += '\n---\n\n';
-                    }
-                }
-
-                // Save as a KB entry with sourceType PRODUCT_CATALOG
-                const meta = JSON.stringify({
-                    includePrice: productKbIncludePrice,
-                    selectedGroups: productKbSelectedGroups,
-                    productCount: products.length
-                });
-
-                await knowledgeBaseAPI.create(currentWorkspace.id, {
-                    title: meta,
-                    content: content,
-                    sourceType: 'PRODUCT_CATALOG'
-                });
-
-                setProductKbSynced(true);
-                setTimeout(() => setProductKbSynced(false), 5000);
-            }
-
-            loadKnowledgeBase();
-        } catch (err) {
-            console.error('Error saving product KB:', err);
-        } finally {
-            setProductKbSaving(false);
-        }
-    };
 
     const loadKnowledgeBase = async () => {
         try {
@@ -536,6 +433,13 @@ const KnowledgeBase = () => {
                     Şirket Bilgileri
                 </button>
                 <button
+                    className={`kb-tab ${activeTab === 'branches' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('branches')}
+                >
+                    <MapPin size={16} />
+                    Şubeler
+                </button>
+                <button
                     className={`kb-tab ${activeTab === 'text' ? 'active' : ''}`}
                     onClick={() => setActiveTab('text')}
                 >
@@ -569,27 +473,6 @@ const KnowledgeBase = () => {
                 >
                     <Database size={16} />
                     Tüm Bilgiler ({knowledgeEntries.length})
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'products' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('products')}
-                >
-                    <Package size={16} />
-                    Ürünler
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'categories' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('categories')}
-                >
-                    <Tag size={16} />
-                    Kategoriler
-                </button>
-                <button
-                    className={`kb-tab ${activeTab === 'branches' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('branches')}
-                >
-                    <MapPin size={16} />
-                    Şubeler
                 </button>
             </div>
 
@@ -723,6 +606,97 @@ const KnowledgeBase = () => {
                         >
                             {savingCompany ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Branches Tab */}
+            {activeTab === 'branches' && (
+                <div className="card" style={{ padding: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                        <MapPin size={24} style={{ color: '#6366f1' }} />
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Şubeler</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Klinik şubelerinizi ve lokasyonlarınızı yönetin.</p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
+                        <div>
+                            {branchesLoading ? (
+                                <div className="loading">Yükleniyor...</div>
+                            ) : branches.length === 0 ? (
+                                <div className="empty-state">Henüz şube eklenmemiş.</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {branches.map(branch => (
+                                        <div key={branch.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{branch.name}</h4>
+                                                {branch.address && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📍 {branch.address}</div>}
+                                                {branch.phone && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📞 {branch.phone}</div>}
+                                                {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '8px' }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
+                                                {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button className="btn-icon" onClick={() => {
+                                                    setEditingBranch(branch.id);
+                                                    setEditBranchName(branch.name);
+                                                    setEditBranchAddress(branch.address || '');
+                                                    setEditBranchPhone(branch.phone || '');
+                                                    setEditBranchTeamId(branch.defaultTeamId || '');
+                                                    setEditBranchFunnelId(branch.defaultFunnelId || '');
+                                                }}><Pencil size={16} /></button>
+                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteBranch(branch.id, branch.name)}><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
+                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingBranch ? 'Şubeyi Düzenle' : 'Yeni Şube Ekle'}</h4>
+                                
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Şube Adı *</label>
+                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder="Örn: Merkez Şube" />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Adres</label>
+                                    <textarea className="input" rows="2" value={editingBranch ? editBranchAddress : newBranchAddress} onChange={e => editingBranch ? setEditBranchAddress(e.target.value) : setNewBranchAddress(e.target.value)} placeholder="Açık adres..." />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Telefon</label>
+                                    <input type="text" className="input" value={editingBranch ? editBranchPhone : newBranchPhone} onChange={e => editingBranch ? setEditBranchPhone(e.target.value) : setNewBranchPhone(e.target.value)} placeholder="+90..." />
+                                </div>
+                                
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Varsayılan Takım</label>
+                                    <select className="input" value={editingBranch ? editBranchTeamId : newBranchTeamId} onChange={e => editingBranch ? setEditBranchTeamId(e.target.value) : setNewBranchTeamId(e.target.value)}>
+                                        <option value="">-- Seçiniz --</option>
+                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label>Varsayılan Akış</label>
+                                    <select className="input" value={editingBranch ? editBranchFunnelId : newBranchFunnelId} onChange={e => editingBranch ? setEditBranchFunnelId(e.target.value) : setNewBranchFunnelId(e.target.value)}>
+                                        <option value="">-- Seçiniz --</option>
+                                        {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                    </select>
+                                </div>
+
+                                {editingBranch ? (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleUpdateBranch(editingBranch)}>Kaydet</button>
+                                        <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditingBranch(null)}>İptal</button>
+                                    </div>
+                                ) : (
+                                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreateBranch} disabled={!newBranchName.trim()}>Şube Ekle</button>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -969,252 +943,7 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
                 </div>
             )}
 
-            {/* Products Integration Tab */}
-            {activeTab === 'products' && (
-                <div className="card" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <Package size={24} style={{ color: '#6366f1' }} />
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Ürün Kataloğu Entegrasyonu</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>AI asistanınızın ürün/hizmet bilgilerini kullanmasını sağlayın.</p>
-                        </div>
-                    </div>
 
-                    {/* Enable Toggle */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: productKbEnabled ? '#f0fdf4' : '#f8fafc', borderRadius: '10px', border: `1px solid ${productKbEnabled ? '#bbf7d0' : '#e2e8f0'}`, marginBottom: '16px' }}>
-                        <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>Ürün bilgilerini AI’a aktar</div>
-                            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Açık olduğunda AI asistan müşterilere ürünler hakkında bilgi verebilir.</div>
-                        </div>
-                        <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={productKbEnabled} onChange={(e) => setProductKbEnabled(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-                            <span style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: productKbEnabled ? '#22c55e' : '#cbd5e1', borderRadius: '12px', transition: 'all 0.3s' }}>
-                                <span style={{ position: 'absolute', left: productKbEnabled ? '22px' : '2px', top: '2px', width: '20px', height: '20px', background: '#fff', borderRadius: '50%', transition: 'all 0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
-                            </span>
-                        </label>
-                    </div>
-
-                    {productKbEnabled && (
-                        <>
-                            {/* Info Level */}
-                            <div style={{ marginBottom: '16px' }}>
-                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Hangi bilgiler eklensin?</label>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button
-                                        onClick={() => setProductKbIncludePrice(false)}
-                                        style={{
-                                            flex: 1, padding: '10px 14px', borderRadius: '8px',
-                                            border: `2px solid ${!productKbIncludePrice ? '#6366f1' : '#e2e8f0'}`,
-                                            background: !productKbIncludePrice ? '#eef2ff' : '#fff',
-                                            fontSize: '0.82rem', fontWeight: 600,
-                                            color: !productKbIncludePrice ? '#4f46e5' : '#64748b',
-                                            cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
-                                        }}
-                                    >
-                                        <div>📦 Sadece Ürün Bilgileri</div>
-                                        <div style={{ fontSize: '0.7rem', fontWeight: 400, marginTop: '2px' }}>Ad, açıklama, birim, grup</div>
-                                    </button>
-                                    <button
-                                        onClick={() => setProductKbIncludePrice(true)}
-                                        style={{
-                                            flex: 1, padding: '10px 14px', borderRadius: '8px',
-                                            border: `2px solid ${productKbIncludePrice ? '#6366f1' : '#e2e8f0'}`,
-                                            background: productKbIncludePrice ? '#eef2ff' : '#fff',
-                                            fontSize: '0.82rem', fontWeight: 600,
-                                            color: productKbIncludePrice ? '#4f46e5' : '#64748b',
-                                            cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
-                                        }}
-                                    >
-                                        <div>💰 Ürün + Fiyat Bilgileri</div>
-                                        <div style={{ fontSize: '0.7rem', fontWeight: 400, marginTop: '2px' }}>Ad, açıklama, birim, grup, fiyat, indirimli fiyat</div>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Group Selection */}
-                            <div style={{ marginBottom: '20px' }}>
-                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Hangi ürün grupları dahil edilsin?</label>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                    <button
-                                        onClick={() => setProductKbSelectedGroups([])}
-                                        style={{
-                                            padding: '6px 12px', borderRadius: '6px',
-                                            border: `1.5px solid ${productKbSelectedGroups.length === 0 ? '#6366f1' : '#e2e8f0'}`,
-                                            background: productKbSelectedGroups.length === 0 ? '#eef2ff' : '#fff',
-                                            fontSize: '0.78rem', fontWeight: 600,
-                                            color: productKbSelectedGroups.length === 0 ? '#4f46e5' : '#64748b',
-                                            cursor: 'pointer', transition: 'all 0.15s'
-                                        }}
-                                    >
-                                        {productKbSelectedGroups.length === 0 && <Check size={13} style={{ marginRight: '4px' }} />}
-                                        Tümü
-                                    </button>
-                                    {productKbGroups.map(g => {
-                                        const isSelected = productKbSelectedGroups.includes(g);
-                                        return (
-                                            <button
-                                                key={g}
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        setProductKbSelectedGroups(prev => prev.filter(x => x !== g));
-                                                    } else {
-                                                        setProductKbSelectedGroups(prev => [...prev, g]);
-                                                    }
-                                                }}
-                                                style={{
-                                                    padding: '6px 12px', borderRadius: '6px',
-                                                    border: `1.5px solid ${isSelected ? '#8b5cf6' : '#e2e8f0'}`,
-                                                    background: isSelected ? '#ede9fe' : '#fff',
-                                                    fontSize: '0.78rem', fontWeight: 600,
-                                                    color: isSelected ? '#7c3aed' : '#64748b',
-                                                    cursor: 'pointer', transition: 'all 0.15s'
-                                                }}
-                                            >
-                                                {isSelected && <Check size={13} style={{ marginRight: '4px' }} />}
-                                                {g}
-                                            </button>
-                                        );
-                                    })}
-                                    {productKbGroups.length === 0 && (
-                                        <span style={{ fontSize: '0.78rem', color: '#94a3b8', padding: '6px 0' }}>Henüz ürün grubu tanımlanmamış.</span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Save Button */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <button
-                                    onClick={handleSaveProductKb}
-                                    disabled={productKbSaving}
-                                    style={{
-                                        padding: '10px 22px', borderRadius: '8px',
-                                        border: 'none', background: productKbSaving ? '#a5b4fc' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                        fontSize: '0.85rem', fontWeight: 600, color: '#fff',
-                                        cursor: productKbSaving ? 'not-allowed' : 'pointer',
-                                        boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                >
-                                    <RefreshCw size={15} style={{ animation: productKbSaving ? 'spin 1s linear infinite' : 'none' }} />
-                                    {productKbSaving ? 'Kaydediliyor...' : 'Kaydet ve Senkronize Et'}
-                                </button>
-                                {productKbSynced && (
-                                    <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <CheckCircle2 size={16} /> Ürünler bilgi bankasına eklendi!
-                                    </span>
-                                )}
-                            </div>
-                        </>
-                    )}
-
-                    {/* If disabled, show save to remove */}
-                    {!productKbEnabled && (
-                        <button
-                            onClick={handleSaveProductKb}
-                            disabled={productKbSaving}
-                            style={{
-                                padding: '8px 16px', borderRadius: '8px',
-                                border: '1px solid #e2e8f0', background: '#fff',
-                                fontSize: '0.82rem', fontWeight: 600, color: '#64748b',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            Kaydet
-                        </button>
-                    )}
-                </div>
-            )}
-
-            {/* Branches Tab */}
-            {activeTab === 'branches' && (
-                <div className="card" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <MapPin size={24} style={{ color: '#6366f1' }} />
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Şubeler</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>Klinik şubelerinizi ve lokasyonlarınızı yönetin.</p>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
-                        <div>
-                            {branchesLoading ? (
-                                <div className="loading">Yükleniyor...</div>
-                            ) : branches.length === 0 ? (
-                                <div className="empty-state">Henüz şube eklenmemiş.</div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {branches.map(branch => (
-                                        <div key={branch.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <div>
-                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: '#1e293b' }}>{branch.name}</h4>
-                                                {branch.address && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📍 {branch.address}</div>}
-                                                {branch.phone && <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>📞 {branch.phone}</div>}
-                                                {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: '#6366f1', marginTop: '8px' }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
-                                                {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button className="btn-icon" onClick={() => {
-                                                    setEditingBranch(branch.id);
-                                                    setEditBranchName(branch.name);
-                                                    setEditBranchAddress(branch.address || '');
-                                                    setEditBranchPhone(branch.phone || '');
-                                                    setEditBranchTeamId(branch.defaultTeamId || '');
-                                                    setEditBranchFunnelId(branch.defaultFunnelId || '');
-                                                }}><Pencil size={16} /></button>
-                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteBranch(branch.id, branch.name)}><Trash2 size={16} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div>
-                            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
-                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingBranch ? 'Şubeyi Düzenle' : 'Yeni Şube Ekle'}</h4>
-                                
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Şube Adı *</label>
-                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder="Örn: Merkez Şube" />
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Adres</label>
-                                    <textarea className="input" rows="2" value={editingBranch ? editBranchAddress : newBranchAddress} onChange={e => editingBranch ? setEditBranchAddress(e.target.value) : setNewBranchAddress(e.target.value)} placeholder="Açık adres..." />
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Telefon</label>
-                                    <input type="text" className="input" value={editingBranch ? editBranchPhone : newBranchPhone} onChange={e => editingBranch ? setEditBranchPhone(e.target.value) : setNewBranchPhone(e.target.value)} placeholder="+90..." />
-                                </div>
-                                
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Varsayılan Takım</label>
-                                    <select className="input" value={editingBranch ? editBranchTeamId : newBranchTeamId} onChange={e => editingBranch ? setEditBranchTeamId(e.target.value) : setNewBranchTeamId(e.target.value)}>
-                                        <option value="">-- Seçiniz --</option>
-                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '16px' }}>
-                                    <label>Varsayılan Akış</label>
-                                    <select className="input" value={editingBranch ? editBranchFunnelId : newBranchFunnelId} onChange={e => editingBranch ? setEditBranchFunnelId(e.target.value) : setNewBranchFunnelId(e.target.value)}>
-                                        <option value="">-- Seçiniz --</option>
-                                        {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                    </select>
-                                </div>
-
-                                {editingBranch ? (
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleUpdateBranch(editingBranch)}>Kaydet</button>
-                                        <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditingBranch(null)}>İptal</button>
-                                    </div>
-                                ) : (
-                                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreateBranch} disabled={!newBranchName.trim()}>Şube Ekle</button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* List Tab */}
             {activeTab === 'list' && (

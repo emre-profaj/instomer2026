@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase } from 'lucide-react';
-import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI, productAPI } from '../../services/api';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase, Building2 } from 'lucide-react';
+import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI, productAPI, appointmentConfigAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import { activityAPI } from '../../services/activity.api';
 import CaseCards from './CaseCards';
@@ -216,6 +216,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [categorySearch, setCategorySearch] = useState('');
     const categoryBtnRef = useRef(null);
     const [categoryDropdownPos, setCategoryDropdownPos] = useState({ top: 0, right: 0 });
+    const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+    const [availableBranches, setAvailableBranches] = useState([]);
+    const [branchSearch, setBranchSearch] = useState('');
+    const branchBtnRef = useRef(null);
+    const [branchDropdownPos, setBranchDropdownPos] = useState({ top: 0, right: 0 });
     const [creatingCase, setCreatingCase] = useState(false);
     const [catalogProducts, setCatalogProducts] = useState([]);
     const [productSearchText, setProductSearchText] = useState('');
@@ -403,7 +408,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     // Ürün kataloğunu yükle
     useEffect(() => {
         if (!isOpen || !currentWorkspace?.id) return;
-        productAPI.getAll(currentWorkspace.id, { limit: 500 }).then(res => {
+        productAPI.getAll(currentWorkspace.id, { isGroup: false, limit: 500 }).then(res => {
             setCatalogProducts(res.data?.products || res.data || []);
         }).catch(() => {});
     }, [isOpen, currentWorkspace?.id]);
@@ -564,6 +569,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 if (changes.assignedToId !== undefined) updates.assignedToId = changes.assignedToId;
                 if (changes.assignedTeamId !== undefined) updates.assignedTeamId = changes.assignedTeamId;
                 if (changes.assignedTo !== undefined) updates.assignedTo = changes.assignedTo;
+                if (changes.branchId !== undefined) {
+                    updates.branchId = changes.branchId;
+                    updates.branch = changes.branch !== undefined ? changes.branch : (availableBranches.find(b => b.id === changes.branchId) || null);
+                }
                 return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
             });
         };
@@ -592,6 +601,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             window.removeEventListener('websocket:case_assignment_updated', handleCaseAssignment);
         };
     }, [activeCaseInfo?.caseId]);
+
+    useEffect(() => {
+        if (currentWorkspace?.id) {
+            appointmentConfigAPI.getBranches(currentWorkspace.id)
+                .then(res => setAvailableBranches(res.data?.branches || []))
+                .catch(err => console.error('Failed to load branches in ContactSidebar:', err));
+        }
+    }, [currentWorkspace?.id]);
 
     const fetchProfile = async () => {
         setLoading(true);
@@ -1181,6 +1198,38 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             alert('Konuşma üstlenilemedi: ' + (err?.response?.data?.error || err.message));
         } finally {
             setTakingOver(false);
+        }
+    };
+
+    const handleBranchSelect = async (branchId) => {
+        try {
+            const targetBranch = availableBranches.find(b => b.id === branchId) || null;
+            const caseId = activeCaseInfo?.caseId || activeConv?.caseId;
+            if (caseId) {
+                await caseAPI.update(currentWorkspace.id, caseId, { branchId: branchId || null });
+                setActiveCaseInfo(prev => prev ? ({
+                    ...prev,
+                    branchId: branchId || null,
+                    branch: targetBranch
+                }) : prev);
+                setAllCases(prev => (prev || []).map(c => c.id === caseId ? { ...c, branchId: branchId || null, branch: targetBranch } : c));
+                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+            }
+            if (activeConv?.id) {
+                await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { branchId: branchId || null });
+                setLocalConvOverride(prev => ({
+                    ...(prev || activeConv),
+                    branchId: branchId || null,
+                    branch: targetBranch
+                }));
+                setContactConversations(prev => (prev || []).map(c => 
+                    c.id === activeConv.id ? { ...c, branchId: branchId || null, branch: targetBranch } : c
+                ));
+            }
+            setBranchDropdownOpen(false);
+        } catch (err) {
+            console.error('Şube güncelleme hatası:', err);
+            alert('Şube güncellenirken bir hata oluştu: ' + (err?.response?.data?.error || err.message));
         }
     };
 
@@ -2303,7 +2352,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         try {
                                                                             const { default: api } = await import('../../services/api');
                                                                             await api.put(`/conversations/${currentWorkspace.id}/${conversationId}/link-case`, { caseId: cc.id });
-                                                                            setActiveCaseInfo(prev => ({ ...prev, caseId: cc.id }));
+                                                                            setActiveCaseInfo(prev => ({ ...prev, caseId: cc.id, branchId: cc.branchId || null, branch: cc.branch || null }));
                                                                             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                         } catch (err) { console.error(err); }
                                                                         setCaseIdDropdownOpen(false);
@@ -3177,6 +3226,139 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </>
                                                 )}
                                             </div>
+
+                                            {/* Şube etiketi */}
+                                            {(() => {
+                                                const matchCase = allCases.find(ac => ac.id === activeCaseInfo?.caseId);
+                                                const currentBranchId = activeCaseInfo?.branchId || matchCase?.branchId || activeConv?.branchId || activeConv?.branch?.id || null;
+                                                const currentBranch = availableBranches.find(b => b.id === currentBranchId) || activeCaseInfo?.branch || matchCase?.branch || activeConv?.branch || null;
+
+                                                return (
+                                                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (!branchDropdownOpen && availableBranches.length === 0 && currentWorkspace?.id) {
+                                                                    try {
+                                                                        const res = await appointmentConfigAPI.getBranches(currentWorkspace.id);
+                                                                        setAvailableBranches(res.data?.branches || []);
+                                                                    } catch (e) { console.error(e); }
+                                                                }
+                                                                if (branchBtnRef.current) {
+                                                                    const rect = branchBtnRef.current.getBoundingClientRect();
+                                                                    setBranchDropdownPos({ top: rect.bottom + 4, right: Math.max(10, window.innerWidth - rect.right) });
+                                                                }
+                                                                setBranchDropdownOpen(v => !v);
+                                                                setBranchSearch('');
+                                                            }}
+                                                            ref={branchBtnRef}
+                                                            style={{
+                                                                background: currentBranch ? '#f0fdf4' : '#f1f5f9',
+                                                                color: currentBranch ? '#16a34a' : '#64748b',
+                                                                border: `1px solid ${currentBranch ? '#bbf7d0' : '#e2e8f0'}`,
+                                                                borderRadius: 6,
+                                                                padding: '2px 8px',
+                                                                fontSize: '0.62rem',
+                                                                fontWeight: 600,
+                                                                whiteSpace: 'nowrap',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: 4,
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.15s',
+                                                                height: 22
+                                                            }}
+                                                            title={currentBranch ? `Şube: ${currentBranch.name}` : 'Şube seç'}
+                                                        >
+                                                            <Building2 size={11} style={{ opacity: currentBranch ? 0.9 : 0.6 }} />
+                                                            <span style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {currentBranch ? currentBranch.name : 'Şube'}
+                                                            </span>
+                                                            <ChevronDown size={8} style={{ opacity: 0.5 }} />
+                                                        </button>
+
+                                                        {branchDropdownOpen && (
+                                                            <>
+                                                            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setBranchDropdownOpen(false)} />
+                                                            <div style={{
+                                                                position: 'fixed',
+                                                                top: branchDropdownPos.top,
+                                                                right: branchDropdownPos.right,
+                                                                zIndex: 9999,
+                                                                background: '#fff',
+                                                                border: '1px solid #e5e7eb',
+                                                                borderRadius: 12,
+                                                                boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                                width: 240,
+                                                                maxHeight: 320,
+                                                                overflow: 'hidden'
+                                                            }}>
+                                                                <div style={{ padding: '8px' }}>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Şube ara..."
+                                                                        value={branchSearch}
+                                                                        onChange={e => setBranchSearch(e.target.value)}
+                                                                        autoFocus
+                                                                        style={{
+                                                                            width: '100%', padding: '6px 10px',
+                                                                            border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                            fontSize: '0.75rem', outline: 'none'
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                                                                    {currentBranch && (
+                                                                        <button
+                                                                            onClick={() => handleBranchSelect(null)}
+                                                                            style={{
+                                                                                width: '100%', padding: '7px 12px',
+                                                                                background: 'none',
+                                                                                border: 'none', borderBottom: '1px solid #f1f5f9',
+                                                                                fontSize: '0.72rem', color: '#ef4444', cursor: 'pointer',
+                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
+                                                                            }}
+                                                                        >
+                                                                            <X size={12} /> Şubeyi Kaldır
+                                                                        </button>
+                                                                    )}
+                                                                    {availableBranches
+                                                                        .filter(b => !branchSearch || b.name.toLowerCase().includes(branchSearch.toLowerCase()))
+                                                                        .map(branch => {
+                                                                            const isSelected = currentBranchId === branch.id;
+                                                                            return (
+                                                                                <button
+                                                                                    key={branch.id}
+                                                                                    onClick={() => handleBranchSelect(branch.id)}
+                                                                                    style={{
+                                                                                        width: '100%', padding: '6px 10px',
+                                                                                        background: isSelected ? '#f0fdf4' : 'transparent',
+                                                                                        border: 'none', fontSize: '0.72rem',
+                                                                                        color: '#374151', cursor: 'pointer',
+                                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
+                                                                                        transition: 'background 0.1s'
+                                                                                    }}
+                                                                                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                                                                    onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#f0fdf4' : 'transparent'; }}
+                                                                                >
+                                                                                    <Building2 size={12} style={{ color: isSelected ? '#16a34a' : '#94a3b8' }} />
+                                                                                    <span style={{ flex: 1, fontWeight: isSelected ? 600 : 400 }}>{branch.name}</span>
+                                                                                    {isSelected && <Check size={12} style={{ color: '#16a34a' }} />}
+                                                                                </button>
+                                                                            );
+                                                                        })
+                                                                    }
+                                                                    {availableBranches.filter(b => !branchSearch || b.name.toLowerCase().includes(branchSearch.toLowerCase())).length === 0 && (
+                                                                        <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                                            Şube bulunamadı
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
 
                                             {/* Ürünler (case'den) */}
                                             {(() => {

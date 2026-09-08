@@ -299,12 +299,15 @@ Kuralların:
 export const updateWorkspace = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, ownerId } = req.body;
+        const { name, ownerId, industry } = req.body;
 
         const updateData = {};
         if (name) {
             updateData.name = name;
             updateData.slug = `${createSlug(name)}-${Date.now()}`;
+        }
+        if (industry !== undefined) {
+            updateData.industry = industry;
         }
 
         // Transaction to handle owner change if requested

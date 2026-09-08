@@ -11,6 +11,7 @@
 
 import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getSectorPrompt } from '../utils/sectorPrompt.js';
 
 const MODEL_NAME = 'gemini-3.5-flash';
 
@@ -44,7 +45,7 @@ export async function executeUnifiedAICall({
         // ── 1. Workspace ve bağlam bilgilerini yükle ──
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
-            select: { aiApiKey: true, companyName: true, companyDescription: true }
+            select: { aiApiKey: true, companyName: true, companyDescription: true, industry: true }
         });
 
         if (!workspace?.aiApiKey) {
@@ -205,6 +206,10 @@ ${funnelContext || '(Akış tanımlanmamış)'}
 
 KONU KATEGORİLERİ VE ÜRÜNLER:
 ${topicContext || '(Konu tanımlanmamış)'}
+
+═══════════════════════════════════════
+${getSectorPrompt(workspace.industry)}
+═══════════════════════════════════════
 
 ═══════════════════════════════════════
 GÖREVLERİN:

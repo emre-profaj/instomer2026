@@ -88,7 +88,7 @@ export default function Support() {
         scrollToBottom();
     }, [messages]);
 
-        // Socket.io Gerçek Zamanlı Mesaj Dinleyici
+    // Socket.io Gerçek Zamanlı Mesaj Dinleyici
     useEffect(() => {
         const handleNewMessage = (e) => {
             const data = e.detail || e;
@@ -100,19 +100,8 @@ export default function Support() {
             }
         };
 
-        const handleStatusUpdated = (e) => {
-            const data = e.detail || e;
-            if (data?.conversationId === conversation?.id) {
-                setConversation(prev => prev ? { ...prev, status: data.status } : prev);
-            }
-        };
-
         window.addEventListener('websocket:new_message', handleNewMessage);
-        window.addEventListener('websocket:conversation_status_updated', handleStatusUpdated);
-        return () => {
-            window.removeEventListener('websocket:new_message', handleNewMessage);
-            window.removeEventListener('websocket:conversation_status_updated', handleStatusUpdated);
-        };
+        return () => window.removeEventListener('websocket:new_message', handleNewMessage);
     }, [conversation?.id]);
 
     // Hızlı konu çipi seçimi

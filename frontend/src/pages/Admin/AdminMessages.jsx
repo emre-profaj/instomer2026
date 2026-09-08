@@ -1,14 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { MessageSquare, Send, RefreshCw, ChevronDown, Building2, Star, Clock, Search, Paperclip, CheckCircle2, AlertCircle, PlayCircle, XCircle, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { MessageSquare, Send, RefreshCw, ChevronDown, ChevronRight, Building2, Star, Clock } from 'lucide-react';
 import api from '../../services/api';
 import './AdminMessages.css';
-
-const STATUS_CONFIG = {
-    OPEN: { label: 'Açık', color: '#f59e0b', bg: '#fffbeb', icon: AlertCircle },
-    IN_PROGRESS: { label: 'İşlemde', color: '#3b82f6', bg: '#eff6ff', icon: PlayCircle },
-    RESOLVED: { label: 'Çözüldü', color: '#10b981', bg: '#ecfdf5', icon: CheckCircle2 },
-    CLOSED: { label: 'Kapalı', color: '#64748b', bg: '#f8fafc', icon: XCircle }
-};
 
 const AdminMessages = () => {
     const [conversations, setConversations] = useState([]);
@@ -22,21 +15,6 @@ const AdminMessages = () => {
     const [sending, setSending] = useState(false);
     const [broadcasting, setBroadcasting] = useState(false);
     const [showBroadcast, setShowBroadcast] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('ALL');
-    const [updatingStatus, setUpdatingStatus] = useState(false);
-
-    const messagesEndRef = useRef(null);
-    const selectedConvRef = useRef(null);
-    selectedConvRef.current = selectedConv;
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
 
     // Tüm workspace'lerdeki sistem sohbetlerini çek
     const fetchConversations = useCallback(async () => {
@@ -54,7 +32,6 @@ const AdminMessages = () => {
                         id: convId,
                         workspaceName: msg.conversation?.workspace?.name || 'Bilinmeyen',
                         workspaceId: msg.conversation?.workspaceId,
-                        status: msg.conversation?.status || 'OPEN',
                         messages: [],
                         lastMessageAt: msg.createdAt,
                         unreadCount: 0
@@ -73,13 +50,10 @@ const AdminMessages = () => {
                             id: conv.id,
                             workspaceName: conv.workspace?.name || 'Bilinmeyen',
                             workspaceId: conv.workspaceId,
-                            status: conv.status || 'OPEN',
-                            messages: conv.messages || [],
-                            lastMessageAt: conv.lastMessageAt || conv.createdAt,
+                            messages: [],
+                            lastMessageAt: conv.lastMessageAt,
                             unreadCount: conv.unreadCount || 0
                         };
-                    } else {
-                        convMap[conv.id].status = conv.status || convMap[conv.id].status || 'OPEN';
                     }
                 }
             } catch (e) {
@@ -97,76 +71,7 @@ const AdminMessages = () => {
         }
     }, []);
 
-    useEffect(() => { 
-        fetchConversations(); 
-    }, [fetchConversations]);
-
-    // Real-time socket listener
-    useEffect(() => {
-        const handleSuperAdminMessage = (event) => {
-            const data = event.detail;
-            if (!data) return;
-
-            // Eğer şu an açık olan sohbete geldiyse mesaj listesine ekle
-            if (selectedConvRef.current?.id === data.conversationId) {
-                setMessages(prev => {
-                    const alreadyExists = prev.some(m => m.id === data.message?.id);
-                    if (alreadyExists) return prev;
-                    return [...prev, data.message];
-                });
-            }
-
-            // Sohbetler listesini canlı güncelle
-            setConversations(prev => {
-                const index = prev.findIndex(c => c.id === data.conversationId);
-                if (index !== -1) {
-                    const updated = [...prev];
-                    updated[index] = {
-                        ...updated[index],
-                        lastMessageAt: data.message?.createdAt || new Date().toISOString(),
-                        messages: [data.message, ...(updated[index].messages || [])],
-                        status: 'OPEN'
-                    };
-                    return updated.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-                } else {
-                    const newConv = {
-                        id: data.conversationId,
-                        workspaceName: data.workspaceName || 'Yeni Workspace',
-                        workspaceId: data.workspaceId,
-                        status: 'OPEN',
-                        messages: [data.message],
-                        lastMessageAt: data.message?.createdAt || new Date().toISOString(),
-                        unreadCount: 1
-                    };
-                    return [newConv, ...prev];
-                }
-            });
-        };
-
-        const handleStatusUpdated = (event) => {
-            const data = event.detail;
-            if (!data) return;
-
-            setConversations(prev => prev.map(c => {
-                if (c.id === data.conversationId) {
-                    return { ...c, status: data.status };
-                }
-                return c;
-            }));
-
-            if (selectedConvRef.current?.id === data.conversationId) {
-                setSelectedConv(prev => prev ? { ...prev, status: data.status } : prev);
-            }
-        };
-
-        window.addEventListener('websocket:superadmin_support_message', handleSuperAdminMessage);
-        window.addEventListener('websocket:conversation_status_updated', handleStatusUpdated);
-
-        return () => {
-            window.removeEventListener('websocket:superadmin_support_message', handleSuperAdminMessage);
-            window.removeEventListener('websocket:conversation_status_updated', handleStatusUpdated);
-        };
-    }, []);
+    useEffect(() => { fetchConversations(); }, [fetchConversations]);
 
     // Sohbet seçildiğinde tüm mesajları çek
     const selectConversation = async (conv) => {
@@ -175,23 +80,8 @@ const AdminMessages = () => {
             const res = await api.get(`/system/conversation/${conv.id}/messages`);
             setMessages(res.data?.messages || conv.messages || []);
         } catch (e) {
+            // Mesaj endpoint'i yoksa mevcut mesajları kullan
             setMessages(conv.messages || []);
-        }
-    };
-
-    // Talep durumunu güncelle
-    const handleStatusChange = async (newStatus) => {
-        if (!selectedConv || updatingStatus) return;
-        setUpdatingStatus(true);
-        try {
-            await api.patch(`/system/conversation/${selectedConv.id}/status`, { status: newStatus });
-            setSelectedConv(prev => ({ ...prev, status: newStatus }));
-            setConversations(prev => prev.map(c => c.id === selectedConv.id ? { ...c, status: newStatus } : c));
-        } catch (err) {
-            console.error('Status update error:', err);
-            alert('Durum güncellenemedi: ' + (err.response?.data?.error || err.message));
-        } finally {
-            setUpdatingStatus(false);
         }
     };
 
@@ -200,27 +90,13 @@ const AdminMessages = () => {
         if (!replyText.trim() || !selectedConv) return;
         setSending(true);
         try {
-            const res = await api.post(`/system/conversation/${selectedConv.id}/reply`, {
+            await api.post(`/system/conversation/${selectedConv.id}/reply`, {
                 content: replyText.trim()
             });
-            const newMsg = res.data?.message;
-            if (newMsg) {
-                setMessages(prev => [...prev, newMsg]);
-            }
             setReplyText('');
-            // Listeyi hafifçe güncelle
-            setConversations(prev => {
-                const idx = prev.findIndex(c => c.id === selectedConv.id);
-                if (idx !== -1) {
-                    const updated = [...prev];
-                    updated[idx] = {
-                        ...updated[idx],
-                        lastMessageAt: new Date().toISOString()
-                    };
-                    return updated.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-                }
-                return prev;
-            });
+            // Mesajları yenile
+            await selectConversation(selectedConv);
+            fetchConversations();
         } catch (err) {
             console.error('Reply error:', err);
             alert('Yanıt gönderilemedi: ' + (err.response?.data?.error || err.message));
@@ -262,25 +138,14 @@ const AdminMessages = () => {
         return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
     };
 
-    // Filtreleme
-    const filteredConversations = conversations.filter(c => {
-        const matchesSearch = c.workspaceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.messages.some(m => m.content?.toLowerCase().includes(searchTerm.toLowerCase()));
-        const matchesStatus = statusFilter === 'ALL' || (c.status || 'OPEN') === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
-
-    const currentStatusConfig = STATUS_CONFIG[selectedConv?.status || 'OPEN'] || STATUS_CONFIG.OPEN;
-    const StatusIcon = currentStatusConfig.icon;
-
     return (
         <div className="admin-messages-page">
             <div className="admin-messages-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <MessageSquare size={24} style={{ color: '#f59e0b' }} />
                     <div>
-                        <h1>Destek ve Sistem Mesajları</h1>
-                        <p>Firma kullanıcılarından gelen canlı destek talepleri ve sistem duyuruları</p>
+                        <h1>Mesajlar</h1>
+                        <p>Firma kullanıcılarından gelen mesajlar ve duyurular</p>
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -331,78 +196,42 @@ const AdminMessages = () => {
             )}
 
             <div className="admin-messages-body">
-                {/* Sol — sohbet listesi & filtreler */}
+                {/* Sol — sohbet listesi */}
                 <div className="admin-conv-list">
-                    <div className="admin-conv-search-bar">
-                        <div className="search-input-wrapper">
-                            <Search size={14} className="search-icon" />
-                            <input
-                                type="text"
-                                placeholder="Workspace veya mesaj ara..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                className="admin-conv-search-input"
-                            />
-                        </div>
-                        <div className="admin-status-filters">
-                            <button className={`status-pill ${statusFilter === 'ALL' ? 'active' : ''}`} onClick={() => setStatusFilter('ALL')}>
-                                Hepsi ({conversations.length})
-                            </button>
-                            <button className={`status-pill ${statusFilter === 'OPEN' ? 'active' : ''}`} onClick={() => setStatusFilter('OPEN')}>
-                                Açık
-                            </button>
-                            <button className={`status-pill ${statusFilter === 'IN_PROGRESS' ? 'active' : ''}`} onClick={() => setStatusFilter('IN_PROGRESS')}>
-                                İşlemde
-                            </button>
-                            <button className={`status-pill ${statusFilter === 'RESOLVED' ? 'active' : ''}`} onClick={() => setStatusFilter('RESOLVED')}>
-                                Çözüldü
-                            </button>
-                        </div>
-                    </div>
-
                     {loading ? (
                         <div className="admin-conv-empty">
                             <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} />
                             <span>Yükleniyor...</span>
                         </div>
-                    ) : filteredConversations.length === 0 ? (
+                    ) : conversations.length === 0 ? (
                         <div className="admin-conv-empty">
                             <MessageSquare size={24} style={{ color: '#94a3b8' }} />
-                            <span>Kayıt bulunamadı</span>
+                            <span>Henüz mesaj yok</span>
                         </div>
                     ) : (
-                        filteredConversations.map(conv => {
-                            const conf = STATUS_CONFIG[conv.status || 'OPEN'] || STATUS_CONFIG.OPEN;
-                            const lastMsg = conv.messages[0] || conv.messages[conv.messages.length - 1];
-                            return (
-                                <button
-                                    key={conv.id}
-                                    className={`admin-conv-item ${selectedConv?.id === conv.id ? 'active' : ''}`}
-                                    onClick={() => selectConversation(conv)}
-                                >
-                                    <div className="admin-conv-avatar">
-                                        <Building2 size={16} />
+                        conversations.map(conv => (
+                            <button
+                                key={conv.id}
+                                className={`admin-conv-item ${selectedConv?.id === conv.id ? 'active' : ''}`}
+                                onClick={() => selectConversation(conv)}
+                            >
+                                <div className="admin-conv-avatar">
+                                    <Building2 size={16} />
+                                </div>
+                                <div className="admin-conv-info">
+                                    <div className="admin-conv-name">{conv.workspaceName}</div>
+                                    <div className="admin-conv-preview">
+                                        {conv.messages[0]?.content?.substring(0, 50) || 'Mesaj yok'}
                                     </div>
-                                    <div className="admin-conv-info">
-                                        <div className="admin-conv-name-row">
-                                            <span className="admin-conv-name">{conv.workspaceName}</span>
-                                            <span className="conv-status-tag" style={{ color: conf.color, backgroundColor: conf.bg }}>
-                                                {conf.label}
-                                            </span>
-                                        </div>
-                                        <div className="admin-conv-preview">
-                                            {lastMsg?.content?.substring(0, 50) || 'Mesaj yok'}
-                                        </div>
-                                    </div>
-                                    <div className="admin-conv-meta">
-                                        <span className="admin-conv-time">{formatTime(conv.lastMessageAt)}</span>
-                                        {conv.messages.length > 0 && (
-                                            <span className="admin-conv-badge">{conv.messages.length}</span>
-                                        )}
-                                    </div>
-                                </button>
-                            );
-                        })
+                                </div>
+                                <div className="admin-conv-meta">
+                                    <span className="admin-conv-time">{formatTime(conv.lastMessageAt)}</span>
+                                    {conv.messages.length > 0 && (
+                                        <span className="admin-conv-badge">{conv.messages.length}</span>
+                                    )}
+                                </div>
+                            </button>
+                        ))
                     )}
                 </div>
 
@@ -411,99 +240,37 @@ const AdminMessages = () => {
                     {!selectedConv ? (
                         <div className="admin-msg-empty">
                             <Star size={40} style={{ color: '#f59e0b' }} />
-                            <h3>Instomer Destek Masası</h3>
-                            <p>Sol listeden bir firma seçerek gelen destek taleplerini yanıtlayabilir veya durumunu güncelleyebilirsiniz.</p>
+                            <h3>Instomer Destek</h3>
+                            <p>Firma kullanıcılarından gelen mesajları buradan görebilir ve yanıtlayabilirsiniz.</p>
                         </div>
                     ) : (
                         <>
                             <div className="admin-msg-detail-header">
-                                <div className="detail-header-left">
-                                    <div className="detail-avatar">
-                                        <Building2 size={20} />
-                                    </div>
-                                    <div>
-                                        <div className="detail-title-row">
-                                            <h3>{selectedConv.workspaceName}</h3>
-                                            <span className="conv-status-tag-large" style={{ color: currentStatusConfig.color, backgroundColor: currentStatusConfig.bg }}>
-                                                <StatusIcon size={12} />
-                                                {currentStatusConfig.label}
-                                            </span>
-                                        </div>
-                                        <span className="detail-meta">
-                                            Workspace ID: {selectedConv.workspaceId || selectedConv.id} • {messages.length} mesaj
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="detail-header-actions">
-                                    <div className="status-selector-group">
-                                        <span className="selector-label">Durum:</span>
-                                        <select
-                                            className="status-dropdown"
-                                            value={selectedConv.status || 'OPEN'}
-                                            onChange={(e) => handleStatusChange(e.target.value)}
-                                            disabled={updatingStatus}
-                                        >
-                                            <option value="OPEN">🟡 Açık</option>
-                                            <option value="IN_PROGRESS">🔵 İşlemde</option>
-                                            <option value="RESOLVED">🟢 Çözüldü</option>
-                                            <option value="CLOSED">⚪ Kapalı</option>
-                                        </select>
-                                    </div>
-                                </div>
+                                <Building2 size={18} />
+                                <span style={{ fontWeight: 700 }}>{selectedConv.workspaceName}</span>
+                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                    {selectedConv.messages.length} mesaj
+                                </span>
                             </div>
 
                             <div className="admin-msg-list">
-                                {messages.map((msg, i) => {
-                                    const isSystem = msg.isFromContact;
-                                    const isImage = msg.mediaUrl && (msg.messageType === 'IMAGE' || /\.(jpg|jpeg|png|webp|gif)$/i.test(msg.mediaUrl));
-                                    const isFile = msg.mediaUrl && !isImage;
-
-                                    return (
-                                        <div key={msg.id || i} className={`admin-msg-bubble ${isSystem ? 'system' : 'user'}`}>
-                                            <div className="admin-msg-sender">
-                                                {isSystem ? '⭐ Instomer Destek' : `👤 ${msg.sender?.name || 'Firma Kullanıcısı'}`}
-                                            </div>
-
-                                            {isImage && (
-                                                <div className="admin-msg-media-preview">
-                                                    <img
-                                                        src={msg.mediaUrl}
-                                                        alt="Ek"
-                                                        onClick={() => window.open(msg.mediaUrl, '_blank')}
-                                                        className="admin-preview-image"
-                                                    />
-                                                </div>
-                                            )}
-
-                                            {isFile && (
-                                                <a
-                                                    href={msg.mediaUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="admin-msg-attachment-link"
-                                                >
-                                                    <Paperclip size={14} />
-                                                    <span>Ek Dosyayı İndir / Görüntüle</span>
-                                                    <ExternalLink size={12} />
-                                                </a>
-                                            )}
-
-                                            {msg.content && <div className="admin-msg-content">{msg.content}</div>}
-
-                                            <div className="admin-msg-time">
-                                                <Clock size={10} /> {formatTime(msg.createdAt)}
-                                            </div>
+                                {messages.map((msg, i) => (
+                                    <div key={msg.id || i} className={`admin-msg-bubble ${msg.isFromContact ? 'system' : 'user'}`}>
+                                        <div className="admin-msg-sender">
+                                            {msg.isFromContact ? '⭐ Instomer' : `👤 ${msg.sender?.name || 'Kullanıcı'}`}
                                         </div>
-                                    );
-                                })}
-                                <div ref={messagesEndRef} />
+                                        <div className="admin-msg-content">{msg.content}</div>
+                                        <div className="admin-msg-time">
+                                            <Clock size={10} /> {formatTime(msg.createdAt)}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
                             <div className="admin-msg-reply-bar">
                                 <input
                                     type="text"
-                                    placeholder="Firmaya yanıt yazın... (Enter ile gönder)"
+                                    placeholder="Yanıt yazın..."
                                     value={replyText}
                                     onChange={e => setReplyText(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && sendReply()}
@@ -514,7 +281,7 @@ const AdminMessages = () => {
                                     onClick={sendReply}
                                     disabled={sending || !replyText.trim()}
                                 >
-                                    <Send size={14} /> {sending ? '...' : 'Yanıtla'}
+                                    <Send size={14} />
                                 </button>
                             </div>
                         </>

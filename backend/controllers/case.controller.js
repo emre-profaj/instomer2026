@@ -296,6 +296,9 @@ export const getContactCases = async (req, res) => {
                 team: {
                     select: { id: true, name: true, color: true }
                 },
+                branch: {
+                    select: { id: true, name: true }
+                },
                 caseType: {
                     select: { id: true, name: true, color: true, icon: true }
                 }
@@ -466,6 +469,7 @@ export const getCase = async (req, res) => {
                 },
                 assignedTo: { select: { id: true, name: true, avatar: true } },
                 team: { select: { id: true, name: true, color: true } },
+                branch: { select: { id: true, name: true } },
                 contact: { select: { id: true, name: true, fullName: true, phone: true } }
             }
         });
@@ -596,7 +600,10 @@ export const updateCase = async (req, res) => {
 
         const updated = await prisma.case.update({
             where: { id: caseId },
-            data: updateData
+            data: updateData,
+            include: {
+                branch: { select: { id: true, name: true } }
+            }
         });
 
         // CASCADE: title değiştiyse bağlı conversation'ların aiTopic'ini de güncelle
@@ -606,6 +613,15 @@ export const updateCase = async (req, res) => {
                 data: { aiTopic: title.trim() || null }
             });
             console.log(`🔄 [CaseUpdate] Cascaded title → aiTopic for conversations of case ${caseId}`);
+        }
+
+        // CASCADE: branchId değiştiyse bağlı conversation'ların branchId'sini de güncelle
+        if (branchId !== undefined) {
+            await prisma.conversation.updateMany({
+                where: { caseId },
+                data: { branchId: branchId || null }
+            });
+            console.log(`🔄 [CaseUpdate] Cascaded branchId → conversation.branchId for case ${caseId}`);
         }
 
         // CASCADE: assignedToId/assignedTeamId değiştiyse conversation + activities güncelle

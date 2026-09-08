@@ -682,7 +682,18 @@ export const productAPI = {
     create: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/products`, data),
     update: (workspaceId, productId, data) => api.put(`/workspaces/${workspaceId}/products/${productId}`, data),
     delete: (workspaceId, productId) => api.delete(`/workspaces/${workspaceId}/products/${productId}`),
+    bulkDelete: (workspaceId, productIds) => api.post(`/workspaces/${workspaceId}/products/bulk-delete`, { productIds }),
+    bulkUpdate: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/products/bulk-update`, data),
     getGroups: (workspaceId) => api.get(`/workspaces/${workspaceId}/products/groups`)
+};
+
+// WooCommerce REST API Integration
+export const woocommerceAPI = {
+    getConfig: (workspaceId) => api.get(`/workspaces/${workspaceId}/woocommerce/config`),
+    saveConfig: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/woocommerce/config`, data),
+    testConnection: (workspaceId, credentials) => api.post(`/workspaces/${workspaceId}/woocommerce/test`, credentials || {}),
+    pushAll: (workspaceId, productIds) => api.post(`/workspaces/${workspaceId}/woocommerce/sync/push`, { productIds }),
+    pullAll: (workspaceId) => api.post(`/workspaces/${workspaceId}/woocommerce/sync/pull`)
 };
 
 // Notification API

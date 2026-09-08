@@ -12,6 +12,9 @@ export const updateTopicCategory = (workspaceId, categoryId, data) =>
 export const deleteTopicCategory = (workspaceId, categoryId) =>
     api.delete(`/topic-categories/${workspaceId}/${categoryId}`);
 
+export const bulkDeleteTopicCategories = (workspaceId, categoryIds) =>
+    api.post(`/topic-categories/${workspaceId}/bulk-delete`, { categoryIds });
+
 export const reorderTopicCategories = (workspaceId, orderedIds) =>
     api.put(`/topic-categories/${workspaceId}/reorder`, { orderedIds });
 

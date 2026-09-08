@@ -97,88 +97,24 @@
 /* Body — 2 panel */
 .admin-messages-body {
     display: flex;
-    height: calc(100vh - 145px);
+    height: calc(100vh - 150px);
     overflow: hidden;
 }
 
-/* Sol — sohbet listesi & search */
+/* Sol — sohbet listesi */
 .admin-conv-list {
-    width: 340px;
-    min-width: 300px;
+    width: 320px;
+    min-width: 280px;
     border-right: 1px solid #e2e8f0;
     overflow-y: auto;
     background: #fafafa;
-    display: flex;
-    flex-direction: column;
 }
-
-.admin-conv-search-bar {
-    padding: 12px 14px;
-    background: #fff;
-    border-bottom: 1px solid #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.search-input-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-.search-input-wrapper .search-icon {
-    position: absolute;
-    left: 10px;
-    color: #94a3b8;
-    pointer-events: none;
-}
-.admin-conv-search-input {
-    width: 100%;
-    padding: 7px 10px 7px 30px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 0.78rem;
-    outline: none;
-    background: #f8fafc;
-    transition: all 0.15s;
-}
-.admin-conv-search-input:focus {
-    border-color: #f59e0b;
-    background: #fff;
-}
-
-.admin-status-filters {
-    display: flex;
-    gap: 4px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-}
-.status-pill {
-    padding: 3px 8px;
-    border-radius: 12px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    border: 1px solid #e2e8f0;
-    background: #fff;
-    color: #64748b;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s;
-}
-.status-pill:hover {
-    background: #f1f5f9;
-}
-.status-pill.active {
-    background: #1e293b;
-    color: #fff;
-    border-color: #1e293b;
-}
-
 .admin-conv-item {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 12px 14px;
+    padding: 12px 16px;
     border: none;
     border-bottom: 1px solid #f1f5f9;
     background: transparent;
@@ -203,13 +139,6 @@
     flex: 1;
     min-width: 0;
 }
-.admin-conv-name-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    margin-bottom: 2px;
-}
 .admin-conv-name {
     font-size: 0.82rem;
     font-weight: 700;
@@ -218,19 +147,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.conv-status-tag {
-    font-size: 0.62rem;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 10px;
-    white-space: nowrap;
-}
 .admin-conv-preview {
     font-size: 0.7rem;
     color: #94a3b8;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    margin-top: 2px;
 }
 .admin-conv-meta {
     display: flex;
@@ -279,89 +202,17 @@
     flex: 1;
     gap: 8px;
     color: #94a3b8;
-    text-align: center;
-    padding: 24px;
 }
 .admin-msg-empty h3 { color: #1e293b; margin: 0; }
-.admin-msg-empty p { font-size: 0.82rem; margin: 0; max-width: 380px; }
+.admin-msg-empty p { font-size: 0.82rem; margin: 0; }
 
 .admin-msg-detail-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
-}
-.detail-header-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-.detail-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    background: #e2e8f0;
-    color: #475569;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.detail-title-row {
-    display: flex;
-    align-items: center;
     gap: 8px;
-}
-.detail-title-row h3 {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #0f172a;
-}
-.conv-status-tag-large {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 12px;
-}
-.detail-meta {
-    font-size: 0.72rem;
-    color: #94a3b8;
-    display: block;
-    margin-top: 2px;
-}
-.detail-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-.status-selector-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.selector-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #64748b;
-}
-.status-dropdown {
-    padding: 5px 10px;
-    border-radius: 6px;
-    border: 1px solid #cbd5e1;
-    font-size: 0.78rem;
-    font-weight: 600;
-    background: #fff;
-    color: #1e293b;
-    outline: none;
-    cursor: pointer;
-}
-.status-dropdown:focus {
-    border-color: #f59e0b;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fafafa;
 }
 
 .admin-msg-list {
@@ -373,23 +224,23 @@
     gap: 10px;
 }
 .admin-msg-bubble {
-    max-width: 72%;
+    max-width: 70%;
     padding: 10px 14px;
     border-radius: 14px;
     font-size: 0.82rem;
     line-height: 1.5;
 }
 .admin-msg-bubble.system {
-    align-self: flex-end;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
-    border-bottom-right-radius: 4px;
-}
-.admin-msg-bubble.user {
     align-self: flex-start;
     background: linear-gradient(135deg, #fffbeb, #fef3c7);
     border: 1px solid #fcd34d;
     border-bottom-left-radius: 4px;
+}
+.admin-msg-bubble.user {
+    align-self: flex-end;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-bottom-right-radius: 4px;
 }
 .admin-msg-sender {
     font-size: 0.68rem;
@@ -397,7 +248,7 @@
     color: #92400e;
     margin-bottom: 4px;
 }
-.admin-msg-bubble.system .admin-msg-sender { color: #475569; }
+.admin-msg-bubble.user .admin-msg-sender { color: #475569; }
 .admin-msg-content {
     white-space: pre-wrap;
     word-break: break-word;
@@ -409,40 +260,6 @@
     font-size: 0.6rem;
     color: #94a3b8;
     margin-top: 4px;
-}
-
-.admin-msg-media-preview {
-    margin-bottom: 8px;
-}
-.admin-preview-image {
-    max-width: 220px;
-    max-height: 160px;
-    border-radius: 8px;
-    cursor: pointer;
-    border: 1px solid #cbd5e1;
-    object-fit: cover;
-    transition: transform 0.15s;
-}
-.admin-preview-image:hover {
-    transform: scale(1.02);
-}
-.admin-msg-attachment-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background: #fff;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    color: #2563eb;
-    text-decoration: none;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-bottom: 6px;
-}
-.admin-msg-attachment-link:hover {
-    background: #f8fafc;
-    border-color: #94a3b8;
 }
 
 /* Reply bar */

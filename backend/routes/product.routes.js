@@ -6,6 +6,8 @@ import {
     createProduct,
     updateProduct,
     deleteProduct,
+    bulkDeleteProducts,
+    bulkUpdateProducts,
     getProductGroups,
     getProductsByBranch
 } from '../controllers/product.controller.js';
@@ -19,6 +21,8 @@ router.use(authenticateJWT);
 router.get('/:workspaceId/products', requireWorkspaceAccess, getProducts);
 router.get('/:workspaceId/products/groups', requireWorkspaceAccess, getProductGroups);
 router.get('/:workspaceId/products/branch/:branchId', requireWorkspaceAccess, getProductsByBranch);
+router.post('/:workspaceId/products/bulk-delete', requireWorkspaceAccess, bulkDeleteProducts);
+router.post('/:workspaceId/products/bulk-update', requireWorkspaceAccess, bulkUpdateProducts);
 router.get('/:workspaceId/products/:productId', requireWorkspaceAccess, getProduct);
 router.post('/:workspaceId/products', requireWorkspaceAccess, createProduct);
 router.put('/:workspaceId/products/:productId', requireWorkspaceAccess, updateProduct);

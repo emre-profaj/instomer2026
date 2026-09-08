@@ -321,11 +321,19 @@ export const getConversations = async (req, res) => {
                         caseNumber: true,
                         status: true,
                         title: true,
+                        branchId: true,
+                        branch: { select: { id: true, name: true } },
                         assignedToId: true,
                         assignedTeamId: true,
                         funnelType: true,
                         funnelStageId: true,
                         assignedTo: { select: { id: true, name: true } }
+                    }
+                },
+                branch: {
+                    select: {
+                        id: true,
+                        name: true
                     }
                 },
                 topicCategory: {
@@ -591,11 +599,19 @@ export const getConversation = async (req, res) => {
                         caseNumber: true,
                         status: true,
                         title: true,
+                        branchId: true,
+                        branch: { select: { id: true, name: true } },
                         assignedToId: true,
                         assignedTeamId: true,
                         funnelType: true,
                         funnelStageId: true,
                         assignedTo: { select: { id: true, name: true } }
+                    }
+                },
+                branch: {
+                    select: {
+                        id: true,
+                        name: true
                     }
                 },
                 topicCategory: {

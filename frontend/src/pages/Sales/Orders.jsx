@@ -141,7 +141,7 @@ const Orders = () => {
 
     const fetchCatalogProducts = async () => {
         try {
-            const res = await productAPI.getAll(currentWorkspace.id, { limit: 500 });
+            const res = await productAPI.getAll(currentWorkspace.id, { isGroup: false, limit: 500 });
             setCatalogProducts(res.data.products || []);
         } catch (err) {
             console.error('Failed to fetch catalog products:', err);

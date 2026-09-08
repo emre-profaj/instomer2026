@@ -4,12 +4,28 @@ import prisma from '../lib/prisma.js';
 export const getProducts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { groupName, isActive, search, page = 1, limit = 50 } = req.query;
+        const {
+            groupName,
+            isActive,
+            search,
+            page = 1,
+            limit = 50,
+            offset,
+            isGroup,
+            categoryId,
+            parentId
+        } = req.query;
 
         const where = { workspaceId };
 
         if (groupName) where.groupName = groupName;
-        if (isActive !== undefined) where.isActive = isActive === 'true';
+        if (isActive !== undefined) where.isActive = isActive === 'true' || isActive === true;
+        if (isGroup !== undefined) {
+            where.isGroup = isGroup === 'true' || isGroup === true;
+        }
+        if (categoryId) where.categoryId = categoryId;
+        if (parentId) where.parentId = parentId;
+
         if (search) {
             where.OR = [
                 { name: { contains: search, mode: 'insensitive' } },
@@ -17,7 +33,8 @@ export const getProducts = async (req, res) => {
             ];
         }
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const take = parseInt(limit);
+        const skip = offset !== undefined ? parseInt(offset) : (parseInt(page) - 1) * take;
 
         const [products, total] = await Promise.all([
             prisma.product.findMany({
@@ -30,19 +47,21 @@ export const getProducts = async (req, res) => {
                     productBranches: true
                 },
                 skip,
-                take: parseInt(limit)
+                take
             }),
             prisma.product.count({ where })
         ]);
+
+        const currentPage = page ? parseInt(page) : (offset ? Math.floor(parseInt(offset) / take) + 1 : 1);
 
         res.json({
             success: true,
             products,
             pagination: {
                 total,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                totalPages: Math.ceil(total / parseInt(limit))
+                page: currentPage,
+                limit: take,
+                totalPages: Math.ceil(total / take)
             }
         });
     } catch (error) {
@@ -88,7 +107,7 @@ export const createProduct = async (req, res) => {
             price, priceUSD, priceEUR, priceGBP,
             discountedPrice, tax1Type, tax1Rate,
             tax2Type, tax2Rate, isActive, aiContext, features,
-            parentId, isGroup
+            parentId, isGroup, productBranches
         } = req.body;
 
         if (!name) {
@@ -114,7 +133,7 @@ export const createProduct = async (req, res) => {
                 tax2Rate: tax2Rate ? parseFloat(tax2Rate) : 0,
                 isActive: isActive !== undefined ? isActive : true,
                 parentId: parentId || null,
-                isGroup: isGroup || false,
+                isGroup: isGroup === true || isGroup === 'true',
                 aiContext: aiContext || null,
                 ...(features && Array.isArray(features) && features.length > 0 && {
                     features: {
@@ -123,10 +142,20 @@ export const createProduct = async (req, res) => {
                             featureValue: f.featureValue
                         }))
                     }
+                }),
+                ...(productBranches && Array.isArray(productBranches) && productBranches.length > 0 && {
+                    productBranches: {
+                        create: productBranches.map(pb => ({
+                            branchId: pb.branchId,
+                            price: pb.price !== undefined && pb.price !== null && pb.price !== '' ? parseFloat(pb.price) : null,
+                            isAvailable: pb.isAvailable !== undefined ? pb.isAvailable : true
+                        }))
+                    }
                 })
             },
             include: {
-                features: true
+                features: true,
+                productBranches: true
             }
         });
 
@@ -169,7 +198,7 @@ export const updateProduct = async (req, res) => {
                 updateData[field] = req.body[field] !== null ? parseFloat(req.body[field]) : null;
             }
         });
-        if (req.body.isGroup !== undefined) updateData.isGroup = req.body.isGroup;
+        if (req.body.isGroup !== undefined) updateData.isGroup = req.body.isGroup === true || req.body.isGroup === 'true';
 
         const product = await prisma.product.update({
             where: { id: productId },
@@ -208,7 +237,7 @@ export const updateProduct = async (req, res) => {
                     data: req.body.productBranches.map(pb => ({
                         productId,
                         branchId: pb.branchId,
-                        price: pb.price !== undefined && pb.price !== null ? parseFloat(pb.price) : null,
+                        price: pb.price !== undefined && pb.price !== null && pb.price !== '' ? parseFloat(pb.price) : null,
                         isAvailable: pb.isAvailable !== undefined ? pb.isAvailable : true
                     }))
                 });
@@ -247,6 +276,68 @@ export const deleteProduct = async (req, res) => {
     } catch (error) {
         console.error('deleteProduct error:', error);
         res.status(500).json({ success: false, error: 'Ürün silinirken hata oluştu' });
+    }
+};
+
+// ─── Toplu ürün sil ──────────────────────────────────────────────
+export const bulkDeleteProducts = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { productIds } = req.body;
+
+        if (!Array.isArray(productIds) || productIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'Silinecek ürünler belirtilmedi' });
+        }
+
+        const deleteResult = await prisma.product.deleteMany({
+            where: {
+                id: { in: productIds },
+                workspaceId
+            }
+        });
+
+        res.json({
+            success: true,
+            message: `${deleteResult.count} ürün başarıyla silindi`,
+            count: deleteResult.count
+        });
+    } catch (error) {
+        console.error('bulkDeleteProducts error:', error);
+        res.status(500).json({ success: false, error: 'Toplu silme sırasında hata oluştu' });
+    }
+};
+
+// ─── Toplu ürün güncelle ────────────────────────────────────────
+export const bulkUpdateProducts = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { productIds, categoryId, parentId, isActive } = req.body;
+
+        if (!Array.isArray(productIds) || productIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'Güncellenecek ürünler belirtilmedi' });
+        }
+
+        const updateData = {};
+        if (categoryId !== undefined) updateData.categoryId = categoryId || null;
+        if (parentId !== undefined) updateData.parentId = parentId || null;
+        if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+
+        const updateResult = await prisma.product.updateMany({
+            where: {
+                id: { in: productIds },
+                workspaceId
+            },
+            data: updateData
+        });
+
+        res.json({
+            success: true,
+            message: `${updateResult.count} ürün başarıyla güncellendi`,
+            count: updateResult.count
+        });
+    } catch (error) {
+        console.error('bulkUpdateProducts error:', error);
+        res.status(500).json({ success: false, error: 'Toplu güncelleme sırasında hata oluştu' });
     }
 };
 
@@ -293,7 +384,7 @@ export const getProductsByBranch = async (req, res) => {
         const { workspaceId, branchId } = req.params;
 
         const products = await prisma.product.findMany({
-            where: { workspaceId },
+            where: { workspaceId, isGroup: false },
             include: {
                 category: true,
                 productBranches: {

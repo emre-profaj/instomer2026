@@ -206,6 +206,9 @@ model Workspace {
   // AI Birleşik Çağrı (Sınıflandırma + Sohbet tek çağrıda)
   useUnifiedAI Boolean @default(false) // true = tek AI çağrısı, false = ayrı classifier + chat
 
+  // Sektör / Terminoloji (SPA, HEALTHCARE, REAL_ESTATE, GENERAL)
+  industry String @default("GENERAL")
+
   defaultFunnelId String? // Varsayılan satış akışı ID'si
 
   agentDataVisibility String             @default("ALL") // SELF, TEAM, ALL

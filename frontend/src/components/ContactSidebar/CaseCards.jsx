@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { caseAPI, funnelAPI, conversationAPI, contactAPI, productAPI } from '../../services/api';
-import { Briefcase, Plus, ChevronDown, ChevronRight, User, Users, Loader, X, Check, AlertTriangle } from 'lucide-react';
+import { caseAPI, funnelAPI, conversationAPI, contactAPI, productAPI, appointmentConfigAPI } from '../../services/api';
+import { Briefcase, Plus, ChevronDown, ChevronRight, User, Users, Loader, X, Check, AlertTriangle, Building2 } from 'lucide-react';
 
 const STATUS_LABELS = {
     ACTIVE: { label: 'Aktif', color: '#3b82f6', bg: '#eff6ff' },
@@ -60,6 +60,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [inlineCreating, setInlineCreating] = useState(false);
     const [showCaseSwitch, setShowCaseSwitch] = useState(false);
     const [categories, setCategories] = useState([]);
+    const [branches, setBranches] = useState([]);
 
     // Ürün Seçici State
     const [catalogProducts, setCatalogProducts] = useState([]);
@@ -80,17 +81,25 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         } catch (e) { /* opsiyonel */ }
     };
 
+    const loadBranches = async () => {
+        try {
+            const res = await appointmentConfigAPI.getBranches(workspaceId);
+            setBranches(res.data?.branches || []);
+        } catch (e) { /* opsiyonel */ }
+    };
+
     useEffect(() => {
         if (workspaceId && contactId) {
             fetchCases();
             loadFunnels();
             loadCategories();
+            loadBranches();
         }
     }, [workspaceId, contactId]);
 
     useEffect(() => {
         if (workspaceId) {
-            productAPI.getAll(workspaceId, { limit: 500 }).then(res => {
+            productAPI.getAll(workspaceId, { isGroup: false, limit: 500 }).then(res => {
                 setCatalogProducts(res.data?.products || res.data || []);
             }).catch(() => {});
         }
@@ -228,6 +237,8 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                         leadTemperature: linkedCase.leadTemperature ?? null,
                         products: linkedCase.products || null,
                         categoryId: linkedCase.categoryId || null,
+                        branchId: linkedCase.branchId || null,
+                        branch: linkedCase.branch || null,
                         closingStages,
                         openStages,
                     });
@@ -518,9 +529,11 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                 leadTemperature: displayCase.leadTemperature ?? null,
                 products: displayCase.products || null,
                 categoryId: displayCase.categoryId || null,
+                branchId: displayCase.branchId || null,
+                branch: displayCase.branch || null,
             });
         }
-    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title, displayCase?.assignedToId, displayCase?.assignedTeamId, displayCase?.funnelType, displayCase?.funnelStageId, displayCase?.products]);
+    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title, displayCase?.assignedToId, displayCase?.assignedTeamId, displayCase?.funnelType, displayCase?.funnelStageId, displayCase?.products, displayCase?.branchId]);
 
     if (loading) {
         if (showOnly === 'actions') return null;
@@ -712,6 +725,32 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 <option value="">📁 Kategori seç...</option>
                                 {categories.map(cat => (
                                     <option key={cat.id} value={cat.id}>{cat.icon || '📁'} {cat.name}</option>
+                                ))}
+                            </select>
+                        )}
+
+                        {/* Şube Seçimi */}
+                        {!showOnly && (
+                            <select
+                                value={displayCase.branchId || ''}
+                                onChange={async (e) => {
+                                    try {
+                                        await caseAPI.update(workspaceId, displayCase.id, { branchId: e.target.value || null });
+                                        fetchCases();
+                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                    } catch (err) { console.error('Şube güncelleme hatası:', err); }
+                                }}
+                                style={{
+                                    width: '100%', padding: '4px 8px', fontSize: '0.72rem',
+                                    border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
+                                    color: displayCase.branchId ? '#16a34a' : '#9ca3af',
+                                    background: displayCase.branchId ? '#f0fdf4' : '#fff', outline: 'none',
+                                    marginBottom: 4
+                                }}
+                            >
+                                <option value="">🏢 Şube seç...</option>
+                                {branches.map(b => (
+                                    <option key={b.id} value={b.id}>🏢 {b.name}</option>
                                 ))}
                             </select>
                         )}
@@ -1075,6 +1114,16 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         <span>📁</span> {categories.find(cat => cat.id === c.categoryId)?.name}
                                     </div>
                                 )}
+                                {(c.branch || branches?.find(b => b.id === c.branchId)) && (
+                                    <div style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                        padding: '2px 6px', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                        fontSize: '10px', fontWeight: 600, color: '#16a34a', whiteSpace: 'nowrap',
+                                        marginBottom: 6, marginRight: 4
+                                    }}>
+                                        <Building2 size={10} /> {c.branch?.name || branches?.find(b => b.id === c.branchId)?.name}
+                                    </div>
+                                )}
                                 {/* Ürün Badgeleri */}
                                 {c.products && (typeof c.products === 'string' ? JSON.parse(c.products) : c.products).map((p, i) => (
                                     <div key={i} style={{
@@ -1242,6 +1291,30 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     <option value="">📁 Kategori seç...</option>
                                     {categories.map(cat => (
                                         <option key={cat.id} value={cat.id}>{cat.icon || '📁'} {cat.name}</option>
+                                    ))}
+                                </select>
+
+                                {/* Şube Seçimi */}
+                                <select
+                                    value={c.branchId || ''}
+                                    onChange={async (e) => {
+                                        try {
+                                            await caseAPI.update(workspaceId, c.id, { branchId: e.target.value || null });
+                                            fetchCases();
+                                            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                        } catch (err) { console.error('Şube güncelleme hatası:', err); }
+                                    }}
+                                    style={{
+                                        width: '100%', padding: '4px 8px', fontSize: '0.75rem',
+                                        border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
+                                        color: c.branchId ? '#16a34a' : '#9ca3af',
+                                        background: c.branchId ? '#f0fdf4' : '#fff', outline: 'none',
+                                        marginTop: 4, marginBottom: 6
+                                    }}
+                                >
+                                    <option value="">🏢 Şube seç...</option>
+                                    {branches.map(b => (
+                                        <option key={b.id} value={b.id}>🏢 {b.name}</option>
                                     ))}
                                 </select>
 
@@ -1434,6 +1507,16 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                             <span>📁</span> {categories.find(cat => cat.id === c.categoryId)?.name}
                                         </div>
                                     )}
+                                    {(c.branch || branches?.find(b => b.id === c.branchId)) && (
+                                        <div style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '2px 6px', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                            fontSize: '10px', fontWeight: 600, color: '#16a34a', whiteSpace: 'nowrap',
+                                            marginBottom: 6, marginRight: 4
+                                        }}>
+                                            <Building2 size={10} /> {c.branch?.name || branches?.find(b => b.id === c.branchId)?.name}
+                                        </div>
+                                    )}
                                     {/* Ürün Badgeleri */}
                                     {c.products && (typeof c.products === 'string' ? JSON.parse(c.products) : c.products).map((p, i) => (
                                         <div key={i} style={{
@@ -1511,6 +1594,16 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                                 marginBottom: 4, marginRight: 4
                                             }}>
                                                 <span>📁</span> {categories.find(cat => cat.id === c.categoryId)?.name}
+                                            </div>
+                                        )}
+                                        {(c.branch || branches?.find(b => b.id === c.branchId)) && (
+                                            <div style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '2px 6px', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                                fontSize: '10px', fontWeight: 600, color: '#16a34a', whiteSpace: 'nowrap',
+                                                marginBottom: 4, marginRight: 4
+                                            }}>
+                                                <Building2 size={10} /> {c.branch?.name || branches?.find(b => b.id === c.branchId)?.name}
                                             </div>
                                         )}
                                         {/* Ürün Badgeleri */}

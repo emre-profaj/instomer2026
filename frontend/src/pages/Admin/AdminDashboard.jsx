@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { adminAPI, companyAPI } from '../../services/api';
+import { SECTORS, getSectorLabels } from '../../utils/sectorLabels';
 import './AdminDashboard.css';
 import {
     Users,
@@ -12,15 +13,12 @@ import {
     Search,
     ArrowLeft,
     Plus,
-    Building2,
     UserPlus,
     Edit2,
     ChevronDown,
     ChevronRight,
     ExternalLink,
-    Briefcase,
-    ToggleLeft,
-    ToggleRight
+    Briefcase
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -96,9 +94,9 @@ const AdminDashboard = () => {
     const [isEditAiLimitModalOpen, setIsEditAiLimitModalOpen] = useState(false);
     const [aiLimitForm, setAiLimitForm] = useState({ dailyAiChatLimit: 50, aiSubscriptionType: 'FREE' });
 
-    // Modül Toggle States
-    const [togglingRealEstate, setTogglingRealEstate] = useState(false);
-    const [togglingAppointment, setTogglingAppointment] = useState(false);
+    // Sektör Değiştirme States
+    const [updatingIndustry, setUpdatingIndustry] = useState(false);
+    const [industrySuccessMsg, setIndustrySuccessMsg] = useState('');
 
 
     useEffect(() => {
@@ -362,34 +360,19 @@ const AdminDashboard = () => {
         navigate('/');
     };
 
-    // Gayrimenkul Modülü toggle
-    const handleToggleRealEstate = async (currentEnabled) => {
-        if (togglingRealEstate) return;
-        const newValue = !currentEnabled;
-        setTogglingRealEstate(true);
+    // Sektör ve Terminoloji Değiştir
+    const handleIndustryChange = async (newIndustry) => {
+        if (updatingIndustry) return;
+        setUpdatingIndustry(true);
         try {
-            await adminAPI.toggleRealEstateModule(workspaceId, newValue);
-            // Workspace state'ini güncelle
-            setSelectedWorkspace(prev => ({ ...prev, realEstateEnabled: newValue }));
+            await adminAPI.updateWorkspace(workspaceId, { industry: newIndustry });
+            setSelectedWorkspace(prev => ({ ...prev, industry: newIndustry }));
+            setIndustrySuccessMsg('Sektör ve terminoloji başarıyla güncellendi!');
+            setTimeout(() => setIndustrySuccessMsg(''), 3500);
         } catch (error) {
-            alert('Modül durumu güncellenemedi: ' + (error.response?.data?.error || error.message));
+            alert('Sektör güncellenemedi: ' + (error.response?.data?.error || error.message));
         } finally {
-            setTogglingRealEstate(false);
-        }
-    };
-
-    // Randevu Modülü toggle
-    const handleToggleAppointment = async (currentEnabled) => {
-        if (togglingAppointment) return;
-        const newValue = !currentEnabled;
-        setTogglingAppointment(true);
-        try {
-            await adminAPI.toggleAppointmentModule(workspaceId, newValue);
-            setSelectedWorkspace(prev => ({ ...prev, appointmentEnabled: newValue }));
-        } catch (error) {
-            alert('Randevu modülü güncellenemedi: ' + (error.response?.data?.error || error.message));
-        } finally {
-            setTogglingAppointment(false);
+            setUpdatingIndustry(false);
         }
     };
 
@@ -555,109 +538,78 @@ const AdminDashboard = () => {
                     </div>
                 )}
 
-                {/* Modül Erişim Kontrolleri */}
+                {/* Sektör & Terminoloji Yapılandırması */}
                 <div className="ai-usage-card" style={{ marginTop: '16px' }}>
-                    <div className="ai-usage-header" style={{ marginBottom: 0 }}>
-                        <h3>🏢 Modül Erişim Kontrolleri</h3>
-                        <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>SuperAdmin tarafından yönetilir</span>
+                    <div className="ai-usage-header" style={{ marginBottom: '12px' }}>
+                        <div>
+                            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                                🏷️ Sektör & Terminoloji Yapılandırması
+                            </h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                Bu panelin sektörünü belirleyin. Ürün kataloğu sekmeleri, butonlar ve AI soru ağacı bu sektöre göre otomatik uyarlanır.
+                            </p>
+                        </div>
+                        {industrySuccessMsg && (
+                            <span style={{ fontSize: '0.8125rem', color: '#16a34a', background: '#dcfce7', padding: '4px 12px', borderRadius: '6px', fontWeight: 600 }}>
+                                {industrySuccessMsg}
+                            </span>
+                        )}
                     </div>
-                    <div style={{ marginTop: '16px' }}>
-                        {/* Gayrimenkul Toggle */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '14px 0',
-                            borderBottom: '1px solid var(--border-color, #e5e7eb)'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{
-                                    width: 40, height: 40, borderRadius: 10,
-                                    background: selectedWorkspace.realEstateEnabled
-                                        ? 'linear-gradient(135deg, #1a5276, #2980b9)'
-                                        : '#f3f4f6',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    transition: 'background 0.2s'
-                                }}>
-                                    <Building2 size={18} color={selectedWorkspace.realEstateEnabled ? '#fff' : '#9ca3af'} />
-                                </div>
-                                <div>
-                                    <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827' }}>
-                                        Gayrimenkul Teklif Modülü
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                        gap: '12px',
+                        marginTop: '12px'
+                    }}>
+                        {Object.values(SECTORS).map((sec) => {
+                            const isSelected = (selectedWorkspace.industry || 'GENERAL').toUpperCase() === sec.id;
+                            return (
+                                <div
+                                    key={sec.id}
+                                    onClick={() => !updatingIndustry && handleIndustryChange(sec.id)}
+                                    style={{
+                                        padding: '14px',
+                                        borderRadius: '10px',
+                                        border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
+                                        background: isSelected ? '#f5f3ff' : '#fff',
+                                        cursor: updatingIndustry ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '20px' }}>{sec.icon}</span>
+                                            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isSelected ? '#4338ca' : '#1e293b' }}>
+                                                {sec.name}
+                                            </span>
+                                        </div>
+                                        {isSelected && (
+                                            <span style={{
+                                                background: '#6366f1', color: '#fff', fontSize: '0.65rem',
+                                                padding: '2px 8px', borderRadius: '12px', fontWeight: 700
+                                            }}>
+                                                Seçili
+                                            </span>
+                                        )}
                                     </div>
-                                    <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: 2 }}>
-                                        {selectedWorkspace.realEstateEnabled
-                                            ? 'Aktif — Firma bu modülü kullanabilir'
-                                            : 'Pasif — Firma bu modülü göremez'}
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                                        {sec.description}
                                     </div>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => handleToggleRealEstate(selectedWorkspace.realEstateEnabled)}
-                                disabled={togglingRealEstate}
-                                style={{
-                                    background: 'none', border: 'none', cursor: togglingRealEstate ? 'not-allowed' : 'pointer',
-                                    opacity: togglingRealEstate ? 0.5 : 1,
-                                    display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '8px 16px', borderRadius: 8,
-                                    backgroundColor: selectedWorkspace.realEstateEnabled ? '#dbeafe' : '#f3f4f6',
-                                    color: selectedWorkspace.realEstateEnabled ? '#1d4ed8' : '#6b7280',
-                                    fontSize: '0.875rem', fontWeight: 600,
-                                    transition: 'all 0.2s ease'
-                                }}
-                            >
-                                {selectedWorkspace.realEstateEnabled
-                                    ? <><ToggleRight size={20} /> Aktif</>
-                                    : <><ToggleLeft size={20} /> Pasif</>}
-                            </button>
-                        </div>
-                        {/* Randevu Modülü */}
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '16px', borderRadius: 12,
-                            background: selectedWorkspace.appointmentEnabled !== false ? '#f0fdf4' : '#f9fafb',
-                            border: `1.5px solid ${selectedWorkspace.appointmentEnabled !== false ? '#86efac' : '#e5e7eb'}`,
-                            transition: 'all 0.2s ease'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <div style={{
-                                    width: 40, height: 40, borderRadius: 10,
-                                    background: selectedWorkspace.appointmentEnabled !== false ? '#22c55e' : '#e5e7eb',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    transition: 'background 0.2s'
-                                }}>
-                                    <span style={{ fontSize: 18 }}>🏥</span>
-                                </div>
-                                <div>
-                                    <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827' }}>
-                                        Randevu Modülü
-                                    </div>
-                                    <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: 2 }}>
-                                        {selectedWorkspace.appointmentEnabled !== false
-                                            ? 'Aktif — Bot randevu verebilir'
-                                            : 'Pasif — Bot randevu akışı devre dışı'}
+                                    <div style={{
+                                        marginTop: '8px', padding: '8px', background: isSelected ? '#ede9fe' : '#f8fafc',
+                                        borderRadius: '6px', fontSize: '0.73rem', display: 'flex', flexDirection: 'column', gap: '3px'
+                                    }}>
+                                        <div><strong>1. Kademe:</strong> {sec.categoriesTab}</div>
+                                        <div><strong>2. Kademe:</strong> {sec.productGroupsTab}</div>
+                                        <div><strong>3. Kademe:</strong> {sec.productsTab}</div>
                                     </div>
                                 </div>
-                            </div>
-                            <button
-                                onClick={() => handleToggleAppointment(selectedWorkspace.appointmentEnabled !== false)}
-                                disabled={togglingAppointment}
-                                style={{
-                                    background: 'none', border: 'none', cursor: togglingAppointment ? 'not-allowed' : 'pointer',
-                                    opacity: togglingAppointment ? 0.5 : 1,
-                                    display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '8px 16px', borderRadius: 8,
-                                    backgroundColor: selectedWorkspace.appointmentEnabled !== false ? '#dcfce7' : '#f3f4f6',
-                                    color: selectedWorkspace.appointmentEnabled !== false ? '#15803d' : '#6b7280',
-                                    fontSize: '0.875rem', fontWeight: 600,
-                                    transition: 'all 0.2s ease'
-                                }}
-                            >
-                                {selectedWorkspace.appointmentEnabled !== false
-                                    ? <><ToggleRight size={20} /> Aktif</>
-                                    : <><ToggleLeft size={20} /> Pasif</>}
-                            </button>
-                        </div>
+                            );
+                        })}
                     </div>
                 </div>
 

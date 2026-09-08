@@ -12,6 +12,7 @@ import { hasProfanity } from '../utils/profanityFilter.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { mergeContacts } from '../services/contactMerge.service.js';
 import { generateCaseNumber } from './case.controller.js';
+import { getSectorPrompt } from '../utils/sectorPrompt.js';
 
 
 // Lock to prevent duplicate AI replies for same conversation
@@ -611,16 +612,17 @@ ${chatLog}
     }
 };
 
-// Update conversation analysis (topic/summary) - for manual edits
+// Update conversation analysis (topic/summary/category/branch) - for manual edits
 export const updateConversationAnalysis = async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const { topic, summary, topicCategoryId } = req.body;
+        const { topic, summary, topicCategoryId, branchId } = req.body;
 
         const data = {};
         if (topic !== undefined) data.aiTopic = topic || null;
         if (summary !== undefined) data.aiSummary = summary || null;
         if (topicCategoryId !== undefined) data.topicCategoryId = topicCategoryId || null;
+        if (branchId !== undefined) data.branchId = branchId || null;
 
         const updated = await prisma.conversation.update({
             where: { id: conversationId },
@@ -628,12 +630,15 @@ export const updateConversationAnalysis = async (req, res) => {
             include: {
                 topicCategory: {
                     select: { id: true, name: true, icon: true, color: true }
+                },
+                branch: {
+                    select: { id: true, name: true }
                 }
             }
         });
 
         console.log(`✅ Updated AI analysis for conversation ${conversationId}`);
-        res.json({ success: true, topic: updated.aiTopic, summary: updated.aiSummary, topicCategory: updated.topicCategory });
+        res.json({ success: true, topic: updated.aiTopic, summary: updated.aiSummary, topicCategory: updated.topicCategory, branch: updated.branch, branchId: updated.branchId });
     } catch (error) {
         console.error('Update analysis error:', error);
         res.status(500).json({ error: 'Analiz kaydedilemedi.', details: error.message });
@@ -1737,7 +1742,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         // 🔒 Workspace bazlı randevu modülü kontrolü (appointmentEnabled: false ise hiç devreye girme)
         const wsAppointmentCheck = await prisma.workspace.findUnique({
             where: { id: workspaceId },
-            select: { appointmentEnabled: true }
+            select: { appointmentEnabled: true, industry: true }
         });
         const appointmentAllowed = wsAppointmentCheck?.appointmentEnabled !== false;
 
@@ -2110,6 +2115,8 @@ ${documentContext || "Bilgi bankası boş."}
 10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.
 11. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım", "düşünüyorum"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum", "tam olarak bilemiyorum", "şu an bilgi sahibi değilim"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş (örn. "Ekibimiz size yardımcı olacaktır"). Cevabını bilmediğin sorularda "emin değilim" DEME, doğrudan web sitesine veya e-posta adresine yönlendir.
 12. **ÇOKLU ŞUBE KURALI**: Eğer bilgi bankanızda veya dökümanlarınızda birden fazla ayrı şube/lokasyon bilgisi varsa ve müşteri belirli bir şube belirtmeden genel bir hizmet/fiyat sorduysa, doğrudan tek bir şubenin fiyatını vermek yerine müşteriye hangi şube için bilgi almak istediğini sor. Müşteri şubesini belirttikten sonra o şubenin detaylarını ver.
+
+${getSectorPrompt(wsAppointmentCheck?.industry)}
 
 ### ⭐ ANA SİSTEM TALİMATI (EN YÜKSEK ÖNCELİK) ⭐ ###
 Aşağıdaki talimat işletme sahibi tarafından yazılmıştır ve yukarıdaki varsayılan kurallarla çeliştiğinde BU TALİMAT GEÇERLİDİR. Her zaman önce bu talimata uy:

@@ -116,6 +116,33 @@ export const deleteCategory = async (req, res) => {
     }
 };
 
+export const bulkDeleteCategories = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { categoryIds } = req.body;
+
+        if (!Array.isArray(categoryIds) || categoryIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'Silinecek kategoriler belirtilmedi' });
+        }
+
+        const deleteResult = await prisma.topicCategory.deleteMany({
+            where: {
+                id: { in: categoryIds },
+                workspaceId
+            }
+        });
+
+        res.json({
+            success: true,
+            message: `${deleteResult.count} kategori başarıyla silindi`,
+            count: deleteResult.count
+        });
+    } catch (error) {
+        console.error('bulkDeleteCategories error:', error);
+        res.status(500).json({ success: false, error: 'Toplu kategori silme sırasında hata oluştu' });
+    }
+};
+
 export const reorderCategories = async (req, res) => {
     try {
         const { workspaceId } = req.params;
