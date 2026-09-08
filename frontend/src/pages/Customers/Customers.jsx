@@ -1865,6 +1865,53 @@ const Customers = () => {
                                     })()}
                                 </button>
 
+                                {/* Filtreleri Temizle */}
+                                <button
+                                    onClick={() => {
+                                        setDateFilter('MONTH');
+                                        setDateFrom('');
+                                        setDateTo('');
+                                        setStatusFilter('ALL');
+                                        setFunnelFilter('ALL');
+                                        setFunnelStageFilter('ALL');
+                                        setMergedFunnelIds(null);
+                                        setAssignmentFilter('all');
+                                        setSourceFilter('ALL');
+                                        setTagFilter('ALL');
+                                        setTopicCategoryFilter('ALL');
+                                        setSegmentFilter('ALL');
+                                        setCategoryFilter('ALL');
+                                        setBranchFilter('ALL');
+                                        setCallStatusFilter('ALL');
+                                        setContactInfoFilter('ALL');
+                                        setImportGroupFilter('ALL');
+                                        setScoreFilter('ALL');
+                                        setQuickFilterMode('ALL');
+                                        setOnlyOpenCases(false);
+                                        setSearch('');
+                                        setPage(1);
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        height: '28px',
+                                        padding: '0 8px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '6px',
+                                        background: '#f8fafc',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 500,
+                                        color: '#94a3b8',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s',
+                                        marginLeft: '4px'
+                                    }}
+                                    title="Tüm filtreleri temizle (Bu Ay - Tümü)"
+                                >
+                                    <X size={10} />
+                                    <span>Temizle</span>
+                                </button>
 
                                 {filtersDropdownOpen && (
                                     <div className="contacts-filters-dropdown" style={{
