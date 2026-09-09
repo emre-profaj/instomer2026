@@ -407,3 +407,17 @@
     background: #dc2626 !important;
     animation: overduePulse 2s ease-in-out infinite;
 }
+
+/* Workspace badge — farklı workspace'ten gelen bildirimler */
+.notification-workspace-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #6366f1;
+    background: #eef2ff;
+    border-radius: 4px;
+    white-space: nowrap;
+    vertical-align: middle;
+}

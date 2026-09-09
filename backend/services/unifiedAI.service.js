@@ -16,6 +16,52 @@ import { getSectorPrompt } from '../utils/sectorPrompt.js';
 const MODEL_NAME = 'gemini-3.5-flash';
 
 /**
+ * Aşama isminden otomatik AI hedefi oluşturur.
+ * Kullanıcı manuel hedef yazmadığında devreye girer.
+ */
+function generateAutoGoalFromStageName(stageName, nextStageName, isClosing) {
+    if (isClosing) return 'Bu süreç tamamlanmıştır. Müşteriye teşekkür et ve memnuniyet sor.';
+    
+    const name = stageName.toLowerCase();
+    const next = nextStageName ? `"${nextStageName}" aşamasına taşımak` : 'süreci ilerletmek';
+
+    // Aşama ismine göre otomatik hedef
+    if (name.includes('yeni') || name.includes('gelen') || name.includes('ilk')) {
+        return `Müşteriyi tanı, ihtiyacını anla, iletişim bilgilerini (telefon/isim) al. Hedef: ${next}.`;
+    }
+    if (name.includes('fırsat') || name.includes('firsat') || name.includes('lead')) {
+        if (name.includes('sıcak') || name.includes('sicak') || name.includes('hot')) {
+            return `Müşteri aktif ilgili — hemen arama veya randevu planla. Gecikmeden harekete geç. Hedef: ${next}.`;
+        }
+        return `Müşterinin ilgisini artır, sorularını yanıtla, arama veya görüşme planla. Hedef: ${next}.`;
+    }
+    if (name.includes('görüşme') || name.includes('gorusme') || name.includes('meeting')) {
+        return `Görüşme detaylarını netleştir (tarih, saat, konum). Müşteriyi görüşmeye hazırla. Hedef: ${next}.`;
+    }
+    if (name.includes('randevu') || name.includes('appointment')) {
+        return `Randevu detaylarını onayla, hatırlat. Müşterinin randevuya gelmesini sağla. Hedef: ${next}.`;
+    }
+    if (name.includes('teklif') || name.includes('fiyat') || name.includes('proposal')) {
+        return `Teklif hakkında soruları yanıtla, itirazları karşıla, karar sürecini hızlandır. Hedef: ${next}.`;
+    }
+    if (name.includes('değerlendirme') || name.includes('analiz') || name.includes('inceleme')) {
+        return `Müşterinin ihtiyaçlarını detaylandır, uygun çözümü belirle. Hedef: ${next}.`;
+    }
+    if (name.includes('takip') || name.includes('follow')) {
+        return `Müşteriyi takip et, durumu sor, ilgiyi canlı tut. Hedef: ${next}.`;
+    }
+    if (name.includes('destek') || name.includes('support')) {
+        return `Müşterinin sorununu çöz, memnuniyetini sağla. Sorunu çözemezsen insana devret.`;
+    }
+    if (name.includes('şikayet') || name.includes('sikayet') || name.includes('complaint')) {
+        return `Müşteriyi sakinleştir, empati kur, sorunu anla ve çözüm sun. Gerekirse insana devret.`;
+    }
+
+    // Genel fallback
+    return `Bu aşamadaki müşteriyi ilerlet. Bilgi topla, soruları yanıtla, güven oluştur. Hedef: ${next}.`;
+}
+
+/**
  * Birleşik AI çağrısı — hem sınıflandırma hem yanıt tek çağrıda.
  * 
  * @param {Object} params
@@ -156,19 +202,43 @@ export async function executeUnifiedAICall({
             return `- ${tc.name} [${tc.id}]${keywords}${products ? ` | Ürünler: ${products}` : ''}`;
         }).join('\n');
 
-        // ── 6. Aşama AI konfigürasyonu ──
+        // ── 6. Aşama AI konfigürasyonu (otomatik + manuel) ──
         let stageContext = '';
-        if (stageAIConfig.aiGoal) {
-            stageContext += `\n🎯 MEVCUT AŞAMA HEDEFİ: ${stageAIConfig.aiGoal}`;
-        }
-        if (stageAIConfig.aiInstruction) {
-            stageContext += `\n📋 AŞAMA TALİMATI: ${stageAIConfig.aiInstruction}`;
-        }
-        if (stageAIConfig.transitionCriteria?.description) {
-            stageContext += `\n🔄 GEÇİŞ KRİTERİ: ${stageAIConfig.transitionCriteria.description}`;
+        if (stageAIConfig.stageName) {
+            stageContext += `\n📍 MEVCUT AŞAMA: "${stageAIConfig.stageName}" (${stageAIConfig.funnelName || 'Akış'})`;
+            
+            if (stageAIConfig.stageList) {
+                stageContext += `\n\n📊 AKIŞ HARİTASI:\n${stageAIConfig.stageList}`;
+            }
+
+            // Manuel hedef varsa onu kullan, yoksa otomatik oluştur
+            if (stageAIConfig.aiGoal) {
+                stageContext += `\n\n🎯 AŞAMA HEDEFİ (Manuel): ${stageAIConfig.aiGoal}`;
+            } else {
+                // Stage isminden otomatik hedef oluştur
+                const autoGoal = generateAutoGoalFromStageName(stageAIConfig.stageName, stageAIConfig.nextStageName, stageAIConfig.isClosing);
+                stageContext += `\n\n🎯 AŞAMA HEDEFİ (Otomatik): ${autoGoal}`;
+            }
+
+            if (stageAIConfig.nextStageName && !stageAIConfig.isClosing) {
+                stageContext += `\n\n🏁 SONRAKİ AŞAMA: "${stageAIConfig.nextStageName}" — Hedefe ulaştığında müşteriyi bu aşamaya taşı (shouldTransition: true)`;
+            }
+
+            if (stageAIConfig.aiInstruction) {
+                stageContext += `\n\n📋 EK TALİMAT: ${stageAIConfig.aiInstruction}`;
+            }
+
+            if (stageAIConfig.transitionCriteria?.description) {
+                stageContext += `\n\n🔄 GEÇİŞ KRİTERİ: ${stageAIConfig.transitionCriteria.description}`;
+            }
+
+            if (stageAIConfig.isClosing) {
+                stageContext += `\n\n⚠️ Bu bir KAPANIŞ aşamasıdır. Süreç tamamlanmıştır, yeni satış hedefi yoktur.`;
+            }
         }
 
-        // ── 7. Bot system prompt ──
+
+        // ── 7. Bot system prompt (kişilik + yasaklar) ──
         const botPrompt = activeBot?.prompt || 'Müşteri temsilcisi olarak yardımcı ol.';
 
         // ── 8. Birleşik system prompt ──
@@ -195,11 +265,17 @@ ${chatLog || '(İlk mesaj)'}
 ${activityLog ? `\n📝 TEMSİLCİ NOTLARI VE AKTİVİTELER:\n${activityLog}` : ''}
 
 ═══════════════════════════════════════
-ANA SİSTEM TALİMATI (Bot):
+🤖 KİŞİLİK VE TARZ (Bot Ayarları):
 ${botPrompt}
 ═══════════════════════════════════════
-${stageContext}
+${stageContext ? `
 ═══════════════════════════════════════
+🎯 SATIŞ AKIŞI BAĞLAMI — ANA HEDEFİN BU:
+${stageContext}
+
+⚡ ÖNCELİK: Yukarıdaki aşama hedefini gerçekleştirmek senin 1 numaralı görevin.
+Müşteriyi bir sonraki aşamaya taşımak için çalış. Kişilik/tarz ayarlarına uy ama hedeften şaşma.
+═══════════════════════════════════════` : '═══════════════════════════════════════'}
 
 MEVCUT AKIŞLAR:
 ${funnelContext || '(Akış tanımlanmamış)'}

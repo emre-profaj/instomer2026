@@ -125,18 +125,22 @@ class NotificationService {
     }
 
     // Show new message notification
-    showNewMessageNotification(message, conversation, contact) {
+    showNewMessageNotification(message, conversation, contact, workspaceId = null) {
         const senderName = contact?.name || 'Bilinmeyen';
         const channelEmoji = this.getChannelEmoji(conversation?.channel);
         
+        const baseUrl = `/inbox?conversationId=${conversation?.id}`;
+        const url = workspaceId ? `${baseUrl}&workspaceId=${workspaceId}` : baseUrl;
+
         return this.showNotification(`${channelEmoji} ${senderName}`, {
             body: this.truncateText(message.content || 'Yeni mesaj', 100),
             tag: `conversation-${conversation?.id}`, // Prevents duplicate notifications
             renotify: true,
             data: {
-                url: `/inbox?conversationId=${conversation?.id}`,
+                url,
                 conversationId: conversation?.id,
-                contactId: contact?.id
+                contactId: contact?.id,
+                workspaceId
             }
         });
     }

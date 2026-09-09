@@ -113,9 +113,24 @@ export async function getStageAIConfig(stageId) {
         const stage = await prisma.funnelStage.findUnique({
             where: { id: stageId },
             select: {
+                id: true,
+                name: true,
+                order: true,
                 aiGoal: true,
                 aiInstruction: true,
                 transitionCriteria: true,
+                isClosing: true,
+                statusType: true,
+                funnelId: true,
+                funnel: {
+                    select: {
+                        name: true,
+                        stages: {
+                            select: { id: true, name: true, order: true, isClosing: true, statusType: true },
+                            orderBy: { order: 'asc' }
+                        }
+                    }
+                }
             }
         });
 
@@ -126,7 +141,29 @@ export async function getStageAIConfig(stageId) {
             try { criteria = JSON.parse(stage.transitionCriteria); } catch { }
         }
 
+        // Sonraki aşamayı bul
+        const allStages = stage.funnel?.stages || [];
+        const currentIndex = allStages.findIndex(s => s.id === stage.id);
+        const nextStage = currentIndex >= 0 && currentIndex < allStages.length - 1
+            ? allStages[currentIndex + 1]
+            : null;
+
+        // Tüm aşama listesini oluştur (mevcut aşama işaretli)
+        const stageList = allStages.map((s, i) => {
+            const marker = s.id === stage.id ? '👉' : '  ';
+            const status = s.isClosing ? (s.statusType === 'WON' ? '✅' : s.statusType === 'LOST' ? '❌' : '⚫') : '⬜';
+            return `${marker} ${i + 1}. ${status} ${s.name}`;
+        }).join('\n');
+
         return {
+            stageName: stage.name,
+            stageOrder: stage.order,
+            isClosing: stage.isClosing,
+            statusType: stage.statusType,
+            funnelName: stage.funnel?.name || null,
+            nextStageName: nextStage?.name || null,
+            nextStageIsClosing: nextStage?.isClosing || false,
+            stageList,
             aiGoal: stage.aiGoal || null,
             aiInstruction: stage.aiInstruction || null,
             transitionCriteria: criteria,

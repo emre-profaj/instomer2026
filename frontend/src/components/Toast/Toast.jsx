@@ -9,7 +9,7 @@ const ToastContext = createContext(null);
 
 // Toast Provider Component
 export const ToastProvider = ({ children }) => {
-    const { user, currentWorkspace } = useAuth() || {};
+    const { user, currentWorkspace, switchWorkspace } = useAuth() || {};
     const [toasts, setToasts] = useState([]);
 
     const userRef = useRef(user);
@@ -22,6 +22,11 @@ export const ToastProvider = ({ children }) => {
     useEffect(() => {
         currentWorkspaceRef.current = currentWorkspace;
     }, [currentWorkspace]);
+
+    const switchWorkspaceRef = useRef(switchWorkspace);
+    useEffect(() => {
+        switchWorkspaceRef.current = switchWorkspace;
+    }, [switchWorkspace]);
 
     const addToast = useCallback((toast) => {
         const id = Date.now() + Math.random();
@@ -118,8 +123,13 @@ export const ToastProvider = ({ children }) => {
                 title: `📨 ${senderName}`,
                 message: `${channelLabel ? channelLabel + ': ' : ''}${preview}`,
                 duration: 5000,
-                onClick: () => {
+                onClick: async () => {
                     const convId = data.conversationId || data.message?.conversationId || data.conversation?.id;
+                    const msgWorkspaceId = data.workspaceId;
+                    // Workspace geçişi gerekiyorsa yap
+                    if (msgWorkspaceId && msgWorkspaceId !== currentWorkspaceRef.current?.id && switchWorkspaceRef.current) {
+                        await switchWorkspaceRef.current(msgWorkspaceId);
+                    }
                     if (convId) {
                         window.location.href = `/inbox?conversationId=${convId}`;
                     } else {
@@ -130,10 +140,13 @@ export const ToastProvider = ({ children }) => {
 
             // Show browser notification if document is hidden (out of tab)
             if (document.hidden) {
+                const convId = data.conversationId || data.conversation?.id;
+                const msgWorkspaceId = data.workspaceId;
                 notificationService.showNewMessageNotification(
                     data.message,
-                    { id: data.conversationId || data.conversation?.id, channel: data.channel },
-                    { name: senderName, id: data.contactId || data.message?.contactId || data.contact?.id }
+                    { id: convId, channel: data.channel },
+                    { name: senderName, id: data.contactId || data.message?.contactId || data.contact?.id },
+                    msgWorkspaceId
                 );
             }
         };
@@ -162,7 +175,12 @@ export const ToastProvider = ({ children }) => {
                 title: '📋 Yeni Sohbet Atandı',
                 message: message,
                 duration: 8000,
-                onClick: () => {
+                onClick: async () => {
+                    const assignWorkspaceId = data.workspaceId;
+                    // Workspace geçişi gerekiyorsa yap
+                    if (assignWorkspaceId && assignWorkspaceId !== currentWorkspaceRef.current?.id && switchWorkspaceRef.current) {
+                        await switchWorkspaceRef.current(assignWorkspaceId);
+                    }
                     if (conversationId) {
                         window.location.href = `/inbox?conversationId=${conversationId}`;
                     } else {
@@ -172,13 +190,17 @@ export const ToastProvider = ({ children }) => {
             });
 
             if (document.hidden) {
+                const assignWorkspaceId = data.workspaceId;
                 notificationService.showNotification('📋 Yeni Sohbet Atandı', {
                     body: message,
                     tag: `assign-${conversationId || Date.now()}`,
                     renotify: true,
                     data: {
-                        url: conversationId ? `/inbox?conversationId=${conversationId}` : '/inbox',
-                        conversationId
+                        url: conversationId
+                            ? `/inbox?conversationId=${conversationId}${assignWorkspaceId ? `&workspaceId=${assignWorkspaceId}` : ''}`
+                            : '/inbox',
+                        conversationId,
+                        workspaceId: assignWorkspaceId
                     }
                 });
             }
@@ -217,7 +239,11 @@ export const ToastProvider = ({ children }) => {
                 title: notif.title || '⏰ Hatırlatıcı',
                 message: notif.body || 'Hatırlatıcı zamanı geldi!',
                 duration: 8000,
-                onClick: conversationId ? () => {
+                onClick: conversationId ? async () => {
+                    const reminderWorkspaceId = notif.workspaceId;
+                    if (reminderWorkspaceId && reminderWorkspaceId !== currentWorkspaceRef.current?.id && switchWorkspaceRef.current) {
+                        await switchWorkspaceRef.current(reminderWorkspaceId);
+                    }
                     window.location.href = `/inbox?conversationId=${conversationId}`;
                 } : undefined
             });

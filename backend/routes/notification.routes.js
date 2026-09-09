@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import {
     getNotifications,
+    getAllUserNotifications,
     getUnreadCount,
     markAsRead,
     markAllAsRead,
@@ -13,6 +14,9 @@ import {
 const router = express.Router();
 
 router.use(authenticateJWT);
+
+// Cross-workspace: Get all notifications for current user (no workspace filter)
+router.get('/all', getAllUserNotifications);
 
 // Notification preferences
 router.get('/:workspaceId/preferences', requireWorkspaceAccess, getNotificationPreferences);

@@ -22,7 +22,7 @@ const getCategory = (type) => {
 };
 
 const NotificationPanel = ({ isCollapsed }) => {
-    const { currentWorkspace, user } = useAuth();
+    const { currentWorkspace, user, switchWorkspace } = useAuth();
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
@@ -45,19 +45,19 @@ const NotificationPanel = ({ isCollapsed }) => {
         }
     }, [workspaceId]);
 
-    // Fetch notifications
+    // Fetch notifications (cross-workspace: tüm workspace'lerden)
     const fetchNotifications = useCallback(async () => {
-        if (!workspaceId) return;
         setLoading(true);
         try {
-            const res = await notificationAPI.getAll(workspaceId, 50, 0);
+            const res = await notificationAPI.getAllCrossWorkspace(50, 0);
             setNotifications(res.data.notifications || []);
+            setUnreadCount(res.data.totalUnread || 0);
         } catch (err) {
             console.error('Error fetching notifications:', err);
         } finally {
             setLoading(false);
         }
-    }, [workspaceId]);
+    }, []);
 
     // Fetch overdue calls
     const fetchOverdueCalls = useCallback(async () => {
@@ -136,12 +136,12 @@ const NotificationPanel = ({ isCollapsed }) => {
     };
 
     const handleMarkAsRead = async (notif) => {
-        // Overdue alerts — just navigate
+        // Overdue alerts — switch workspace if needed and navigate
         if (notif.isOverdue) {
             try {
                 const data = notif.data ? JSON.parse(notif.data) : null;
                 if (data?.conversationId) {
-                    navigate(`/inbox?conversation=${data.conversationId}`);
+                    navigate(`/inbox?conversationId=${data.conversationId}`);
                     setIsOpen(false);
                 }
             } catch (e) { /* ignore */ }
@@ -150,7 +150,7 @@ const NotificationPanel = ({ isCollapsed }) => {
 
         if (!notif.isRead) {
             try {
-                await notificationAPI.markAsRead(workspaceId, notif.id);
+                await notificationAPI.markAsRead(notif.workspaceId || workspaceId, notif.id);
                 setNotifications(prev =>
                     prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n)
                 );
@@ -160,14 +160,21 @@ const NotificationPanel = ({ isCollapsed }) => {
             }
         }
 
-        // Navigate to conversation or contact page
+        // Navigate to conversation or contact page — switch workspace if needed
         try {
             const data = notif.data ? JSON.parse(notif.data) : null;
+            const notifWorkspaceId = notif.workspaceId;
+
+            // Workspace geçişi gerekiyorsa önce geçiş yap
+            if (notifWorkspaceId && notifWorkspaceId !== workspaceId) {
+                await switchWorkspace(notifWorkspaceId);
+            }
+
             if (data?.conversationId) {
-                navigate(`/inbox?conversation=${data.conversationId}`);
+                navigate(`/inbox?conversationId=${data.conversationId}`);
                 setIsOpen(false);
             } else if (data?.contactId) {
-                navigate(`/contacts`);
+                navigate(`/customers`);
                 setIsOpen(false);
             }
         } catch (e) { /* ignore */ }
@@ -341,6 +348,9 @@ const NotificationPanel = ({ isCollapsed }) => {
                                         <p className="notification-body">{notif.body}</p>
                                         <span className="notification-time">
                                             {notif.isOverdue ? `⏰ ${formatTime(notif.createdAt)} gecikmiş` : formatTime(notif.createdAt)}
+                                            {notif.workspaceName && notif.workspaceId !== workspaceId && (
+                                                <span className="notification-workspace-badge">📁 {notif.workspaceName}</span>
+                                            )}
                                         </span>
                                     </div>
                                     {!notif.isRead && !notif.isOverdue && <div className="notification-unread-dot" />}

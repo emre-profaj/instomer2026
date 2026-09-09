@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js';
-import { emitToWorkspace } from '../socket.js';
+import { emitToWorkspace, emitToUser } from '../socket.js';
 
 
 // Get notifications for current user
@@ -26,6 +26,52 @@ export const getNotifications = async (req, res) => {
         res.json({ notifications, total });
     } catch (error) {
         console.error('Error fetching notifications:', error);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+};
+
+// Get notifications across ALL workspaces for current user
+export const getAllUserNotifications = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { limit = 50, offset = 0 } = req.query;
+
+        const notifications = await prisma.notification.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' },
+            take: parseInt(limit),
+            skip: parseInt(offset),
+            include: {
+                user: false
+            }
+        });
+
+        // Fetch workspace names for the notifications
+        const workspaceIds = [...new Set(notifications.map(n => n.workspaceId))];
+        const workspaces = await prisma.workspace.findMany({
+            where: { id: { in: workspaceIds } },
+            select: { id: true, name: true }
+        });
+        const workspaceMap = Object.fromEntries(workspaces.map(w => [w.id, w.name]));
+
+        // Attach workspace name to each notification
+        const enrichedNotifications = notifications.map(n => ({
+            ...n,
+            workspaceName: workspaceMap[n.workspaceId] || 'Bilinmeyen'
+        }));
+
+        const total = await prisma.notification.count({
+            where: { userId }
+        });
+
+        // Also compute total unread across all workspaces
+        const totalUnread = await prisma.notification.count({
+            where: { userId, isRead: false }
+        });
+
+        res.json({ notifications: enrichedNotifications, total, totalUnread });
+    } catch (error) {
+        console.error('Error fetching all user notifications:', error);
         res.status(500).json({ error: 'Failed to fetch notifications' });
     }
 };
@@ -133,8 +179,8 @@ export const createNotification = async (workspaceId, userId, type, title, body,
             }
         });
 
-        // Emit real-time notification to the user via workspace socket
-        emitToWorkspace(workspaceId, 'new_notification', {
+        // Emit real-time notification to the user via user room (workspace-agnostic)
+        emitToUser(userId, 'new_notification', {
             notification,
             targetUserId: userId
         });
