@@ -25,6 +25,7 @@ export async function applyDefaultStageActions(workspaceId) {
         const stageName = stage.name.toLowerCase();
         let entryActions = null;
         let entryRules = null;
+        const updateData = {};
 
         // Fırsat aşaması — telefon varsa otomatik gir + arama planla
         if (stageName.includes('fırsat') || stageName.includes('firsat')) {
@@ -88,7 +89,7 @@ export async function applyDefaultStageActions(workspaceId) {
             }
         }
 
-        // Teklif aşaması — bildirim
+        // Teklif aşaması — bildirim + 3 gün sonra takip hatırlatması
         if (stageName.includes('teklif')) {
             if (!entryActions) {
                 entryActions = JSON.stringify({
@@ -100,10 +101,98 @@ export async function applyDefaultStageActions(workspaceId) {
                     ]
                 });
             }
+            if (!stage.timedActions) {
+                updateData.timedActions = JSON.stringify({
+                    actions: [
+                        {
+                            type: 'CREATE_TASK',
+                            title: '⏰ Teklif Takibi',
+                            description: 'Teklif verildikten 3 gün geçti — müşteriyi takip et',
+                            delayDays: 3,
+                            delayHours: 0
+                        }
+                    ]
+                });
+            }
+        }
+
+        // Randevu aşaması — WA şablon hatırlatma + bildirim
+        if (stageName.includes('randevu') || stageName.includes('appointment')) {
+            if (!entryActions) {
+                entryActions = JSON.stringify({
+                    actions: [
+                        {
+                            type: 'NOTIFY_TEAM',
+                            message: '📅 Randevu planlandı'
+                        }
+                    ]
+                });
+            }
+            if (!stage.timedActions) {
+                updateData.timedActions = JSON.stringify({
+                    actions: [
+                        {
+                            type: 'CREATE_TASK',
+                            title: '📅 Randevu Hatırlatması',
+                            description: 'Randevu yaklaşıyor — müşteriyi hatırlat',
+                            delayDays: 0,
+                            delayHours: 24
+                        }
+                    ]
+                });
+            }
+        }
+
+        // Kazanıldı aşaması — kutlama bildirimi
+        if (stageName.includes('kazanıldı') || stageName.includes('kazanildi') || stageName.includes('won')) {
+            if (!entryActions) {
+                entryActions = JSON.stringify({
+                    actions: [
+                        {
+                            type: 'NOTIFY_TEAM',
+                            message: '🎉 Satış kazanıldı! Tebrikler!'
+                        },
+                        {
+                            type: 'ADD_TAG',
+                            tagName: 'müşteri'
+                        }
+                    ]
+                });
+            }
+        }
+
+        // Kaybedildi aşaması — bildirim + 30 gün sonra yeniden arama
+        if (stageName.includes('kaybedildi') || stageName.includes('kayip') || stageName.includes('lost')) {
+            if (!entryActions) {
+                entryActions = JSON.stringify({
+                    actions: [
+                        {
+                            type: 'NOTIFY_TEAM',
+                            message: '😔 Fırsat kaybedildi'
+                        },
+                        {
+                            type: 'ADD_TAG',
+                            tagName: 'kayıp-fırsat'
+                        }
+                    ]
+                });
+            }
+            if (!stage.timedActions) {
+                updateData.timedActions = JSON.stringify({
+                    actions: [
+                        {
+                            type: 'CREATE_TASK',
+                            title: '🔄 Kayıp Fırsat Geri Kazanım',
+                            description: '30 gün geçti — müşteriyi tekrar arayıp durumu sor',
+                            delayDays: 30,
+                            delayHours: 0
+                        }
+                    ]
+                });
+            }
         }
 
         // Sadece boş olan alanları güncelle (mevcut yapılandırmayı ezmez)
-        const updateData = {};
         if (entryActions && !stage.entryActions) updateData.entryActions = entryActions;
         if (entryRules && !stage.entryRules) updateData.entryRules = entryRules;
 
