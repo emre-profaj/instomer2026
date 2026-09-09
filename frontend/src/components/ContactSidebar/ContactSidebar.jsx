@@ -205,28 +205,37 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [isEditingFullName, setIsEditingFullName] = useState(false);
     const [isEditingCompany, setIsEditingCompany] = useState(false);
     const [contactSegments, setContactSegments] = useState([]);
+    const [segmentsExpanded, setSegmentsExpanded] = useState(() => {
+        try {
+            return localStorage.getItem('instomer_sidebar_segments_expanded') === 'true';
+        } catch {
+            return false;
+        }
+    });
+
+    const toggleSegmentsExpanded = () => {
+        setSegmentsExpanded(prev => {
+            const next = !prev;
+            try { localStorage.setItem('instomer_sidebar_segments_expanded', String(next)); } catch {}
+            return next;
+        });
+    };
     const [funnelStage, setFunnelStage] = useState(null); // { name, color } of the current funnel stage
     const [activeCaseInfo, setActiveCaseInfo] = useState(null); // { caseNumber, caseId, title } from CaseCards
     const [allCases, setAllCases] = useState([]); // all cases for this contact
-    const [caseIdDropdownOpen, setCaseIdDropdownOpen] = useState(false);
+    const [caseIdOpenCaseId, setCaseIdOpenCaseId] = useState(null);
     const [showNewCaseInline, setShowNewCaseInline] = useState(false);
     const [newCaseTitle, setNewCaseTitle] = useState('');
-    const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+    const [categoryOpenCaseId, setCategoryOpenCaseId] = useState(null);
     const [availableCategories, setAvailableCategories] = useState([]);
     const [categorySearch, setCategorySearch] = useState('');
-    const categoryBtnRef = useRef(null);
-    const [categoryDropdownPos, setCategoryDropdownPos] = useState({ top: 0, right: 0 });
-    const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+    const [branchOpenCaseId, setBranchOpenCaseId] = useState(null);
     const [availableBranches, setAvailableBranches] = useState([]);
     const [branchSearch, setBranchSearch] = useState('');
-    const branchBtnRef = useRef(null);
-    const [branchDropdownPos, setBranchDropdownPos] = useState({ top: 0, right: 0 });
     const [creatingCase, setCreatingCase] = useState(false);
     const [catalogProducts, setCatalogProducts] = useState([]);
     const [productSearchText, setProductSearchText] = useState('');
-    const [productDropdownOpen, setProductDropdownOpen] = useState(false);
-    const productBtnRef = useRef(null);
-    const [productDropdownPos, setProductDropdownPos] = useState({ top: 0, left: 0 });
+    const [productOpenCaseId, setProductOpenCaseId] = useState(null);
     const [showExtraFields, setShowExtraFields] = useState(false);
     const [caseStatusDropdownOpenCaseId, setCaseStatusDropdownOpenCaseId] = useState(null);
     const [expandedCases, setExpandedCases] = useState({});
@@ -1226,7 +1235,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                     c.id === activeConv.id ? { ...c, branchId: branchId || null, branch: targetBranch } : c
                 ));
             }
-            setBranchDropdownOpen(false);
+            setBranchOpenCaseId(null);
         } catch (err) {
             console.error('Şube güncelleme hatası:', err);
             alert('Şube güncellenirken bir hata oluştu: ' + (err?.response?.data?.error || err.message));
@@ -2123,13 +2132,39 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </select>
                                                 )}
 
-                                                {/* Segment pills — yeşil */}
-                                                {contactSegments.map(seg => (
-                                                    <div key={`seg-${seg.id}`} className="unified-tag" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d040' }}>
-                                                        <span style={{ fontSize: 10 }}>{seg.icon}</span>
-                                                        <span>{seg.label}</span>
-                                                    </div>
-                                                ))}
+                                                {/* Segment pills — yeşil (Açılıp kapanabilir) */}
+                                                {contactSegments.length > 0 && (
+                                                    !segmentsExpanded ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={toggleSegmentsExpanded}
+                                                            className="unified-segment-toggle-btn"
+                                                            title="Akıllı segmentleri göster"
+                                                        >
+                                                            <span>📊</span>
+                                                            <span>{contactSegments.length} Segment</span>
+                                                            <ChevronDown size={11} style={{ opacity: 0.7 }} />
+                                                        </button>
+                                                    ) : (
+                                                        <>
+                                                            {contactSegments.map(seg => (
+                                                                <div key={`seg-${seg.id}`} className="unified-tag" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d040' }}>
+                                                                    <span style={{ fontSize: 10 }}>{seg.icon}</span>
+                                                                    <span>{seg.label}</span>
+                                                                </div>
+                                                            ))}
+                                                            <button
+                                                                type="button"
+                                                                onClick={toggleSegmentsExpanded}
+                                                                className="unified-segment-collapse-btn"
+                                                                title="Segmentleri daralt"
+                                                            >
+                                                                <ChevronDown size={11} style={{ transform: 'rotate(180deg)' }} />
+                                                                <span>Daralt</span>
+                                                            </button>
+                                                        </>
+                                                    )
+                                                )}
                                             </div>
 
                                             {/* Location / Language Row */}
@@ -2214,18 +2249,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 <div key={c.id || index} className="customer-journey-timeline" style={{ marginTop: 13, marginBottom: 13, paddingBottom: isExpanded ? 14 : 6 }}>
                                     <div className="journey-header" style={{ paddingBottom: 0 }}>
 
-                                        {/* ═══ SATIR 1: Konu Başlığı (flex: 1) — Case No (Hap) — Genişletme Çentiği ═══ */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px 6px' }}>
+                                        {/* ═══ SATIR 1: Konu Başlığı (flex: 1) — Genişletme Çentiği ═══ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 3px' }}>
                                             {/* Konu Başlığı */}
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                             {(() => {
                                                 const caseInfo = activeCaseInfo;
                                                 if (!caseInfo && c.id === 'default') {
-                                                    const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || '';
+                                                    const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || c?.title || '';
                                                     if (!convTopic) return null;
                                                     return (
                                                         <div style={{
-                                                            fontSize: '0.88rem', fontWeight: 700, color: '#1f2937',
+                                                            fontSize: '0.86rem', fontWeight: 700, color: '#1f2937',
                                                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                                                         }}>
                                                             {convTopic}
@@ -2260,7 +2295,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                                                         placeholder="Konu başlığı..."
                                                         style={{
-                                                            fontSize: '0.84rem', fontWeight: 700, color: '#1f2937',
+                                                            fontSize: '0.86rem', fontWeight: 700, color: '#1f2937',
                                                             border: 'none', outline: 'none', background: 'transparent',
                                                             padding: 0, width: '100%', lineHeight: 1.3
                                                         }}
@@ -2269,46 +2304,50 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             })()}
                                             </div>
 
-                                            {/* Case ID dropdown (Kompakt hap) */}
+                                            {/* Case ID dropdown (Kompakt hap - Başlığın yanında) */}
                                             <div style={{ position: 'relative', flexShrink: 0 }}>
                                                 <button
-                                                    onClick={() => { setCaseIdDropdownOpen(v => !v); setShowNewCaseInline(false); }}
+                                                    onClick={() => { setCaseIdOpenCaseId(prev => prev === c.id ? null : c.id); setShowNewCaseInline(false); }}
                                                     style={{
                                                         background: '#ffffff',
                                                         border: '1px solid #e2e8f0',
-                                                        borderRadius: 4,
-                                                        padding: '1px 5px',
-                                                        height: 20,
+                                                        borderRadius: 6,
+                                                        padding: '1px 6px',
+                                                        height: 22,
                                                         boxSizing: 'border-box',
                                                         display: 'inline-flex',
                                                         alignItems: 'center',
                                                         gap: 3,
-                                                        color: '#64748b',
-                                                        fontSize: '0.58rem',
+                                                        color: '#475569',
+                                                        fontSize: '0.62rem',
                                                         fontWeight: 600,
                                                         fontFamily: 'monospace',
                                                         cursor: 'pointer',
                                                         whiteSpace: 'nowrap',
                                                         transition: 'all 0.15s'
                                                     }}
-                                                    onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#334155'; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#64748b'; }}
+                                                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#1e293b'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
+                                                    title={activeCaseInfo?.caseNumber || c?.caseNumber || 'Case Seç'}
                                                 >
-                                                    <Briefcase size={8} />
-                                                    <span>{activeCaseInfo?.caseNumber || c?.caseNumber || 'Case'}</span>
+                                                    <Briefcase size={9} style={{ opacity: 0.7 }} />
+                                                    <span>{(() => {
+                                                        const rawNum = activeCaseInfo?.caseNumber || c?.caseNumber || 'Case';
+                                                        return (rawNum.includes('-') && rawNum.length > 8) ? rawNum.split('-').pop() : rawNum;
+                                                    })()}</span>
                                                     <ChevronDown size={7} style={{
                                                         transition: 'transform 0.2s',
-                                                        transform: caseIdDropdownOpen ? 'rotate(180deg)' : 'none',
+                                                        transform: caseIdOpenCaseId === c.id ? 'rotate(180deg)' : 'none',
                                                         opacity: 0.5
                                                     }} />
                                                 </button>
 
-                                                {caseIdDropdownOpen && (
+                                                {(caseIdOpenCaseId === c.id) && (
                                                     <>
-                                                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => { setCaseIdDropdownOpen(false); setShowNewCaseInline(false); }} />
+                                                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => { setCaseIdOpenCaseId(null); setShowNewCaseInline(false); }} />
                                                     <div
                                                         style={{
-                                                            position: 'absolute', top: '100%', left: 0, zIndex: 9999,
+                                                            position: 'absolute', top: '100%', right: 0, zIndex: 9999,
                                                             background: '#fff', border: '1px solid #e5e7eb',
                                                             borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                                                             minWidth: 240, marginTop: 4, overflow: 'hidden',
@@ -2332,7 +2371,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                             setActiveCaseInfo(prev => ({ ...prev, caseId: cc.id, branchId: cc.branchId || null, branch: cc.branch || null }));
                                                                             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                         } catch (err) { console.error(err); }
-                                                                        setCaseIdDropdownOpen(false);
+                                                                        setCaseIdOpenCaseId(null);
                                                                     }}
                                                                     style={{
                                                                         padding: '7px 12px', cursor: 'pointer',
@@ -2382,7 +2421,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                     });
                                                                                     setNewCaseTitle('');
                                                                                     setShowNewCaseInline(false);
-                                                                                    setCaseIdDropdownOpen(false);
+                                                                                    setCaseIdOpenCaseId(null);
                                                                                     window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                 } catch (err) { console.error('Case create error:', err); }
                                                                                 setCreatingCase(false);
@@ -2410,7 +2449,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                 });
                                                                                 setNewCaseTitle('');
                                                                                 setShowNewCaseInline(false);
-                                                                                setCaseIdDropdownOpen(false);
+                                                                                setCaseIdOpenCaseId(null);
                                                                                 window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                             } catch (err) { console.error('Case create error:', err); }
                                                                             setCreatingCase(false);
@@ -2453,649 +2492,41 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </button>
                                         </div>
 
-                                        {/* ═══ SATIR 2: 4 Rozet Tek Satır (Fırsat — Kaynak — Puan — Şube) ═══ */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 12px 6px', flexWrap: 'nowrap', overflow: 'hidden' }}>
-                                            {/* Case Type Badge */}
-                                            {(() => {
-                                                // 1. Önce CaseType relation'ını kontrol et (yeni sistem)
-                                                const caseTypeRel = activeCaseInfo?.caseType || c?.caseType;
-                                                if (caseTypeRel?.name) {
-                                                    const ctColor = caseTypeRel.color || '#6b7280';
-                                                    return (
-                                                        <span style={{
-                                                            background: ctColor + '1a',
-                                                            color: ctColor,
-                                                            border: `1px solid ${ctColor}40`,
-                                                            borderRadius: 4,
-                                                            padding: '1px 5px',
-                                                            fontSize: '0.58rem',
-                                                            fontWeight: 700,
-                                                            letterSpacing: '0.02em',
-                                                            lineHeight: 1,
-                                                            whiteSpace: 'nowrap',
-                                                            textTransform: 'uppercase',
-                                                            height: 20,
-                                                            boxSizing: 'border-box',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            flexShrink: 0
-                                                        }}>
-                                                            {caseTypeRel.icon ? `${caseTypeRel.icon} ` : ''}{caseTypeRel.name}
-                                                        </span>
-                                                    );
-                                                }
-
-                                                // 2. Legacy type field'ına fallback
-                                                const rawType = activeCaseInfo?.type || c?.type || 'GENEL';
-                                                const typeConfig = {
-                                                    GENEL:         { label: 'Genel', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
-                                                    FIRSAT:        { label: 'Fırsat', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
-                                                    SIKAYET:       { label: 'Şikayet', bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' },
-                                                    RANDEVU:       { label: 'Randevu', bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' },
-                                                    DESTEK:        { label: 'Destek', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
-                                                    IS_BASVURUSU:  { label: 'İş Başvurusu', bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' },
-                                                    LEAD:          { label: 'Lead', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
-                                                    SUPPORT:       { label: 'Destek', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
-                                                    SALE:          { label: 'Satış', bg: '#d1fae5', color: '#047857', border: '#6ee7b7' },
-                                                    PROJECT:       { label: 'Proje', bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' },
-                                                    COMPLAINT:     { label: 'Şikayet', bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' },
-                                                    OTHER:         { label: 'Diğer', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
-                                                };
-
-                                                let resolvedType = rawType;
-                                                if (rawType === 'GENEL') {
-                                                    const title = (activeCaseInfo?.title || c?.title || '').toLowerCase();
-                                                    const hasLeadKeywords = ['lead', 'talep', 'bilgi', 'başvuru', 'form', 'teklif', 'fırsat'].some(k => title.includes(k));
-                                                    const hasComplaintKeywords = ['şikayet', 'sorun', 'hata', 'iade'].some(k => title.includes(k));
-                                                    const hasSupportKeywords = ['destek', 'yardım', 'arıza', 'problem'].some(k => title.includes(k));
-
-                                                    if (hasLeadKeywords) resolvedType = 'FIRSAT';
-                                                    else if (hasComplaintKeywords) resolvedType = 'SIKAYET';
-                                                    else if (hasSupportKeywords) resolvedType = 'DESTEK';
-                                                }
-
-                                                const cfg = typeConfig[resolvedType] || typeConfig.GENEL;
-                                                return (
-                                                    <span style={{
-                                                        background: cfg.bg,
-                                                        color: cfg.color,
-                                                        border: `1px solid ${cfg.border}`,
-                                                        borderRadius: 4,
-                                                        padding: '1px 5px',
-                                                        fontSize: '0.58rem',
-                                                        fontWeight: 700,
-                                                        letterSpacing: '0.02em',
-                                                        lineHeight: 1,
-                                                        whiteSpace: 'nowrap',
-                                                        textTransform: 'uppercase',
-                                                        height: 20,
-                                                        boxSizing: 'border-box',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        flexShrink: 0
-                                                    }}>
-                                                        {cfg.label}
-                                                    </span>
-                                                );
-                                            })()}
-
-                                            {/* 🌟 Case Kaynağı Rozeti (Toplu Mesaj / WhatsApp / Meta Lead vb.) 🌟 */}
-                                            {(() => {
-                                                const isBulk = activeConv?.isBulkSend || Boolean(activeConv?.campaignId) || Boolean(activeCaseInfo?.campaignId);
-                                                const campaignName = activeCaseInfo?.campaign?.name || activeConv?.campaign?.name;
-                                                const rawSource = isBulk ? 'BULK' : (activeCaseInfo?.source || c?.source || activeConv?.source || activeConv?.channel || conversationData?.channel || profile?.source || 'MANUAL');
-
-                                                const sourceConfig = {
-                                                    BULK:          { icon: '📢', text: 'Toplu', bg: '#fef3c7', color: '#b45309', border: '#fde68a' },
-                                                    WHATSAPP:      { icon: '💬', text: 'WhatsApp', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
-                                                    FACEBOOK_LEAD: { icon: '📋', text: 'Meta Lead', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-                                                    META_LEAD:     { icon: '📋', text: 'Meta Lead', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-                                                    LEAD:          { icon: '📋', text: 'Meta Lead', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-                                                    INSTAGRAM:     { icon: '📸', text: 'Instagram', bg: '#fdf4ff', color: '#a21caf', border: '#f0abfc' },
-                                                    WEB:           { icon: '🌐', text: 'Web', bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
-                                                    MANUAL:        { icon: '👤', text: 'Manuel', bg: '#ffffff', color: '#475569', border: '#e2e8f0' },
-                                                };
-                                                const srcKey = String(rawSource || '').toUpperCase();
-                                                const srcCfg = sourceConfig[srcKey] || (srcKey.includes('BULK') ? sourceConfig.BULK : (srcKey.includes('INSTA') ? sourceConfig.INSTAGRAM : (srcKey.includes('WHATSAPP') ? sourceConfig.WHATSAPP : (srcKey.includes('LEAD') ? sourceConfig.FACEBOOK_LEAD : sourceConfig.MANUAL))));
-
-                                                return (
-                                                    <div
-                                                        title={`Case Kaynağı: ${isBulk && campaignName ? `Toplu: ${campaignName}` : srcCfg.text}`}
-                                                        style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                            background: srcCfg.bg, border: `1px solid ${srcCfg.border}`,
-                                                            color: srcCfg.color, fontSize: '0.58rem', fontWeight: 600,
-                                                            padding: '1px 5px', borderRadius: 4, height: 20,
-                                                            boxSizing: 'border-box', flexShrink: 0, whiteSpace: 'nowrap'
-                                                        }}
-                                                    >
-                                                        <span style={{ fontSize: '0.62rem' }}>{srcCfg.icon}</span>
-                                                        <span>{srcCfg.text}</span>
-                                                    </div>
-                                                );
-                                            })()}
-
-                                            {/* Puan (Lead Score) */}
-                                            {(() => {
-                                                const score = activeCaseInfo?.leadScore ?? c?.leadScore;
-                                                const temp = activeCaseInfo?.leadTemperature ?? c?.leadTemperature;
-                                                if (score == null && !temp) return null;
-                                                const scoreColorMap = { COLD: '#3b82f6', COOL: '#22c55e', WARM: '#eab308', HOT: '#f97316', FIRE: '#ef4444' };
-                                                const scoreBgMap = { COLD: '#eff6ff', COOL: '#f0fdf4', WARM: '#fefce8', HOT: '#fff7ed', FIRE: '#fef2f2' };
-                                                const scoreEmojiMap = { COLD: '🔵', COOL: '🟢', WARM: '🟡', HOT: '🟠', FIRE: '🔴' };
-                                                const sColor = scoreColorMap[temp] || '#94a3b8';
-                                                const sBg = scoreBgMap[temp] || '#f1f5f9';
-                                                const sEmoji = scoreEmojiMap[temp] || '';
-                                                return (
-                                                    <div style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: 2.5,
-                                                        padding: '1px 5px', height: 20, boxSizing: 'border-box', borderRadius: 10,
-                                                        background: sBg, border: `1px solid ${sColor}25`,
-                                                        fontSize: '0.58rem', fontWeight: 700, color: sColor, flexShrink: 0, whiteSpace: 'nowrap'
-                                                    }}>
-                                                        {sEmoji && <span style={{ fontSize: '0.5rem' }}>{sEmoji}</span>}
-                                                        <span>{score ?? '—'}</span>
-                                                    </div>
-                                                );
-                                            })()}
-
-                                            {/* Şube dropdown */}
-                                            {(() => {
-                                                const matchCase = allCases.find(ac => ac.id === activeCaseInfo?.caseId);
-                                                const currentBranchId = activeCaseInfo?.branchId || matchCase?.branchId || activeConv?.branchId || activeConv?.branch?.id || null;
-                                                const currentBranch = availableBranches.find(b => b.id === currentBranchId) || activeCaseInfo?.branch || matchCase?.branch || activeConv?.branch || null;
-                                                const branchDisplayName = currentBranch
-                                                    ? currentBranch.name.replace(/\s*şubesi$/i, '').replace(/\s*şube$/i, '')
-                                                    : 'Şube';
-
-                                                return (
-                                                    <div style={{ position: 'relative', flexShrink: 1, minWidth: 0 }}>
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (!branchDropdownOpen && availableBranches.length === 0 && currentWorkspace?.id) {
-                                                                    try {
-                                                                        const res = await appointmentConfigAPI.getBranches(currentWorkspace.id);
-                                                                        setAvailableBranches(res.data?.branches || []);
-                                                                    } catch (e) { console.error(e); }
-                                                                }
-                                                                if (branchBtnRef.current) {
-                                                                    const rect = branchBtnRef.current.getBoundingClientRect();
-                                                                    setBranchDropdownPos({ top: rect.bottom + 4, right: Math.max(10, window.innerWidth - rect.right) });
-                                                                }
-                                                                setBranchDropdownOpen(v => !v);
-                                                                setBranchSearch('');
-                                                            }}
-                                                            ref={branchBtnRef}
-                                                            style={{
-                                                                background: currentBranch ? '#f0fdf4' : '#ffffff',
-                                                                color: currentBranch ? '#16a34a' : '#475569',
-                                                                border: `1px solid ${currentBranch ? '#bbf7d0' : '#e2e8f0'}`,
-                                                                borderRadius: 4,
-                                                                padding: '1px 5px',
-                                                                fontSize: '0.58rem',
-                                                                fontWeight: 600,
-                                                                whiteSpace: 'nowrap',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: 3,
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.15s',
-                                                                height: 20,
-                                                                maxWidth: 90,
-                                                                minWidth: 0,
-                                                                boxSizing: 'border-box'
-                                                            }}
-                                                            title={currentBranch ? `Şube: ${currentBranch.name}` : 'Şube seç'}
-                                                        >
-                                                            <Building2 size={10} style={{ opacity: currentBranch ? 0.9 : 0.6, flexShrink: 0 }} />
-                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                {branchDisplayName}
-                                                            </span>
-                                                            <ChevronDown size={7} style={{ opacity: 0.5, flexShrink: 0 }} />
-                                                        </button>
-
-                                                        {branchDropdownOpen && (
-                                                            <>
-                                                            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setBranchDropdownOpen(false)} />
-                                                            <div style={{
-                                                                position: 'fixed',
-                                                                top: branchDropdownPos.top,
-                                                                right: branchDropdownPos.right,
-                                                                zIndex: 9999,
-                                                                background: '#fff',
-                                                                border: '1px solid #e5e7eb',
-                                                                borderRadius: 12,
-                                                                boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-                                                                width: 240,
-                                                                maxHeight: 320,
-                                                                overflow: 'hidden'
-                                                            }}>
-                                                                <div style={{ padding: '8px' }}>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Şube ara..."
-                                                                        value={branchSearch}
-                                                                        onChange={e => setBranchSearch(e.target.value)}
-                                                                        autoFocus
-                                                                        style={{
-                                                                            width: '100%', padding: '6px 10px',
-                                                                            border: '1px solid #e5e7eb', borderRadius: 8,
-                                                                            fontSize: '0.75rem', outline: 'none'
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                                                                    {currentBranch && (
-                                                                        <button
-                                                                            onClick={() => handleBranchSelect(null)}
-                                                                            style={{
-                                                                                width: '100%', padding: '7px 12px',
-                                                                                background: 'none',
-                                                                                border: 'none', borderBottom: '1px solid #f1f5f9',
-                                                                                fontSize: '0.72rem', color: '#ef4444', cursor: 'pointer',
-                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
-                                                                            }}
-                                                                        >
-                                                                            <X size={12} /> Şubeyi Kaldır
-                                                                        </button>
-                                                                    )}
-                                                                    {availableBranches
-                                                                        .filter(b => !branchSearch || b.name.toLowerCase().includes(branchSearch.toLowerCase()))
-                                                                        .map(branch => {
-                                                                            const isSelected = currentBranchId === branch.id;
-                                                                            return (
-                                                                                <button
-                                                                                    key={branch.id}
-                                                                                    onClick={() => handleBranchSelect(branch.id)}
-                                                                                    style={{
-                                                                                        width: '100%', padding: '6px 10px',
-                                                                                        background: isSelected ? '#f0fdf4' : 'transparent',
-                                                                                        border: 'none', fontSize: '0.72rem',
-                                                                                        color: '#374151', cursor: 'pointer',
-                                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
-                                                                                        transition: 'background 0.1s'
-                                                                                    }}
-                                                                                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                                                                    onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#f0fdf4' : 'transparent'; }}
-                                                                                >
-                                                                                    <Building2 size={12} style={{ color: isSelected ? '#16a34a' : '#94a3b8' }} />
-                                                                                    <span style={{ flex: 1, fontWeight: isSelected ? 600 : 400 }}>{branch.name}</span>
-                                                                                    {isSelected && <Check size={12} style={{ color: '#16a34a' }} />}
-                                                                                </button>
-                                                                            );
-                                                                        })
-                                                                    }
-                                                                    {availableBranches.filter(b => !branchSearch || b.name.toLowerCase().includes(branchSearch.toLowerCase())).length === 0 && (
-                                                                        <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
-                                                                            Şube bulunamadı
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
-                                        </div>
-
-                                        {isExpanded && (
-                                            <>
-                                            {/* ═══ SATIR 3: Kategori (flex: 1) — Ürün Ekle ═══ */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 12px 6px' }}>
-                                                {/* Kategori etiketi */}
-                                                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                                                    <button
-                                                        onClick={async () => {
-                                                            if (!categoryDropdownOpen && availableCategories.length === 0) {
-                                                                try {
-                                                                    const res = await getTopicCategories(currentWorkspace.id);
-                                                                    setAvailableCategories(res.data || []);
-                                                                } catch (e) { console.error(e); }
-                                                            }
-                                                            if (categoryBtnRef.current) {
-                                                                const rect = categoryBtnRef.current.getBoundingClientRect();
-                                                                setCategoryDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                                                            }
-                                                            setCategoryDropdownOpen(v => !v);
-                                                            setCategorySearch('');
-                                                        }}
-                                                        ref={categoryBtnRef}
-                                                        style={{
-                                                            background: activeConv?.topicCategory?.name
-                                                                ? (activeConv.topicCategory.color || '#6366f1') + '18'
-                                                                : '#ffffff',
-                                                            color: activeConv?.topicCategory?.color || '#334155',
-                                                            border: `1px solid ${activeConv?.topicCategory?.name ? (activeConv.topicCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
-                                                            borderRadius: 6,
-                                                            padding: '0 8px',
-                                                            fontSize: '0.65rem',
-                                                            fontWeight: 600,
-                                                            whiteSpace: 'nowrap',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.15s',
-                                                            height: 26,
-                                                            width: '100%',
-                                                            boxSizing: 'border-box'
-                                                        }}
-                                                    >
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                                                            <span style={{ fontSize: '0.7rem' }}>
-                                                                {activeConv?.topicCategory?.icon || '📁'}
-                                                            </span>
-                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {activeConv?.topicCategory?.name || 'Kategori Seç'}
-                                                            </span>
-                                                        </span>
-                                                        <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
-                                                    </button>
-
-                                                    {categoryDropdownOpen && (
-                                                        <>
-                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryDropdownOpen(false)} />
-                                                        <div style={{
-                                                            position: 'fixed',
-                                                            top: categoryDropdownPos.top,
-                                                            right: categoryDropdownPos.right,
-                                                            zIndex: 9999,
-                                                            background: '#fff',
-                                                            border: '1px solid #e5e7eb',
-                                                            borderRadius: 12,
-                                                            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-                                                            width: 260,
-                                                            maxHeight: 320,
-                                                            overflow: 'hidden'
-                                                        }}>
-                                                            <div style={{ padding: '8px' }}>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Kategori ara..."
-                                                                    value={categorySearch}
-                                                                    onChange={e => setCategorySearch(e.target.value)}
-                                                                    autoFocus
-                                                                    style={{
-                                                                        width: '100%', padding: '6px 10px',
-                                                                        border: '1px solid #e5e7eb', borderRadius: 8,
-                                                                        fontSize: '0.75rem', outline: 'none'
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        try {
-                                                                            await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null });
-                                                                            setLocalConvOverride(prev => ({
-                                                                                ...(prev || activeConv),
-                                                                                topicCategory: null
-                                                                            }));
-                                                                            setCategoryDropdownOpen(false);
-                                                                        } catch (e) { console.error(e); }
-                                                                    }}
-                                                                    style={{
-                                                                        width: '100%', padding: '7px 12px',
-                                                                        background: 'none',
-                                                                        border: 'none', borderBottom: '1px solid #f1f5f9',
-                                                                        fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
-                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
-                                                                    }}
-                                                                >
-                                                                    <X size={12} /> Kategoriyi Kaldır
-                                                                </button>
-                                                                {availableCategories
-                                                                    .filter(catItem => !categorySearch || catItem.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                                                                    .map(cat => (
-                                                                        <button
-                                                                            key={cat.id}
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id });
-                                                                                    setLocalConvOverride(prev => ({
-                                                                                        ...(prev || activeConv),
-                                                                                        topicCategory: res.data.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
-                                                                                    }));
-                                                                                    setCategoryDropdownOpen(false);
-                                                                                } catch (e) { console.error(e); }
-                                                                            }}
-                                                                            style={{
-                                                                                width: '100%', padding: '6px 10px',
-                                                                                background: activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent',
-                                                                                border: 'none', fontSize: '0.72rem',
-                                                                                color: '#374151', cursor: 'pointer',
-                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
-                                                                                transition: 'background 0.1s'
-                                                                            }}
-                                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                                                            onMouseLeave={e => { e.currentTarget.style.background = activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent'; }}
-                                                                        >
-                                                                            <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
-                                                                            <span style={{ flex: 1 }}>{cat.name}</span>
-                                                                            {activeConv?.topicCategory?.id === cat.id && <Check size={12} style={{ color: '#22c55e' }} />}
-                                                                        </button>
-                                                                    ))
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                        </>
-                                                    )}
-                                                </div>
-
-                                                {/* Ürün ekle butonu */}
-                                                <div style={{ position: 'relative', flexShrink: 0 }} ref={productBtnRef}>
-                                                    <button
-                                                        onClick={() => {
-                                                            if (productBtnRef.current) {
-                                                                const rect = productBtnRef.current.getBoundingClientRect();
-                                                                setProductDropdownPos({ top: rect.bottom + 4, left: rect.left });
-                                                            }
-                                                            setProductDropdownOpen(v => !v);
-                                                            setProductSearchText('');
-                                                        }}
-                                                        style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                            padding: '0 8px', borderRadius: 6, height: 26,
-                                                            background: '#ffffff', color: '#64748b',
-                                                            border: '1px dashed #cbd5e1',
-                                                            fontSize: '0.62rem', fontWeight: 600,
-                                                            cursor: 'pointer', transition: 'all 0.15s',
-                                                            whiteSpace: 'nowrap', boxSizing: 'border-box'
-                                                        }}
-                                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
-                                                    >
-                                                        <Plus size={11} /> Ürün
-                                                    </button>
-
-                                                    {productDropdownOpen && ReactDOM.createPortal(
-                                                        <>
-                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setProductDropdownOpen(false)} />
-                                                        <div style={{
-                                                            position: 'fixed',
-                                                            top: productDropdownPos.top,
-                                                            left: Math.min(productDropdownPos.left, window.innerWidth - 260),
-                                                            zIndex: 9999,
-                                                            background: '#fff',
-                                                            border: '1px solid #e5e7eb',
-                                                            borderRadius: 12,
-                                                            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-                                                            width: 250,
-                                                            maxHeight: 280,
-                                                            overflow: 'hidden'
-                                                        }}>
-                                                            <div style={{ padding: '8px' }}>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Ürün ara..."
-                                                                    value={productSearchText}
-                                                                    onChange={e => setProductSearchText(e.target.value)}
-                                                                    autoFocus
-                                                                    style={{
-                                                                        width: '100%', padding: '6px 10px',
-                                                                        border: '1px solid #e5e7eb', borderRadius: 8,
-                                                                        fontSize: '0.75rem', outline: 'none',
-                                                                        boxSizing: 'border-box'
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                                                                {catalogProducts
-                                                                    .filter(p => !productSearchText || p.name?.toLowerCase().includes(productSearchText.toLowerCase()))
-                                                                    .slice(0, 20)
-                                                                    .map(product => {
-                                                                        let existingProducts = [];
-                                                                        try {
-                                                                            const rawP = activeCaseInfo?.products;
-                                                                            existingProducts = typeof rawP === 'string' ? JSON.parse(rawP || '[]') : rawP || [];
-                                                                        } catch {}
-                                                                        const isAdded = existingProducts.some(ep => ep.productId === product.id);
-                                                                        return (
-                                                                            <div
-                                                                                key={product.id}
-                                                                                onClick={async () => {
-                                                                                    if (isAdded) return;
-                                                                                    const caseId = activeCaseInfo?.caseId;
-                                                                                    if (!caseId) return;
-                                                                                    try {
-                                                                                        const newProducts = [...existingProducts, {
-                                                                                            productId: product.id,
-                                                                                            name: product.name,
-                                                                                            groupName: product.groupName || null,
-                                                                                            quantity: 1,
-                                                                                            unitPrice: product.price || 0
-                                                                                        }];
-                                                                                        await caseAPI.update(currentWorkspace.id, caseId, { products: JSON.stringify(newProducts) });
-                                                                                        setActiveCaseInfo(prev => ({ ...prev, products: JSON.stringify(newProducts) }));
-                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                        setProductSearchText('');
-                                                                                    } catch (err) { console.error('Ürün ekleme hatası:', err); }
-                                                                                }}
-                                                                                style={{
-                                                                                    padding: '6px 10px', cursor: isAdded ? 'default' : 'pointer',
-                                                                                    display: 'flex', alignItems: 'center', gap: 6,
-                                                                                    fontSize: '0.72rem', color: isAdded ? '#94a3b8' : '#374151',
-                                                                                    background: 'transparent',
-                                                                                    transition: 'background 0.1s',
-                                                                                    opacity: isAdded ? 0.5 : 1
-                                                                                }}
-                                                                                onMouseEnter={e => { if (!isAdded) e.currentTarget.style.background = '#f8fafc'; }}
-                                                                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                                            >
-                                                                                <span style={{ fontSize: '0.7rem' }}>📦</span>
-                                                                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</span>
-                                                                                {product.price > 0 && <span style={{ fontSize: '0.6rem', color: '#94a3b8', flexShrink: 0 }}>₺{product.price}</span>}
-                                                                                {isAdded && <Check size={12} style={{ color: '#22c55e', flexShrink: 0 }} />}
-                                                                            </div>
-                                                                        );
-                                                                    })
-                                                                }
-                                                                {catalogProducts.filter(p => !productSearchText || p.name?.toLowerCase().includes(productSearchText.toLowerCase())).length === 0 && (
-                                                                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
-                                                                        Ürün bulunamadı
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        </>,
-                                                        document.body
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* ═══ SATIR 4: Ekli Ürünler (Varsa) ═══ */}
-                                            {(() => {
-                                                try {
-                                                    let rawProducts = activeCaseInfo?.products;
-                                                    if (!rawProducts && allCases?.length > 0 && activeCaseInfo?.caseId) {
-                                                        const matchCase = allCases.find(ac => ac.id === activeCaseInfo.caseId);
-                                                        rawProducts = matchCase?.products;
-                                                    }
-                                                    if (!rawProducts && allCases?.length > 0) {
-                                                        rawProducts = allCases[0]?.products;
-                                                    }
-                                                    const prods = typeof rawProducts === 'string'
-                                                        ? JSON.parse(rawProducts || '[]')
-                                                        : rawProducts || [];
-                                                    if (prods.length === 0) return null;
-                                                    return (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 12px 6px', flexWrap: 'wrap' }}>
-                                                            {prods.map((p, i) => (
-                                                                <span key={'p' + i} style={{
-                                                                    display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                                    padding: '2px 6px', borderRadius: 4, height: 22,
-                                                                    background: '#fefce8', color: '#854d0e',
-                                                                    border: '1px solid #fef08a',
-                                                                    fontSize: '0.6rem', fontWeight: 600, whiteSpace: 'nowrap'
-                                                                }}>
-                                                                    📦 {p.name}
-                                                                    <button
-                                                                        onClick={async (e) => {
-                                                                            e.stopPropagation();
-                                                                            const caseId = activeCaseInfo?.caseId;
-                                                                            if (!caseId) return;
-                                                                            try {
-                                                                                const newProducts = prods.filter(pp => pp.productId !== p.productId);
-                                                                                await caseAPI.update(currentWorkspace.id, caseId, { products: JSON.stringify(newProducts) });
-                                                                                setActiveCaseInfo(prev => ({ ...prev, products: JSON.stringify(newProducts) }));
-                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                            } catch (err) { console.error('Ürün silme hatası:', err); }
-                                                                        }}
-                                                                        style={{
-                                                                            background: 'none', border: 'none', cursor: 'pointer',
-                                                                            color: '#854d0e', padding: 0, display: 'flex', alignItems: 'center',
-                                                                            opacity: 0.6, transition: 'opacity 0.15s'
-                                                                        }}
-                                                                        onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-                                                                        onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; }}
-                                                                    >
-                                                                        <X size={10} />
-                                                                    </button>
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                } catch { return null; }
-                                            })()}
-
-                                            {/* ═══ SATIR 5: Akış / Aşama — Durum (82px) ═══ */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 12px 6px' }}>
-                                                {/* Akış / Aşama (CaseCards) */}
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                {profile?.id && currentWorkspace?.id && (
-                                                    <CaseCards
-                                                        workspaceId={currentWorkspace.id}
-                                                        contactId={profile.id}
-                                                        members={members}
-                                                        teams={teams}
-                                                        conversationId={conversationId}
-                                                        activeCaseId={conversationData?.caseId || null}
-                                                        inline={true}
-                                                        showOnly="stages"
-                                                        onCaseInfo={(info) => setActiveCaseInfo(prev => {
-                                                            if (!prev || prev.caseId !== info.caseId) {
-                                                                return { ...info, _savedTitle: info.title };
-                                                            }
-                                                            if (prev._userEdited) {
-                                                                return { ...prev, ...info, title: prev.title, _userEdited: true };
-                                                            }
-                                                            return { ...prev, ...info, _savedTitle: info.title };
-                                                        })}
-                                                        onCasesLoaded={(cases) => setAllCases(cases)}
-                                                        onStageChanged={({ funnelType, funnelStageId, stageName, stageColor }) => {
-                                                            setFunnelStage({ id: funnelStageId, name: stageName, color: stageColor || '#6366f1' });
-                                                            setLocalConvOverride(prev => ({
-                                                                ...(prev || activeConv || conversationData || {}),
-                                                                funnelStageId,
-                                                                funnelType,
-                                                                _effectiveStageId: funnelStageId
-                                                            }));
-                                                        }}
-                                                    />
-                                                )}
-                                            </div>
+                                        {/* ═══ SATIR 2: Akış / Aşama — Durum (82px) ═══ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 12px 6px' }}>
+                                            {/* Akış / Aşama (CaseCards) */}
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                            {profile?.id && currentWorkspace?.id && (
+                                                <CaseCards
+                                                    workspaceId={currentWorkspace.id}
+                                                    contactId={profile.id}
+                                                    members={members}
+                                                    teams={teams}
+                                                    conversationId={conversationId}
+                                                    activeCaseId={conversationData?.caseId || null}
+                                                    inline={true}
+                                                    showOnly="stages"
+                                                    onCaseInfo={(info) => setActiveCaseInfo(prev => {
+                                                        if (!prev || prev.caseId !== info.caseId) {
+                                                            return { ...info, _savedTitle: info.title };
+                                                        }
+                                                        if (prev._userEdited) {
+                                                            return { ...prev, ...info, title: prev.title, _userEdited: true };
+                                                        }
+                                                        return { ...prev, ...info, _savedTitle: info.title };
+                                                    })}
+                                                    onCasesLoaded={(cases) => setAllCases(cases)}
+                                                    onStageChanged={({ funnelType, funnelStageId, stageName, stageColor }) => {
+                                                        setFunnelStage({ id: funnelStageId, name: stageName, color: stageColor || '#6366f1' });
+                                                        setLocalConvOverride(prev => ({
+                                                            ...(prev || activeConv || conversationData || {}),
+                                                            funnelStageId,
+                                                            funnelType,
+                                                            _effectiveStageId: funnelStageId
+                                                        }));
+                                                    }}
+                                                />
+                                            )}
                                             </div>
 
                                             {/* Durum (Açık/Kapalı) */}
@@ -3397,6 +2828,616 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 })()}
                                             </div>
                                         </div>
+
+                                        {/* ═══ SATIR 3: 4 Rozet Tek Satır (Fırsat/Randevu — Kaynak — Puan — Şube) ═══ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 12px 6px', flexWrap: 'nowrap', position: 'relative' }}>
+                                            {/* Case Type Badge */}
+                                            {(() => {
+                                                // 1. Önce CaseType relation'ını kontrol et (yeni sistem)
+                                                const caseTypeRel = activeCaseInfo?.caseType || c?.caseType;
+                                                if (caseTypeRel?.name) {
+                                                    const ctColor = caseTypeRel.color || '#6b7280';
+                                                    return (
+                                                        <span style={{
+                                                            background: ctColor + '1a',
+                                                            color: ctColor,
+                                                            border: `1px solid ${ctColor}40`,
+                                                            borderRadius: 4,
+                                                            padding: '1px 5px',
+                                                            fontSize: '0.58rem',
+                                                            fontWeight: 700,
+                                                            letterSpacing: '0.02em',
+                                                            lineHeight: 1,
+                                                            whiteSpace: 'nowrap',
+                                                            textTransform: 'uppercase',
+                                                            height: 20,
+                                                            boxSizing: 'border-box',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            {caseTypeRel.icon ? `${caseTypeRel.icon} ` : ''}{caseTypeRel.name}
+                                                        </span>
+                                                    );
+                                                }
+
+                                                // 2. Legacy type field'ına fallback
+                                                const rawType = activeCaseInfo?.type || c?.type || 'GENEL';
+                                                const typeConfig = {
+                                                    GENEL:         { label: 'Genel', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+                                                    FIRSAT:        { label: 'Fırsat', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
+                                                    SIKAYET:       { label: 'Şikayet', bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' },
+                                                    RANDEVU:       { label: 'Randevu', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
+                                                    DESTEK:        { label: 'Destek', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+                                                    IS_BASVURUSU:  { label: 'İş Başvurusu', bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' },
+                                                    LEAD:          { label: 'Lead', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
+                                                    SUPPORT:       { label: 'Destek', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+                                                    SALE:          { label: 'Satış', bg: '#d1fae5', color: '#047857', border: '#6ee7b7' },
+                                                    PROJECT:       { label: 'Proje', bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' },
+                                                    COMPLAINT:     { label: 'Şikayet', bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' },
+                                                    OTHER:         { label: 'Diğer', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+                                                };
+
+                                                let resolvedType = rawType;
+                                                if (rawType === 'GENEL') {
+                                                    const title = (activeCaseInfo?.title || c?.title || '').toLowerCase();
+                                                    const hasLeadKeywords = ['lead', 'talep', 'bilgi', 'başvuru', 'form', 'teklif', 'fırsat'].some(k => title.includes(k));
+                                                    const hasComplaintKeywords = ['şikayet', 'sorun', 'hata', 'iade'].some(k => title.includes(k));
+                                                    const hasSupportKeywords = ['destek', 'yardım', 'arıza', 'problem'].some(k => title.includes(k));
+
+                                                    if (hasLeadKeywords) resolvedType = 'FIRSAT';
+                                                    else if (hasComplaintKeywords) resolvedType = 'SIKAYET';
+                                                    else if (hasSupportKeywords) resolvedType = 'DESTEK';
+                                                }
+
+                                                const cfg = typeConfig[resolvedType] || typeConfig.GENEL;
+                                                return (
+                                                    <span style={{
+                                                        background: cfg.bg,
+                                                        color: cfg.color,
+                                                        border: `1px solid ${cfg.border}`,
+                                                        borderRadius: 4,
+                                                        padding: '1px 5px',
+                                                        fontSize: '0.58rem',
+                                                        fontWeight: 700,
+                                                        letterSpacing: '0.02em',
+                                                        lineHeight: 1,
+                                                        whiteSpace: 'nowrap',
+                                                        textTransform: 'uppercase',
+                                                        height: 20,
+                                                        boxSizing: 'border-box',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        {cfg.label}
+                                                    </span>
+                                                );
+                                            })()}
+
+                                            {/* 🌟 Case Kaynağı Rozeti (Toplu Mesaj / WhatsApp / Meta Lead vb.) 🌟 */}
+                                            {(() => {
+                                                const isBulk = activeConv?.isBulkSend || Boolean(activeConv?.campaignId) || Boolean(activeCaseInfo?.campaignId);
+                                                const campaignName = activeCaseInfo?.campaign?.name || activeConv?.campaign?.name;
+                                                const rawSource = isBulk ? 'BULK' : (activeCaseInfo?.source || c?.source || activeConv?.source || activeConv?.channel || conversationData?.channel || profile?.source || 'MANUAL');
+
+                                                const sourceConfig = {
+                                                    BULK:          { icon: '📢', text: 'Toplu', bg: '#fef3c7', color: '#b45309', border: '#fde68a' },
+                                                    WHATSAPP:      { icon: '💬', text: 'WhatsApp', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+                                                    FACEBOOK_LEAD: { icon: '📋', text: 'Meta Lead', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+                                                    META_LEAD:     { icon: '📋', text: 'Meta Lead', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+                                                    LEAD:          { icon: '📋', text: 'Meta Lead', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+                                                    INSTAGRAM:     { icon: '📸', text: 'Instagram', bg: '#fdf4ff', color: '#a21caf', border: '#f0abfc' },
+                                                    WEB:           { icon: '🌐', text: 'Web', bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
+                                                    MANUAL:        { icon: '👤', text: 'Manuel', bg: '#ffffff', color: '#475569', border: '#e2e8f0' },
+                                                };
+                                                const srcKey = String(rawSource || '').toUpperCase();
+                                                const srcCfg = sourceConfig[srcKey] || (srcKey.includes('BULK') ? sourceConfig.BULK : (srcKey.includes('INSTA') ? sourceConfig.INSTAGRAM : (srcKey.includes('WHATSAPP') ? sourceConfig.WHATSAPP : (srcKey.includes('LEAD') ? sourceConfig.FACEBOOK_LEAD : sourceConfig.MANUAL))));
+
+                                                return (
+                                                    <div
+                                                        title={`Case Kaynağı: ${isBulk && campaignName ? `Toplu: ${campaignName}` : srcCfg.text}`}
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                            background: srcCfg.bg, border: `1px solid ${srcCfg.border}`,
+                                                            color: srcCfg.color, fontSize: '0.58rem', fontWeight: 600,
+                                                            padding: '1px 5px', borderRadius: 4, height: 20,
+                                                            boxSizing: 'border-box', flexShrink: 0, whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        <span style={{ fontSize: '0.62rem' }}>{srcCfg.icon}</span>
+                                                        <span>{srcCfg.text}</span>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Puan (Lead Score) */}
+                                            {(() => {
+                                                const score = activeCaseInfo?.leadScore ?? c?.leadScore;
+                                                const temp = activeCaseInfo?.leadTemperature ?? c?.leadTemperature;
+                                                if (score == null && !temp) return null;
+                                                const scoreColorMap = { COLD: '#3b82f6', COOL: '#22c55e', WARM: '#eab308', HOT: '#f97316', FIRE: '#ef4444' };
+                                                const scoreBgMap = { COLD: '#eff6ff', COOL: '#f0fdf4', WARM: '#fefce8', HOT: '#fff7ed', FIRE: '#fef2f2' };
+                                                const scoreEmojiMap = { COLD: '🔵', COOL: '🟢', WARM: '🟡', HOT: '🟠', FIRE: '🔴' };
+                                                const sColor = scoreColorMap[temp] || '#94a3b8';
+                                                const sBg = scoreBgMap[temp] || '#f1f5f9';
+                                                const sEmoji = scoreEmojiMap[temp] || '';
+                                                return (
+                                                    <div style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 2.5,
+                                                        padding: '1px 5px', height: 20, boxSizing: 'border-box', borderRadius: 10,
+                                                        background: sBg, border: `1px solid ${sColor}25`,
+                                                        fontSize: '0.58rem', fontWeight: 700, color: sColor, flexShrink: 0, whiteSpace: 'nowrap'
+                                                    }}>
+                                                        {sEmoji && <span style={{ fontSize: '0.5rem' }}>{sEmoji}</span>}
+                                                        <span>{score ?? '—'}</span>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Şube dropdown */}
+                                            {(() => {
+                                                const matchCase = allCases.find(ac => ac.id === activeCaseInfo?.caseId);
+                                                const currentBranchId = activeCaseInfo?.branchId || matchCase?.branchId || activeConv?.branchId || activeConv?.branch?.id || null;
+                                                const currentBranch = availableBranches.find(b => b.id === currentBranchId) || activeCaseInfo?.branch || matchCase?.branch || activeConv?.branch || null;
+                                                const branchDisplayName = currentBranch
+                                                    ? currentBranch.name.replace(/\s*şubesi$/i, '').replace(/\s*şube$/i, '')
+                                                    : 'Şube';
+
+                                                return (
+                                                    <>
+                                                    <div style={{ position: 'relative', flexShrink: 1, minWidth: 0 }}>
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (branchOpenCaseId !== c.id && availableBranches.length === 0 && currentWorkspace?.id) {
+                                                                    try {
+                                                                        const res = await appointmentConfigAPI.getBranches(currentWorkspace.id);
+                                                                        setAvailableBranches(res.data?.branches || []);
+                                                                    } catch (e) { console.error(e); }
+                                                                }
+                                                                setBranchOpenCaseId(prev => prev === c.id ? null : c.id);
+                                                                setBranchSearch('');
+                                                            }}
+                                                            style={{
+                                                                background: currentBranch ? '#f0fdf4' : '#ffffff',
+                                                                color: currentBranch ? '#16a34a' : '#475569',
+                                                                border: `1px solid ${currentBranch ? '#bbf7d0' : '#e2e8f0'}`,
+                                                                borderRadius: 4,
+                                                                padding: '1px 5px',
+                                                                fontSize: '0.58rem',
+                                                                fontWeight: 600,
+                                                                whiteSpace: 'nowrap',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: 3,
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.15s',
+                                                                height: 20,
+                                                                maxWidth: 90,
+                                                                minWidth: 0,
+                                                                boxSizing: 'border-box'
+                                                            }}
+                                                            title={currentBranch ? `Şube: ${currentBranch.name}` : 'Şube seç'}
+                                                        >
+                                                            <Building2 size={10} style={{ opacity: currentBranch ? 0.9 : 0.6, flexShrink: 0 }} />
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {branchDisplayName}
+                                                            </span>
+                                                            <ChevronDown size={7} style={{ opacity: 0.5, flexShrink: 0, transition: 'transform 0.2s', transform: branchOpenCaseId === c.id ? 'rotate(180deg)' : 'none' }} />
+                                                        </button>
+                                                    </div>
+
+                                                    {(branchOpenCaseId === c.id) && (
+                                                        <>
+                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setBranchOpenCaseId(null)} />
+                                                        <div
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: '100%',
+                                                                left: 12,
+                                                                width: 250,
+                                                                maxWidth: 'calc(100% - 24px)',
+                                                                boxSizing: 'border-box',
+                                                                zIndex: 9999,
+                                                                background: '#fff',
+                                                                border: '1px solid #e5e7eb',
+                                                                borderRadius: 12,
+                                                                boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                                maxHeight: 320,
+                                                                overflow: 'hidden',
+                                                                marginTop: 4
+                                                            }}
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <div style={{ padding: '8px' }}>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Şube ara..."
+                                                                    value={branchSearch}
+                                                                    onChange={e => setBranchSearch(e.target.value)}
+                                                                    autoFocus
+                                                                    style={{
+                                                                        width: '100%', padding: '6px 10px',
+                                                                        border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                        fontSize: '0.75rem', outline: 'none',
+                                                                        boxSizing: 'border-box'
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                                                                {currentBranch && (
+                                                                    <button
+                                                                        onClick={() => handleBranchSelect(null)}
+                                                                        style={{
+                                                                            width: '100%', padding: '7px 12px',
+                                                                            background: 'none',
+                                                                            border: 'none', borderBottom: '1px solid #f1f5f9',
+                                                                            fontSize: '0.72rem', color: '#ef4444', cursor: 'pointer',
+                                                                            textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
+                                                                        }}
+                                                                    >
+                                                                        <X size={12} /> Şubeyi Kaldır
+                                                                    </button>
+                                                                )}
+                                                                {availableBranches
+                                                                    .filter(b => !branchSearch || b.name.toLowerCase().includes(branchSearch.toLowerCase()))
+                                                                    .map(branch => {
+                                                                        const isSelected = currentBranchId === branch.id;
+                                                                        return (
+                                                                            <button
+                                                                                key={branch.id}
+                                                                                onClick={() => handleBranchSelect(branch.id)}
+                                                                                style={{
+                                                                                    width: '100%', padding: '6px 10px',
+                                                                                    background: isSelected ? '#f0fdf4' : 'transparent',
+                                                                                    border: 'none', fontSize: '0.72rem',
+                                                                                    color: '#374151', cursor: 'pointer',
+                                                                                    textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
+                                                                                    transition: 'background 0.1s'
+                                                                                }}
+                                                                                onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                                                                onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#f0fdf4' : 'transparent'; }}
+                                                                            >
+                                                                                <Building2 size={12} style={{ color: isSelected ? '#16a34a' : '#94a3b8' }} />
+                                                                                <span style={{ flex: 1, fontWeight: isSelected ? 600 : 400 }}>{branch.name}</span>
+                                                                                {isSelected && <Check size={12} style={{ color: '#16a34a' }} />}
+                                                                            </button>
+                                                                        );
+                                                                    })
+                                                                }
+                                                                {availableBranches.filter(b => !branchSearch || b.name.toLowerCase().includes(branchSearch.toLowerCase())).length === 0 && (
+                                                                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                                        Şube bulunamadı
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        </>
+                                                    )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+
+                                        {isExpanded && (
+                                            <>
+                                            {/* ═══ SATIR 4: Kategori (flex: 1) — Ürün Ekle ═══ */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 12px 6px' }}>
+                                                {/* Kategori etiketi */}
+                                                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (categoryOpenCaseId !== c.id && availableCategories.length === 0) {
+                                                                try {
+                                                                    const res = await getTopicCategories(currentWorkspace.id);
+                                                                    setAvailableCategories(res.data || []);
+                                                                } catch (e) { console.error(e); }
+                                                            }
+                                                            setCategoryOpenCaseId(prev => prev === c.id ? null : c.id);
+                                                            setCategorySearch('');
+                                                        }}
+                                                        style={{
+                                                            background: activeConv?.topicCategory?.name
+                                                                ? (activeConv.topicCategory.color || '#6366f1') + '18'
+                                                                : '#ffffff',
+                                                            color: activeConv?.topicCategory?.color || '#334155',
+                                                            border: `1px solid ${activeConv?.topicCategory?.name ? (activeConv.topicCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
+                                                            borderRadius: 6,
+                                                            padding: '0 8px',
+                                                            fontSize: '0.65rem',
+                                                            fontWeight: 600,
+                                                            whiteSpace: 'nowrap',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.15s',
+                                                            height: 26,
+                                                            width: '100%',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                    >
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                                            <span style={{ fontSize: '0.7rem' }}>
+                                                                {activeConv?.topicCategory?.icon || '📁'}
+                                                            </span>
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {activeConv?.topicCategory?.name || 'Kategori Seç'}
+                                                            </span>
+                                                        </span>
+                                                        <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0, transition: 'transform 0.2s', transform: categoryOpenCaseId === c.id ? 'rotate(180deg)' : 'none' }} />
+                                                    </button>
+
+                                                    {(categoryOpenCaseId === c.id) && (
+                                                        <>
+                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryOpenCaseId(null)} />
+                                                        <div style={{
+                                                            position: 'absolute',
+                                                            top: '100%',
+                                                            left: 0,
+                                                            zIndex: 9999,
+                                                            background: '#fff',
+                                                            border: '1px solid #e5e7eb',
+                                                            borderRadius: 12,
+                                                            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                            width: 260,
+                                                            maxHeight: 320,
+                                                            overflow: 'hidden',
+                                                            marginTop: 4
+                                                        }}
+                                                        onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <div style={{ padding: '8px' }}>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Kategori ara..."
+                                                                    value={categorySearch}
+                                                                    onChange={e => setCategorySearch(e.target.value)}
+                                                                    autoFocus
+                                                                    style={{
+                                                                        width: '100%', padding: '6px 10px',
+                                                                        border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                        fontSize: '0.75rem', outline: 'none'
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null });
+                                                                            setLocalConvOverride(prev => ({
+                                                                                ...(prev || activeConv),
+                                                                                topicCategory: null
+                                                                            }));
+                                                                            setCategoryOpenCaseId(null);
+                                                                        } catch (e) { console.error(e); }
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%', padding: '7px 12px',
+                                                                        background: 'none',
+                                                                        border: 'none', borderBottom: '1px solid #f1f5f9',
+                                                                        fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
+                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
+                                                                    }}
+                                                                >
+                                                                    <X size={12} /> Kategoriyi Kaldır
+                                                                </button>
+                                                                {availableCategories
+                                                                    .filter(catItem => !categorySearch || catItem.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                                                                    .map(cat => (
+                                                                        <button
+                                                                            key={cat.id}
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id });
+                                                                                    setLocalConvOverride(prev => ({
+                                                                                        ...(prev || activeConv),
+                                                                                        topicCategory: res.data.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
+                                                                                    }));
+                                                                                    setCategoryOpenCaseId(null);
+                                                                                } catch (e) { console.error(e); }
+                                                                            }}
+                                                                            style={{
+                                                                                width: '100%', padding: '6px 10px',
+                                                                                background: activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent',
+                                                                                border: 'none', fontSize: '0.72rem',
+                                                                                color: '#374151', cursor: 'pointer',
+                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
+                                                                                transition: 'background 0.1s'
+                                                                            }}
+                                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                                                            onMouseLeave={e => { e.currentTarget.style.background = activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent'; }}
+                                                                        >
+                                                                            <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
+                                                                            <span style={{ flex: 1 }}>{cat.name}</span>
+                                                                            {activeConv?.topicCategory?.id === cat.id && <Check size={12} style={{ color: '#22c55e' }} />}
+                                                                        </button>
+                                                                    ))
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {/* Ürün ekle butonu */}
+                                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                                    <button
+                                                        onClick={() => {
+                                                            setProductOpenCaseId(prev => prev === c.id ? null : c.id);
+                                                            setProductSearchText('');
+                                                        }}
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                            padding: '0 8px', borderRadius: 6, height: 26,
+                                                            background: '#ffffff', color: '#64748b',
+                                                            border: '1px dashed #cbd5e1',
+                                                            fontSize: '0.62rem', fontWeight: 600,
+                                                            cursor: 'pointer', transition: 'all 0.15s',
+                                                            whiteSpace: 'nowrap', boxSizing: 'border-box'
+                                                        }}
+                                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
+                                                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
+                                                    >
+                                                        <Plus size={11} /> Ürün
+                                                    </button>
+
+                                                    {(productOpenCaseId === c.id) && (
+                                                        <>
+                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setProductOpenCaseId(null)} />
+                                                        <div
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: '100%',
+                                                                right: 0,
+                                                                zIndex: 9999,
+                                                                background: '#fff',
+                                                                border: '1px solid #e5e7eb',
+                                                                borderRadius: 12,
+                                                                boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                                width: 250,
+                                                                maxHeight: 280,
+                                                                overflow: 'hidden',
+                                                                marginTop: 4
+                                                            }}
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <div style={{ padding: '8px' }}>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Ürün ara..."
+                                                                    value={productSearchText}
+                                                                    onChange={e => setProductSearchText(e.target.value)}
+                                                                    autoFocus
+                                                                    style={{
+                                                                        width: '100%', padding: '6px 10px',
+                                                                        border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                        fontSize: '0.75rem', outline: 'none',
+                                                                        boxSizing: 'border-box'
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                                                                {catalogProducts
+                                                                    .filter(p => !productSearchText || p.name?.toLowerCase().includes(productSearchText.toLowerCase()))
+                                                                    .slice(0, 20)
+                                                                    .map(product => {
+                                                                        let existingProducts = [];
+                                                                        try {
+                                                                            const rawP = c.products || activeCaseInfo?.products;
+                                                                            existingProducts = typeof rawP === 'string' ? JSON.parse(rawP || '[]') : rawP || [];
+                                                                        } catch {}
+                                                                        const isAdded = existingProducts.some(ep => ep.productId === product.id);
+                                                                        return (
+                                                                            <div
+                                                                                key={product.id}
+                                                                                onClick={async () => {
+                                                                                    if (isAdded) return;
+                                                                                    const caseId = c.id || activeCaseInfo?.caseId;
+                                                                                    if (!caseId) return;
+                                                                                    try {
+                                                                                        const newProducts = [...existingProducts, {
+                                                                                            productId: product.id,
+                                                                                            name: product.name,
+                                                                                            groupName: product.groupName || null,
+                                                                                            quantity: 1,
+                                                                                            unitPrice: product.price || 0
+                                                                                        }];
+                                                                                        await caseAPI.update(currentWorkspace.id, caseId, { products: JSON.stringify(newProducts) });
+                                                                                        if (c.id === activeCaseInfo?.caseId) {
+                                                                                            setActiveCaseInfo(prev => ({ ...prev, products: JSON.stringify(newProducts) }));
+                                                                                        }
+                                                                                        setAllCases(prev => prev.map(ac => ac.id === caseId ? { ...ac, products: JSON.stringify(newProducts) } : ac));
+                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                        setProductSearchText('');
+                                                                                    } catch (err) { console.error('Ürün ekleme hatası:', err); }
+                                                                                }}
+                                                                                style={{
+                                                                                    padding: '6px 10px', cursor: isAdded ? 'default' : 'pointer',
+                                                                                    display: 'flex', alignItems: 'center', gap: 6,
+                                                                                    fontSize: '0.72rem', color: isAdded ? '#94a3b8' : '#374151',
+                                                                                    background: 'transparent',
+                                                                                    transition: 'background 0.1s',
+                                                                                    opacity: isAdded ? 0.5 : 1
+                                                                                }}
+                                                                                onMouseEnter={e => { if (!isAdded) e.currentTarget.style.background = '#f8fafc'; }}
+                                                                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                                            >
+                                                                                <span style={{ fontSize: '0.7rem' }}>📦</span>
+                                                                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</span>
+                                                                                {product.price > 0 && <span style={{ fontSize: '0.6rem', color: '#94a3b8', flexShrink: 0 }}>₺{product.price}</span>}
+                                                                                {isAdded && <Check size={12} style={{ color: '#22c55e', flexShrink: 0 }} />}
+                                                                            </div>
+                                                                        );
+                                                                    })
+                                                                }
+                                                                {catalogProducts.filter(p => !productSearchText || p.name?.toLowerCase().includes(productSearchText.toLowerCase())).length === 0 && (
+                                                                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                                        Ürün bulunamadı
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* ═══ SATIR 5: Ekli Ürünler (Varsa) ═══ */}
+                                            {(() => {
+                                                try {
+                                                    let rawProducts = activeCaseInfo?.products;
+                                                    if (!rawProducts && allCases?.length > 0 && activeCaseInfo?.caseId) {
+                                                        const matchCase = allCases.find(ac => ac.id === activeCaseInfo.caseId);
+                                                        rawProducts = matchCase?.products;
+                                                    }
+                                                    if (!rawProducts && allCases?.length > 0) {
+                                                        rawProducts = allCases[0]?.products;
+                                                    }
+                                                    const prods = typeof rawProducts === 'string'
+                                                        ? JSON.parse(rawProducts || '[]')
+                                                        : rawProducts || [];
+                                                    if (prods.length === 0) return null;
+                                                    return (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 12px 6px', flexWrap: 'wrap' }}>
+                                                            {prods.map((p, i) => (
+                                                                <span key={'p' + i} style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                                    padding: '2px 6px', borderRadius: 4, height: 22,
+                                                                    background: '#fefce8', color: '#854d0e',
+                                                                    border: '1px solid #fef08a',
+                                                                    fontSize: '0.6rem', fontWeight: 600, whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    📦 {p.name}
+                                                                    <button
+                                                                        onClick={async (e) => {
+                                                                            e.stopPropagation();
+                                                                            const caseId = activeCaseInfo?.caseId;
+                                                                            if (!caseId) return;
+                                                                            try {
+                                                                                const newProducts = prods.filter(pp => pp.productId !== p.productId);
+                                                                                await caseAPI.update(currentWorkspace.id, caseId, { products: JSON.stringify(newProducts) });
+                                                                                setActiveCaseInfo(prev => ({ ...prev, products: JSON.stringify(newProducts) }));
+                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                            } catch (err) { console.error('Ürün silme hatası:', err); }
+                                                                        }}
+                                                                        style={{
+                                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                                            color: '#854d0e', padding: 0, display: 'flex', alignItems: 'center',
+                                                                            opacity: 0.6, transition: 'opacity 0.15s'
+                                                                        }}
+                                                                        onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                                                                        onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; }}
+                                                                    >
+                                                                        <X size={10} />
+                                                                    </button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                } catch { return null; }
+                                            })()}
 
                                         {/* ═══ SATIR 6: Takım / Kişi — Üstlen (82px) ═══ */}
                                         {!readOnly && (() => {

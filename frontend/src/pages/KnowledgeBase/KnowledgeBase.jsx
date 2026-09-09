@@ -1,15 +1,25 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, lazy, Suspense } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
 import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle } from 'lucide-react';
+import Products from '../Sales/Products';
+import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
-    const [activeTab, setActiveTab] = useState('company');
+    const labels = getSectorLabels(currentWorkspace?.industry);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
+
+    const handleSelectTab = (tab) => {
+        setActiveTab(tab);
+        setSearchParams({ tab });
+    };
 
     // Categories States
     const [categories, setCategories] = useState([]);
@@ -27,7 +37,14 @@ const KnowledgeBase = () => {
     const [resourcesLoading, setResourcesLoading] = useState(false);
     const [showResourceForm, setShowResourceForm] = useState(false);
     const [editingResource, setEditingResource] = useState(null);
-    const [resourceForm, setResourceForm] = useState({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+    const [googleCalendars, setGoogleCalendars] = useState([]);
+    const [hasHealthSystem, setHasHealthSystem] = useState(false);
+    const [resourceSyncFilter, setResourceSyncFilter] = useState('ALL');
+    const [resourceForm, setResourceForm] = useState({ 
+        name: '', title: '', description: '', type: 'PERSON', branchIds: [], 
+        availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30,
+        syncProvider: 'WORKSPACE_DEFAULT', externalId: '', googleEmail: ''
+    });
 
     // Knowledge Base States
     const [knowledgeEntries, setKnowledgeEntries] = useState([]);
@@ -68,7 +85,7 @@ const KnowledgeBase = () => {
     });
     const [savingCompany, setSavingCompany] = useState(false);
 
-    // Branches States
+    // Branches (Lokasyonlar / Şubeler) States
     const [branches, setBranches] = useState([]);
     const [branchesLoading, setBranchesLoading] = useState(false);
     const [teams, setTeams] = useState([]);
@@ -80,10 +97,16 @@ const KnowledgeBase = () => {
     const [newBranchName, setNewBranchName] = useState('');
     const [newBranchAddress, setNewBranchAddress] = useState('');
     const [newBranchPhone, setNewBranchPhone] = useState('');
+    const [newBranchIntegrationType, setNewBranchIntegrationType] = useState('WORKSPACE_DEFAULT');
+    const [newBranchExternalCode, setNewBranchExternalCode] = useState('');
+    const [newBranchGoogleEmail, setNewBranchGoogleEmail] = useState('');
     const [editingBranch, setEditingBranch] = useState(null);
     const [editBranchName, setEditBranchName] = useState('');
     const [editBranchAddress, setEditBranchAddress] = useState('');
     const [editBranchPhone, setEditBranchPhone] = useState('');
+    const [editBranchIntegrationType, setEditBranchIntegrationType] = useState('WORKSPACE_DEFAULT');
+    const [editBranchExternalCode, setEditBranchExternalCode] = useState('');
+    const [editBranchGoogleEmail, setEditBranchGoogleEmail] = useState('');
 
     // Product States
     const [products, setProducts] = useState([]);
@@ -128,6 +151,8 @@ const KnowledgeBase = () => {
             setResourcesLoading(true);
             const res = await resourceAPI.getAll(currentWorkspace.id);
             setResources(res.data?.resources || res.data || []);
+            if (res.data?.googleCalendars) setGoogleCalendars(res.data.googleCalendars);
+            if (res.data?.hasHealthSystem !== undefined) setHasHealthSystem(res.data.hasHealthSystem);
         } catch (err) { console.error('Error loading resources:', err); }
         finally { setResourcesLoading(false); }
     };
@@ -149,10 +174,10 @@ const KnowledgeBase = () => {
     const loadBranches = async () => {
         try {
             setBranchesLoading(true);
-            const res = await appointmentConfigAPI.getBranches(currentWorkspace.id);
-            setBranches(res.data?.branches || []);
+            const res = await appointmentConfigAPI.getLocations(currentWorkspace.id);
+            setBranches(res.data?.locations || []);
         } catch (err) {
-            console.error('Error loading branches:', err);
+            console.error('Error loading branches/locations:', err);
         } finally {
             setBranchesLoading(false);
         }
@@ -161,21 +186,27 @@ const KnowledgeBase = () => {
     const handleCreateBranch = async () => {
         if (!newBranchName.trim()) return;
         try {
-            await appointmentConfigAPI.createBranch(currentWorkspace.id, {
+            await appointmentConfigAPI.createLocation(currentWorkspace.id, {
                 name: newBranchName,
                 address: newBranchAddress,
                 phone: newBranchPhone,
+                integrationType: newBranchIntegrationType,
+                externalBranchCode: newBranchExternalCode || null,
+                googleEmail: newBranchGoogleEmail || null,
                 defaultTeamId: newBranchTeamId || null,
                 defaultFunnelId: newBranchFunnelId || null
             });
             setNewBranchName('');
             setNewBranchAddress('');
             setNewBranchPhone('');
+            setNewBranchIntegrationType('WORKSPACE_DEFAULT');
+            setNewBranchExternalCode('');
+            setNewBranchGoogleEmail('');
             setNewBranchTeamId('');
             setNewBranchFunnelId('');
             loadBranches();
         } catch (err) {
-            console.error('Error creating branch:', err);
+            console.error('Error creating location:', err);
             alert(err.response?.data?.error || 'Şube eklenirken hata oluştu');
         }
     };
@@ -183,17 +214,20 @@ const KnowledgeBase = () => {
     const handleUpdateBranch = async (id) => {
         if (!editBranchName.trim()) return;
         try {
-            await appointmentConfigAPI.updateBranch(currentWorkspace.id, id, {
+            await appointmentConfigAPI.updateLocation(currentWorkspace.id, id, {
                 name: editBranchName,
                 address: editBranchAddress,
                 phone: editBranchPhone,
+                integrationType: editBranchIntegrationType,
+                externalBranchCode: editBranchExternalCode || null,
+                googleEmail: editBranchGoogleEmail || null,
                 defaultTeamId: editBranchTeamId || null,
                 defaultFunnelId: editBranchFunnelId || null
             });
             setEditingBranch(null);
             loadBranches();
         } catch (err) {
-            console.error('Error updating branch:', err);
+            console.error('Error updating location:', err);
             alert(err.response?.data?.error || 'Şube güncellenirken hata oluştu');
         }
     };
@@ -201,10 +235,10 @@ const KnowledgeBase = () => {
     const handleDeleteBranch = async (id, name) => {
         if (!confirm(`"${name}" şubesini silmek istediğinize emin misiniz?`)) return;
         try {
-            await appointmentConfigAPI.deleteBranch(currentWorkspace.id, id);
+            await appointmentConfigAPI.deleteLocation(currentWorkspace.id, id);
             loadBranches();
         } catch (err) {
-            console.error('Error deleting branch:', err);
+            console.error('Error deleting location:', err);
             alert(err.response?.data?.error || 'Şube silinirken hata oluştu');
         }
     };
@@ -256,12 +290,18 @@ const KnowledgeBase = () => {
     };
 
     // Resource CRUD
+    const resetResourceForm = () => setResourceForm({ 
+        name: '', title: '', description: '', type: 'PERSON', branchIds: [], 
+        availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30,
+        syncProvider: 'WORKSPACE_DEFAULT', externalId: '', googleEmail: ''
+    });
+
     const handleCreateResource = async () => {
         if (!resourceForm.name.trim()) return;
         try {
             await resourceAPI.create(currentWorkspace.id, resourceForm);
             setShowResourceForm(false);
-            setResourceForm({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+            resetResourceForm();
             loadResources();
         } catch (err) {
             console.error('Error creating resource:', err);
@@ -275,7 +315,7 @@ const KnowledgeBase = () => {
             await resourceAPI.update(currentWorkspace.id, id, resourceForm);
             setEditingResource(null);
             setShowResourceForm(false);
-            setResourceForm({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+            resetResourceForm();
             loadResources();
         } catch (err) {
             console.error('Error updating resource:', err);
@@ -560,42 +600,44 @@ const KnowledgeBase = () => {
             {/* Sol Sidebar */}
             <div className="base-sidebar">
                 <div className="base-sidebar-header">
-                    <Building2 size={20} />
+                    <div className="base-sidebar-header-icon">
+                        <Building2 size={16} />
+                    </div>
                     <span>Base</span>
                 </div>
                 <nav className="base-nav">
-                    <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => setActiveTab('company')}>
+                    <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => handleSelectTab('company')}>
                         <Building2 size={16} /> Şirket Bilgileri
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => setActiveTab('branches')}>
+                    <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => handleSelectTab('branches')}>
                         <MapPin size={16} /> Şubeler
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
-                        <Layers size={16} /> Kategoriler
+                    <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => handleSelectTab('categories')}>
+                        <Layers size={16} /> {labels.categoriesTab || 'Kategoriler'}
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => setActiveTab('productGroups')}>
-                        <FolderTree size={16} /> Ürün Grupları
+                    <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => handleSelectTab('productGroups')}>
+                        <FolderTree size={16} /> {labels.productGroupsTab || 'Ürün Grupları'}
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => setActiveTab('products')}>
-                        <Package size={16} /> Ürünler
+                    <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => handleSelectTab('products')}>
+                        <Package size={16} /> {labels.productsTab || 'Ürünler'}
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => setActiveTab('resources')}>
+                    <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => handleSelectTab('resources')}>
                         <UserCircle size={16} /> Kaynaklar
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => setActiveTab('text')}>
+                    <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
                         <FileText size={16} /> Metin Ekle
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
+                    <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => handleSelectTab('files')}>
                         <Upload size={16} /> Dosya Ekle
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => setActiveTab('url')}>
+                    <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => handleSelectTab('url')}>
                         <Globe size={16} /> Web Sitesi Tara
                     </button>
-                    <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => setActiveTab('feed')}>
+                    <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => handleSelectTab('feed')}>
                         <Link size={16} /> Dinamik Feed
                     </button>
                     <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', margin: '8px 0' }} />
-                    <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
+                    <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => handleSelectTab('list')}>
                         <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
                     </button>
                 </nav>
@@ -774,7 +816,26 @@ const KnowledgeBase = () => {
                                                 onClick={() => setSelectedBranch(selectedBranch?.id === branch.id ? null : branch)}
                                             >
                                                 <div>
-                                                    <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{branch.name}</h4>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                                        <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{branch.name}</h4>
+                                                        {branch.integrationType === 'PROBEL' ? (
+                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', fontWeight: 600 }}>
+                                                                ⚡ Probel (Şube: {branch.externalBranchCode || '1'})
+                                                            </span>
+                                                        ) : branch.integrationType === 'GOOGLE_CALENDAR' ? (
+                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', fontWeight: 600 }}>
+                                                                📅 {branch.googleEmail || 'Google Takvim'}
+                                                            </span>
+                                                        ) : branch.integrationType === 'MANUAL' ? (
+                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 500 }}>
+                                                                ✋ Manuel
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', fontWeight: 500 }}>
+                                                                🏢 Sistem Varsayılanı {hasHealthSystem ? '(Probel)' : ''}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     {branch.address && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📍 {branch.address}</div>}
                                                     {branch.phone && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📞 {branch.phone}</div>}
                                                     {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '8px', fontWeight: 500 }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
@@ -788,21 +849,24 @@ const KnowledgeBase = () => {
                                                         setEditBranchPhone(branch.phone || '');
                                                         setEditBranchTeamId(branch.defaultTeamId || '');
                                                         setEditBranchFunnelId(branch.defaultFunnelId || '');
+                                                        setEditBranchIntegrationType(branch.integrationType || 'WORKSPACE_DEFAULT');
+                                                        setEditBranchExternalCode(branch.externalBranchCode || '');
+                                                        setEditBranchGoogleEmail(branch.googleEmail || '');
                                                     }}><Pencil size={16} /></button>
                                                     <button className="btn-icon btn-danger" onClick={() => handleDeleteBranch(branch.id, branch.name)}><Trash2 size={16} /></button>
                                                 </div>
                                             </div>
                                             
-                                            {selectedBranch?.id === branch.id && (
+                                             {selectedBranch?.id === branch.id && (
                                                 <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', marginLeft: '16px' }}>
-                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu Şubedeki Ürünler</h5>
+                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu Şubedeki {labels.productsTab || 'Ürünler'}</h5>
                                                     <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
                                                         {products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).length > 0 ? (
                                                             products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).map(p => (
                                                                 <li key={p.id}>{p.name}</li>
                                                             ))
                                                         ) : (
-                                                            <li>Ürün bulunamadı.</li>
+                                                            <li>{labels.productSingle || 'Ürün'} bulunamadı.</li>
                                                         )}
                                                     </ul>
 
@@ -830,7 +894,7 @@ const KnowledgeBase = () => {
                                 
                                 <div className="form-group" style={{ marginBottom: '12px' }}>
                                     <label>Şube Adı *</label>
-                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder="Örn: Merkez Şube" />
+                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder="Örn: Çiğli Hastane" />
                                 </div>
                                 <div className="form-group" style={{ marginBottom: '12px' }}>
                                     <label>Adres</label>
@@ -840,6 +904,57 @@ const KnowledgeBase = () => {
                                     <label>Telefon</label>
                                     <input type="text" className="input" value={editingBranch ? editBranchPhone : newBranchPhone} onChange={e => editingBranch ? setEditBranchPhone(e.target.value) : setNewBranchPhone(e.target.value)} placeholder="+90..." />
                                 </div>
+
+                                <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label>Rezervasyon Entegrasyonu</label>
+                                    <select 
+                                        className="input" 
+                                        value={editingBranch ? editBranchIntegrationType : newBranchIntegrationType} 
+                                        onChange={e => editingBranch ? setEditBranchIntegrationType(e.target.value) : setNewBranchIntegrationType(e.target.value)}
+                                    >
+                                        <option value="WORKSPACE_DEFAULT">🏢 Çalışma Alanı Varsayılanı {hasHealthSystem ? '(Probel HBYS)' : ''}</option>
+                                        <option value="PROBEL">⚡ Probel HBYS (Şube Kodu ile)</option>
+                                        <option value="GOOGLE_CALENDAR">📅 Google Takvim</option>
+                                        <option value="MANUAL">✋ Manuel (Sadece Dahili Takvim)</option>
+                                    </select>
+                                </div>
+
+                                {(editingBranch ? editBranchIntegrationType : newBranchIntegrationType) === 'PROBEL' && (
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Probel Şube Kodu</label>
+                                        <input 
+                                            type="text" 
+                                            className="input" 
+                                            value={editingBranch ? editBranchExternalCode : newBranchExternalCode} 
+                                            onChange={e => editingBranch ? setEditBranchExternalCode(e.target.value) : setNewBranchExternalCode(e.target.value)} 
+                                            placeholder="Örn: 1 veya 2" 
+                                        />
+                                    </div>
+                                )}
+
+                                {(editingBranch ? editBranchIntegrationType : newBranchIntegrationType) === 'GOOGLE_CALENDAR' && (
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Google Takvim Hesabı</label>
+                                        {googleCalendars.length > 0 ? (
+                                            <select 
+                                                className="input" 
+                                                value={editingBranch ? editBranchGoogleEmail : newBranchGoogleEmail} 
+                                                onChange={e => editingBranch ? setEditBranchGoogleEmail(e.target.value) : setNewBranchGoogleEmail(e.target.value)}
+                                            >
+                                                <option value="">-- Google Hesabı Seçin --</option>
+                                                {googleCalendars.map(c => (
+                                                    <option key={c.id} value={c.googleEmail}>
+                                                        📅 {c.googleEmail}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <div style={{ fontSize: '0.8rem', color: '#64748b', padding: '8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                                ℹ️ Bağlı Google Takvim hesabı bulunamadı.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 
                                 <div className="form-group" style={{ marginBottom: '12px' }}>
                                     <label>Varsayılan Takım</label>
@@ -870,286 +985,293 @@ const KnowledgeBase = () => {
                 </div>
             )}
 
-            {/* Categories Tab */}
-            {activeTab === 'categories' && (
-                <div className="card" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <Layers size={24} style={{ color: 'var(--primary, #ef4444)' }} />
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Kategoriler</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Konu kategorileri, varsayılan takım ve akış eşleştirmesi</p>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
-                        <div>
-                            {categoriesLoading ? (
-                                <div className="loading">Yükleniyor...</div>
-                            ) : categories.length === 0 ? (
-                                <div className="empty-state">Henüz kategori eklenmemiş.</div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {categories.map(category => (
-                                        <div key={category.id} style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid var(--border-color, #e5e7eb)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <div>
-                                                <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{category.name}</h4>
-                                                {category.defaultTeamId && <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '4px', fontWeight: 500 }}>Takım: {teams.find(t => t.id === category.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
-                                                {category.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Akış: {funnels.find(f => f.id === category.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button className="btn-icon" onClick={() => {
-                                                    setEditingCategory(category.id);
-                                                    setEditCategoryName(category.name);
-                                                    setEditCategoryDefaultTeamId(category.defaultTeamId || '');
-                                                    setEditCategoryDefaultFunnelId(category.defaultFunnelId || '');
-                                                }}><Pencil size={16} /></button>
-                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteCategory(category.id, category.name)}><Trash2 size={16} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div>
-                            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
-                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingCategory ? 'Kategoriyi Düzenle' : 'Yeni Kategori Ekle'}</h4>
-                                
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Kategori Adı *</label>
-                                    <input type="text" className="input" value={editingCategory ? editCategoryName : newCategoryName} onChange={e => editingCategory ? setEditCategoryName(e.target.value) : setNewCategoryName(e.target.value)} placeholder="Örn: Teknik Destek" />
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Varsayılan Takım</label>
-                                    <select className="input" value={editingCategory ? editCategoryDefaultTeamId : newCategoryDefaultTeamId} onChange={e => editingCategory ? setEditCategoryDefaultTeamId(e.target.value) : setNewCategoryDefaultTeamId(e.target.value)}>
-                                        <option value="">-- Seçiniz --</option>
-                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '16px' }}>
-                                    <label>Varsayılan Akış</label>
-                                    <select className="input" value={editingCategory ? editCategoryDefaultFunnelId : newCategoryDefaultFunnelId} onChange={e => editingCategory ? setEditCategoryDefaultFunnelId(e.target.value) : setNewCategoryDefaultFunnelId(e.target.value)}>
-                                        <option value="">-- Seçiniz --</option>
-                                        {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                    </select>
-                                </div>
-
-                                {editingCategory ? (
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleUpdateCategory(editingCategory)}>Kaydet</button>
-                                        <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditingCategory(null)}>İptal</button>
-                                    </div>
-                                ) : (
-                                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreateCategory} disabled={!newCategoryName.trim()}>Kategori Ekle</button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Product Groups Tab */}
-            {activeTab === 'productGroups' && (
-                <div className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <div>
-                            <h3 style={{ margin: 0 }}>📁 Ürün Grupları</h3>
-                            <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Ürün grupları ve alt ürünler</p>
-                        </div>
-                        <a href="/products" className="btn btn-outline" style={{ textDecoration: 'none' }}>Ürünler Sayfasına Git</a>
-                    </div>
-                    
-                    {productsLoading ? (
-                        <div className="loading">Yükleniyor...</div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {products.filter(p => p.isGroup).map(group => {
-                                const children = products.filter(p => p.parentId === group.id);
-                                const isExpanded = expandedEntries[group.id];
-                                return (
-                                    <div key={group.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#f8fafc' }}>
-                                        <div 
-                                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                                            onClick={() => setExpandedEntries(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
-                                        >
-                                            <div>
-                                                <h4 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', color: '#1e293b' }}>{group.name}</h4>
-                                                <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', gap: '12px' }}>
-                                                    <span>Alt Ürün: {children.length}</span>
-                                                    {group.categoryName && <span>Kategori: {group.categoryName}</span>}
-                                                </div>
-                                            </div>
-                                            <div style={{ color: 'var(--primary, #ef4444)', fontWeight: 500, fontSize: '0.85rem', cursor: 'pointer' }}>
-                                                {isExpanded ? 'Gizle' : 'Göster'}
-                                            </div>
-                                        </div>
-                                        
-                                        {isExpanded && children.length > 0 && (
-                                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                {children.map(child => (
-                                                    <div key={child.id} style={{ padding: '8px 12px', background: '#fff', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between' }}>
-                                                        <span>{child.name}</span>
-                                                        <span style={{ color: '#64748b' }}>{child.price ? `${child.price} ₺` : 'Fiyat Yok'}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                            {products.filter(p => p.isGroup).length === 0 && (
-                                <div className="empty-state">Henüz ürün grubu bulunmuyor.</div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Products Tab */}
-            {activeTab === 'products' && (
-                <div className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <div>
-                            <h3 style={{ margin: 0 }}>🏷️ Ürünler</h3>
-                            <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>Tüm ürün ve hizmetleriniz</p>
-                        </div>
-                        <a href="/products" className="btn btn-outline" style={{ textDecoration: 'none' }}>Detaylı düzenleme için Ürünler sayfasına gidin</a>
-                    </div>
-                    
-                    {productsLoading ? (
-                        <div className="loading">Yükleniyor...</div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {products.length === 0 ? (
-                                <div className="empty-state">Henüz ürün eklenmemiş.</div>
-                            ) : (
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                        <thead>
-                                            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Ürün Adı</th>
-                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Grup / Üst</th>
-                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Kategori</th>
-                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Fiyat</th>
-                                                <th style={{ padding: '12px 8px', color: '#64748b' }}>Durum</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {products.map(product => {
-                                                const parent = product.parentId ? products.find(p => p.id === product.parentId) : null;
-                                                return (
-                                                    <tr key={product.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                        <td style={{ padding: '12px 8px', fontWeight: 500 }}>{product.name}</td>
-                                                        <td style={{ padding: '12px 8px', color: '#64748b' }}>{parent ? parent.name : '-'}</td>
-                                                        <td style={{ padding: '12px 8px', color: '#64748b' }}>{product.categoryName || '-'}</td>
-                                                        <td style={{ padding: '12px 8px', color: '#10b981' }}>{product.price ? `${product.price} ₺` : '-'}</td>
-                                                        <td style={{ padding: '12px 8px' }}>
-                                                            <span style={{ 
-                                                                padding: '4px 8px', 
-                                                                borderRadius: '12px', 
-                                                                fontSize: '0.8rem', 
-                                                                background: product.isActive !== false ? '#dcfce3' : '#fee2e2', 
-                                                                color: product.isActive !== false ? '#166534' : '#991b1b' 
-                                                            }}>
-                                                                {product.isActive !== false ? 'Aktif' : 'Pasif'}
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+            {/* Categories, Product Groups, Products Tabs — Render Full Products Component */}
+            {['categories', 'productGroups', 'products'].includes(activeTab) && (
+                <Products
+                    embedded={true}
+                    activeTab={activeTab}
+                    onTabChange={(tab) => handleSelectTab(tab)}
+                />
             )}
 
             {/* Resources Tab */}
             {activeTab === 'resources' && (
                 <div className="card" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <UserCircle size={24} style={{ color: 'var(--primary, #ef4444)' }} />
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Kaynaklar</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Doktorlar, terapistler, uzmanlar — randevu alınabilen kaynaklar</p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <UserCircle size={28} style={{ color: 'var(--primary, #ef4444)' }} />
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Kaynaklar</h3>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)' }}>Doktorlar, Araçlar, Ekipmanlar, Odalar, Masalar - Randevu Alınan Herşey</p>
+                            </div>
                         </div>
+                        {hasHealthSystem && (
+                            <button
+                                className="btn btn-outline"
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', padding: '6px 14px' }}
+                                onClick={async () => {
+                                    try {
+                                        setResourcesLoading(true);
+                                        await resourceAPI.syncHealthDoctors(currentWorkspace.id);
+                                        await loadResources();
+                                    } catch (err) {
+                                        console.error(err);
+                                        alert('Senkronizasyon hatası: ' + (err.response?.data?.error || err.message));
+                                    } finally {
+                                        setResourcesLoading(false);
+                                    }
+                                }}
+                            >
+                                <RefreshCw size={14} /> Probel Doktorlarını Yenile
+                            </button>
+                        )}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
+                    {/* Entegrasyon ve Filtre Hapları (Pills) */}
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                        {[
+                            { id: 'ALL', label: 'Tümü', count: resources.length },
+                            { id: 'PROBEL', label: '⚡ Otomatik / Probel', count: resources.filter(r => r.syncProvider === 'PROBEL' || (r.syncProvider === 'WORKSPACE_DEFAULT' && hasHealthSystem)).length },
+                            { id: 'GOOGLE', label: '📅 Google Takvim', count: resources.filter(r => r.syncProvider === 'GOOGLE_CALENDAR' || !!r.googleEmail).length },
+                            { id: 'MANUAL', label: '✋ Manuel', count: resources.filter(r => r.syncProvider === 'MANUAL' || (!r.googleEmail && r.syncProvider !== 'PROBEL' && !(r.syncProvider === 'WORKSPACE_DEFAULT' && hasHealthSystem))).length }
+                        ].map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setResourceSyncFilter(f.id)}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '20px',
+                                    fontSize: '0.82rem',
+                                    fontWeight: resourceSyncFilter === f.id ? 600 : 500,
+                                    border: resourceSyncFilter === f.id ? '1px solid var(--primary, #ef4444)' : '1px solid #e2e8f0',
+                                    background: resourceSyncFilter === f.id ? 'var(--primary-light, #fef2f2)' : '#fff',
+                                    color: resourceSyncFilter === f.id ? 'var(--primary-dark, #dc2626)' : '#64748b',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <span>{f.label}</span>
+                                <span style={{
+                                    background: resourceSyncFilter === f.id ? 'var(--primary, #ef4444)' : '#f1f5f9',
+                                    color: resourceSyncFilter === f.id ? '#fff' : '#64748b',
+                                    padding: '1px 7px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 600
+                                }}>{f.count}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
                         <div>
                             {resourcesLoading ? (
                                 <div className="loading">Yükleniyor...</div>
-                            ) : resources.length === 0 ? (
-                                <div className="empty-state">Henüz kaynak eklenmemiş.</div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {resources.map(resource => (
-                                        <div key={resource.id} style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid var(--border-color, #e5e7eb)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                            <div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                                    <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{resource.name}</h4>
-                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: 'var(--primary-light, #fef2f2)', color: 'var(--primary-dark, #dc2626)', fontWeight: 500 }}>{resource.type}</span>
-                                                </div>
-                                                {resource.title && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>{resource.title}</div>}
-                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)' }}>
-                                                    Mesai: {resource.availableStart} - {resource.availableEnd} ({resource.slotMinutes} dk)
-                                                </div>
-                                                {resource.branchIds && resource.branchIds.length > 0 && (
-                                                    <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '4px', fontWeight: 500 }}>
-                                                        Şubeler: {resource.branchIds.map(id => branches.find(b => b.id === id)?.name).filter(Boolean).join(', ')}
+                            ) : (() => {
+                                const filteredResources = resources.filter(r => {
+                                    if (resourceSyncFilter === 'PROBEL') return r.syncProvider === 'PROBEL' || (r.syncProvider === 'WORKSPACE_DEFAULT' && hasHealthSystem);
+                                    if (resourceSyncFilter === 'GOOGLE') return r.syncProvider === 'GOOGLE_CALENDAR' || !!r.googleEmail;
+                                    if (resourceSyncFilter === 'MANUAL') return r.syncProvider === 'MANUAL' || (!r.googleEmail && r.syncProvider !== 'PROBEL' && !(r.syncProvider === 'WORKSPACE_DEFAULT' && hasHealthSystem));
+                                    return true;
+                                });
+
+                                if (filteredResources.length === 0) {
+                                    return <div className="empty-state">Bu filtreye uygun kaynak bulunamadı.</div>;
+                                }
+
+                                return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        {filteredResources.map(resource => {
+                                            const isProbel = resource.syncProvider === 'PROBEL' || (resource.syncProvider === 'WORKSPACE_DEFAULT' && hasHealthSystem);
+                                            const isGoogle = resource.syncProvider === 'GOOGLE_CALENDAR' || !!resource.googleEmail;
+                                            const isManual = resource.syncProvider === 'MANUAL' || (!resource.googleEmail && resource.syncProvider !== 'PROBEL' && !isProbel);
+                                            
+                                            const branchNames = (resource.resourceBranches && resource.resourceBranches.length > 0)
+                                                ? resource.resourceBranches.map(rb => rb.branch?.name).filter(Boolean)
+                                                : (resource.branchIds || []).map(id => branches.find(b => b.id === id)?.name).filter(Boolean);
+
+                                            return (
+                                                <div key={resource.id} style={{ padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid var(--border-color, #e5e7eb)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                                            <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{resource.name}</h4>
+                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', color: '#475569', fontWeight: 500 }}>{resource.type}</span>
+                                                            
+                                                            {/* Sync Provider Badge */}
+                                                            {isProbel ? (
+                                                                <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 600 }}>
+                                                                    ⚡ Probel (HBYS){resource.externalId ? ` #${resource.externalId}` : ''}
+                                                                </span>
+                                                            ) : isGoogle ? (
+                                                                <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontWeight: 600 }}>
+                                                                    📅 Google Takvim{resource.googleEmail ? `: ${resource.googleEmail}` : ''}
+                                                                </span>
+                                                            ) : isManual ? (
+                                                                <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 500 }}>
+                                                                    ✋ Manuel
+                                                                </span>
+                                                            ) : (
+                                                                <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 500 }}>
+                                                                    🏢 Çalışma Alanı Varsayılanı
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {resource.title && (
+                                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '3px' }}>
+                                                                {resource.title}
+                                                            </div>
+                                                        )}
+
+                                                        {resource.description && (
+                                                            <div style={{ fontSize: '0.82rem', color: '#0284c7', marginBottom: '4px', fontWeight: 500 }}>
+                                                                Bölüm: {resource.description}
+                                                            </div>
+                                                        )}
+
+                                                        <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #6b7280)' }}>
+                                                            Mesai: {resource.availableStart || '09:00'} - {resource.availableEnd || '18:00'} ({resource.slotMinutes || 30} dk periyot)
+                                                        </div>
+
+                                                        {branchNames.length > 0 && (
+                                                            <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '4px', fontWeight: 500 }}>
+                                                                📍 Şubeler: {branchNames.join(', ')}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button className="btn-icon" onClick={() => {
-                                                    setEditingResource(resource.id);
-                                                    setResourceForm({
-                                                        name: resource.name,
-                                                        title: resource.title || '',
-                                                        type: resource.type || 'PERSON',
-                                                        branchIds: resource.branchIds || [],
-                                                        availableStart: resource.availableStart || '09:00',
-                                                        availableEnd: resource.availableEnd || '18:00',
-                                                        slotMinutes: resource.slotMinutes || 30
-                                                    });
-                                                    setShowResourceForm(true);
-                                                }}><Pencil size={16} /></button>
-                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteResource(resource.id, resource.name)}><Trash2 size={16} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+
+                                                    <div style={{ display: 'flex', gap: '8px', marginLeft: '12px' }}>
+                                                        <button className="btn-icon" onClick={() => {
+                                                            setEditingResource(resource.id);
+                                                            setResourceForm({
+                                                                name: resource.name || '',
+                                                                title: resource.title || '',
+                                                                description: resource.description || '',
+                                                                type: resource.type || 'PERSON',
+                                                                branchIds: (resource.resourceBranches && resource.resourceBranches.length > 0)
+                                                                    ? resource.resourceBranches.map(rb => rb.branchId)
+                                                                    : (resource.branchIds || []),
+                                                                availableStart: resource.availableStart || '09:00',
+                                                                availableEnd: resource.availableEnd || '18:00',
+                                                                slotMinutes: resource.slotMinutes || 30,
+                                                                syncProvider: resource.syncProvider || (isProbel ? 'PROBEL' : isGoogle ? 'GOOGLE_CALENDAR' : 'WORKSPACE_DEFAULT'),
+                                                                externalId: resource.externalId || '',
+                                                                googleEmail: resource.googleEmail || ''
+                                                            });
+                                                            setShowResourceForm(true);
+                                                        }}><Pencil size={16} /></button>
+                                                        <button className="btn-icon btn-danger" onClick={() => handleDeleteResource(resource.id, resource.name)}><Trash2 size={16} /></button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <div>
                             {!showResourceForm && !editingResource ? (
-                                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setShowResourceForm(true)}>Yeni Kaynak Ekle</button>
+                                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => {
+                                    resetResourceForm();
+                                    setShowResourceForm(true);
+                                }}>Yeni Kaynak Ekle</button>
                             ) : (
                                 <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
                                     <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingResource ? 'Kaynağı Düzenle' : 'Yeni Kaynak Ekle'}</h4>
                                     
                                     <div className="form-group" style={{ marginBottom: '12px' }}>
-                                        <label>Ad Soyad *</label>
-                                        <input type="text" className="input" value={resourceForm.name} onChange={e => setResourceForm({...resourceForm, name: e.target.value})} placeholder="Örn: Dr. Ahmet Yılmaz" />
+                                        <label>Ad Soyad / Kaynak Adı *</label>
+                                        <input type="text" className="input" value={resourceForm.name} onChange={e => setResourceForm({...resourceForm, name: e.target.value})} placeholder="Örn: Dr. Ahmet Yılmaz / Lazer Odası 1" />
                                     </div>
                                     <div className="form-group" style={{ marginBottom: '12px' }}>
                                         <label>Ünvan (İsteğe bağlı)</label>
-                                        <input type="text" className="input" value={resourceForm.title} onChange={e => setResourceForm({...resourceForm, title: e.target.value})} placeholder="Örn: Uzman Psikolog" />
+                                        <input type="text" className="input" value={resourceForm.title} onChange={e => setResourceForm({...resourceForm, title: e.target.value})} placeholder="Örn: Uzman Psikolog / Operatör Dr." />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                                        <label>Bölüm / Uzmanlık Açıklaması</label>
+                                        <input type="text" className="input" value={resourceForm.description} onChange={e => setResourceForm({...resourceForm, description: e.target.value})} placeholder="Örn: Beyin ve Sinir Cerrahisi / Saç Ekimi" />
                                     </div>
                                     <div className="form-group" style={{ marginBottom: '12px' }}>
                                         <label>Tip</label>
                                         <select className="input" value={resourceForm.type} onChange={e => setResourceForm({...resourceForm, type: e.target.value})}>
-                                            <option value="PERSON">Kişi (Person)</option>
+                                            <option value="PERSON">Kişi / Doktor (Person)</option>
                                             <option value="THERAPIST">Terapist (Therapist)</option>
                                             <option value="SPECIALIST">Uzman (Specialist)</option>
                                             <option value="STAFF">Personel (Staff)</option>
-                                            <option value="ROOM">Oda (Room)</option>
-                                            <option value="EQUIPMENT">Ekipman (Equipment)</option>
+                                            <option value="ROOM">Oda / Alan (Room)</option>
+                                            <option value="EQUIPMENT">Ekipman / Cihaz (Equipment)</option>
                                         </select>
                                     </div>
+
+                                    {/* Rezervasyon ve Takvim Entegrasyonu */}
+                                    <div className="form-group" style={{ marginBottom: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                        <label style={{ fontWeight: 600, color: '#334155', marginBottom: '6px', display: 'block' }}>Rezervasyon Entegrasyonu</label>
+                                        <select 
+                                            className="input" 
+                                            value={resourceForm.syncProvider || 'WORKSPACE_DEFAULT'} 
+                                            onChange={e => setResourceForm({ ...resourceForm, syncProvider: e.target.value })}
+                                            style={{ marginBottom: '8px' }}
+                                        >
+                                            <option value="WORKSPACE_DEFAULT">🏢 Çalışma Alanı Varsayılanı {hasHealthSystem ? '(⚡ Probel HBYS)' : ''}</option>
+                                            <option value="GOOGLE_CALENDAR">📅 Google Takvim (Bireysel Takvim)</option>
+                                            <option value="PROBEL">⚡ Probel HBYS (Dış Sistem Kodu)</option>
+                                            <option value="MANUAL">✋ Manuel (Entegrasyonsuz)</option>
+                                        </select>
+
+                                        {resourceForm.syncProvider === 'GOOGLE_CALENDAR' && (
+                                            <div style={{ marginTop: '8px' }}>
+                                                <label style={{ fontSize: '0.78rem', color: '#64748b' }}>Google Takvim Hesabı</label>
+                                                {googleCalendars.length > 0 ? (
+                                                    <select 
+                                                        className="input" 
+                                                        value={resourceForm.googleEmail || ''} 
+                                                        onChange={e => setResourceForm({ ...resourceForm, googleEmail: e.target.value })}
+                                                    >
+                                                        <option value="">-- Google Hesabı Seçiniz --</option>
+                                                        {googleCalendars.map(gc => (
+                                                            <option key={gc.id} value={gc.googleEmail}>
+                                                                {gc.googleEmail} ({gc.user?.name || 'Kullanıcı'})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <div>
+                                                        <input 
+                                                            type="email" 
+                                                            className="input" 
+                                                            placeholder="ornek@gmail.com" 
+                                                            value={resourceForm.googleEmail || ''} 
+                                                            onChange={e => setResourceForm({ ...resourceForm, googleEmail: e.target.value })}
+                                                        />
+                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                                                            ℹ️ Ayarlar &gt; Entegrasyonlar sekmesinden Google Takvim bağlayabilirsiniz.
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {resourceForm.syncProvider === 'PROBEL' && (
+                                            <div style={{ marginTop: '8px' }}>
+                                                <label style={{ fontSize: '0.78rem', color: '#64748b' }}>Probel Doktor Kodu (DOKTOR_KODU)</label>
+                                                <input 
+                                                    type="text" 
+                                                    className="input" 
+                                                    placeholder="Örn: 1042" 
+                                                    value={resourceForm.externalId || ''} 
+                                                    onChange={e => setResourceForm({ ...resourceForm, externalId: e.target.value })}
+                                                />
+                                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                                                    Probel HBYS sistemindeki doktor kodu ile randevuları otomatik eşleştirir.
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="form-group" style={{ marginBottom: '12px' }}>
                                         <label>Çalıştığı Şubeler</label>
                                         <select 
@@ -1189,7 +1311,7 @@ const KnowledgeBase = () => {
                                         <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => {
                                             setEditingResource(null);
                                             setShowResourceForm(false);
-                                            setResourceForm({ name: '', title: '', type: 'PERSON', branchIds: [], availableStart: '09:00', availableEnd: '18:00', slotMinutes: 30 });
+                                            resetResourceForm();
                                         }}>İptal</button>
                                     </div>
                                 </div>

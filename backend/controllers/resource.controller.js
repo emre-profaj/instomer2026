@@ -58,6 +58,74 @@ export const getResources = async (req, res) => {
         if (type) where.type = type;
         if (isActive !== undefined) where.isActive = isActive === 'true';
 
+        // 🧹 Mükerrer Kaynakları (Aynı isimli person kaynaklarını) Otomatik Temizle
+        try {
+            const allPersonResources = await prisma.calendarResource.findMany({
+                where: { workspaceId, type: 'PERSON' },
+                include: { resourceBranches: true }
+            });
+
+            const groupByName = new Map();
+            for (const resItem of allPersonResources) {
+                const key = (resItem.name || '').trim().toLowerCase();
+                if (!key) continue;
+                if (!groupByName.has(key)) {
+                    groupByName.set(key, []);
+                }
+                groupByName.get(key).push(resItem);
+            }
+
+            for (const duplicates of groupByName.values()) {
+                if (duplicates.length > 1) {
+                    // En dolu veya en eski kaydı ana kaynak seç
+                    duplicates.sort((a, b) => {
+                        const aScore = (a.externalId ? 4 : 0) + (a.googleEmail ? 2 : 0) + (a.resourceBranches?.length || 0);
+                        const bScore = (b.externalId ? 4 : 0) + (b.googleEmail ? 2 : 0) + (b.resourceBranches?.length || 0);
+                        return bScore - aScore || new Date(a.createdAt) - new Date(b.createdAt);
+                    });
+
+                    const primary = duplicates[0];
+                    const redundant = duplicates.slice(1);
+
+                    for (const dup of redundant) {
+                        // Şube bağlantılarını ana kaynağa aktar
+                        if (dup.resourceBranches && dup.resourceBranches.length > 0) {
+                            for (const rb of dup.resourceBranches) {
+                                await prisma.resourceBranch.upsert({
+                                    where: {
+                                        resourceId_branchId: {
+                                            resourceId: primary.id,
+                                            branchId: rb.branchId
+                                        }
+                                    },
+                                    update: {},
+                                    create: {
+                                        resourceId: primary.id,
+                                        branchId: rb.branchId,
+                                        isAvailable: true
+                                    }
+                                }).catch(() => {});
+                            }
+                        }
+
+                        // Randevuları ana kaynağa taşı
+                        await prisma.appointment.updateMany({
+                            where: { resourceId: dup.id },
+                            data: { resourceId: primary.id }
+                        }).catch(() => {});
+
+                        // Fazlalık kaydı sil
+                        await prisma.calendarResource.delete({
+                            where: { id: dup.id }
+                        }).catch(() => {});
+                    }
+                    console.log(`🧹 [Resources] "${primary.name}" için ${redundant.length} mükerrer kopya temizlendi.`);
+                }
+            }
+        } catch (cleanErr) {
+            console.warn('⚠️ [Resources] Auto deduplication error:', cleanErr.message);
+        }
+
         let resources = await prisma.calendarResource.findMany({
             where,
             include: { resourceBranches: { include: { branch: true } }, resourceProducts: { include: { product: true } } },
@@ -90,7 +158,22 @@ export const getResources = async (req, res) => {
             });
         } catch (_) {}
 
-        res.json({ resources });
+        // 📅 Çalışma alanına bağlı aktif Google Takvim hesaplarını al
+        let googleCalendars = [];
+        try {
+            googleCalendars = await prisma.userGoogleCalendar.findMany({
+                where: { workspaceId, isActive: true },
+                select: { id: true, googleEmail: true, calendarId: true, user: { select: { name: true, email: true } } },
+                orderBy: { createdAt: 'asc' }
+            });
+        } catch (_) {}
+
+        // 🏥 Aktif Sağlık / Probel bağlantısı var mı?
+        const hasHealthSystem = !!(await prisma.apiIntegration.findFirst({
+            where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true }
+        }).catch(() => null));
+
+        res.json({ resources, googleCalendars, hasHealthSystem });
     } catch (error) {
         console.error('Get resources error:', error);
         res.status(500).json({ error: 'Kaynaklar yüklenirken hata oluştu' });
@@ -114,7 +197,11 @@ export const syncHealthDoctors = async (req, res) => {
 export const createResource = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, description, type, color, availableStart, availableEnd, availableDays, title, userId, slotMinutes, branchIds } = req.body;
+        const { 
+            name, description, type, color, availableStart, availableEnd, availableDays, 
+            title, userId, slotMinutes, branchIds,
+            syncProvider, externalId, googleEmail, googleCalendarId
+        } = req.body;
 
         if (!name) {
             return res.status(400).json({ error: 'Kaynak adı gereklidir' });
@@ -133,6 +220,10 @@ export const createResource = async (req, res) => {
                 availableStart: availableStart || null,
                 availableEnd: availableEnd || null,
                 availableDays: availableDays || null,
+                syncProvider: syncProvider || 'WORKSPACE_DEFAULT',
+                externalId: externalId || null,
+                googleEmail: googleEmail || null,
+                googleCalendarId: googleCalendarId || 'primary',
                 resourceBranches: branchIds && branchIds.length > 0 ? {
                     create: branchIds.map(branchId => ({ branchId }))
                 } : undefined
@@ -151,7 +242,11 @@ export const createResource = async (req, res) => {
 export const updateResource = async (req, res) => {
     try {
         const { workspaceId, resourceId } = req.params;
-        const { name, description, type, color, isActive, availableStart, availableEnd, availableDays, title, userId, slotMinutes, branchIds } = req.body;
+        const { 
+            name, description, type, color, isActive, availableStart, availableEnd, availableDays, 
+            title, userId, slotMinutes, branchIds,
+            syncProvider, externalId, googleEmail, googleCalendarId
+        } = req.body;
 
         const existing = await prisma.calendarResource.findFirst({
             where: { id: resourceId, workspaceId }
@@ -173,6 +268,11 @@ export const updateResource = async (req, res) => {
         if (availableStart !== undefined) updateData.availableStart = availableStart;
         if (availableEnd !== undefined) updateData.availableEnd = availableEnd;
         if (availableDays !== undefined) updateData.availableDays = availableDays;
+
+        if (syncProvider !== undefined) updateData.syncProvider = syncProvider;
+        if (externalId !== undefined) updateData.externalId = externalId || null;
+        if (googleEmail !== undefined) updateData.googleEmail = googleEmail || null;
+        if (googleCalendarId !== undefined) updateData.googleCalendarId = googleCalendarId || 'primary';
 
         if (branchIds !== undefined) {
             updateData.resourceBranches = {

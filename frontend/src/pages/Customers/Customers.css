@@ -15,6 +15,7 @@
     min-width: 0;
     overflow: hidden;
     border-right: 1px solid #e5e7eb;
+    background: #f8fafc;
 }
 
 /* Header */
@@ -417,13 +418,55 @@
     flex-shrink: 0;
 }
 
-/* Table Container */
+/* ═══════════════════════════════════════════════════
+   Apple Modern Floating Card Table Architecture
+   ═══════════════════════════════════════════════════ */
+
+/* Floating Card Container */
+.contacts-table-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    margin: 10px 16px 14px 16px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
+    overflow: hidden;
+}
+
+/* Scrollable Table Area */
 .contacts-table-container {
     flex: 1;
     overflow: auto;
     -webkit-overflow-scrolling: touch;
     min-height: 0;
     min-width: 0;
+    background: #ffffff;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+}
+
+.contacts-table-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.contacts-table-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.contacts-table-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 999px;
+}
+
+.contacts-table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.22);
 }
 
 /* Contacts Table */
@@ -432,61 +475,129 @@
     min-width: max-content;
     border-collapse: collapse;
     table-layout: auto;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Table Header (Apple macOS Finder Header) */
 .contacts-table thead {
     position: sticky;
     top: 0;
-    background: #ffffff;
+    background: #f8fafc;
     z-index: 10;
+    box-shadow: 0 1px 0 #e2e8f0;
 }
 
 .contacts-table th {
     text-align: left;
-    padding: 8px 14px;
+    padding: 11px 14px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #6b7280;
-    border-bottom: 1px solid #e5e7eb;
+    color: #64748b;
+    border-bottom: 1px solid #e2e8f0;
     white-space: nowrap;
+    background: #f8fafc;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
+.contacts-table th.th-sortable:hover {
+    color: #0f172a;
+    background: #f1f5f9;
+}
+
+.contacts-table th.th-active {
+    color: #ef4444;
+}
+
+.th-sort-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    opacity: 0.55;
+    transition: all 0.15s ease;
+}
+
+.th-sort-icon.active {
+    color: #ef4444;
+    opacity: 1;
+    font-weight: 700;
+}
+
+.contacts-table th.th-sortable:hover .th-sort-icon {
+    opacity: 1;
+}
+
+/* Table Rows & Cells */
 .contacts-table td {
-    padding: 5px 8px;
-    border-bottom: 1px solid #f3f4f6;
-    font-size: 12px;
-    color: #374151;
+    padding: 11px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 12.5px;
+    color: #334155;
     white-space: nowrap;
+    vertical-align: middle;
+    background: #ffffff;
+    transition: background 0.12s ease;
 }
 
 .contacts-table tbody tr {
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.12s ease;
 }
 
-.contacts-table tbody tr:hover {
-    background: #fef2f2;
+.contacts-table tbody tr:hover td {
+    background: #f8fafc;
 }
 
-.contacts-table tbody tr.active {
-    background: #fef2f2;
+/* Active / Selected Row with Apple Left Indicator */
+.contacts-table tbody tr.active td {
+    background: #fff5f5;
+}
+
+.contacts-table tbody tr.active td:first-child {
+    box-shadow: inset 3.5px 0 0 #ef4444;
+}
+
+.contacts-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Apple Checkbox */
+.apple-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: #ef4444;
+    cursor: pointer;
+    border-radius: 4px;
+    vertical-align: middle;
+    transition: transform 0.12s ease;
+}
+
+.apple-checkbox:hover {
+    transform: scale(1.1);
 }
 
 /* Contact Name Cell */
 .contact-name-cell {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 11px;
+}
+
+.contact-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+    align-self: center;
 }
 
 .contact-avatar {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
 /* Source icon overlay on avatar */
@@ -494,19 +605,185 @@
     position: absolute;
     bottom: -2px;
     right: -2px;
-    width: 16px;
-    height: 16px;
+    width: 17px;
+    height: 17px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1.5px solid #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 .contact-source-badge svg {
-    width: 9px !important;
-    height: 9px !important;
+    width: 9.5px !important;
+    height: 9.5px !important;
+}
+
+.contact-name-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.contact-name {
+    font-weight: 600;
+    color: #0f172a;
+    font-size: 13.5px;
+    letter-spacing: -0.01em;
+}
+
+.contact-phone-sub {
+    font-size: 11.5px;
+    color: #64748b;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+}
+
+.contact-email {
+    font-size: 11.5px;
+    color: #64748b;
+}
+
+.contact-company-line {
+    font-size: 11px;
+    color: #4f46e5;
+    background: #eef2ff;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    width: fit-content;
+}
+
+.cell-muted-dash {
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 400;
+}
+
+/* Topic Pill */
+.contact-topic-pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    max-width: 135px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.35;
+}
+
+.contact-topic-pill.topic-case {
+    background: #f5f3ff;
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
+}
+
+.contact-topic-pill.topic-ai {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+
+/* Score Badge (Apple Activity Style) */
+.contact-score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 2.5px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid transparent;
+}
+
+.score-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Pipeline Status Cell */
+.contact-status-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+}
+
+.contact-funnel-label {
+    font-size: 9.5px;
+    color: #94a3b8;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+}
+
+.contact-status .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.contact-status .status-badge:hover {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.stage-indicator-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Assigned Pill */
+.contact-assigned-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: #334155;
+    font-weight: 500;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Activity Item */
+.contact-activity-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2.5px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+    border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 /* Inline filter select in table header */
@@ -542,37 +819,12 @@
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
 }
 
-
-.contact-name-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.contact-name {
-    font-weight: 600;
-    color: #1f2937;
-    font-size: 12px;
-}
-
-.contact-email {
-    font-size: 11px;
-    color: #6b7280;
-}
-
-.contact-phone,
-.contact-company,
-.contact-conversations,
-.contact-last-contacted {
-    color: #6b7280;
-}
-
 /* Status Badge */
 .contact-status .status-badge {
     display: inline-flex;
     align-items: center;
-    padding: 4px 10px;
-    border-radius: 12px;
+    padding: 3px 9px;
+    border-radius: 8px;
     font-size: 11px;
     font-weight: 500;
     white-space: nowrap;
@@ -2420,104 +2672,123 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Date Preset Buttons (horizontal inline in header) ── */
+/* ── Date Preset Buttons & Segmented Control ── */
 .contacts-date-presets {
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 8px;
     flex-shrink: 0;
-    flex-wrap: wrap;
 }
 
-.date-preset-btn {
+.contacts-segmented-control {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 3px 6px;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    background: #ffffff;
-    color: #6b7280;
-    font-size: 10.5px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 2px;
+    height: 32px;
+    box-sizing: border-box;
+}
+
+.contacts-segmented-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 11px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    font-size: 11.5px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
     white-space: nowrap;
-    line-height: 1.3;
 }
 
-.date-preset-btn:hover {
-    border-color: #d1d5db;
-    background: #f9fafb;
-    color: #374151;
+.contacts-segmented-btn:hover {
+    color: #1e293b;
 }
 
-.date-preset-btn.active {
-    background: #fef2f2;
-    border-color: #fca5a5;
+.contacts-segmented-btn.active {
+    background: #ffffff;
     color: #ef4444;
     font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.date-preset-custom {
-    position: relative;
-}
-
-.date-preset-dropdown {
+.contacts-date-more-dropdown {
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
     z-index: 999;
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-width: 200px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+    padding: 6px;
+    min-width: 220px;
     animation: fadeIn 0.15s ease;
 }
 
-.date-preset-dropdown label {
-    font-size: 11px;
-    font-weight: 600;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.date-preset-dropdown input[type="date"] {
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-    color: #374151;
+.contacts-date-dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
-}
-
-.date-preset-dropdown input[type="date"]:focus {
-    outline: none;
-    border-color: #ef4444;
-    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
-}
-
-.date-preset-apply {
-    background: #ef4444;
-    color: #fff;
+    padding: 7px 10px;
     border: none;
     border-radius: 6px;
-    padding: 7px 0;
+    background: transparent;
+    color: #334155;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.2s;
-    margin-top: 4px;
+    text-align: left;
+    transition: background 0.1s;
 }
 
-.date-preset-apply:hover {
-    background: #dc2626;
+.contacts-date-dropdown-item:hover {
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.contacts-date-dropdown-item.active {
+    background: #fef2f2;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.contacts-toggle-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.contacts-toggle-filter-btn:hover {
+    border-color: #94a3b8;
+    color: #334155;
+    background: #f8fafc;
+}
+
+.contacts-toggle-filter-btn.active {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #ef4444;
+    font-weight: 600;
 }
 
 /* ── Quick Stats Bar ── */
@@ -2615,49 +2886,65 @@
 }
 
 /* ═══════════════════════════════════════════════════
-   Customers Footer Bar (Pagination + Limit + Import/Export)
+   Apple Modern Footer Bar (Inside Card)
    ═══════════════════════════════════════════════════ */
 
 .customers-footer-bar {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 16px;
-    border-top: 1px solid #e5e7eb;
-    background: #fafbfc;
-    border-radius: 0 0 12px 12px;
+    padding: 10px 16px;
+    border-top: 1px solid #e2e8f0;
+    background: #ffffff;
+    border-radius: 0;
+    flex-shrink: 0;
 }
 
 /* Sol: Göster limit seçici */
 .customers-footer-limit {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     font-size: 0.8rem;
-    color: #6b7280;
+    color: #64748b;
     flex-shrink: 0;
 }
 
+.customers-limit-label {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.customers-limit-segmented {
+    display: inline-flex;
+    align-items: center;
+    background: #f1f5f9;
+    padding: 2px;
+    border-radius: 8px;
+}
+
 .customers-limit-btn {
-    padding: 4px 10px;
+    padding: 3px 10px;
     border-radius: 6px;
-    border: 1px solid #e5e7eb;
-    background: #fff;
-    color: #6b7280;
-    font-weight: 400;
-    font-size: 0.78rem;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-weight: 500;
+    font-size: 11.5px;
     cursor: pointer;
     transition: all 0.15s ease;
 }
+
 .customers-limit-btn:hover {
-    background: #f9fafb;
-    border-color: #d1d5db;
+    color: #0f172a;
 }
+
 .customers-limit-btn.active {
-    border-color: #ef4444;
-    background: #fef2f2;
+    background: #ffffff;
     color: #ef4444;
     font-weight: 700;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* Orta: Pagination */
@@ -2673,30 +2960,38 @@
     align-items: center;
     gap: 4px;
     padding: 5px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 7px;
-    background: #fff;
-    font-size: 0.78rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    font-size: 12px;
     font-weight: 500;
-    color: #374151;
+    color: #334155;
     cursor: pointer;
     transition: all 0.15s ease;
 }
+
 .customers-footer-pagination .pagination-btn:hover:not(:disabled) {
-    background: #f3f4f6;
-    border-color: #d1d5db;
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
 }
+
 .customers-footer-pagination .pagination-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
 }
 
 .customers-footer-pagination .pagination-info {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #374151;
-    min-width: 40px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    min-width: 44px;
     text-align: center;
+}
+
+.customers-footer-pagination .pagination-info strong {
+    color: #0f172a;
+    font-weight: 700;
 }
 
 /* Sağ: İçe / Dışa Aktar */
@@ -2711,32 +3006,39 @@
     align-items: center;
     gap: 5px;
     padding: 6px 14px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #bbf7d0;
     border-radius: 8px;
-    background: #fff;
-    font-size: 0.78rem;
+    background: #f0fdf4;
+    font-size: 12px;
     font-weight: 600;
     color: #16a34a;
     cursor: pointer;
     transition: all 0.15s ease;
     white-space: nowrap;
 }
+
 .customers-footer-actions .export-csv-btn:hover {
-    background: #f0fdf4;
+    background: #dcfce7;
     border-color: #86efac;
 }
+
 .customers-footer-actions .import-csv-btn {
-    color: #2563eb;
-}
-.customers-footer-actions .import-csv-btn:hover {
     background: #eff6ff;
+    color: #2563eb;
+    border-color: #bfdbfe;
+}
+
+.customers-footer-actions .import-csv-btn:hover {
+    background: #dbeafe;
     border-color: #93c5fd;
 }
+
 .customers-footer-actions .export-report2-btn {
     background: #0284c7 !important;
     color: #ffffff !important;
     border-color: #0284c7 !important;
 }
+
 .customers-footer-actions .export-report2-btn:hover {
     background: #0369a1 !important;
     border-color: #0369a1 !important;

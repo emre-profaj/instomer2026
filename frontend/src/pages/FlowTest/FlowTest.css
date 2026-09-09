@@ -1,0 +1,999 @@
+/* n8n Tarzı Görsel Akış Test Stüdyosu Stilleri */
+
+.flow-test-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 64px);
+    background-color: #0f172a;
+    color: #f8fafc;
+    position: relative;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+}
+
+/* Üst Kontrol Çubuğu (Toolbar) */
+.flow-test-header {
+    height: 56px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 20;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.flow-test-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.flow-badge-superadmin {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
+}
+
+.flow-title-input {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #f8fafc;
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    outline: none;
+}
+
+.flow-title-input:hover,
+.flow-title-input:focus {
+    background: #0f172a;
+    border-color: #475569;
+}
+
+.flow-test-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.flow-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.flow-btn-primary {
+    background: #6366f1;
+    color: #ffffff;
+}
+
+.flow-btn-primary:hover {
+    background: #4f46e5;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.flow-btn-success {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.flow-btn-success:hover {
+    background: #059669;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.flow-btn-secondary {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+.flow-btn-secondary:hover {
+    background: #475569;
+    color: #ffffff;
+}
+
+.flow-btn-danger {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+.flow-btn-danger:hover {
+    background: #dc2626;
+}
+
+/* Çalışma Alanı / Tuval (Canvas) */
+.flow-canvas-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    background-color: #0b1120;
+    /* n8n dot grid deseni */
+    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1.5px, transparent 1.5px);
+    background-size: 24px 24px;
+}
+
+.flow-canvas-wrapper.is-panning {
+    cursor: grabbing;
+}
+
+.flow-canvas-viewport {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+
+/* SVG Bağlantı Çizgileri Katmanı */
+.flow-connections-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6000px;
+    height: 6000px;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.flow-wire {
+    fill: none;
+    stroke: #64748b;
+    stroke-width: 3px;
+    pointer-events: stroke;
+    cursor: pointer;
+    transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+.flow-wire:hover {
+    stroke: #ef4444 !important;
+    stroke-width: 4px;
+}
+
+.flow-wire.wire-active {
+    stroke: #6366f1;
+}
+
+.flow-wire.wire-executing {
+    stroke: #10b981;
+    stroke-width: 4px;
+    stroke-dasharray: 8 6;
+    animation: flowWirePulse 1s linear infinite;
+}
+
+@keyframes flowWirePulse {
+    from {
+        stroke-dashoffset: 28;
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.flow-wire-dragging {
+    fill: none;
+    stroke: #38bdf8;
+    stroke-width: 3px;
+    stroke-dasharray: 6 4;
+    pointer-events: none;
+    animation: flowWirePulse 0.8s linear infinite;
+}
+
+/* Düğümler (Nodes) */
+.flow-node {
+    position: absolute;
+    width: 260px;
+    background: #1e293b;
+    border: 1.5px solid #334155;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    transition: box-shadow 0.2s, border-color 0.2s, transform 0.1s;
+    z-index: 10;
+}
+
+.flow-node:hover {
+    border-color: #64748b;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.flow-node.is-selected {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35), 0 12px 32px rgba(0, 0, 0, 0.5);
+    z-index: 15;
+}
+
+.flow-node.is-executing {
+    border-color: #10b981;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.4), 0 12px 32px rgba(0, 0, 0, 0.6);
+    animation: nodePulse 1.2s ease-in-out infinite;
+}
+
+.flow-node.has-executed {
+    border-color: #10b981;
+}
+
+@keyframes nodePulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+.flow-node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    background: #182234;
+    border-bottom: 1px solid #334155;
+}
+
+.flow-node-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.flow-node-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 1rem;
+    color: #ffffff;
+}
+
+.flow-node-type-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+}
+
+.flow-node-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.flow-node:hover .flow-node-actions {
+    opacity: 1;
+}
+
+.flow-node-action-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    padding: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.flow-node-action-btn:hover {
+    background: #334155;
+    color: #f8fafc;
+}
+
+.flow-node-action-btn.btn-delete:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.flow-node-body {
+    padding: 12px 14px;
+}
+
+.flow-node-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flow-node-desc {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flow-node-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: #141d2e;
+    border-top: 1px solid #334155;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    font-size: 0.72rem;
+    color: #64748b;
+}
+
+.flow-node-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+.status-ready {
+    color: #94a3b8;
+    background: #1e293b;
+}
+
+.status-running {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.15);
+}
+
+.status-success {
+    color: #34d399;
+    background: rgba(52, 211, 153, 0.15);
+}
+
+.status-error {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.15);
+}
+
+/* Portlar (Girdi / Çıktı Bağlantı Noktaları) */
+.flow-port {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: #1e293b;
+    border: 2px solid #64748b;
+    border-radius: 50%;
+    cursor: crosshair;
+    transition: all 0.2s;
+    z-index: 20;
+}
+
+.flow-port:hover {
+    transform: scale(1.35);
+    background: #6366f1;
+    border-color: #a5b4fc;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.8);
+}
+
+.flow-port-input {
+    left: -7px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.flow-port-output {
+    right: -7px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Koşullu portlar (True / False) */
+.flow-port-output-true {
+    right: -7px;
+    top: 36%;
+    border-color: #10b981;
+}
+
+.flow-port-output-false {
+    right: -7px;
+    top: 66%;
+    border-color: #ef4444;
+}
+
+.flow-port-label {
+    position: absolute;
+    right: 14px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
+}
+
+.label-true {
+    top: 33%;
+    color: #10b981;
+}
+
+.label-false {
+    top: 63%;
+    color: #ef4444;
+}
+
+/* Tuval Kontrolleri (Zoom, Fit,vb.) */
+.flow-canvas-controls {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    z-index: 15;
+    overflow: hidden;
+}
+
+.flow-control-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+.flow-control-btn:hover {
+    background: #334155;
+    color: #f8fafc;
+}
+
+.flow-zoom-display {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    padding: 0 8px;
+    border-left: 1px solid #334155;
+    border-right: 1px solid #334155;
+}
+
+/* Mini Bilgi Rozeti */
+.flow-stats-badge {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 15;
+}
+
+/* Sağ Yapılandırma Çekmecesi (Node Config Drawer) */
+.flow-drawer {
+    position: absolute;
+    top: 56px;
+    right: 0;
+    width: 400px;
+    height: calc(100% - 56px);
+    background: #1e293b;
+    border-left: 1px solid #334155;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+.flow-drawer-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #182234;
+}
+
+.flow-drawer-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.flow-drawer-title h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #f8fafc;
+}
+
+.flow-drawer-close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.flow-drawer-close:hover {
+    background: #334155;
+    color: #f8fafc;
+}
+
+.flow-drawer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.flow-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.flow-form-group label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.flow-input,
+.flow-select,
+.flow-textarea {
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #f8fafc;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 0.88rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.flow-input:focus,
+.flow-select:focus,
+.flow-textarea:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+.flow-textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+}
+
+.flow-hint {
+    font-size: 0.74rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.flow-drawer-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #334155;
+    background: #182234;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Düğüm Ekleme Modalı (Add Node Modal) */
+.flow-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.flow-modal {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    width: 720px;
+    max-width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    animation: modalScale 0.2s ease-out;
+}
+
+@keyframes modalScale {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.flow-modal-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.flow-modal-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.flow-modal-search {
+    padding: 12px 24px;
+    border-bottom: 1px solid #334155;
+    background: #141d2e;
+}
+
+.flow-modal-search-input {
+    width: 100%;
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #f8fafc;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.flow-modal-search-input:focus {
+    border-color: #6366f1;
+}
+
+.flow-modal-categories {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.flow-category-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.flow-node-templates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.flow-template-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.flow-template-card:hover {
+    border-color: #6366f1;
+    background: #1e293b;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.flow-template-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.flow-template-card-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #f8fafc;
+}
+
+.flow-template-card-desc {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    line-height: 1.3;
+}
+
+/* Test Simülasyon Paneli (Bottom Drawer / Log Console) */
+.flow-simulation-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #0f172a;
+    border-top: 2px solid #334155;
+    z-index: 25;
+    transition: height 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.flow-sim-header {
+    height: 42px;
+    background: #1e293b;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #334155;
+}
+
+.flow-sim-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #f8fafc;
+}
+
+.flow-sim-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.flow-sim-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+    font-size: 0.82rem;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.flow-log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #1e293b;
+    border-left: 3px solid #6366f1;
+}
+
+.flow-log-entry.log-success {
+    border-left-color: #10b981;
+}
+
+.flow-log-entry.log-info {
+    border-left-color: #38bdf8;
+}
+
+.flow-log-entry.log-error {
+    border-left-color: #ef4444;
+}
+
+.flow-log-time {
+    color: #64748b;
+    font-size: 0.74rem;
+    white-space: nowrap;
+}
+
+.flow-log-msg {
+    flex: 1;
+    color: #cbd5e1;
+    line-height: 1.4;
+}
+
+.flow-log-payload {
+    background: #090d16;
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 6px;
+    color: #a5f3fc;
+    font-size: 0.74rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
+/* Şablon Seçici Dropdown */
+.flow-template-dropdown {
+    position: absolute;
+    top: 52px;
+    left: 20px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 8px 0;
+    width: 320px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    z-index: 50;
+}
+
+.flow-template-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid #273549;
+}
+
+.flow-template-item:last-child {
+    border-bottom: none;
+}
+
+.flow-template-item:hover {
+    background: #28374d;
+}
+
+.flow-template-item-name {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 3px;
+}
+
+.flow-template-item-desc {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+/* Sistem Entegrasyon Stilleri */
+.flow-select-system {
+    background: #0f172a;
+    border: 1px solid #475569;
+    color: #f8fafc;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    outline: none;
+    max-width: 220px;
+    cursor: pointer;
+}
+
+.flow-select-system:focus {
+    border-color: #6366f1;
+}
+
+.flow-sync-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.74rem;
+    color: #94a3b8;
+    background: rgba(15, 23, 42, 0.6);
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+}
+
+.flow-sync-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+}
+
+.flow-sync-dot.loading {
+    background: #f59e0b;
+    animation: pulse 1s infinite;
+}
+
+.flow-template-preview-box {
+    background: #090d16;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    margin-top: 6px;
+    line-height: 1.45;
+}
+
+.flow-template-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-right: 6px;
+}
+
+.flow-template-badge.approved {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.flow-template-badge.pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.flow-badge-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #94a3b8;
+}
+

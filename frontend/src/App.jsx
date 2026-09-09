@@ -59,6 +59,7 @@ import RealEstatePortfolio from './pages/RealEstate/RealEstatePortfolio';
 import RealEstateCampaigns from './pages/RealEstate/RealEstateCampaigns';
 import Marketing from './pages/Marketing/Marketing';
 import AppNotes from './pages/AppNotes/AppNotes';
+import FlowTest from './pages/FlowTest/FlowTest';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -164,6 +165,8 @@ function App() {
               <Route path="real-estate/campaigns" element={<RealEstateCampaigns />} />
               <Route path="marketing" element={<Marketing />} />
               <Route path="app-notes" element={<AppNotes />} />
+              <Route path="flow-test" element={<FlowTest />} />
+              <Route path="settings/flow-test" element={<FlowTest />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

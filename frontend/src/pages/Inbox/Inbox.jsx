@@ -12,7 +12,7 @@ import {
     Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal, Paperclip, Megaphone
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal, Paperclip, Megaphone, Archive, ArchiveRestore
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConversationPopup from '../../components/ConversationPopup/ConversationPopup';
@@ -4082,22 +4082,26 @@ const Inbox = () => {
                 </div>
 
                 {/* Bulk Selection Toolbar */}
+                {/* Bulk Selection Toolbar & Quick Segment Filters — Apple Style */}
                 <div className={`bulk-selection-toolbar${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
-                    <div className="toolbar-row">
+                    <div className="inbox-segmented-toolbar">
 
-                        {/* Toplu Seç butonu + açılan dropdown */}
-                        <div className="bulk-toggle-wrapper">
+                        {/* 1. Segment: Toplu Seç butonu */}
+                        <div className="bulk-toggle-wrapper" style={{ position: 'relative' }}>
                             <button
-                                className={`bulk-select-toggle ${bulkSelectMode ? 'active' : ''}`}
+                                className={`inbox-segment-btn ${bulkSelectMode ? 'active' : ''}`}
                                 onClick={() => {
                                     setBulkSelectMode(!bulkSelectMode);
                                     if (bulkSelectMode) setSelectedItems([]);
                                 }}
+                                title="Toplu Seçim Modu"
                             >
-                                <CheckCircle2 size={14} />
-                                {bulkSelectMode
-                                    ? (selectedItems.length > 0 ? `${selectedItems.length} seçili ▾` : 'İptal')
-                                    : 'Toplu Seç'}
+                                <CheckCircle2 size={13} style={{ flexShrink: 0 }} />
+                                <span>
+                                    {bulkSelectMode
+                                        ? (selectedItems.length > 0 ? `${selectedItems.length} seçili` : 'İptal')
+                                        : 'Toplu'}
+                                </span>
                             </button>
 
                             {bulkSelectMode && (
@@ -4154,8 +4158,11 @@ const Inbox = () => {
                             )}
                         </div>
 
-                        {/* Takım/Akış Seçici */}
+                        <div className="inbox-segment-divider" />
+
+                        {/* 2. Segment: Akış / Takım Seçici */}
                         <select
+                            className={`inbox-segment-select ${funnelFilter ? 'active' : ''}`}
                             value={funnelFilter || ''}
                             onChange={(e) => {
                                 setFunnelFilter(e.target.value || null);
@@ -4163,27 +4170,9 @@ const Inbox = () => {
                                 setCurrentPage(1);
                                 if (currentPageRef) currentPageRef.current = 1;
                             }}
-                            style={{
-                                height: '28px',
-                                borderRadius: '14px',
-                                border: funnelFilter ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
-                                fontSize: '0.72rem',
-                                fontWeight: 600,
-                                padding: '0 12px',
-                                cursor: 'pointer',
-                                background: funnelFilter ? '#eef2ff' : '#ffffff',
-                                color: funnelFilter ? '#4f46e5' : '#1e293b',
-                                minWidth: '150px',
-                                flexShrink: 0,
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-                                backgroundRepeat: 'no-repeat',
-                                backgroundPosition: 'right 8px center',
-                                paddingRight: '24px'
-                            }}
+                            title="Akış Filtresi"
                         >
-                            <option value="">Tümü</option>
+                            <option value="">Tüm Akışlar</option>
                             {funnelFilter && !funnelOptions.some(f => f.value === funnelFilter) && (
                                 <option value={funnelFilter} style={{ display: 'none' }}>{funnelFilter}</option>
                             )}
@@ -4197,33 +4186,18 @@ const Inbox = () => {
                             })}
                         </select>
 
-                        {/* Branch Filter */}
+                        <div className="inbox-segment-divider" />
+
+                        {/* 3. Segment: Şube Seçici */}
                         <select
+                            className={`inbox-segment-select ${selectedBranchId ? 'active' : ''}`}
                             value={selectedBranchId || ''}
                             onChange={(e) => {
                                 setSelectedBranchId(e.target.value);
                                 setCurrentPage(1);
                                 if (currentPageRef) currentPageRef.current = 1;
                             }}
-                            style={{
-                                height: '28px',
-                                borderRadius: '14px',
-                                border: selectedBranchId ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
-                                fontSize: '0.72rem',
-                                fontWeight: 600,
-                                padding: '0 12px',
-                                cursor: 'pointer',
-                                background: selectedBranchId ? '#eef2ff' : '#ffffff',
-                                color: selectedBranchId ? '#4f46e5' : '#1e293b',
-                                minWidth: '150px',
-                                flexShrink: 0,
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-                                backgroundRepeat: 'no-repeat',
-                                backgroundPosition: 'right 8px center',
-                                paddingRight: '24px'
-                            }}
+                            title="Şube Filtresi"
                         >
                             <option value="">Tüm Şubeler</option>
                             {branches.map(branch => (
@@ -4658,16 +4632,20 @@ const Inbox = () => {
                                                 )}
                                             </div>
                                             <div className="profile-info">
-                                                <h3>{selectedItem.contact?.name || 'Bilinmeyen'}</h3>
+                                                <h3 onClick={() => setShowContactSidebar(v => !v)} title="Profili Görüntüle" style={{ cursor: 'pointer' }}>{selectedItem.contact?.name || 'Bilinmeyen'}</h3>
                                                 {/* İlk / Son Yazma */}
                                                 {(() => {
                                                     const cm = selectedItem.messages?.filter(m => m.isFromContact) || [];
                                                     const fmt = (d) => d ? new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---';
                                                     return (
                                                         <div className="profile-dates-row">
-                                                            <span>İlk: {fmt(cm[0]?.createdAt)}</span>
+                                                            <span className="profile-date-chip" title="İlk mesaj">
+                                                                <span className="profile-date-label">İlk:</span> {fmt(cm[0]?.createdAt)}
+                                                            </span>
                                                             <span className="profile-dates-sep">•</span>
-                                                            <span>Son: {fmt(cm[cm.length - 1]?.createdAt)}</span>
+                                                            <span className="profile-date-chip" title="Son mesaj">
+                                                                <span className="profile-date-label">Son:</span> {fmt(cm[cm.length - 1]?.createdAt)}
+                                                            </span>
                                                         </div>
                                                     );
                                                 })()}
@@ -4699,10 +4677,11 @@ const Inbox = () => {
                                                     : [];
                                                 return (
                                                     <div className="topic-input-wrapper">
+                                                        <Tag size={12} className="topic-input-icon" />
                                                         <input
                                                             className="topic-input-compact"
                                                             type="text"
-                                                            placeholder="Konu başlığı..."
+                                                            placeholder="Konu ekle..."
                                                             value={selectedItem.aiTopic || ''}
                                                             onChange={(e) => {
                                                                 setSelectedItem(prev => ({ ...prev, aiTopic: e.target.value }));
@@ -4785,7 +4764,7 @@ const Inbox = () => {
                                                 return (
                                                     <div ref={caseLinkDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
                                                         <button
-                                                            className="case-link-btn"
+                                                            className={`apple-case-btn ${currentCaseId ? 'linked' : ''}`}
                                                             title={linkedCase ? `Bağlı: ${linkedCase.title || ''}` : 'Case\'e bağla'}
                                                             onClick={async () => {
                                                                 if (caseLinkDropdownOpen) {
@@ -4804,21 +4783,14 @@ const Inbox = () => {
                                                                     setCaseLinkLoading(false);
                                                                 }
                                                             }}
-                                                            style={{
-                                                                background: currentCaseId ? '#f5f3ff' : 'transparent',
-                                                                border: currentCaseId ? '1px solid #c4b5fd' : '1px solid transparent',
-                                                                borderRadius: 6, padding: '3px 6px', cursor: 'pointer',
-                                                                display: 'flex', alignItems: 'center', gap: 4,
-                                                                color: currentCaseId ? '#7c3aed' : '#9ca3af',
-                                                                fontSize: '0.72rem', fontWeight: 500,
-                                                                transition: 'all 0.15s', whiteSpace: 'nowrap'
-                                                            }}
                                                         >
-                                                            <Briefcase size={13} />
-                                                            {displayCaseNumber && (
-                                                                <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            <Briefcase size={12} />
+                                                            {displayCaseNumber ? (
+                                                                <span style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                                     {displayCaseNumber}
                                                                 </span>
+                                                            ) : (
+                                                                <span>Case'e Bağla</span>
                                                             )}
                                                         </button>
 
@@ -5040,24 +5012,13 @@ const Inbox = () => {
                                                             return (
                                                                 <>
                                                                     <button
+                                                                        className={`apple-status-pill ${isClosed ? 'closed' : 'open'}`}
                                                                         onClick={() => setClosingDropdownOpen(prev => !prev)}
-                                                                        style={{
-                                                                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                                                                            padding: '5px 12px', borderRadius: 8,
-                                                                            border: `1.5px solid ${pillStyle.border}`,
-                                                                            background: pillStyle.bg, color: pillStyle.color,
-                                                                            fontSize: '0.78rem', fontWeight: 700,
-                                                                            cursor: 'pointer', whiteSpace: 'nowrap',
-                                                                            transition: 'all 0.15s'
-                                                                        }}
+                                                                        type="button"
                                                                     >
-                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: pillStyle.dotColor, flexShrink: 0 }} />
-                                                                        {label}
-                                                                        <ChevronDown size={13} style={{
-                                                                            transition: 'transform 0.2s',
-                                                                            transform: closingDropdownOpen ? 'rotate(180deg)' : 'none',
-                                                                            opacity: 0.6
-                                                                        }} />
+                                                                        <span className="apple-status-dot" />
+                                                                        <span>{label}</span>
+                                                                        <ChevronDown size={11} className={`apple-chevron ${closingDropdownOpen ? 'open' : ''}`} />
                                                                     </button>
                                                                     {closingDropdownOpen && ReactDOM.createPortal(
                                                                         <div
@@ -5452,36 +5413,38 @@ const Inbox = () => {
                                                             );
                                                         })()}
                                                     </div>
-                                                    <button
-                                                        className={`profile-action-btn star-btn ${selectedItem.isStarred ? 'starred' : ''}`}
-                                                        onClick={(e) => handleToggleStar(selectedItem, e)}
-                                                        title={selectedItem.isStarred ? "Yıldızı Kaldır" : "Yıldızla ve En Üste Sabitle"}
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center'
-                                                        }}
-                                                    >
-                                                        <Star
-                                                            size={15}
-                                                            fill={selectedItem.isStarred ? '#f59e0b' : 'none'}
-                                                            color={selectedItem.isStarred ? '#f59e0b' : '#64748b'}
-                                                        />
-                                                    </button>
-                                                    <button
-                                                        className="profile-action-btn archive"
-                                                        onClick={() => handleArchiveConversation(selectedItem.id, !selectedItem.isArchived)}
-                                                        title={selectedItem.isArchived ? "Arşivden Çıkar" : "Arşivle"}
-                                                    >
-                                                        {selectedItem.isArchived ? '📤' : '📥'}
-                                                    </button>
-                                                    <button
-                                                        className="profile-action-btn delete"
-                                                        onClick={() => handleDeleteItem(selectedItem)}
-                                                        title="Sohbeti Sil"
-                                                    >
-                                                        <Trash2 size={15} />
-                                                    </button>
+                                                    <div className="apple-actions-cluster">
+                                                        <button
+                                                            className={`apple-action-btn star ${selectedItem.isStarred ? 'starred' : ''}`}
+                                                            onClick={(e) => handleToggleStar(selectedItem, e)}
+                                                            title={selectedItem.isStarred ? "Yıldızı Kaldır" : "Yıldızla ve En Üste Sabitle"}
+                                                            type="button"
+                                                        >
+                                                            <Star
+                                                                size={13}
+                                                                fill={selectedItem.isStarred ? '#f59e0b' : 'none'}
+                                                                color={selectedItem.isStarred ? '#f59e0b' : 'currentColor'}
+                                                            />
+                                                        </button>
+                                                        <div className="apple-actions-sep" />
+                                                        <button
+                                                            className={`apple-action-btn archive ${selectedItem.isArchived ? 'archived' : ''}`}
+                                                            onClick={() => handleArchiveConversation(selectedItem.id, !selectedItem.isArchived)}
+                                                            title={selectedItem.isArchived ? "Arşivden Çıkar" : "Arşivle"}
+                                                            type="button"
+                                                        >
+                                                            {selectedItem.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                                                        </button>
+                                                        <div className="apple-actions-sep" />
+                                                        <button
+                                                            className="apple-action-btn delete"
+                                                            onClick={() => handleDeleteItem(selectedItem)}
+                                                            title="Sohbeti Sil"
+                                                            type="button"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
                                                 </>
                                             )}
 
@@ -5668,26 +5631,24 @@ const Inbox = () => {
                                                         {/* Tek Kutucuk: Mega Menü Trigger */}
                                                         <div ref={stageMegaMenuRef} style={{ position: 'relative' }}>
                                                             <button
+                                                                className="apple-stage-trigger"
                                                                 onClick={(e) => {
                                                                     const rect = e.currentTarget.getBoundingClientRect();
                                                                     setStageMegaMenuPos({ top: rect.bottom + 4, left: rect.left });
                                                                     setStageMegaMenuOpen(v => !v);
                                                                 }}
-                                                                style={{
-                                                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                                                    background: '#f8fafc', border: '1px solid #e2e8f0',
-                                                                    borderRadius: '8px', padding: '4px 10px',
-                                                                    cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#374151',
-                                                                    whiteSpace: 'nowrap', maxWidth: '200px'
-                                                                }}
+                                                                type="button"
+                                                                title="Akış ve Aşama Seç"
                                                             >
-                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />
-                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                                                                <span className="stage-dot" style={{ backgroundColor: currentStageColor }} />
+                                                                <span className="stage-labels">
                                                                     {activeFunnel ? (
-                                                                        <><span style={{ color: '#94a3b8', fontWeight: 500 }}>{activeFunnel.label}</span><span style={{ color: '#94a3b8', margin: '0 3px' }}>/</span><span>{activeStageLabel || 'Aşama Seç'}</span></>
-                                                                    ) : (activeStageLabel || 'Aşama Seç')}
+                                                                        <><span className="funnel-name">{activeFunnel.label}</span><span className="slash">/</span><span className="stage-name">{activeStageLabel || 'Aşama Seç'}</span></>
+                                                                    ) : (
+                                                                        <span className="stage-name">{activeStageLabel || 'Aşama Seç'}</span>
+                                                                    )}
                                                                 </span>
-                                                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 2, flexShrink: 0 }}><path d="M2 3.5L5 6.5L8 3.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                                                <ChevronDown size={11} className={`stage-chevron ${stageMegaMenuOpen ? 'open' : ''}`} />
                                                             </button>
 
                                                             {/* Stage menu backdrop + panel */}
@@ -5830,18 +5791,19 @@ const Inbox = () => {
                                                     <>
                                                         <div ref={assignMegaMenuRef} style={{ position: 'relative' }}>
                                                             <button
-                                                                className="stage-mega-trigger"
+                                                                className="apple-assign-trigger"
                                                                 onClick={e => {
                                                                     const rect = e.currentTarget.getBoundingClientRect();
                                                                     setAssignMegaMenuPos({ top: rect.bottom + 6, left: rect.left });
                                                                     setAssignSelectedTeam(assignedTeam?.id || null);
                                                                     setAssignMegaMenuOpen(o => !o);
                                                                 }}
+                                                                type="button"
                                                                 title="Atama"
                                                             >
-                                                                <Users size={12} style={{ marginRight: 4 }} />
-                                                                {pillLabel}
-                                                                <ChevronDown size={10} style={{ marginLeft: 4 }} />
+                                                                <Users size={12} className="assign-icon" />
+                                                                <span className="assign-text">{pillLabel}</span>
+                                                                <ChevronDown size={11} className={`assign-chevron ${assignMegaMenuOpen ? 'open' : ''}`} />
                                                             </button>
 
                                                             {assignMegaMenuOpen && (() => {
@@ -5971,13 +5933,14 @@ const Inbox = () => {
                                                         {/* Üstlen butonu */}
                                                         {canClaim && (
                                                             <button
-                                                                className="assign-claim-btn"
+                                                                className="apple-claim-btn"
                                                                 onClick={handleClaimConversation}
                                                                 disabled={takingOver}
                                                                 title="Bu konuşmayı üstlen"
+                                                                type="button"
                                                             >
                                                                 <UserCheck size={12} />
-                                                                Üstlen
+                                                                <span>Üstlen</span>
                                                             </button>
                                                         )}
                                                     </>
@@ -5985,14 +5948,66 @@ const Inbox = () => {
                                             })()}
                                         </div>
 
-                                        {/* Right Group — boş, butonlar üst bara taşındı */}
-                                        <div className="assignment-right-group" />
+                                        {/* Right Group: Phone & Channel Badge */}
+                                        <div className="assignment-right-group">
+                                            {selectedItem.contact?.phone && (
+                                                <a
+                                                    href={`tel:${selectedItem.contact.phone}`}
+                                                    className="apple-workflow-meta-item phone"
+                                                    title="Müşteri Telefonu"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <Phone size={11} />
+                                                    <span>{selectedItem.contact.phone}</span>
+                                                </a>
+                                            )}
+                                            {(() => {
+                                                const channel = selectedItem.channel || 'WHATSAPP';
+                                                const channelConfig = {
+                                                    WHATSAPP: { label: 'WhatsApp', icon: '💬', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+                                                    INSTAGRAM: { label: 'Instagram', icon: '📸', color: '#be185d', bg: '#fdf2f8', border: '#fbcfe8' },
+                                                    FACEBOOK: { label: 'Messenger', icon: '📘', color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
+                                                    EMAIL: { label: 'E-posta', icon: '✉️', color: '#475569', bg: '#f8fafc', border: '#e2e8f0' },
+                                                    LEAD: { label: 'Lead', icon: '📋', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+                                                    WIDGET: { label: 'Web Widget', icon: '🌐', color: '#4338ca', bg: '#eef2ff', border: '#c7d2fe' }
+                                                };
+                                                const cfg = channelConfig[channel] || { label: channel, icon: '💬', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' };
+                                                return (
+                                                    <div
+                                                        className="apple-channel-badge"
+                                                        style={{
+                                                            background: cfg.bg,
+                                                            borderColor: cfg.border,
+                                                            color: cfg.color
+                                                        }}
+                                                        title={`Kanal: ${cfg.label}`}
+                                                    >
+                                                        <span className="channel-icon">{cfg.icon}</span>
+                                                        <span className="channel-text">{cfg.label}</span>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
                                     </div>
 
                                 </div>
 
                                 <div className="messages-container" ref={messagesContainerRef}>
-                                    {messages.map((msg) => {
+                                    {messages.map((msg, msgIndex) => {
+                                        // ── Date Separator ──
+                                        const msgDate = msg.createdAt ? new Date(msg.createdAt) : null;
+                                        const prevMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
+                                        const prevDate = prevMsg?.createdAt ? new Date(prevMsg.createdAt) : null;
+                                        const isDifferentDay = msgDate && (!prevDate || msgDate.toDateString() !== prevDate.toDateString());
+                                        const dateLabel = isDifferentDay ? (() => {
+                                            const today = new Date();
+                                            const yesterday = new Date();
+                                            yesterday.setDate(yesterday.getDate() - 1);
+                                            if (msgDate.toDateString() === today.toDateString()) return 'Bugün';
+                                            if (msgDate.toDateString() === yesterday.toDateString()) return 'Dün';
+                                            return msgDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+                                        })() : null;
+
                                         // ── System Event (inline log) ──
                                         if (msg.isSystemEvent) {
                                             const evtTime = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' }) : '';
@@ -6007,21 +6022,20 @@ const Inbox = () => {
                                                 return msg.actorType === 'USER' ? 'Kullanıcı' : '';
                                             })();
                                             return (
-                                                <div key={msg.id} style={{
-                                                    display: 'flex', justifyContent: 'center', alignItems: 'center',
-                                                    padding: '4px 16px', margin: '2px 0'
-                                                }}>
-                                                    <span style={{
-                                                        fontSize: '0.75rem', color: '#9ca3af', fontWeight: 400,
-                                                        background: 'transparent', padding: '0',
-                                                        letterSpacing: '0.01em', lineHeight: 1.5,
-                                                        textAlign: 'center'
-                                                    }}>
-                                                        {evtTime && <span style={{ marginRight: '6px', color: '#b0b8c4', fontWeight: 500, fontSize: '0.7rem' }}>{evtTime}</span>}
-                                                        <span dangerouslySetInnerHTML={{ __html: msg.title }} />
-                                                        {actorName && <span style={{ marginLeft: '6px', color: '#b0b8c4', fontStyle: 'italic', fontSize: '0.7rem' }}>— {actorName}</span>}
-                                                    </span>
-                                                </div>
+                                                <React.Fragment key={msg.id || `sys-${msgIndex}`}>
+                                                    {isDifferentDay && (
+                                                        <div className="apple-date-separator">
+                                                            <span>{dateLabel}</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="apple-system-event-row">
+                                                        <div className="apple-system-event-pill">
+                                                            {evtTime && <span className="apple-event-time">{evtTime}</span>}
+                                                            <span className="apple-event-text" dangerouslySetInnerHTML={{ __html: msg.title }} />
+                                                            {actorName && <span className="apple-event-actor">— {actorName}</span>}
+                                                        </div>
+                                                    </div>
+                                                </React.Fragment>
                                             );
                                         }
 
@@ -6046,48 +6060,55 @@ const Inbox = () => {
                                             const actDate = msg.createdAt ? new Date(msg.createdAt) : null;
                                             const displayText = msg.activityResult || msg.activityContent || msg.activityTitle || '';
 
-                                            return (
-                                                <div key={msg.id} style={{
-                                                    display: 'flex', justifyContent: 'center',
-                                                    padding: '6px 40px', margin: '4px 0'
-                                                }}>
-                                                    <div
-                                                        onClick={() => setSelectedActivityPopup(msg)}
-                                                        style={{
-                                                            background: cfg.bg, border: `1px solid ${cfg.border}`,
-                                                            borderRadius: 10, padding: '8px 14px', maxWidth: 420, width: '100%',
-                                                            cursor: 'pointer', transition: 'box-shadow 0.15s',
-                                                        }}
-                                                        onMouseEnter={e => e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.1)'}
-                                                        onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
-                                                    >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                                            <span style={{ fontSize: '1rem' }}>{cfg.icon}</span>
-                                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cfg.accent }}>{cfg.label}</span>
-                                                            <span style={{
-                                                                fontSize: '0.6rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999,
-                                                                background: sc.bg, color: sc.color,
-                                                            }}>{sc.emoji} {sc.label}</span>
-                                                            <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: '#9ca3af' }}>
-                                                                {actDate ? actDate.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
-                                                            </span>
+                                             return (
+                                                <React.Fragment key={msg.id || `act-${msgIndex}`}>
+                                                    {isDifferentDay && (
+                                                        <div className="apple-date-separator">
+                                                            <span>{dateLabel}</span>
                                                         </div>
-                                                        {msg.activityAssignedTo && (
-                                                            <div style={{ fontSize: '0.68rem', color: '#6b7280', marginBottom: 3 }}>
-                                                                👤 {msg.activityAssignedTo} {msg.activityTeam ? `(${msg.activityTeam})` : ''}
+                                                    )}
+                                                    <div style={{
+                                                        display: 'flex', justifyContent: 'center',
+                                                        padding: '6px 40px', margin: '4px 0'
+                                                    }}>
+                                                        <div
+                                                            onClick={() => setSelectedActivityPopup(msg)}
+                                                            style={{
+                                                                background: cfg.bg, border: `1px solid ${cfg.border}`,
+                                                                borderRadius: 10, padding: '8px 14px', maxWidth: 420, width: '100%',
+                                                                cursor: 'pointer', transition: 'box-shadow 0.15s',
+                                                            }}
+                                                            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.1)'}
+                                                            onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                                                <span style={{ fontSize: '1rem' }}>{cfg.icon}</span>
+                                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cfg.accent }}>{cfg.label}</span>
+                                                                <span style={{
+                                                                    fontSize: '0.6rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+                                                                    background: sc.bg, color: sc.color,
+                                                                }}>{sc.emoji} {sc.label}</span>
+                                                                <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: '#9ca3af' }}>
+                                                                    {actDate ? actDate.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                                                                </span>
                                                             </div>
-                                                        )}
-                                                        {displayText && (
-                                                            <div style={{
-                                                                fontSize: '0.78rem', color: '#374151', lineHeight: 1.4,
-                                                                overflow: 'hidden', textOverflow: 'ellipsis',
-                                                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'
-                                                            }}>
-                                                                {displayText}
-                                                            </div>
-                                                        )}
+                                                            {msg.activityAssignedTo && (
+                                                                <div style={{ fontSize: '0.68rem', color: '#6b7280', marginBottom: 3 }}>
+                                                                    👤 {msg.activityAssignedTo} {msg.activityTeam ? `(${msg.activityTeam})` : ''}
+                                                                </div>
+                                                            )}
+                                                            {displayText && (
+                                                                <div style={{
+                                                                    fontSize: '0.78rem', color: '#374151', lineHeight: 1.4,
+                                                                    overflow: 'hidden', textOverflow: 'ellipsis',
+                                                                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'
+                                                                }}>
+                                                                    {displayText}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                </React.Fragment>
                                             );
                                         }
 
@@ -6115,26 +6136,32 @@ const Inbox = () => {
                                         } else if (msg.isFromContact) {
                                             messageClass += 'incoming';
                                         } else {
-                                            messageClass += 'outgoing';
+                                        messageClass += 'outgoing';
                                         }
-                                        if (msg.messageType === 'CALL_TRANSCRIPT' && !isCallSystem) messageClass += ' call-transcript-bubble';
-                                        if (isLeadMessage || isImportedLead) messageClass += ' lead-message';
+                                         if (msg.messageType === 'CALL_TRANSCRIPT' && !isCallSystem) messageClass += ' call-transcript-bubble';
+                                         if (isLeadMessage || isImportedLead) messageClass += ' lead-message';
 
-                                        return (
-                                            <div key={msg.id} className={messageClass}>
-                                                <div className="message-content">
-                                                    {/* Media content */}
-                                                    {msg.mediaUrl && (
-                                                        <div className="message-media">
-                                                            {msg.mediaType === 'image' || msg.mediaType === 'sticker' ? (
-                                                                <img
-                                                                    src={msg.mediaUrl}
-                                                                    alt="Fotoğraf"
-                                                                    className="message-media-image"
-                                                                    onClick={() => window.open(msg.mediaUrl, '_blank')}
-                                                                    loading="lazy"
-                                                                />
-                                                            ) : msg.mediaType === 'video' ? (
+                                         return (
+                                             <React.Fragment key={msg.id || `msg-${msgIndex}`}>
+                                                 {isDifferentDay && (
+                                                     <div className="apple-date-separator">
+                                                         <span>{dateLabel}</span>
+                                                     </div>
+                                                 )}
+                                                 <div className={messageClass}>
+                                                     <div className="message-content">
+                                                         {/* Media content */}
+                                                         {msg.mediaUrl && (
+                                                             <div className="message-media">
+                                                                 {msg.mediaType === 'image' || msg.mediaType === 'sticker' ? (
+                                                                     <img
+                                                                         src={msg.mediaUrl}
+                                                                         alt="Fotoğraf"
+                                                                         className="message-media-image"
+                                                                         onClick={() => window.open(msg.mediaUrl, '_blank')}
+                                                                         loading="lazy"
+                                                                     />
+                                                                 ) : msg.mediaType === 'video' ? (
                                                                 <video controls className="message-media-video">
                                                                     <source src={msg.mediaUrl} />
                                                                 </video>
@@ -6338,7 +6365,8 @@ const Inbox = () => {
                                                     )}
                                                 </div>
                                             </div>
-                                        );
+                                        </React.Fragment>
+                                    );
                                     })}
                                 </div>
 
@@ -6781,7 +6809,7 @@ const Inbox = () => {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="input-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 10px', borderTop: '1px solid #e8eaed', background: '#fafbfc', borderRadius: '0 0 12px 12px', minHeight: 38 }}>
+                                            <div className="input-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px 2px', borderTop: '1px solid rgba(0, 0, 0, 0.05)', background: 'transparent', minHeight: 36 }}>
                                                 {/* LEFT: Channel Selector */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
                                                     <div style={{ position: 'relative' }} ref={channelMenuRef}>
@@ -7092,11 +7120,12 @@ const Inbox = () => {
                                                     </button>
 
                                                     {/* Send */}
-                                                    <button type="submit" className="send-btn" style={{
-                                                        padding: '5px 8px', borderRadius: 8, marginLeft: 2,
-                                                        ...(isInternalNoteMode ? { background: '#f59e0b' } : {})
-                                                    }}>
-                                                        {isInternalNoteMode ? <StickyNote size={16} /> : <Send size={16} />}
+                                                    <button
+                                                        type="submit"
+                                                        className={`send-btn ${isInternalNoteMode ? 'note-mode' : ''}`}
+                                                        title={isInternalNoteMode ? 'Not Kaydet' : 'Gönder'}
+                                                    >
+                                                        {isInternalNoteMode ? <StickyNote size={15} /> : <Send size={15} />}
                                                     </button>
                                                 </div>
                                             </div>

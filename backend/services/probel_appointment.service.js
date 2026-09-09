@@ -284,19 +284,26 @@ export async function getDoctors(workspaceId, bransKodu) {
             return { success: false, message: 'Bu branşta doktor/poliklinik bulunamadı.' };
         }
 
-        const doctors = filtered.map((p, index) => {
-            const rawName = p.POLIKLINIK_ADI || p.DOKTOR_ADI || `Doktor ${index + 1}`;
+        const seenDocs = new Map();
+        for (const p of filtered) {
+            const rawName = p.POLIKLINIK_ADI || p.DOKTOR_ADI || '';
             const formattedDoctorName = formatDoctorNameFirst(rawName, p.DOKTOR_ADI);
-            return {
-                sira: index + 1,
-                poliklinik_kodu: p.POLIKLINIK_KODU,
-                doktor_kodu: p.DOKTOR_KODU,
-                servis_kodu: p.SERVIS_KODU || p.POLIKLINIK_KODU,
-                brans_kodu: p.BRANS_KODU,
-                doktor_adi: formattedDoctorName,
-                raw_poliklinik_adi: p.POLIKLINIK_ADI || ''
-            };
-        });
+            const docKey = String(p.DOKTOR_KODU || formattedDoctorName).trim().toLowerCase();
+            if (!docKey) continue;
+
+            if (!seenDocs.has(docKey)) {
+                seenDocs.set(docKey, {
+                    sira: seenDocs.size + 1,
+                    poliklinik_kodu: p.POLIKLINIK_KODU,
+                    doktor_kodu: p.DOKTOR_KODU ? String(p.DOKTOR_KODU).replace('.0', '') : null,
+                    servis_kodu: p.SERVIS_KODU || p.POLIKLINIK_KODU,
+                    brans_kodu: p.BRANS_KODU,
+                    doktor_adi: formattedDoctorName,
+                    raw_poliklinik_adi: p.POLIKLINIK_ADI || ''
+                });
+            }
+        }
+        const doctors = Array.from(seenDocs.values());
 
         const doctorListText = doctors.map(d => `${d.sira}. ${d.doktor_adi} (Kod: ${d.doktor_kodu}, Servis: ${d.servis_kodu})`).join('\n');
 
@@ -568,118 +575,146 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
         let totalDoctorCount = 0;
         const syncedList = [];
 
-        // 2. Her branş için doktorları paralel çek
-        await Promise.all(
-            branches.map(async (branch, bIdx) => {
+        // 2. Her branş için doktorları sıralı çek (Yarış durumunu ve mükerrer kaydı önlemek için)
+        for (let bIdx = 0; bIdx < branches.length; bIdx++) {
+            const branch = branches[bIdx];
+            try {
+                const branchColor = DOCTOR_COLORS[bIdx % DOCTOR_COLORS.length];
+
+                // 🏥 2.1. Branşı TopicCategory (Bölümler) tablosuna senkronize et
                 try {
-                    const docRes = await getDoctors(workspaceId, branch.brans_kodu);
-                    if (!docRes.success || !docRes.doctors?.length) return;
-
-                    const branchColor = DOCTOR_COLORS[bIdx % DOCTOR_COLORS.length];
-
-                    // Branşı appointment_branches tablosuna da kaydet/güncelle
-                    let apptBranch = await prisma.appointmentBranch.findFirst({
-                        where: { workspaceId, name: branch.brans_adi }
+                    const existingCat = await prisma.topicCategory.findFirst({
+                        where: { workspaceId, name: { equals: branch.brans_adi, mode: 'insensitive' } }
                     });
-                    if (!apptBranch) {
-                        apptBranch = await prisma.appointmentBranch.create({
+                    if (!existingCat) {
+                        await prisma.topicCategory.create({
                             data: {
                                 workspaceId,
                                 name: branch.brans_adi,
+                                description: `Probel HBYS ${branch.brans_adi} bölümü`,
+                                color: branchColor,
                                 order: branch.sira || bIdx + 1,
                                 isActive: true
                             }
                         });
                     }
+                } catch (catErr) {
+                    console.warn('⚠️ [ProbelSync] TopicCategory sync warning:', catErr.message);
+                }
 
-                    for (let dIdx = 0; dIdx < docRes.doctors.length; dIdx++) {
-                        const doc = docRes.doctors[dIdx];
-                        const docName = doc.doktor_adi.trim();
-                        if (!docName) continue;
+                // 2.2. Branşı appointment_branches tablosuna da kaydet/güncelle (İlişkiler için)
+                let apptBranch = await prisma.appointmentBranch.findFirst({
+                    where: { workspaceId, name: branch.brans_adi }
+                });
+                if (!apptBranch) {
+                    apptBranch = await prisma.appointmentBranch.create({
+                        data: {
+                            workspaceId,
+                            name: branch.brans_adi,
+                            order: branch.sira || bIdx + 1,
+                            isActive: true
+                        }
+                    });
+                }
 
-                        // 3. CalendarResource tablosunda var mı?
-                        const existingResource = await prisma.calendarResource.findFirst({
-                            where: {
+                const docRes = await getDoctors(workspaceId, branch.brans_kodu);
+                if (!docRes.success || !docRes.doctors?.length) continue;
+
+                for (let dIdx = 0; dIdx < docRes.doctors.length; dIdx++) {
+                    const doc = docRes.doctors[dIdx];
+                    const docName = doc.doktor_adi.trim();
+                    if (!docName) continue;
+
+                    // 2.3. CalendarResource tablosunda var mı? (External ID veya İsim ile eşleştir)
+                    const existingResource = await prisma.calendarResource.findFirst({
+                        where: {
+                            workspaceId,
+                            OR: [
+                                ...(doc.doktor_kodu ? [{ externalId: String(doc.doktor_kodu) }] : []),
+                                { name: { equals: docName, mode: 'insensitive' } },
+                                ...(doc.raw_poliklinik_adi ? [{ name: { equals: doc.raw_poliklinik_adi, mode: 'insensitive' } }] : [])
+                            ]
+                        }
+                    });
+
+                    const resourceData = {
+                        name: docName,
+                        description: branch.brans_adi, // Branş adı
+                        type: 'PERSON',
+                        color: existingResource?.color || branchColor,
+                        isActive: true,
+                        syncProvider: 'PROBEL',
+                        externalId: doc.doktor_kodu ? String(doc.doktor_kodu) : null,
+                        lastSyncedAt: new Date()
+                    };
+
+                    let savedResource;
+                    if (existingResource) {
+                        savedResource = await prisma.calendarResource.update({
+                            where: { id: existingResource.id },
+                            data: {
+                                name: docName,
+                                description: branch.brans_adi,
+                                type: 'PERSON',
+                                isActive: true,
+                                syncProvider: 'PROBEL',
+                                externalId: doc.doktor_kodu ? String(doc.doktor_kodu) : existingResource.externalId,
+                                lastSyncedAt: new Date()
+                            }
+                        });
+                    } else {
+                        savedResource = await prisma.calendarResource.create({
+                            data: {
                                 workspaceId,
+                                availableStart: '09:00',
+                                availableEnd: '18:00',
+                                slotMinutes: 30,
+                                ...resourceData
+                            }
+                        });
+                    }
+
+                    if (apptBranch && savedResource) {
+                        // Upsert ResourceBranch
+                        await prisma.resourceBranch.upsert({
+                            where: {
+                                resourceId_branchId: {
+                                    resourceId: savedResource.id,
+                                    branchId: apptBranch.id
+                                }
+                            },
+                            update: { isAvailable: true },
+                            create: {
+                                resourceId: savedResource.id,
+                                branchId: apptBranch.id,
+                                isAvailable: true
+                            }
+                        });
+                    }
+
+                    // 4. AppointmentDoctor tablosunda da var mı? (Geriye dönük uyumluluk)
+                    if (apptBranch) {
+                        const existingDoctor = await prisma.appointmentDoctor.findFirst({
+                            where: {
+                                branchId: apptBranch.id,
                                 OR: [
                                     { name: { equals: docName, mode: 'insensitive' } },
                                     ...(doc.raw_poliklinik_adi ? [{ name: { equals: doc.raw_poliklinik_adi, mode: 'insensitive' } }] : [])
                                 ]
                             }
                         });
-
-                        const resourceData = {
-                            name: docName,
-                            description: branch.brans_adi, // Branş adı
-                            type: 'PERSON',
-                            color: existingResource?.color || branchColor,
-                            isActive: true
-                        };
-
-                        let savedResource;
-                        if (existingResource) {
-                            savedResource = await prisma.calendarResource.update({
-                                where: { id: existingResource.id },
+                        if (!existingDoctor) {
+                            await prisma.appointmentDoctor.create({
                                 data: {
+                                    branchId: apptBranch.id,
                                     name: docName,
-                                    description: branch.brans_adi,
-                                    type: 'PERSON',
+                                    workingDays: JSON.stringify(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']),
+                                    workStart: '09:00',
+                                    workEnd: '17:00',
+                                    slotMinutes: 30,
                                     isActive: true
                                 }
                             });
-                        } else {
-                            savedResource = await prisma.calendarResource.create({
-                                data: {
-                                    workspaceId,
-                                    ...resourceData
-                                }
-                            });
-                        }
-
-                        if (apptBranch && savedResource) {
-                            // Upsert ResourceBranch
-                            await prisma.resourceBranch.upsert({
-                                where: {
-                                    resourceId_branchId: {
-                                        resourceId: savedResource.id,
-                                        branchId: apptBranch.id
-                                    }
-                                },
-                                update: { isAvailable: true },
-                                create: {
-                                    resourceId: savedResource.id,
-                                    branchId: apptBranch.id,
-                                    isAvailable: true
-                                }
-                            });
-                        }
-
-                        // 4. AppointmentDoctor tablosunda da var mı?
-                        if (apptBranch) {
-                            // @deprecated — will be removed
-                            const existingDoctor = await prisma.appointmentDoctor.findFirst({
-                                where: {
-                                    branchId: apptBranch.id,
-                                    OR: [
-                                        { name: { equals: docName, mode: 'insensitive' } },
-                                        ...(doc.raw_poliklinik_adi ? [{ name: { equals: doc.raw_poliklinik_adi, mode: 'insensitive' } }] : [])
-                                    ]
-                                }
-                            });
-                            if (!existingDoctor) {
-                                await prisma.appointmentDoctor.create({
-                                    data: {
-                                        branchId: apptBranch.id,
-                                        name: docName,
-                                        isActive: true
-                                    }
-                                });
-                            } else if (existingDoctor.name !== docName) {
-                                await prisma.appointmentDoctor.update({
-                                    where: { id: existingDoctor.id },
-                                    data: { name: docName }
-                                }).catch(() => {});
-                            }
                         }
 
                         totalDoctorCount++;
@@ -690,11 +725,11 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                             doktor_kodu: doc.doktor_kodu
                         });
                     }
-                } catch (bErr) {
-                    console.warn(`⚠️ [ProbelSync] Branş ${branch.brans_adi} doktorları alınamadı:`, bErr.message);
                 }
-            })
-        );
+            } catch (bErr) {
+                console.warn(`⚠️ [ProbelSync] Branş ${branch.brans_adi} doktorları alınamadı:`, bErr.message);
+            }
+        }
 
         lastSyncTimes.set(workspaceId, now);
         console.log(`✅ [ProbelSync] ${totalDoctorCount} doktor CalendarResource olarak senkronize edildi.`);

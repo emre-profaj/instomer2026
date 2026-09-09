@@ -326,8 +326,13 @@ export const executeFlowsByTrigger = async (workspaceId, triggerType, context = 
 
         for (const flow of flows) {
             try {
-                console.log(`▶️ [FLOW ENGINE] Executing flow: "${flow.name}" (${flow.id})`);
-                const steps = Array.isArray(flow.steps) ? flow.steps : JSON.parse(flow.steps || '[]');
+                let rawSteps = flow.steps;
+                if (typeof rawSteps === 'string') {
+                    try { rawSteps = JSON.parse(rawSteps); } catch { rawSteps = []; }
+                }
+                const steps = Array.isArray(rawSteps)
+                    ? rawSteps
+                    : (rawSteps?.compiledSteps || rawSteps?.steps || rawSteps?.linearSteps || []);
 
                 // Filter out the trigger step itself, execute only actions/logic
                 const actionSteps = steps.filter(s =>

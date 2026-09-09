@@ -33,7 +33,9 @@ const OtomasyonlarHub = () => {
             {/* Sol Sidebar */}
             <div className="base-sidebar">
                 <div className="base-sidebar-header">
-                    <Zap size={20} />
+                    <div className="base-sidebar-header-icon">
+                        <Zap size={16} />
+                    </div>
                     <span>Otomasyonlar</span>
                 </div>
                 <nav className="base-nav">
@@ -43,7 +45,8 @@ const OtomasyonlarHub = () => {
                             className={`base-nav-item ${activeSection === item.key ? 'active' : ''}`}
                             onClick={() => setActiveSection(item.key)}
                         >
-                            <item.icon size={16} /> {item.label}
+                            <item.icon size={17} />
+                            <span>{item.label}</span>
                         </button>
                     ))}
                 </nav>

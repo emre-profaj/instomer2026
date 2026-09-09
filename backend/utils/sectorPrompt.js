@@ -33,13 +33,13 @@ AI MÜŞTERİ YÖNLENDİRME VE SORU AKIŞI:
         id: 'HEALTHCARE',
         name: 'Sağlık & Klinik & Hastane',
         level1: 'Şubeler',
-        level2: 'Branş Grupları',
-        level3: 'Branşlar / Tedaviler',
+        level2: 'Hizmet Grupları',
+        level3: 'Tedavi / Hizmetler',
         qualificationFlow: `### 🏥 SEKTÖREL İHTİYAÇ BELİRLEME VE YÖNLENDİRME (SAĞLIK & KLİNİK) ###
 İşletmemiz Sağlık / Klinik / Hastane sektöründedir. Hizmet hiyerarşimiz:
 1. Seviye (Şubeler): Hizmetin verileceği klinik, tıp merkezi veya hastane şubesi.
-2. Seviye (Branş Grupları): Dahili Branşlar, Cerrahi Branşlar, Ağız ve Diş Sağlığı, Estetik & Dermatoloji vb.
-3. Seviye (Branşlar / Tedaviler): KBB, Kardiyoloji, İmplant Tedavisi, Lazer Göz, Dolgu vb.
+2. Seviye (Hizmet Grupları): Dahili Branşlar, Cerrahi Branşlar, Ağız ve Diş Sağlığı, Estetik & Dermatoloji vb.
+3. Seviye (Tedavi / Hizmetler): KBB, Kardiyoloji, İmplant Tedavisi, Lazer Göz, Dolgu vb.
 
 AI MÜŞTERİ YÖNLENDİRME VE SORU AKIŞI:
 - Müşteri genel bir sağlık/tedavi talebi veya randevu isteğiyle geldiğinde:

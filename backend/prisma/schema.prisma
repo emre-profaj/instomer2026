@@ -1000,6 +1000,13 @@ model CalendarResource {
   userId      String? // Sistem kullanıcısı (temsilci) bağlantısı
   slotMinutes Int     @default(30)
 
+  // Entegrasyon ve Senkronizasyon Alanları
+  syncProvider     String    @default("WORKSPACE_DEFAULT") // WORKSPACE_DEFAULT, MANUAL, PROBEL, GYMPRO, GOOGLE_CALENDAR
+  externalId       String? // Harici sistem doktor/kaynak ID (örn. Probel doktor kodu)
+  googleEmail      String? // Bağlı Google Takvim hesabı e-postası
+  googleCalendarId String?   @default("primary")
+  lastSyncedAt     DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

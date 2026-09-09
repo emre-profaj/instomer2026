@@ -207,8 +207,33 @@ export async function syncAppointmentToGoogle(appointmentId, targetUserId = null
         let calendar = null;
         let matchedDoctorEmail = null;
 
-        // 🩺 1. Eğer randevuda doktor varsa, hekime özel Google Takvim eşleşmesini kontrol et
-        if (appointment.doctorName) {
+        // 🩺 1. Eğer randevuda kaynak/doktor varsa, kaynağa veya hekime özel Google Takvim eşleşmesini kontrol et
+        if (appointment.resourceId) {
+            try {
+                const resObj = await prisma.calendarResource.findUnique({
+                    where: { id: appointment.resourceId }
+                });
+                if (resObj?.googleEmail) {
+                    matchedDoctorEmail = resObj.googleEmail;
+                }
+            } catch (_) {}
+        }
+
+        if (!matchedDoctorEmail && appointment.doctorName) {
+            try {
+                const resDoc = await prisma.calendarResource.findFirst({
+                    where: {
+                        workspaceId: appointment.workspaceId,
+                        name: { contains: appointment.doctorName, mode: 'insensitive' }
+                    }
+                });
+                if (resDoc?.googleEmail) {
+                    matchedDoctorEmail = resDoc.googleEmail;
+                }
+            } catch (_) {}
+        }
+
+        if (!matchedDoctorEmail && appointment.doctorName) {
             try {
                 const locRule = await prisma.workspaceRule.findFirst({
                     where: { workspaceId: appointment.workspaceId, ruleType: 'CLINIC_LOCATIONS' }

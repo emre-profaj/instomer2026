@@ -15,8 +15,16 @@ const Sidebar = () => {
     const { t } = useTranslation();
     const [workspaces, setWorkspaces] = useState([]);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [wsSearch, setWsSearch] = useState('');
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(() => {
+        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        const settingsRoutes = [
+            '/settings', '/channels', '/channels2', '/classifier', '/funnels',
+            '/casetypes', '/topic-categories', '/templates', '/teams', '/users',
+            '/assistants', '/integrations', '/notification-settings', '/app-notes',
+            '/flow-test', '/firm-settings', '/workspace-settings'
+        ];
+        return settingsRoutes.some(p => path === p || path.startsWith(p + '/'));
+    });
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [isSalesOpen, setIsSalesOpen] = useState(false);
     const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
@@ -68,8 +76,21 @@ const Sidebar = () => {
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
         { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' },
-        { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' }
+        { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' },
+        ...(user?.role === 'SUPER_ADMIN' ? [{ path: '/flow-test', icon: GitBranch, label: 'Akış Test' }] : [])
     ];
+
+    const isSettingsPath = (path) => {
+        if (!path) return false;
+        if (settingsSubItems.some(item => path === item.path || path.startsWith(item.path + '/'))) return true;
+        const settingsRoutes = [
+            '/settings', '/channels', '/channels2', '/classifier', '/funnels',
+            '/casetypes', '/topic-categories', '/templates', '/teams', '/users',
+            '/assistants', '/integrations', '/notification-settings', '/app-notes',
+            '/flow-test', '/firm-settings', '/workspace-settings'
+        ];
+        return settingsRoutes.some(p => path === p || path.startsWith(p + '/'));
+    };
 
     const salesSubItems = [
         { path: '/quotes', icon: FileText, label: 'Teklifler' },
@@ -177,9 +198,15 @@ const Sidebar = () => {
         setIsContactsOpen(path === '/customers');
         setIsActivitiesOpen(path.startsWith('/activities') || path === '/calendar');
         setIsRealEstateOpen(path.startsWith('/real-estate'));
-        setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
-        setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
-        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/integrations', '/notification-settings', '/app-notes'].some(p => path === p));
+        setIsSalesOpen(salesSubItems.some(item => path === item.path || path.startsWith(item.path + '/')) || path === '/products');
+        setIsAnalyticsOpen(analyticsSubItems.some(item => path === item.path || path.startsWith(item.path + '/')) || path.startsWith('/general-report/'));
+        
+        // Ayarlar altında bir menü seçili ise menü daima açık kalır
+        if (isSettingsPath(path)) {
+            setIsSettingsOpen(true);
+        } else {
+            setIsSettingsOpen(false);
+        }
     }, [location.pathname]);
 
 
@@ -421,7 +448,7 @@ const Sidebar = () => {
                             {/* Base & Otomasyonlar */}
                             <Link
                                 to="/base"
-                                className={`nav-item ${location.pathname === '/base' ? 'active' : ''}`}
+                                className={`sidebar-nav-item ${location.pathname === '/base' ? 'active' : ''}`}
                                 title="Base"
                             >
                                 <Building2 size={20} className="nav-icon" />
@@ -429,7 +456,7 @@ const Sidebar = () => {
                             </Link>
                             <Link
                                 to="/automations-hub"
-                                className={`nav-item ${location.pathname === '/automations-hub' ? 'active' : ''}`}
+                                className={`sidebar-nav-item ${location.pathname === '/automations-hub' ? 'active' : ''}`}
                                 title="Otomasyonlar"
                             >
                                 <Zap size={20} className="nav-icon" />
@@ -440,7 +467,7 @@ const Sidebar = () => {
                             {(workspaceRole === 'OWNER' || user?.role === 'SUPER_ADMIN') && (
                                 <div className="nav-category">
                                     <button
-                                        className={`nav-category-header ${settingsSubItems.some(i => location.pathname === i.path) ? 'active' : ''}`}
+                                        className={`nav-category-header ${isSettingsPath(location.pathname) ? 'active' : ''}`}
                                         onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsRealEstateOpen(false); setIsAnalyticsOpen(false); }}
                                         title={t('settings.title')}
                                     >
@@ -450,14 +477,17 @@ const Sidebar = () => {
                                     </button>
                                     {isSettingsOpen && !isCollapsed && (
                                         <div className="nav-submenu">
-                                            {settingsSubItems.map(item => (
-                                                <Link key={item.path} to={item.path}
-                                                    className={`sidebar-nav-item submenu-item ${location.pathname === item.path ? 'active' : ''}`}
-                                                >
-                                                    <item.icon size={18} className="nav-icon" />
-                                                    <span style={{ flex: 1 }}>{item.label}</span>
-                                                </Link>
-                                            ))}
+                                            {settingsSubItems.map(item => {
+                                                const isItemActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path + '/'));
+                                                return (
+                                                    <Link key={item.path} to={item.path}
+                                                        className={`sidebar-nav-item submenu-item ${isItemActive ? 'active' : ''}`}
+                                                    >
+                                                        <item.icon size={18} className="nav-icon" />
+                                                        <span style={{ flex: 1 }}>{item.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

@@ -66,7 +66,7 @@ export const getLocations = async (req, res) => {
 export const createLocation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, address, phone } = req.body;
+        const { name, address, phone, integrationType, externalBranchCode, googleEmail, defaultTeamId, defaultFunnelId } = req.body;
 
         if (!name || !name.trim()) {
             return res.status(400).json({ error: 'Şube adı gereklidir' });
@@ -78,6 +78,11 @@ export const createLocation = async (req, res) => {
             name: name.trim(),
             address: address?.trim() || '',
             phone: phone?.trim() || '',
+            integrationType: integrationType || 'WORKSPACE_DEFAULT',
+            externalBranchCode: externalBranchCode || null,
+            googleEmail: googleEmail || null,
+            defaultTeamId: defaultTeamId || null,
+            defaultFunnelId: defaultFunnelId || null,
             isActive: true,
             createdAt: new Date().toISOString()
         };
@@ -95,7 +100,7 @@ export const createLocation = async (req, res) => {
 export const updateLocation = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, address, phone, isActive } = req.body;
+        const { name, address, phone, isActive, integrationType, externalBranchCode, googleEmail, defaultTeamId, defaultFunnelId } = req.body;
 
         const config = await getLocationsConfig(workspaceId);
         const index = config.locations.findIndex(l => l.id === id);
@@ -108,6 +113,11 @@ export const updateLocation = async (req, res) => {
         if (address !== undefined) config.locations[index].address = address.trim();
         if (phone !== undefined) config.locations[index].phone = phone.trim();
         if (isActive !== undefined) config.locations[index].isActive = isActive;
+        if (integrationType !== undefined) config.locations[index].integrationType = integrationType;
+        if (externalBranchCode !== undefined) config.locations[index].externalBranchCode = externalBranchCode || null;
+        if (googleEmail !== undefined) config.locations[index].googleEmail = googleEmail || null;
+        if (defaultTeamId !== undefined) config.locations[index].defaultTeamId = defaultTeamId || null;
+        if (defaultFunnelId !== undefined) config.locations[index].defaultFunnelId = defaultFunnelId || null;
 
         await saveLocationsConfig(workspaceId, config);
         res.json({ location: config.locations[index] });

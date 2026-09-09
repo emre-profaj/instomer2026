@@ -3,7 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, companyAPI } from '../../services/api';
 import AIIntegrationSettings from '../../components/Settings/AIIntegrationSettings';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
-import { Trash2, Shield, Bot, AlertCircle, Plus, Building2 } from 'lucide-react';
+import FlowTest from '../FlowTest/FlowTest';
+import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, GitBranch } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import './Settings.css';
 
@@ -122,6 +123,11 @@ const Settings = () => {
                 <button className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
                     <Bot size={16} /> {t('settings.aiIntegration')}
                 </button>
+                {user?.role === 'SUPER_ADMIN' && (
+                    <button className={`tab-btn ${activeTab === 'flow-test' ? 'active' : ''}`} onClick={() => setActiveTab('flow-test')}>
+                        <GitBranch size={16} /> Akış Test
+                    </button>
+                )}
             </div>
 
             <div className="settings-content">
@@ -204,6 +210,11 @@ const Settings = () => {
                     </div>
                 )}
                 {activeTab === 'ai' && <AIIntegrationSettings />}
+                {activeTab === 'flow-test' && user?.role === 'SUPER_ADMIN' && (
+                    <div style={{ margin: '-24px', height: 'calc(100vh - 180px)', minHeight: '650px' }}>
+                        <FlowTest />
+                    </div>
+                )}
             </div>
 
             {isCreateWorkspaceModalOpen && selectedCompanyForWorkspace && (

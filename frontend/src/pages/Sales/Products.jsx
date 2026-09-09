@@ -23,11 +23,31 @@ const TAX_OPTIONS = [
 
 const UNIT_OPTIONS = ['Adet', 'Kg', 'Lt', 'Metre', 'M²', 'M³', 'Paket', 'Kutu', 'Saat', 'Gün', 'Ay', 'Yıl', 'Hizmet'];
 
-const Products = () => {
+const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) => {
     const { currentWorkspace } = useAuth();
     const labels = getSectorLabels(currentWorkspace?.industry);
     const [searchParams, setSearchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'categories');
+    const [activeTabState, setActiveTabState] = useState(propActiveTab || searchParams.get('tab') || 'categories');
+
+    useEffect(() => {
+        if (propActiveTab && propActiveTab !== activeTabState) {
+            setActiveTabState(propActiveTab);
+            setPage(1);
+            setSearch('');
+        }
+    }, [propActiveTab]);
+
+    const activeTab = propActiveTab || activeTabState;
+
+    const handleTabChange = (newTab) => {
+        setActiveTabState(newTab);
+        if (onTabChange) {
+            onTabChange(newTab);
+        }
+        if (!embedded) {
+            setSearchParams({ tab: newTab });
+        }
+    };
     const fileInputRef = useRef(null);
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -506,14 +526,14 @@ const Products = () => {
         }
     };
 
-    const toggleSelectAll = () => {
-        if (products.length === 0) return;
-        const allSelected = products.every(p => selectedProductIds.includes(p.id));
+    const toggleSelectAll = (items = products) => {
+        if (items.length === 0) return;
+        const allSelected = items.every(p => selectedProductIds.includes(p.id));
         if (allSelected) {
-            const currentIds = new Set(products.map(p => p.id));
+            const currentIds = new Set(items.map(p => p.id));
             setSelectedProductIds(prev => prev.filter(id => !currentIds.has(id)));
         } else {
-            const currentIds = products.map(p => p.id);
+            const currentIds = items.map(p => p.id);
             setSelectedProductIds(prev => Array.from(new Set([...prev, ...currentIds])));
         }
     };
@@ -784,7 +804,20 @@ const Products = () => {
     }
 
     return (
-        <div className="sales-page products-page">
+        <div
+            className={`sales-page products-page ${embedded ? 'embedded' : ''}`}
+            style={embedded ? {
+                padding: 0,
+                background: '#ffffff',
+                minHeight: 'auto',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            } : undefined}
+        >
             {/* Toast */}
             {toast && (
                 <div style={{
@@ -802,106 +835,21 @@ const Products = () => {
             )}
 
             {/* Header */}
-            <div className="sales-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
-                <div>
-                    <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Package size={24} style={{ color: '#6366f1' }} />
-                        Ürün ve Hizmetler
-                    </h1>
-                    <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
-                        {activeTab === 'categories' ? `${categories.length} kategori kayıtlı` : activeTab === 'productGroups' ? `${groups.length} ürün grubu kayıtlı` : `${total} ürün/hizmet kayıtlı`}
-                    </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {activeTab === 'categories' && (
-                        <button
-                            onClick={openAddCategory}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 16px', borderRadius: '8px',
-                                border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                fontSize: '0.8rem', fontWeight: 600, color: '#fff',
-                                cursor: 'pointer', transition: 'all 0.2s',
-                                boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
-                            }}
-                        >
-                            <Plus size={16} /> Yeni Kategori
-                        </button>
-                    )}
-                    {activeTab === 'productGroups' && (
-                        <button
-                            onClick={() => { setGroupForm({ name: '', description: '', categoryId: categoryFilter || '' }); setEditingGroup(null); setShowGroupModal(true); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 16px', borderRadius: '8px',
-                                border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                fontSize: '0.8rem', fontWeight: 600, color: '#fff',
-                                cursor: 'pointer', transition: 'all 0.2s',
-                                boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
-                            }}
-                        >
-                            <Plus size={16} /> Yeni Grup
-                        </button>
-                    )}
-                    {activeTab === 'products' && (
-                        <>
+            {!embedded && (
+                <div className="sales-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
+                    <div>
+                        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <Package size={24} style={{ color: '#6366f1' }} />
+                            {activeTab === 'categories' ? labels.categoriesTab : activeTab === 'productGroups' ? labels.productGroupsTab : labels.productsTab}
+                        </h1>
+                        <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0' }}>
+                            {activeTab === 'categories' ? `${categories.length} ${labels.categorySingle.toLowerCase()} kayıtlı` : activeTab === 'productGroups' ? `${groups.length} ${labels.groupSingle.toLowerCase()} kayıtlı` : `${total} ${labels.productSingle.toLowerCase()} kayıtlı`}
+                        </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {activeTab === 'categories' && (
                             <button
-                                onClick={() => setShowWooModal(true)}
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                    padding: '8px 14px', borderRadius: '8px',
-                                    border: '1px solid #ddd6fe', background: '#faf5ff',
-                                    fontSize: '0.8rem', fontWeight: 600, color: '#7c3aed',
-                                    cursor: 'pointer', transition: 'all 0.2s',
-                                    boxShadow: '0 1px 2px rgba(124, 58, 237, 0.05)'
-                                }}
-                                title="WooCommerce REST API Entegrasyonu"
-                            >
-                                <ShoppingCart size={15} /> WooCommerce
-                                {wooConfig?.isConfigured && (
-                                    <span
-                                        style={{
-                                            width: '7px', height: '7px', borderRadius: '50%',
-                                            background: wooConfig.isActive ? '#22c55e' : '#94a3b8',
-                                            display: 'inline-block', marginLeft: '2px'
-                                        }}
-                                        title={wooConfig.isActive ? 'WooCommerce Bağlı & Aktif' : 'WooCommerce Devre Dışı'}
-                                    />
-                                )}
-                            </button>
-                            <button
-                                onClick={handleExportCSV}
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                    padding: '8px 14px', borderRadius: '8px',
-                                    border: '1px solid #e2e8f0', background: '#fff',
-                                    fontSize: '0.8rem', fontWeight: 600, color: '#475569',
-                                    cursor: 'pointer', transition: 'all 0.2s'
-                                }}
-                            >
-                                <Download size={15} /> Dışa Aktar
-                            </button>
-                            <input
-                                type="file"
-                                accept=".xlsx, .xls"
-                                style={{ display: 'none' }}
-                                ref={fileInputRef}
-                                onChange={handleExcelImport}
-                            />
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                    padding: '8px 14px', borderRadius: '8px',
-                                    border: '1px solid #e2e8f0', background: '#fff',
-                                    fontSize: '0.8rem', fontWeight: 600, color: '#475569',
-                                    cursor: 'pointer', transition: 'all 0.2s'
-                                }}
-                            >
-                                <Upload size={15} /> İçe Aktar
-                            </button>
-                            <button
-                                onClick={openAddModal}
+                                onClick={openAddCategory}
                                 style={{
                                     display: 'inline-flex', alignItems: 'center', gap: '6px',
                                     padding: '8px 16px', borderRadius: '8px',
@@ -911,17 +859,104 @@ const Products = () => {
                                     boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
                                 }}
                             >
-                                <Plus size={16} /> {labels.newProduct}
+                                <Plus size={16} /> {labels.newCategory}
                             </button>
-                        </>
-                    )}
+                        )}
+                        {activeTab === 'productGroups' && (
+                            <button
+                                onClick={() => { setGroupForm({ name: '', description: '', categoryId: categoryFilter || '' }); setEditingGroup(null); setShowGroupModal(true); }}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 16px', borderRadius: '8px',
+                                    border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                    fontSize: '0.8rem', fontWeight: 600, color: '#fff',
+                                    cursor: 'pointer', transition: 'all 0.2s',
+                                    boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
+                                }}
+                            >
+                                <Plus size={16} /> {labels.newGroup}
+                            </button>
+                        )}
+                        {activeTab === 'products' && (
+                            <>
+                                <button
+                                    onClick={() => setShowWooModal(true)}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        border: '1px solid #ddd6fe', background: '#faf5ff',
+                                        fontSize: '0.8rem', fontWeight: 600, color: '#7c3aed',
+                                        cursor: 'pointer', transition: 'all 0.2s',
+                                        boxShadow: '0 1px 2px rgba(124, 58, 237, 0.05)'
+                                    }}
+                                    title="WooCommerce REST API Entegrasyonu"
+                                >
+                                    <ShoppingCart size={15} /> WooCommerce
+                                    {wooConfig?.isConfigured && (
+                                        <span
+                                            style={{
+                                                width: '7px', height: '7px', borderRadius: '50%',
+                                                background: wooConfig.isActive ? '#22c55e' : '#94a3b8',
+                                                display: 'inline-block', marginLeft: '2px'
+                                            }}
+                                            title={wooConfig.isActive ? 'WooCommerce Bağlı & Aktif' : 'WooCommerce Devre Dışı'}
+                                        />
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleExportCSV}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        border: '1px solid #e2e8f0', background: '#fff',
+                                        fontSize: '0.8rem', fontWeight: 600, color: '#475569',
+                                        cursor: 'pointer', transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <Download size={15} /> Dışa Aktar
+                                </button>
+                                <input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    style={{ display: 'none' }}
+                                    ref={fileInputRef}
+                                    onChange={handleExcelImport}
+                                />
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        border: '1px solid #e2e8f0', background: '#fff',
+                                        fontSize: '0.8rem', fontWeight: 600, color: '#475569',
+                                        cursor: 'pointer', transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <Upload size={15} /> İçe Aktar
+                                </button>
+                                <button
+                                    onClick={openAddModal}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 16px', borderRadius: '8px',
+                                        border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                        fontSize: '0.8rem', fontWeight: 600, color: '#fff',
+                                        cursor: 'pointer', transition: 'all 0.2s',
+                                        boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
+                                    }}
+                                >
+                                    <Plus size={16} /> {labels.newProduct}
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '20px', padding: '0 24px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
                 <button
-                    onClick={() => { setActiveTab('categories'); setSearchParams({ tab: 'categories' }); setPage(1); setSearch(''); }}
+                    onClick={() => { handleTabChange('categories'); setPage(1); setSearch(''); }}
                     style={{
                         padding: '12px 0', border: 'none', background: 'none',
                         fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
@@ -933,7 +968,7 @@ const Products = () => {
                     {labels.categoriesTab}
                 </button>
                 <button
-                    onClick={() => { setActiveTab('productGroups'); setSearchParams({ tab: 'productGroups' }); setPage(1); setSearch(''); setCategoryFilter(''); }}
+                    onClick={() => { handleTabChange('productGroups'); setPage(1); setSearch(''); setCategoryFilter(''); }}
                     style={{
                         padding: '12px 0', border: 'none', background: 'none',
                         fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
@@ -945,7 +980,7 @@ const Products = () => {
                     {labels.productGroupsTab}
                 </button>
                 <button
-                    onClick={() => { setActiveTab('products'); setSearchParams({ tab: 'products' }); setPage(1); setSearch(''); setCategoryFilter(''); setGroupFilter(''); }}
+                    onClick={() => { handleTabChange('products'); setPage(1); setSearch(''); setCategoryFilter(''); setGroupFilter(''); }}
                     style={{
                         padding: '12px 0', border: 'none', background: 'none',
                         fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
@@ -1454,45 +1489,115 @@ const Products = () => {
                 <>
             {/* Filters Bar */}
             <div style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '12px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0'
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+                padding: '12px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap'
             }}>
-                <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-                    <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                    <input
-                        type="text"
-                        placeholder={labels.searchPlaceholder}
-                        value={search}
-                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                        style={{
-                            width: '100%', padding: '8px 12px 8px 34px',
-                            border: '1px solid #e2e8f0', borderRadius: '8px',
-                            fontSize: '0.82rem', outline: 'none', background: '#fff'
-                        }}
-                    />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '280px', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative', width: '220px' }}>
+                        <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                            type="text"
+                            placeholder={labels.searchPlaceholder}
+                            value={search}
+                            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                            style={{
+                                width: '100%', padding: '8px 12px 8px 34px',
+                                border: '1px solid #e2e8f0', borderRadius: '8px',
+                                fontSize: '0.82rem', outline: 'none', background: '#fff'
+                            }}
+                        />
+                    </div>
+                    <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
+                        <option value="">{labels.allCategories}</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}{getCategoryBranchLabel(c)}</option>)}
+                    </select>
+                    <select value={groupFilter} onChange={e => { setGroupFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
+                        <option value="">{labels.allGroups}</option>
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    <select value={branchFilter} onChange={e => { setBranchFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
+                        <option value="">Tüm Şubeler</option>
+                        {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                    {(search || groupFilter || categoryFilter || branchFilter) && (
+                        <button
+                            onClick={() => { setSearch(''); setGroupFilter(''); setCategoryFilter(''); setBranchFilter(''); setPage(1); }}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '6px 10px', borderRadius: '6px',
+                                border: '1px solid #fecaca', background: '#fef2f2',
+                                fontSize: '0.72rem', fontWeight: 600, color: '#dc2626',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <X size={12} /> Temizle
+                        </button>
+                    )}
                 </div>
-                <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-                    <option value="">{labels.allCategories}</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}{getCategoryBranchLabel(c)}</option>)}
-                </select>
-                <select value={groupFilter} onChange={e => { setGroupFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-                    <option value="">{labels.allGroups}</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-                {(search || groupFilter) && (
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
                     <button
-                        onClick={() => { setSearch(''); setGroupFilter(''); setPage(1); }}
+                        onClick={() => setShowWooModal(true)}
                         style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                            padding: '6px 10px', borderRadius: '6px',
-                            border: '1px solid #fecaca', background: '#fef2f2',
-                            fontSize: '0.72rem', fontWeight: 600, color: '#dc2626',
-                            cursor: 'pointer'
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            border: '1px solid #ddd6fe', background: '#faf5ff',
+                            fontSize: '0.8rem', fontWeight: 600, color: '#7c3aed',
+                            cursor: 'pointer', transition: 'all 0.2s',
+                            boxShadow: '0 1px 2px rgba(124, 58, 237, 0.05)'
+                        }}
+                        title="WooCommerce REST API Entegrasyonu"
+                    >
+                        <ShoppingCart size={15} /> WooCommerce
+                        {wooConfig?.isConfigured && (
+                            <span
+                                style={{
+                                    width: '7px', height: '7px', borderRadius: '50%',
+                                    background: wooConfig.isActive ? '#22c55e' : '#94a3b8',
+                                    display: 'inline-block', marginLeft: '2px'
+                                }}
+                                title={wooConfig.isActive ? 'WooCommerce Bağlı & Aktif' : 'WooCommerce Devre Dışı'}
+                            />
+                        )}
+                    </button>
+                    <button
+                        onClick={handleExportCSV}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 12px', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', background: '#fff',
+                            fontSize: '0.8rem', fontWeight: 600, color: '#475569',
+                            cursor: 'pointer', transition: 'all 0.2s'
                         }}
                     >
-                        <X size={12} /> Temizle
+                        <Download size={14} /> Dışa Aktar
                     </button>
-                )}
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 12px', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', background: '#fff',
+                            fontSize: '0.8rem', fontWeight: 600, color: '#475569',
+                            cursor: 'pointer', transition: 'all 0.2s'
+                        }}
+                    >
+                        <Upload size={14} /> İçe Aktar
+                    </button>
+                    <button
+                        onClick={openAddModal}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 16px', borderRadius: '8px',
+                            border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                            fontSize: '0.8rem', fontWeight: 600, color: '#fff',
+                            cursor: 'pointer', transition: 'all 0.2s',
+                            boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
+                        }}
+                    >
+                        <Plus size={16} /> {labels.newProduct}
+                    </button>
+                </div>
             </div>
 
             {/* Bulk Actions Bar */}
@@ -1593,52 +1698,60 @@ const Products = () => {
             )}
 
             {/* Table */}
-            <div style={{ overflow: 'auto', flex: 1 }}>
-                {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', color: '#64748b' }}>
-                        <div className="loader" style={{ marginRight: '10px' }}></div> Yükleniyor...
-                    </div>
-                ) : products.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
-                        <Package size={48} style={{ marginBottom: '12px', opacity: 0.4 }} />
-                        <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#64748b' }}>{labels.emptyProductsTitle}</h3>
-                        <p style={{ fontSize: '0.82rem' }}>{labels.emptyProductsDesc}</p>
-                        <button onClick={openAddModal} style={{
-                            marginTop: '12px', padding: '8px 20px', borderRadius: '8px',
-                            border: 'none', background: '#6366f1', color: '#fff',
-                            fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer'
-                        }}>
-                            <Plus size={14} style={{ marginRight: '4px' }} /> {labels.newProduct}
-                        </button>
-                    </div>
-                ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                <th style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={products.length > 0 && products.every(p => selectedProductIds.includes(p.id))}
-                                        onChange={toggleSelectAll}
-                                        style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
-                                        title="Tümünü Seç / Kaldır"
-                                    />
-                                </th>
-                                <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.productName}</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.groupSingle}</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Birim</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Şube</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fiyat</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İndirimli</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 1</th>
-                                <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 2</th>
-                                <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İşlem</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {products.map((p, idx) => (
+            {(() => {
+                const displayedProducts = products.filter(p => {
+                    if (!branchFilter) return true;
+                    if (p.allBranches) return true;
+                    return p.productBranches && p.productBranches.some(pb => pb.branchId === branchFilter && pb.isAvailable);
+                });
+
+                return (
+                    <div style={{ overflow: 'auto', flex: 1 }}>
+                        {loading ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', color: '#64748b' }}>
+                                <div className="loader" style={{ marginRight: '10px' }}></div> Yükleniyor...
+                            </div>
+                        ) : displayedProducts.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
+                                <Package size={48} style={{ marginBottom: '12px', opacity: 0.4 }} />
+                                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#64748b' }}>{labels.emptyProductsTitle}</h3>
+                                <p style={{ fontSize: '0.82rem' }}>{labels.emptyProductsDesc}</p>
+                                <button onClick={openAddModal} style={{
+                                    marginTop: '12px', padding: '8px 20px', borderRadius: '8px',
+                                    border: 'none', background: '#6366f1', color: '#fff',
+                                    fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer'
+                                }}>
+                                    <Plus size={14} style={{ marginRight: '4px' }} /> {labels.newProduct}
+                                </button>
+                            </div>
+                        ) : (
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                        <th style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={displayedProducts.length > 0 && displayedProducts.every(p => selectedProductIds.includes(p.id))}
+                                                onChange={() => toggleSelectAll(displayedProducts)}
+                                                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
+                                                title="Tümünü Seç / Kaldır"
+                                            />
+                                        </th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.productName}</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.groupSingle}</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Birim</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Şube</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fiyat</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İndirimli</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 1</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 2</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {displayedProducts.map((p, idx) => (
                                 <tr key={p.id} style={{
                                     borderBottom: '1px solid #f1f5f9',
                                     background: selectedProductIds.includes(p.id) ? '#eff6ff' : (idx % 2 === 0 ? '#fff' : '#fafbfc'),
@@ -1783,8 +1896,10 @@ const Products = () => {
                             ))}
                         </tbody>
                     </table>
-                )}
-            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* Pagination */}
             {totalPages > 1 && (

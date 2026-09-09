@@ -2311,55 +2311,159 @@ const Customers = () => {
                             </div>
 
                         </div>
-                        {/* Date Preset Buttons — horizontal inline */}
+                        {/* Date Presets & Quick Filter — Modern Segmented Control */}
                         <div className="contacts-date-presets">
-                            {[
-                                ['TODAY', 'Bugün', 'YESTERDAY', 'Dün'],
-                                ['WEEK', 'Bu Hafta', 'LAST_WEEK', 'Geçen Hafta'],
-                                ['MONTH', 'Bu Ay', 'LAST_MONTH', 'Geçen Ay'],
-                                ['YEAR', 'Bu Yıl', 'LAST_YEAR', 'Geçen Yıl'],
-                            ].map(([k1, l1, k2, l2]) => (
-                                <div key={k1} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    <button
-                                        className={`date-preset-btn${dateFilter === k1 && dateFilter !== 'CUSTOM' ? ' active' : ''}`}
-                                        onClick={() => { setDateFilter(k1); setDateFrom(''); setDateTo(''); setPage(1); }}
-                                    >{l1}</button>
-                                    <button
-                                        className={`date-preset-btn${dateFilter === k2 && dateFilter !== 'CUSTOM' ? ' active' : ''}`}
-                                        onClick={() => { setDateFilter(k2); setDateFrom(''); setDateTo(''); setPage(1); }}
-                                    >{l2}</button>
-                                </div>
-                            ))}
-                            <div className="date-preset-custom" ref={dateFilterRef} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div className="contacts-segmented-control">
                                 <button
-                                    className={`date-preset-btn${dateFilter === 'ALL' ? ' active' : ''}`}
-                                    onClick={() => { setDateFilter('ALL'); setDateFrom(''); setDateTo(''); setPage(1); }}
-                                >Tümü</button>
-                                <button
-                                    className={`date-preset-btn${dateFilter === 'CUSTOM' ? ' active' : ''}`}
-                                    onClick={() => setDateFilterOpen(o => !o)}
+                                    type="button"
+                                    className={`contacts-segmented-btn ${dateFilter === 'TODAY' ? 'active' : ''}`}
+                                    onClick={() => { setDateFilter('TODAY'); setDateFrom(''); setDateTo(''); setPage(1); }}
                                 >
-                                    <Calendar size={11} />
-                                    {dateFilter === 'CUSTOM' && (dateFrom || dateTo) ? `${dateFrom || '...'} — ${dateTo || '...'}` : 'Özel'}
+                                    Bugün
                                 </button>
-                                {dateFilterOpen && (
-                                    <div className="date-preset-dropdown">
-                                        <label>Başlangıç</label>
-                                        <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} />
-                                        <label>Bitiş</label>
-                                        <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} />
-                                        <button className="date-preset-apply" onClick={() => setDateFilterOpen(false)}>Uygula</button>
-                                    </div>
-                                )}
+                                <button
+                                    type="button"
+                                    className={`contacts-segmented-btn ${dateFilter === 'WEEK' ? 'active' : ''}`}
+                                    onClick={() => { setDateFilter('WEEK'); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                >
+                                    Bu Hafta
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`contacts-segmented-btn ${dateFilter === 'MONTH' ? 'active' : ''}`}
+                                    onClick={() => { setDateFilter('MONTH'); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                >
+                                    Bu Ay
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`contacts-segmented-btn ${dateFilter === 'ALL' ? 'active' : ''}`}
+                                    onClick={() => { setDateFilter('ALL'); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                >
+                                    Tümü
+                                </button>
+
+                                {/* Diğer ▾ Popover */}
+                                <div style={{ position: 'relative' }} ref={dateFilterRef}>
+                                    <button
+                                        type="button"
+                                        className={`contacts-segmented-btn ${['YESTERDAY', 'LAST_WEEK', 'LAST_MONTH', 'YEAR', 'LAST_YEAR', 'CUSTOM'].includes(dateFilter) ? 'active' : ''}`}
+                                        onClick={() => setDateFilterOpen(o => !o)}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                    >
+                                        <Calendar size={11} style={{ opacity: 0.8 }} />
+                                        <span>
+                                            {(() => {
+                                                if (dateFilter === 'YESTERDAY') return 'Dün';
+                                                if (dateFilter === 'LAST_WEEK') return 'Geçen Hafta';
+                                                if (dateFilter === 'LAST_MONTH') return 'Geçen Ay';
+                                                if (dateFilter === 'YEAR') return 'Bu Yıl';
+                                                if (dateFilter === 'LAST_YEAR') return 'Geçen Yıl';
+                                                if (dateFilter === 'CUSTOM') {
+                                                    if (dateFrom || dateTo) return `${dateFrom ? dateFrom.slice(5) : '...'} - ${dateTo ? dateTo.slice(5) : '...'}`;
+                                                    return 'Özel';
+                                                }
+                                                return 'Diğer';
+                                            })()}
+                                        </span>
+                                        <ChevronDown size={10} style={{ opacity: 0.6 }} />
+                                    </button>
+
+                                    {dateFilterOpen && (
+                                        <div className="contacts-date-more-dropdown">
+                                            <div style={{ padding: '2px 0' }}>
+                                                {[
+                                                    ['YESTERDAY', 'Dün'],
+                                                    ['LAST_WEEK', 'Geçen Hafta'],
+                                                    ['LAST_MONTH', 'Geçen Ay'],
+                                                    ['YEAR', 'Bu Yıl'],
+                                                    ['LAST_YEAR', 'Geçen Yıl'],
+                                                ].map(([k, label]) => (
+                                                    <button
+                                                        key={k}
+                                                        type="button"
+                                                        className={`contacts-date-dropdown-item ${dateFilter === k ? 'active' : ''}`}
+                                                        onClick={() => {
+                                                            setDateFilter(k);
+                                                            setDateFrom('');
+                                                            setDateTo('');
+                                                            setPage(1);
+                                                            setDateFilterOpen(false);
+                                                        }}
+                                                    >
+                                                        <span>{label}</span>
+                                                        {dateFilter === k && <Check size={12} style={{ color: '#ef4444' }} />}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {/* Özel Aralık Bölümü */}
+                                            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '8px', marginTop: '4px', paddingLeft: '4px', paddingRight: '4px' }}>
+                                                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                                                    Özel Tarih Aralığı
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                    <div>
+                                                        <label style={{ display: 'block', fontSize: '10px', color: '#64748b', marginBottom: '2px' }}>Başlangıç</label>
+                                                        <input
+                                                            type="date"
+                                                            value={dateFrom}
+                                                            onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }}
+                                                            style={{
+                                                                width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0',
+                                                                borderRadius: '6px', fontSize: '11px', outline: 'none', color: '#334155'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ display: 'block', fontSize: '10px', color: '#64748b', marginBottom: '2px' }}>Bitiş</label>
+                                                        <input
+                                                            type="date"
+                                                            value={dateTo}
+                                                            onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }}
+                                                            style={{
+                                                                width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0',
+                                                                borderRadius: '6px', fontSize: '11px', outline: 'none', color: '#334155'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setDateFilterOpen(false)}
+                                                        style={{
+                                                            marginTop: '4px',
+                                                            padding: '6px 0',
+                                                            background: '#ef4444',
+                                                            color: '#fff',
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 600,
+                                                            cursor: 'pointer',
+                                                            transition: 'background 0.15s'
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = '#dc2626'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = '#ef4444'}
+                                                    >
+                                                        Uygula
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <label className="active-only-check" style={{ marginLeft: 'auto' }} title="İşaretlenirse kapanan aşamadaki kişiler gizlenir">
-                                <input
-                                    type="checkbox"
-                                    checked={onlyOpenCases}
-                                    onChange={() => setOnlyOpenCases(!onlyOpenCases)}
-                                />
+
+                            {/* Kapananları Gizle Toggle Chip */}
+                            <button
+                                type="button"
+                                onClick={() => setOnlyOpenCases(!onlyOpenCases)}
+                                className={`contacts-toggle-filter-btn ${onlyOpenCases ? 'active' : ''}`}
+                                title={onlyOpenCases ? "Kapanan/çözümlenen vakalar gizleniyor. Tıklayarak tümünü gösterin." : "Kapanan/çözümlenen vakaları gizle"}
+                            >
+                                <EyeOff size={13} style={{ opacity: onlyOpenCases ? 1 : 0.6 }} />
                                 <span>Kapananları Gizle</span>
-                            </label>
+                            </button>
                         </div>
 
                         <div className="header-right-actions">
@@ -2709,69 +2813,70 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                         </div>
                     )}
 
-                    {/* Table */}
-                    <div className="contacts-table-container">
-                        {loading ? (
-                            <div className="loading-container">
-                                <div className="loader"></div>
-                                <p>Kişiler yükleniyor...</p>
-                            </div>
-                        ) : contacts.length === 0 ? (
-                            <div className="empty-state-list">
-                                <Users size={48} className="empty-icon" />
-                                <h3>Kişi Bulunamadı</h3>
-                                <p>Henüz kayıtlı kişi yok veya filtrelere uygun sonuç bulunamadı.</p>
-                            </div>
-                        ) : (
-                            <table className="contacts-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: '40px' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={contacts.length > 0 && selectedIds.length === contacts.length}
-                                                onChange={handleSelectAll}
-                                                style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                                            />
-                                        </th>
-                                        {[
-                                            { key: 'name', label: 'KİŞİ', style: { minWidth: '140px', maxWidth: '180px' } },
-                                            { key: null, label: 'KONU', style: { minWidth: '70px', maxWidth: '120px' } },
-                                            { key: 'leadScore', label: 'SKOR', style: { minWidth: '50px', maxWidth: '70px' } },
-                                            { key: 'status', label: 'DURUM', style: { minWidth: '80px', maxWidth: '120px' } },
-                                            { key: null, label: 'ATANAN', style: { minWidth: '70px', maxWidth: '120px' } },
-                                            { key: null, label: 'AKTİVİTELER', style: { minWidth: '100px', maxWidth: '140px' } },
-                                            { key: null, label: 'SON NOT', style: { minWidth: '90px', maxWidth: '130px' } },
-                                            { key: 'createdAt', label: 'İLK YAZMA', style: { minWidth: '75px', maxWidth: '95px' } },
-                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '75px', maxWidth: '95px' } },
-                                        ].map(col => (
-                                            <th
-                                                key={col.label}
-                                                style={{ ...col.style, cursor: col.key ? 'pointer' : 'default', userSelect: 'none' }}
-                                                onClick={() => {
-                                                    if (!col.key) return;
-                                                    if (sortField === col.key) {
-                                                        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                                                    } else {
-                                                        setSortField(col.key);
-                                                        setSortDir('desc');
-                                                    }
-                                                    setPage(1);
-                                                }}
-                                            >
-                                                {col.label}
-                                                {col.key && sortField === col.key && (
-                                                    <span style={{ marginLeft: '4px', fontSize: '0.6rem' }}>
-                                                        {sortDir === 'asc' ? '↑' : '↓'}
-                                                    </span>
-                                                )}
-                                                {col.key && sortField !== col.key && (
-                                                    <span style={{ marginLeft: '4px', fontSize: '0.6rem', opacity: 0.3 }}>⇅</span>
-                                                )}
+                    {/* Table Card (Apple Floating Card) */}
+                    <div className="contacts-table-card">
+                        <div className="contacts-table-container">
+                            {loading ? (
+                                <div className="loading-container">
+                                    <div className="loader"></div>
+                                    <p>Kişiler yükleniyor...</p>
+                                </div>
+                            ) : contacts.length === 0 ? (
+                                <div className="empty-state-list">
+                                    <Users size={48} className="empty-icon" />
+                                    <h3>Kişi Bulunamadı</h3>
+                                    <p>Henüz kayıtlı kişi yok veya filtrelere uygun sonuç bulunamadı.</p>
+                                </div>
+                            ) : (
+                                <table className="contacts-table">
+                                    <thead>
+                                        <tr>
+                                            <th style={{ width: '44px', textAlign: 'center', paddingLeft: '12px' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="apple-checkbox"
+                                                    checked={contacts.length > 0 && selectedIds.length === contacts.length}
+                                                    onChange={handleSelectAll}
+                                                />
                                             </th>
-                                        ))}
-                                    </tr>
-                                </thead>
+                                            {[
+                                                { key: 'name', label: 'KİŞİ', style: { minWidth: '160px', maxWidth: '220px' } },
+                                                { key: null, label: 'KONU', style: { minWidth: '80px', maxWidth: '130px' } },
+                                                { key: 'leadScore', label: 'SKOR', style: { minWidth: '65px', maxWidth: '85px', textAlign: 'center' } },
+                                                { key: 'status', label: 'DURUM', style: { minWidth: '95px', maxWidth: '140px' } },
+                                                { key: null, label: 'ATANAN', style: { minWidth: '85px', maxWidth: '135px' } },
+                                                { key: null, label: 'AKTİVİTELER', style: { minWidth: '110px', maxWidth: '150px' } },
+                                                { key: null, label: 'SON NOT', style: { minWidth: '100px', maxWidth: '150px' } },
+                                                { key: 'createdAt', label: 'İLK YAZMA', style: { minWidth: '85px', maxWidth: '105px' } },
+                                                { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '85px', maxWidth: '105px' } },
+                                            ].map(col => (
+                                                <th
+                                                    key={col.label}
+                                                    className={`th-cell ${col.key ? 'th-sortable' : ''} ${sortField === col.key ? 'th-active' : ''}`}
+                                                    style={{ ...col.style, cursor: col.key ? 'pointer' : 'default', userSelect: 'none' }}
+                                                    onClick={() => {
+                                                        if (!col.key) return;
+                                                        if (sortField === col.key) {
+                                                            setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                                        } else {
+                                                            setSortField(col.key);
+                                                            setSortDir('desc');
+                                                        }
+                                                        setPage(1);
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                        <span>{col.label}</span>
+                                                        {col.key && (
+                                                            <span className={`th-sort-icon ${sortField === col.key ? 'active' : ''}`}>
+                                                                {sortField === col.key ? (sortDir === 'asc' ? '↑' : '↓') : '⇅'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
                                 <tbody>
                                     {contacts.map((contact) => {
                                         const sourceInfo = getSourceInfo(contact.source);
@@ -2782,9 +2887,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 className={selectedContact?.id === contact.id ? 'active' : ''}
                                                 onClick={() => handleSelectContact(contact)}
                                             >
-                                                <td onClick={(e) => e.stopPropagation()}>
+                                                <td onClick={(e) => e.stopPropagation()} style={{ width: '44px', textAlign: 'center', paddingLeft: '12px' }}>
                                                     <input
                                                         type="checkbox"
+                                                        className="apple-checkbox"
                                                         checked={selectedIds.includes(contact.id)}
                                                         onChange={() => {
                                                             setSelectedIds(prev =>
@@ -2793,13 +2899,12 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     : [...prev, contact.id]
                                                             );
                                                         }}
-                                                        style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                                     />
                                                 </td>
                                                 {/* KİŞİ: İsim + Firma + Mail + Telefon */}
-                                                <td style={{ maxWidth: '300px' }}>
-                                                    <div className="contact-name-cell" style={{ maxWidth: '100%', overflow: 'hidden' }}>
-                                                        <div style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start', marginTop: '2px' }}>
+                                                <td style={{ maxWidth: '240px' }}>
+                                                    <div className="contact-name-cell">
+                                                        <div className="contact-avatar-wrap">
                                                             <img
                                                                 src={getAvatarUrl(contact)}
                                                                 alt={contact.name}
@@ -2818,21 +2923,25 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <div className="contact-name-info" style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
-                                                            <span className="contact-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{getDisplayName(contact)}</span>
+                                                        <div className="contact-name-info">
+                                                            <span className="contact-name">{getDisplayName(contact)}</span>
                                                             {contact.company && (
-                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: '11px', color: '#6366f1', fontWeight: 500 }}>
-                                                                    <Building size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '2px' }} />
+                                                                <span className="contact-company-line">
+                                                                    <Building size={10} />
                                                                     {contact.company}
                                                                 </span>
                                                             )}
-                                                            <span className="contact-email" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{contact.email || '---'}</span>
-                                                            <span className="contact-phone-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: '10px', color: '#6b7280' }}>{contact.phone || '---'}</span>
+                                                            {contact.email && (
+                                                                <span className="contact-email">{contact.email}</span>
+                                                            )}
+                                                            {contact.phone && (
+                                                                <span className="contact-phone-sub">{contact.phone}</span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </td>
                                                 {/* KONU */}
-                                                <td className="contact-topic" title={(() => { const c = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0]; return c?.title || contact.aiTopic || ''; })()} style={{ maxWidth: '140px' }}>
+                                                <td className="contact-topic" style={{ maxWidth: '140px' }}>
                                                     {(() => {
                                                         // Case title varsa onu göster, yoksa aiTopic'e fallback
                                                         const activeCase = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0];
@@ -2845,41 +2954,30 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         const fallbackTopic = !isGeneric(contact.aiTopic) ? contact.aiTopic : null;
                                                         const topic = caseTitle || fallbackTopic;
                                                         return topic ? (
-                                                            <span style={{
-                                                                display: 'inline-block',
-                                                                padding: '2px 6px',
-                                                                backgroundColor: caseTitle ? '#f5f3ff' : '#f0f9ff',
-                                                                color: caseTitle ? '#7c3aed' : '#0369a1',
-                                                                borderRadius: '4px',
-                                                                fontSize: '11px',
-                                                                fontWeight: 500,
-                                                                maxWidth: '130px',
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis',
-                                                                whiteSpace: 'nowrap'
-                                                            }}>
+                                                            <span className={`contact-topic-pill ${caseTitle ? 'topic-case' : 'topic-ai'}`} title={topic}>
                                                                 {topic}
                                                             </span>
-                                                        ) : <span style={{color: '#94a3b8'}}>---</span>;
+                                                        ) : <span className="cell-muted-dash">—</span>;
                                                     })()}
                                                 </td>
                                                 {/* SKOR */}
-                                                <td style={{ maxWidth: '80px', textAlign: 'center' }}>
+                                                <td style={{ maxWidth: '85px', textAlign: 'center' }}>
                                                     {(() => {
-                                                        if (contact.leadScore == null) return <span style={{ color: '#94a3b8' }}>---</span>;
-                                                        let bgColor = '#f3f4f6';
-                                                        let textColor = '#374151';
-                                                        let emoji = '⚪';
+                                                        if (contact.leadScore == null) return <span className="cell-muted-dash">—</span>;
+                                                        let bgColor = '#f8fafc';
+                                                        let textColor = '#334155';
+                                                        let borderColor = '#e2e8f0';
+                                                        let dotColor = '#94a3b8';
                                                         switch (contact.leadTemperature) {
-                                                            case 'COLD': bgColor = '#eff6ff'; textColor = '#1d4ed8'; emoji = '🔵'; break;
-                                                            case 'COOL': bgColor = '#dcfce7'; textColor = '#15803d'; emoji = '🟢'; break;
-                                                            case 'WARM': bgColor = '#fef9c3'; textColor = '#a16207'; emoji = '🟡'; break;
-                                                            case 'HOT': bgColor = '#ffedd5'; textColor = '#c2410c'; emoji = '🟠'; break;
-                                                            case 'FIRE': bgColor = '#fee2e2'; textColor = '#b91c1c'; emoji = '🔴'; break;
+                                                            case 'COLD': bgColor = '#eff6ff'; textColor = '#1d4ed8'; borderColor = '#bfdbfe'; dotColor = '#3b82f6'; break;
+                                                            case 'COOL': bgColor = '#f0fdf4'; textColor = '#15803d'; borderColor = '#bbf7d0'; dotColor = '#22c55e'; break;
+                                                            case 'WARM': bgColor = '#fefce8'; textColor = '#a16207'; borderColor = '#fef08a'; dotColor = '#eab308'; break;
+                                                            case 'HOT': bgColor = '#fff7ed'; textColor = '#c2410c'; borderColor = '#fed7aa'; dotColor = '#f97316'; break;
+                                                            case 'FIRE': bgColor = '#fef2f2'; textColor = '#dc2626'; borderColor = '#fecaca'; dotColor = '#ef4444'; break;
                                                         }
                                                         return (
-                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: bgColor, color: textColor, padding: '2px 6px', borderRadius: '999px', fontSize: '11px', fontWeight: '600' }}>
-                                                                <span>{emoji}</span>
+                                                            <div className="contact-score-badge" style={{ backgroundColor: bgColor, color: textColor, borderColor: borderColor }}>
+                                                                <span className="score-dot" style={{ backgroundColor: dotColor }} />
                                                                 <span>{contact.leadScore}</span>
                                                             </div>
                                                         );
@@ -2891,7 +2989,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         let funnelName = '';
                                                         let stageName = 'Yeni';
                                                         let displayColor = '#6b7280';
-                                                        let displayBg = '#6b72801a';
+                                                        let displayBg = '#6b728014';
                                                         let currentFunnelId = null;
 
                                                         // Case'den oku — contact.cases dizisinden direkt hesapla
@@ -2911,7 +3009,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     funnelName = funnel.name;
                                                                     stageName = s.name;
                                                                     displayColor = s.color || '#6366f1';
-                                                                    displayBg = `${displayColor}1a`;
+                                                                    displayBg = `${displayColor}14`;
                                                                     currentFunnelId = funnel.id;
                                                                     break;
                                                                 }
@@ -2928,7 +3026,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     if (s) {
                                                                         funnelName = funnel.name;
                                                                         displayColor = s.color || displayColor;
-                                                                        displayBg = `${displayColor}1a`;
+                                                                        displayBg = `${displayColor}14`;
                                                                         currentFunnelId = funnel.id;
                                                                         break;
                                                                     }
@@ -2947,7 +3045,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     if (s) {
                                                                         funnelName = funnel.name;
                                                                         displayColor = s.color || displayColor;
-                                                                        displayBg = `${displayColor}1a`;
+                                                                        displayBg = `${displayColor}14`;
                                                                         currentFunnelId = funnel.id;
                                                                         break;
                                                                     }
@@ -2959,9 +3057,9 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         const isDropdownOpen = stageDropdownContactId === contact.id;
 
                                                         return (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', position: 'relative' }}>
+                                                            <div className="contact-status-cell">
                                                                 {funnelName && (
-                                                                    <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
+                                                                    <span className="contact-funnel-label" title={funnelName}>
                                                                         {funnelName}
                                                                     </span>
                                                                 )}
@@ -2974,17 +3072,11 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     style={{
                                                                         backgroundColor: displayBg,
                                                                         color: displayColor,
-                                                                        border: isDropdownOpen ? `2px solid ${displayColor}` : (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none',
-                                                                        fontSize: '11px',
-                                                                        padding: '2px 8px',
-                                                                        cursor: 'pointer',
-                                                                        display: 'inline-flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '4px',
-                                                                        transition: 'all 0.15s'
+                                                                        border: isDropdownOpen ? `1.5px solid ${displayColor}` : `1px solid ${displayColor}35`,
                                                                     }}
                                                                 >
-                                                                    {stageName}
+                                                                    <span className="stage-indicator-dot" style={{ backgroundColor: displayColor }} />
+                                                                    <span>{stageName}</span>
                                                                     <ChevronDown size={10} style={{ opacity: 0.6, transform: isDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                                                                 </span>
                                                                 {/* Stage change dropdown - two panel */}
@@ -3161,21 +3253,29 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         }
 
                                                         const team = teamId ? teams.find(t => t.id === teamId) : null;
-                                                        if (team && agentName) return `${agentName} / ${team.name}`;
-                                                        if (team) return team.name;
-                                                        if (agentName) return agentName;
-                                                        return '---';
+                                                        const assignedText = (() => {
+                                                            if (team && agentName) return `${agentName} / ${team.name}`;
+                                                            if (team) return team.name;
+                                                            if (agentName) return agentName;
+                                                            return null;
+                                                        })();
+                                                        return assignedText ? (
+                                                            <span className="contact-assigned-pill">
+                                                                <User size={11} style={{ opacity: 0.6, flexShrink: 0 }} />
+                                                                <span>{assignedText}</span>
+                                                            </span>
+                                                        ) : <span className="cell-muted-dash">—</span>;
                                                     })()}
                                                 </td>
 
                                                 {/* AKTİVİTELER */}
-                                                <td style={{ maxWidth: '180px', padding: '4px 6px', verticalAlign: 'middle' }}>
+                                                <td style={{ maxWidth: '180px', padding: '6px 8px', verticalAlign: 'middle' }}>
                                                     {(() => {
                                                         const acts = contact.activities || [];
-                                                        if (acts.length === 0) return <span style={{ color: '#d1d5db', fontSize: '0.72rem' }}>---</span>;
+                                                        if (acts.length === 0) return <span className="cell-muted-dash">—</span>;
                                                         const last3 = acts.slice(0, 3);
                                                         return (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                                                                 {last3.map((e, idx) => {
                                                                     const done = e.status === 'COMPLETED';
                                                                     const cancelled = e.status === 'CANCELLED';
@@ -3206,20 +3306,16 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     const performerName = isAI ? 'AI' : (e.assignee?.name || e.creator?.name || '');
                                                                     const shortName = performerName === 'AI' ? '🤖' : (performerName ? performerName.split(' ')[0] : '');
                                                                     return (
-                                                                        <div key={idx} style={{
-                                                                            display: 'flex', alignItems: 'center', gap: 4,
-                                                                            padding: '1px 5px', borderRadius: 4,
-                                                                            background: bg, whiteSpace: 'nowrap'
-                                                                        }}>
+                                                                        <div key={idx} className="contact-activity-item" style={{ background: bg }}>
                                                                             <span style={{
-                                                                                fontSize: '0.66rem', fontWeight: 600,
+                                                                                fontSize: '0.67rem', fontWeight: 600,
                                                                                 color: color, lineHeight: 1.3
                                                                             }}>
                                                                                 {label}
                                                                             </span>
                                                                             {dateStr && (
                                                                                 <span style={{
-                                                                                    fontSize: '0.58rem', color: '#94a3b8',
+                                                                                    fontSize: '0.6rem', color: '#94a3b8',
                                                                                     fontWeight: 400, lineHeight: 1.3
                                                                                 }}>
                                                                                     {dateStr}
@@ -3227,7 +3323,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                             )}
                                                                             {shortName && (
                                                                                 <span style={{
-                                                                                    fontSize: '0.56rem', color: isAI ? '#8b5cf6' : '#64748b',
+                                                                                    fontSize: '0.58rem', color: isAI ? '#8b5cf6' : '#64748b',
                                                                                     fontWeight: 500, lineHeight: 1.3,
                                                                                     opacity: 0.85
                                                                                 }}>
@@ -3245,17 +3341,21 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 {/* SON NOT */}
                                                 <td className="contact-last-note" style={{
                                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem',
-                                                    color: contact.lastNoteType === 'planned' ? '#f59e0b' : contact.lastNoteType === 'activity' ? '#3b82f6' : '#6b7280'
+                                                    color: contact.lastNoteType === 'planned' ? '#f59e0b' : contact.lastNoteType === 'activity' ? '#3b82f6' : '#64748b'
                                                 }}>
-                                                    {contact.lastNote || '---'}
+                                                    {contact.lastNote ? (
+                                                        <span title={contact.lastNote}>
+                                                            {contact.lastNote}
+                                                        </span>
+                                                    ) : <span className="cell-muted-dash">—</span>}
                                                 </td>
                                                 {/* İLK YAZMA */}
-                                                <td className="contact-created" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
-                                                    {formatDate(contact.createdAt)}
+                                                <td className="contact-created" style={{ fontSize: '0.78rem', maxWidth: '90px', color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                                                    {contact.createdAt ? formatDate(contact.createdAt) : <span className="cell-muted-dash">—</span>}
                                                 </td>
                                                 {/* SON YAZMA */}
-                                                <td className="contact-last-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
-                                                    {formatDate(contact.lastMessageAt)}
+                                                <td className="contact-last-message" style={{ fontSize: '0.78rem', maxWidth: '90px', color: '#334155', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                                                    {contact.lastMessageAt ? formatDate(contact.lastMessageAt) : <span className="cell-muted-dash">—</span>}
                                                 </td>
                                             </tr>
                                         );
@@ -3269,77 +3369,87 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                     <div className="customers-footer-bar">
                         {/* Sol: Limit seçici */}
                         <div className="customers-footer-limit">
-                            <span>Göster:</span>
-                            {[20, 50, 100, 'Tümü'].map(val => (
-                                <button
-                                    key={val}
-                                    className={`customers-limit-btn ${limit === (val === 'Tümü' ? 999999 : val) ? 'active' : ''}`}
-                                    onClick={() => { setLimit(val === 'Tümü' ? 999999 : val); setPage(1); }}
-                                >{val}</button>
-                            ))}
+                            <span className="customers-limit-label">Göster:</span>
+                            <div className="customers-limit-segmented">
+                                {[20, 50, 100, 'Tümü'].map(val => (
+                                    <button
+                                        key={val}
+                                        type="button"
+                                        className={`customers-limit-btn ${limit === (val === 'Tümü' ? 999999 : val) ? 'active' : ''}`}
+                                        onClick={() => { setLimit(val === 'Tümü' ? 999999 : val); setPage(1); }}
+                                    >{val}</button>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Orta: Sayfa navigasyon */}
                         <div className="customers-footer-pagination">
                             <button
+                                type="button"
                                 className="pagination-btn"
                                 disabled={page === 1}
                                 onClick={() => setPage(p => p - 1)}
                             >
-                                <ChevronLeft size={16} /> Önceki
+                                <ChevronLeft size={14} /> Önceki
                             </button>
                             <span className="pagination-info">
-                                {page} / {Math.max(1, Math.ceil(total / limit))}
+                                <strong>{page}</strong> / {Math.max(1, Math.ceil(total / limit))}
                             </span>
                             <button
+                                type="button"
                                 className="pagination-btn"
                                 disabled={page >= Math.ceil(total / limit)}
                                 onClick={() => setPage(p => p + 1)}
                             >
-                                Sonraki <ChevronRight size={16} />
+                                Sonraki <ChevronRight size={14} />
                             </button>
                         </div>
 
                         {/* Sağ: İçe / Dışa Aktar */}
                         <div className="customers-footer-actions">
                             <button
+                                type="button"
                                 className="export-csv-btn import-csv-btn"
                                 onClick={() => { setShowImportModal(true); setImportData([]); setImportResult(null); setImportFileName(''); setImportTag(''); }}
                                 title="Excel İçe Aktar"
                             >
-                                <Upload size={14} /> İçe Aktar
+                                <Upload size={13} /> İçe Aktar
                             </button>
                             <button
+                                type="button"
                                 className="export-csv-btn"
                                 onClick={() => setShowExportModal(true)}
                                 title="CSV Dışa Aktar"
                             >
-                                <Download size={14} /> Dışa Aktar
+                                <Download size={13} /> Dışa Aktar
                             </button>
                             {currentWorkspace?.id === '4a7e92e8-6e4c-4a48-b0a8-ffe0eb61bf33' && (
                                 <button
+                                    type="button"
                                     className="export-csv-btn export-report2-btn"
                                     onClick={handleOpenReport2Modal}
                                     disabled={report2Loading}
                                     title="Arama & Talep Görüşme Raporu (Dışa Aktar 2)"
                                     style={{ background: '#0284c7', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                 >
-                                    {report2Loading ? <Loader size={14} className="spin" /> : <FileText size={14} />} Dışa Aktar 2
+                                    {report2Loading ? <Loader size={13} className="spin" /> : <FileText size={13} />} Dışa Aktar 2
                                 </button>
                             )}
                             {currentWorkspace?.id === 'dbdb6e87-9769-4975-ad57-a984a1e8b995' && (
                                 <button
+                                    type="button"
                                     className="export-csv-btn"
                                     onClick={handleExportLeads}
                                     disabled={exportingLeads}
                                     title="Facebook Lead Dışa Aktar"
                                     style={{ background: '#7c3aed', color: '#fff' }}
                                 >
-                                    {exportingLeads ? <Loader size={14} className="spin" /> : <Download size={14} />} Lead Dışa Aktar
+                                    {exportingLeads ? <Loader size={13} className="spin" /> : <Download size={13} />} Lead Dışa Aktar
                                 </button>
                             )}
                         </div>
                     </div>
+                </div>
 
                     {/* Bulk Actions */}
                     {selectedIds.length > 0 && (
