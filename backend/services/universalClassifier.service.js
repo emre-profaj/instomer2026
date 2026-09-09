@@ -942,6 +942,45 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     }
                 }
 
+                // --- Şubenin varsayılan akış/takım bilgisini kullan ---
+                if (resolvedBranchId && !skipFunnelAssignment) {
+                    try {
+                        const branch = await prisma.appointmentBranch.findUnique({
+                            where: { id: resolvedBranchId },
+                            select: { defaultFunnelId: true, defaultTeamId: true, name: true }
+                        });
+
+                        if (branch) {
+                            // Şubenin varsayılan akışı varsa ve henüz akış atanmamışsa → onu kullan
+                            if (!targetFunnelId && branch.defaultFunnelId) {
+                                targetFunnelId = branch.defaultFunnelId;
+                                console.log(`🏢 [Classifier] Şube "${branch.name}" varsayılan akışı kullanılıyor: ${branch.defaultFunnelId}`);
+
+                                const branchFunnel = await prisma.funnel.findUnique({
+                                    where: { id: branch.defaultFunnelId },
+                                    include: { stages: { orderBy: { order: 'asc' } } }
+                                });
+                                if (branchFunnel?.stages?.length > 0) {
+                                    targetStageId = branchFunnel.stages[0].id;
+                                }
+                            }
+
+                            // Şube varsayılan takımı → conversation'a ata (atanmamışsa)
+                            if (branch.defaultTeamId && !conversationRecord?.assignedTeamId) {
+                                try {
+                                    await prisma.conversation.update({
+                                        where: { id: conversationId },
+                                        data: { assignedTeamId: branch.defaultTeamId }
+                                    });
+                                    console.log(`👥 [Classifier] Şube "${branch.name}" varsayılan takım atandı`);
+                                } catch (_) {}
+                            }
+                        }
+                    } catch (branchErr) {
+                        console.error('⚠️ [Classifier] Şube varsayılan değer hatası:', branchErr.message);
+                    }
+                }
+
                 if (conv?.caseId) {
                     const caseUpdateData = {};
 
