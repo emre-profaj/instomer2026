@@ -541,9 +541,9 @@
 }
 
 .message.outgoing .message-content {
-    background-color: #e8ecf1;
-    /* Soft gray outgoing */
-    color: #1c1c1e;
+    background-color: #3d4654;
+    /* Anthracite outgoing */
+    color: #f1f5f9;
     border-radius: 12px 0 12px 12px;
     /* Pointing right */
 }
@@ -567,7 +567,7 @@
 }
 
 .message.outgoing .message-time {
-    color: #8e8e93;
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .message.incoming .message-time {
