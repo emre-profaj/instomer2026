@@ -3,10 +3,19 @@ import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.midd
 import * as aiController from '../controllers/ai.controller.js';
 import * as widgetController from '../controllers/widget.controller.js';
 import * as instoBotController from '../controllers/instoBot.controller.js';
+import * as instaController from '../controllers/insta.controller.js';
+import { upload } from '../controllers/knowledgebase.controller.js';
 
 const router = express.Router();
 
-// İnsto Bot
+// Insta (AI Workspace Architect & Configurator)
+router.post('/:workspaceId/insta/chat', authenticateJWT, requireWorkspaceAccess, instaController.chat);
+router.post('/:workspaceId/insta/analyze-source', authenticateJWT, requireWorkspaceAccess, upload.single('file'), instaController.analyzeSource);
+router.post('/:workspaceId/insta/apply-setup', authenticateJWT, requireWorkspaceAccess, instaController.applySetup);
+router.post('/:workspaceId/insta/apply-action', authenticateJWT, requireWorkspaceAccess, instaController.applyAction);
+router.get('/:workspaceId/insta/health', authenticateJWT, requireWorkspaceAccess, instaController.getHealth);
+
+// İnsto Bot (Legacy compatibility)
 router.post('/:workspaceId/insto-bot/chat', authenticateJWT, requireWorkspaceAccess, instoBotController.chat);
 router.post('/:workspaceId/insto-bot/translate', authenticateJWT, requireWorkspaceAccess, instoBotController.translate);
 

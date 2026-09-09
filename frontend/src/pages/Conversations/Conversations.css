@@ -139,7 +139,7 @@
     flex: 1;
 }
 
-.search-icon {
+.search-bar .search-icon {
     position: absolute;
     right: 12px;
     top: 50%;

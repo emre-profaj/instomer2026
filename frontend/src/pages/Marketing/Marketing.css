@@ -8,12 +8,14 @@
 }
 
 .mkt-page {
-    display: flex;
-    flex-direction: column;
     height: calc(100vh - 60px);
     background: #f8fafc;
-    overflow: hidden;
     font-family: inherit;
+}
+
+.mkt-page.base-layout {
+    padding: 0 !important;
+    overflow: hidden;
 }
 
 /* ── Header ─────────────────────────────────── */

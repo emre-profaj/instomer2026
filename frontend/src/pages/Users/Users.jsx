@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, teamAPI, aiAPI, retellAPI, automationAPI } from '../../services/api';
+import { workspaceAPI, teamAPI, aiAPI, retellAPI, automationAPI, appointmentConfigAPI } from '../../services/api';
 import AddMemberModal from '../../components/AddMemberModal';
 import BotModal from '../../components/Settings/BotModal';
 import RetellSettings from '../../components/Settings/RetellSettings';
@@ -27,7 +27,8 @@ import {
     Phone,
     ToggleRight,
     ToggleLeft,
-    Power
+    Power,
+    MapPin
 } from 'lucide-react';
 import './Users.css';
 
@@ -194,15 +195,37 @@ const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
 
 
 // ─── Create / Edit Team Modal ─────────────────────────────────
-const TeamModal = ({ team, parentName, onSubmit, onClose }) => {
+const TeamModal = ({ team, parentName, branches = [], onSubmit, onClose }) => {
     const [name, setName] = useState(team?.name || '');
     const [description, setDescription] = useState(team?.description || '');
+    const [selectedBranchIds, setSelectedBranchIds] = useState(() => {
+        if (!team?.branchIds) return [];
+        try {
+            const parsed = typeof team.branchIds === 'string' ? JSON.parse(team.branchIds) : team.branchIds;
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    });
     const [loading, setLoading] = useState(false);
+
+    const toggleBranch = (branchId) => {
+        setSelectedBranchIds(prev =>
+            prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
+        );
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        try { await onSubmit({ name, description }); onClose(); }
+        try {
+            await onSubmit({
+                name,
+                description,
+                branchIds: selectedBranchIds.length > 0 ? selectedBranchIds : null
+            });
+            onClose();
+        }
         catch { }
         finally { setLoading(false); }
     };
@@ -228,6 +251,60 @@ const TeamModal = ({ team, parentName, onSubmit, onClose }) => {
                         <textarea value={description} onChange={e => setDescription(e.target.value)}
                             placeholder="Takım hakkında kısa bilgi..." rows={3} />
                     </div>
+
+                    {/* Sorumlu Olduğu Şubeler (Çoklu Seçim) */}
+                    {branches && branches.length > 0 && (
+                        <div className="ut-form-group">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: '#1e293b' }}>
+                                <MapPin size={15} color="#ef4444" /> Sorumlu Olduğu Şubeler
+                            </label>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                                gap: 8,
+                                marginTop: 6,
+                                padding: '10px 12px',
+                                background: '#f8fafc',
+                                borderRadius: 8,
+                                border: '1px solid #e2e8f0'
+                            }}>
+                                {branches.filter(b => b.isActive !== false).map(branch => {
+                                    const isChecked = selectedBranchIds.includes(branch.id);
+                                    return (
+                                        <label
+                                            key={branch.id}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 8,
+                                                fontSize: 13,
+                                                cursor: 'pointer',
+                                                padding: '6px 8px',
+                                                borderRadius: 6,
+                                                background: isChecked ? '#eff6ff' : '#ffffff',
+                                                border: isChecked ? '1px solid #93c5fd' : '1px solid #e2e8f0',
+                                                color: isChecked ? '#1e40af' : '#334155',
+                                                fontWeight: isChecked ? 600 : 400,
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={() => toggleBranch(branch.id)}
+                                                style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                                            />
+                                            <span>{branch.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 5 }}>
+                                ℹ️ Hiçbiri seçilmezse takım <strong>tüm şubelerden</strong> sorumlu sayılır.
+                            </div>
+                        </div>
+                    )}
+
                     <div className="ut-modal-footer">
                         <button type="button" className="ut-btn-secondary" onClick={onClose}>Cancel</button>
                         <button type="submit" className="ut-btn-primary" disabled={loading}>
@@ -328,6 +405,7 @@ const UsersTeams = () => {
     const [teams, setTeams] = useState([]);
     const [teamsLoading, setTeamsLoading] = useState(false);
     const [teamModal, setTeamModal] = useState({ show: false, team: null, parentId: null, parentName: null });
+    const [branches, setBranches] = useState([]);
 
     // Bots (AI Assistants)
     const [bots, setBots] = useState([]);
@@ -358,7 +436,22 @@ const UsersTeams = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     const loadUsersAndTeams = () => {
-        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations(); loadRetellSettings();
+        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations(); loadRetellSettings(); loadBranches();
+    };
+
+    const loadBranches = async () => {
+        try {
+            const [locRes, branchRes] = await Promise.all([
+                appointmentConfigAPI.getLocations(currentWorkspace.id).catch(() => ({ data: {} })),
+                appointmentConfigAPI.getBranches(currentWorkspace.id).catch(() => ({ data: {} }))
+            ]);
+            const locs = locRes.data?.locations || [];
+            const brs = branchRes.data?.branches || [];
+            const combined = locs.length > 0 ? locs : brs;
+            setBranches(combined);
+        } catch (err) {
+            console.error('Error loading branches:', err);
+        }
     };
 
     const loadRetellSettings = async () => {
@@ -503,12 +596,12 @@ const UsersTeams = () => {
     };
 
     // ── Team actions ──────────────────────────────────────────
-    const handleSaveTeam = async ({ name, description }) => {
+    const handleSaveTeam = async ({ name, description, branchIds }) => {
         const { team, parentId } = teamModal;
         if (team) {
-            await teamAPI.update(currentWorkspace.id, team.id, { name, description });
+            await teamAPI.update(currentWorkspace.id, team.id, { name, description, branchIds });
         } else {
-            await teamAPI.create(currentWorkspace.id, { name, description, parentId: parentId || null });
+            await teamAPI.create(currentWorkspace.id, { name, description, parentId: parentId || null, branchIds });
             if (parentId) setExpandedTeams(p => ({ ...p, [parentId]: true }));
         }
         loadTeams();
@@ -670,6 +763,17 @@ const UsersTeams = () => {
         const retellMembers = team.members?.filter(m => m.retellAgentId) || [];
         const memberCount = visibleMembers.length;
 
+        // Sorumlu şubeleri hesapla
+        let teamBranches = [];
+        if (team.branchIds) {
+            try {
+                const parsedIds = typeof team.branchIds === 'string' ? JSON.parse(team.branchIds) : (Array.isArray(team.branchIds) ? team.branchIds : []);
+                teamBranches = branches.filter(b => parsedIds.includes(b.id));
+            } catch {
+                teamBranches = [];
+            }
+        }
+
         return (
             <div key={team.id} className={`ut-team-block depth-${depth}`}
                 onDragOver={e => { handleTeamDragOver(e, team.id); }}
@@ -678,18 +782,58 @@ const UsersTeams = () => {
             >
                 <div className={`ut-team-card ${isDragOver ? 'drag-over' : ''} ${isSuccess ? 'drop-success' : ''}`}>
                     <div className="ut-team-card-header">
-                        <div className="ut-team-card-left">
+                        <div className="ut-team-card-left" style={{ alignItems: 'flex-start' }}>
                             <span
                                 className="ut-team-drag-handle"
                                 draggable
                                 onDragStart={e => handleTeamDragStart(e, team)}
                                 title={t('teams.dragDrop')}
+                                style={{ marginTop: 2 }}
                             >
                                 <GripVertical size={14} />
                             </span>
-                            {depth > 0 && <GitBranch size={13} className="ut-branch-icon" />}
-                            <span className="ut-team-name">{team.name}</span>
-                            {team.description && <span className="ut-team-desc">{team.description}</span>}
+                            {depth > 0 && <GitBranch size={13} className="ut-branch-icon" style={{ marginTop: 2 }} />}
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <span className="ut-team-name">{team.name}</span>
+                                    {teamBranches.length > 0 ? (
+                                        <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                                            {teamBranches.map(b => (
+                                                <span key={b.id} style={{
+                                                    fontSize: 11,
+                                                    padding: '1px 7px',
+                                                    borderRadius: 10,
+                                                    background: '#eff6ff',
+                                                    color: '#2563eb',
+                                                    border: '1px solid #bfdbfe',
+                                                    fontWeight: 500,
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 3
+                                                }}>
+                                                    📍 {b.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : branches.length > 0 ? (
+                                        <span style={{
+                                            fontSize: 11,
+                                            padding: '1px 7px',
+                                            borderRadius: 10,
+                                            background: '#f8fafc',
+                                            color: '#64748b',
+                                            border: '1px solid #e2e8f0',
+                                            fontWeight: 500,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 3
+                                        }}>
+                                            🌐 Tüm Şubeler
+                                        </span>
+                                    ) : null}
+                                </div>
+                                {team.description && <div className="ut-team-desc" style={{ marginTop: 2 }}>{team.description}</div>}
+                            </div>
                         </div>
                         <div className="ut-team-card-right">
                             <span className="ut-team-member-count">
@@ -1058,6 +1202,7 @@ const UsersTeams = () => {
                 <TeamModal
                     team={teamModal.team}
                     parentName={teamModal.parentName}
+                    branches={branches}
                     onSubmit={handleSaveTeam}
                     onClose={() => setTeamModal({ show: false, team: null, parentId: null, parentName: null })}
                 />

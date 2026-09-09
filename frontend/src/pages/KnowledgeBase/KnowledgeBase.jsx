@@ -4,14 +4,16 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles } from 'lucide-react';
 import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
     const { t } = useTranslation();
-    const { currentWorkspace } = useAuth();
+    const { currentWorkspace, user } = useAuth();
+    const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
+    const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || ['OWNER', 'ADMIN', 'MANAGER'].includes(workspaceMember?.role);
     const labels = getSectorLabels(currentWorkspace?.industry);
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
@@ -90,10 +92,6 @@ const KnowledgeBase = () => {
     const [branchesLoading, setBranchesLoading] = useState(false);
     const [teams, setTeams] = useState([]);
     const [funnels, setFunnels] = useState([]);
-    const [newBranchTeamId, setNewBranchTeamId] = useState('');
-    const [newBranchFunnelId, setNewBranchFunnelId] = useState('');
-    const [editBranchTeamId, setEditBranchTeamId] = useState('');
-    const [editBranchFunnelId, setEditBranchFunnelId] = useState('');
     const [newBranchName, setNewBranchName] = useState('');
     const [newBranchAddress, setNewBranchAddress] = useState('');
     const [newBranchPhone, setNewBranchPhone] = useState('');
@@ -193,8 +191,8 @@ const KnowledgeBase = () => {
                 integrationType: newBranchIntegrationType,
                 externalBranchCode: newBranchExternalCode || null,
                 googleEmail: newBranchGoogleEmail || null,
-                defaultTeamId: newBranchTeamId || null,
-                defaultFunnelId: newBranchFunnelId || null
+                defaultTeamId: null,
+                defaultFunnelId: null
             });
             setNewBranchName('');
             setNewBranchAddress('');
@@ -202,8 +200,6 @@ const KnowledgeBase = () => {
             setNewBranchIntegrationType('WORKSPACE_DEFAULT');
             setNewBranchExternalCode('');
             setNewBranchGoogleEmail('');
-            setNewBranchTeamId('');
-            setNewBranchFunnelId('');
             loadBranches();
         } catch (err) {
             console.error('Error creating location:', err);
@@ -221,8 +217,8 @@ const KnowledgeBase = () => {
                 integrationType: editBranchIntegrationType,
                 externalBranchCode: editBranchExternalCode || null,
                 googleEmail: editBranchGoogleEmail || null,
-                defaultTeamId: editBranchTeamId || null,
-                defaultFunnelId: editBranchFunnelId || null
+                defaultTeamId: null,
+                defaultFunnelId: null
             });
             setEditingBranch(null);
             loadBranches();
@@ -606,6 +602,23 @@ const KnowledgeBase = () => {
                     <span>Base</span>
                 </div>
                 <nav className="base-nav">
+                    {canManage && (
+                        <button
+                            type="button"
+                            className="base-nav-item"
+                            onClick={() => window.dispatchEvent(new CustomEvent('open-insta', { detail: { tab: 'wizard' } }))}
+                            style={{
+                                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.16) 100%)',
+                                color: '#dc2626',
+                                borderColor: 'rgba(239, 68, 68, 0.3)',
+                                fontWeight: 600,
+                                marginBottom: '6px',
+                                boxShadow: '0 1px 4px rgba(239, 68, 68, 0.08)'
+                            }}
+                        >
+                            <Sparkles size={16} color="#ef4444" /> AI ile Yapılandır
+                        </button>
+                    )}
                     <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => handleSelectTab('company')}>
                         <Building2 size={16} /> Şirket Bilgileri
                     </button>
@@ -838,8 +851,6 @@ const KnowledgeBase = () => {
                                                     </div>
                                                     {branch.address && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📍 {branch.address}</div>}
                                                     {branch.phone && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📞 {branch.phone}</div>}
-                                                    {branch.defaultTeamId && <div style={{ fontSize: '0.8rem', color: 'var(--primary, #ef4444)', marginTop: '8px', fontWeight: 500 }}>Takım: {teams.find(t => t.id === branch.defaultTeamId)?.name || 'Bilinmiyor'}</div>}
-                                                    {branch.defaultFunnelId && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Akış: {funnels.find(f => f.id === branch.defaultFunnelId)?.name || 'Bilinmiyor'}</div>}
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
                                                     <button className="btn-icon" onClick={() => {
@@ -847,8 +858,6 @@ const KnowledgeBase = () => {
                                                         setEditBranchName(branch.name);
                                                         setEditBranchAddress(branch.address || '');
                                                         setEditBranchPhone(branch.phone || '');
-                                                        setEditBranchTeamId(branch.defaultTeamId || '');
-                                                        setEditBranchFunnelId(branch.defaultFunnelId || '');
                                                         setEditBranchIntegrationType(branch.integrationType || 'WORKSPACE_DEFAULT');
                                                         setEditBranchExternalCode(branch.externalBranchCode || '');
                                                         setEditBranchGoogleEmail(branch.googleEmail || '');
@@ -956,20 +965,6 @@ const KnowledgeBase = () => {
                                     </div>
                                 )}
                                 
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Varsayılan Takım</label>
-                                    <select className="input" value={editingBranch ? editBranchTeamId : newBranchTeamId} onChange={e => editingBranch ? setEditBranchTeamId(e.target.value) : setNewBranchTeamId(e.target.value)}>
-                                        <option value="">-- Seçiniz --</option>
-                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '16px' }}>
-                                    <label>Varsayılan Akış</label>
-                                    <select className="input" value={editingBranch ? editBranchFunnelId : newBranchFunnelId} onChange={e => editingBranch ? setEditBranchFunnelId(e.target.value) : setNewBranchFunnelId(e.target.value)}>
-                                        <option value="">-- Seçiniz --</option>
-                                        {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                    </select>
-                                </div>
 
                                 {editingBranch ? (
                                     <div style={{ display: 'flex', gap: '8px' }}>

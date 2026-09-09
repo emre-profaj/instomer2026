@@ -35,6 +35,7 @@ const Sidebar = () => {
     const [quickCounts, setQuickCounts] = useState({ calls: 0, meetings: 0, tasks: 0 }); // Quick action badge counts
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [wsSearch, setWsSearch] = useState('');
 
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -77,7 +78,7 @@ const Sidebar = () => {
         { path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
         { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' },
         { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' },
-        ...(user?.role === 'SUPER_ADMIN' ? [{ path: '/flow-test', icon: GitBranch, label: 'Akış Test' }] : [])
+        // ...(user?.role === 'SUPER_ADMIN' ? [{ path: '/flow-test', icon: GitBranch, label: 'Akış Test' }] : [])
     ];
 
     const isSettingsPath = (path) => {

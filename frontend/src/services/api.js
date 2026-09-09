@@ -403,6 +403,20 @@ export const aiAPI = {
     // İnsto Bot
     instoBotChat: (workspaceId, message, history, translateMode) => api.post(`/ai/${workspaceId}/insto-bot/chat`, { message, history, translateMode }),
 
+    // Insta (AI Workspace Architect & Configurator)
+    instaChat: (workspaceId, message, history) => api.post(`/ai/${workspaceId}/insta/chat`, { message, history }),
+    instaAnalyzeSource: (workspaceId, data) => {
+        if (data instanceof FormData) {
+            return api.post(`/ai/${workspaceId}/insta/analyze-source`, data, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+        }
+        return api.post(`/ai/${workspaceId}/insta/analyze-source`, data);
+    },
+    instaApplySetup: (workspaceId, payload) => api.post(`/ai/${workspaceId}/insta/apply-setup`, payload),
+    instaApplyAction: (workspaceId, actionType, payload) => api.post(`/ai/${workspaceId}/insta/apply-action`, { actionType, payload }),
+    instaGetHealth: (workspaceId) => api.get(`/ai/${workspaceId}/insta/health`),
+
     // Translation
     translateText: (workspaceId, text, targetLang) => api.post(`/ai/${workspaceId}/insto-bot/translate`, { text, targetLang })
 };

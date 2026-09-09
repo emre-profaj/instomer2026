@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import NotificationBanner from '../NotificationBanner/NotificationBanner';
+import Insta from '../Insta/Insta';
 import './Layout.css';
 
 // 🔧 Bakım Duyurusu Banner
@@ -94,6 +95,7 @@ const Layout = ({ title }) => {
                 </div>
             </div>
             <NotificationBanner />
+            <Insta />
         </div>
     );
 };

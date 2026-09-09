@@ -3808,7 +3808,6 @@ const Inbox = () => {
                 {/* ── Compact Bar: Search + Filtreler ── */}
                 <div className={`inbox-compact-bar${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                     <div className="inbox-compact-search">
-                        <Search size={15} className="search-icon" />
                         <input
                             type="text"
                             placeholder="Ara..."

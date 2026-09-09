@@ -8,6 +8,7 @@ import {
     BarChart2, Phone, Mail, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown
 } from 'lucide-react';
 import './Marketing.css';
+import '../KnowledgeBase/KnowledgeBase.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED UTILS & COMPONENTS
@@ -797,6 +798,7 @@ export default function Marketing() {
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState('campaigns');
     const [filterCampaignId, setFilterCampaignId] = useState('');
+
     const wsId = currentWorkspace?.id;
 
     const TABS = [
@@ -812,35 +814,32 @@ export default function Marketing() {
     };
 
     return (
-        <div className="mkt-page">
-            <div className="mkt-header">
-                <div className="mkt-header-inner">
-                    <div className="mkt-header-icon-wrap">
-                        <Megaphone size={22} />
+        <div className="mkt-page base-layout">
+            {/* Sol Sidebar */}
+            <div className="base-sidebar">
+                <div className="base-sidebar-header">
+                    <div className="base-sidebar-header-icon" style={{ background: '#eff6ff', color: '#2563eb', borderColor: '#dbeafe' }}>
+                        <Megaphone size={16} />
                     </div>
-                    <div>
-                        <h1 className="mkt-header-title">Pazarlama</h1>
-                        <p className="mkt-header-sub">Kampanyalar, gruplar ve mesaj yönetimi</p>
-                    </div>
+                    <span>Pazarlama</span>
                 </div>
-            </div>
-
-            <div className="mkt-tabs">
-                <div className="mkt-tabs-inner">
+                <nav className="base-nav">
                     {TABS.map(({ key, label, Icon }) => (
                         <button
                             key={key}
-                            className={`mkt-tab ${activeTab === key ? 'active' : ''}`}
+                            className={`base-nav-item ${activeTab === key ? 'active' : ''}`}
                             onClick={() => { setActiveTab(key); if (key !== 'adsets') setFilterCampaignId(''); }}
+                            style={activeTab === key ? { color: '#2563eb', borderColor: 'rgba(59,130,246,0.3)', boxShadow: '0 1px 4px rgba(37,99,235,0.08), 0 1px 2px rgba(0,0,0,0.03)' } : {}}
                         >
-                            <Icon size={15} />
+                            <Icon size={16} style={activeTab === key ? { color: '#2563eb' } : {}} />
                             {label}
                         </button>
                     ))}
-                </div>
+                </nav>
             </div>
 
-            <div className="mkt-tab-content">
+            {/* Sağ İçerik */}
+            <div className="base-content">
                 {activeTab === 'campaigns' && <CampaignsTab wsId={wsId} onGoToGroups={goToGroups} />}
                 {activeTab === 'adsets'    && <AdSetsTab wsId={wsId} initialCampaignFilter={filterCampaignId} />}
                 {activeTab === 'messages'  && <MessagesTab wsId={wsId} />}
