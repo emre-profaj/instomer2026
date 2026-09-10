@@ -811,6 +811,7 @@ export const quickReplyAPI = {
 // Workspace Automation Rules (Kurallar)
 export const rulesAPI = {
     getAll: (workspaceId) => api.get(`/rules/${workspaceId}/rules`),
+    getByStage: (workspaceId, stageId) => api.get(`/rules/${workspaceId}/rules/by-stage/${stageId}`),
     upsert: (workspaceId, ruleType, data) => api.put(`/rules/${workspaceId}/rules/${ruleType}`, data)
 };
 

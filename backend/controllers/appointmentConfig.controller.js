@@ -4,7 +4,7 @@ import prisma from '../lib/prisma.js';
 
 const getLocationsConfig = async (workspaceId) => {
     const locRule = await prisma.workspaceRule.findUnique({
-        where: { workspaceId_ruleType: { workspaceId, ruleType: 'CLINIC_LOCATIONS' } }
+        where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'CLINIC_LOCATIONS', linkedStageId: null } }
     });
 
     if (locRule?.config) {
@@ -39,7 +39,7 @@ const getLocationsConfig = async (workspaceId) => {
 
 const saveLocationsConfig = async (workspaceId, config) => {
     return prisma.workspaceRule.upsert({
-        where: { workspaceId_ruleType: { workspaceId, ruleType: 'CLINIC_LOCATIONS' } },
+        where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'CLINIC_LOCATIONS', linkedStageId: null } },
         create: {
             workspaceId,
             ruleType: 'CLINIC_LOCATIONS',
@@ -477,7 +477,7 @@ export const getFirmSettings = async (req, res) => {
 
         // Sector config
         const sectorRule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType: { workspaceId, ruleType: 'WORKSPACE_SECTOR' } }
+            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'WORKSPACE_SECTOR', linkedStageId: null } }
         });
 
         let sectorConfig = { sector: 'HEALTH' };
@@ -590,7 +590,7 @@ export const updateFirmSettings = async (req, res) => {
 
         if (sector) {
             await prisma.workspaceRule.upsert({
-                where: { workspaceId_ruleType: { workspaceId, ruleType: 'WORKSPACE_SECTOR' } },
+                where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'WORKSPACE_SECTOR', linkedStageId: null } },
                 create: {
                     workspaceId,
                     ruleType: 'WORKSPACE_SECTOR',
@@ -632,7 +632,7 @@ export const seedHealthDemo = async (req, res) => {
 
         // Set sector rule to HEALTH
         await prisma.workspaceRule.upsert({
-            where: { workspaceId_ruleType: { workspaceId, ruleType: 'WORKSPACE_SECTOR' } },
+            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'WORKSPACE_SECTOR', linkedStageId: null } },
             create: {
                 workspaceId,
                 ruleType: 'WORKSPACE_SECTOR',

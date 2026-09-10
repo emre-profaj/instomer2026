@@ -55,6 +55,26 @@ export async function executeEntryActions(stageId, contactId, workspaceId) {
                 console.error(`[StageAutomation] Entry action failed:`, action.type, err.message);
             }
         }
+
+        // ── Bağlı WorkspaceRule'ları da çalıştır ──
+        try {
+            const linkedRules = await prisma.workspaceRule.findMany({
+                where: { workspaceId, linkedStageId: stageId, isActive: true }
+            });
+            if (linkedRules.length > 0) {
+                console.log(`[StageAutomation] Found ${linkedRules.length} linked WorkspaceRules for stage ${stageId}`);
+                const { executeRule } = await import('./ruleEngine.service.js');
+                for (const rule of linkedRules) {
+                    try {
+                        await executeRule(workspaceId, rule.ruleType, { contactId }, { skipDuplicateCheck: false });
+                    } catch (rErr) {
+                        console.error(`[StageAutomation] LinkedRule ${rule.ruleType} error:`, rErr.message);
+                    }
+                }
+            }
+        } catch (lrErr) {
+            console.error(`[StageAutomation] LinkedRules lookup error:`, lrErr.message);
+        }
     } catch (err) {
         console.error('[StageAutomation] executeEntryActions error:', err.message);
     }
@@ -655,6 +675,84 @@ export async function executeSingleAction(action, contactId, workspaceId) {
                 console.log(`[StageAutomation] AUTO_CHANNEL message sent via ${conv.channel}`);
             } catch (err) {
                 console.error(`[StageAutomation] AUTO_CHANNEL failed:`, err.message);
+            }
+            break;
+        }
+
+        case 'MOVE_STAGE':
+        case ACTION_TYPES.MOVE_STAGE: {
+            const targetStageId = action.targetStageId || action.stageId;
+            if (!targetStageId) {
+                console.warn(`[StageAutomation] MOVE_STAGE: targetStageId yok, skip`);
+                break;
+            }
+            try {
+                const { changeFunnelStage } = await import('../controllers/funnel.controller.js');
+                const conversation = await prisma.conversation.findFirst({
+                    where: { contactId, workspaceId }
+                });
+                if (conversation) {
+                    await changeFunnelStage(conversation.id, targetStageId, workspaceId, 'AUTOMATION');
+                    console.log(`↗️ [StageAutomation] MOVE_STAGE → contact ${contactId} → stage ${targetStageId}`);
+                }
+            } catch (err) {
+                console.error(`[StageAutomation] MOVE_STAGE error:`, err.message);
+            }
+            break;
+        }
+
+        case 'SEND_LOCATION': {
+            try {
+                const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({
+                    where: { workspaceId, isActive: true }
+                });
+                const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+                if (!whatsappPhone || !contact?.phone) {
+                    console.warn(`[StageAutomation] SEND_LOCATION: WhatsApp phone veya contact phone yok`);
+                    break;
+                }
+                const locationData = {
+                    lat: action.lat || action.latitude,
+                    lng: action.lng || action.longitude,
+                    name: action.locationName || action.name || '',
+                    address: action.address || ''
+                };
+                if (!locationData.lat || !locationData.lng) {
+                    // Config'den şube bilgisi çek
+                    const locationRule = await prisma.workspaceRule.findFirst({
+                        where: { workspaceId, ruleType: 'CLINIC_LOCATIONS' }
+                    });
+                    if (locationRule) {
+                        const locConfig = JSON.parse(locationRule.config || '{}');
+                        const locations = locConfig.locations || [];
+                        const defaultLoc = locations.find(l => l.isActive) || locations[0];
+                        if (defaultLoc) {
+                            locationData.lat = defaultLoc.lat || 0;
+                            locationData.lng = defaultLoc.lng || 0;
+                            locationData.name = defaultLoc.name || '';
+                            locationData.address = defaultLoc.address || '';
+                        }
+                    }
+                }
+                if (locationData.lat && locationData.lng) {
+                    const { sendWhatsAppPayload } = await import('../controllers/whatsapp.helpers.js');
+                    await sendWhatsAppPayload(whatsappPhone, {
+                        messaging_product: 'whatsapp',
+                        to: contact.phone.replace(/[^0-9]/g, ''),
+                        type: 'location',
+                        location: {
+                            latitude: String(locationData.lat),
+                            longitude: String(locationData.lng),
+                            name: locationData.name,
+                            address: locationData.address
+                        }
+                    });
+                    console.log(`📍 [StageAutomation] SEND_LOCATION → ${contact.phone}`);
+                } else {
+                    console.warn(`[StageAutomation] SEND_LOCATION: Koordinat bulunamadı`);
+                }
+            } catch (err) {
+                console.error(`[StageAutomation] SEND_LOCATION error:`, err.message);
             }
             break;
         }

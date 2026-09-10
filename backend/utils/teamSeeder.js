@@ -91,7 +91,7 @@ export async function seedDefaultRules(workspaceId) {
         for (const rule of DEFAULT_RULES) {
             await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId, ruleType: rule.ruleType }
+                    workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: rule.ruleType, linkedStageId: null }
                 },
                 create: {
                     workspaceId,

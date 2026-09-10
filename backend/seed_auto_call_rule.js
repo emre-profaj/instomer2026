@@ -24,7 +24,7 @@ async function seedAutoCallRuleForAllWorkspaces() {
             // SALES_PHONE_CALL
             const result = await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId: ws.id, ruleType: 'SALES_PHONE_CALL' }
+                    workspaceId_ruleType_linkedStageId: { workspaceId: ws.id, ruleType: 'SALES_PHONE_CALL', linkedStageId: null }
                 },
                 create: {
                     workspaceId: ws.id,
@@ -41,7 +41,7 @@ async function seedAutoCallRuleForAllWorkspaces() {
             // PHONE_CAPTURE
             await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId: ws.id, ruleType: 'PHONE_CAPTURE' }
+                    workspaceId_ruleType_linkedStageId: { workspaceId: ws.id, ruleType: 'PHONE_CAPTURE', linkedStageId: null }
                 },
                 create: {
                     workspaceId: ws.id,
@@ -55,7 +55,7 @@ async function seedAutoCallRuleForAllWorkspaces() {
             // APPOINTMENT_AUTO_PLAN
             await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId: ws.id, ruleType: 'APPOINTMENT_AUTO_PLAN' }
+                    workspaceId_ruleType_linkedStageId: { workspaceId: ws.id, ruleType: 'APPOINTMENT_AUTO_PLAN', linkedStageId: null }
                 },
                 create: {
                     workspaceId: ws.id,

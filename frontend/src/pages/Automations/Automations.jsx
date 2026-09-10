@@ -99,6 +99,7 @@ const Automations = ({ initialTab }) => {
     // Keyword editing
     const [newKeyword, setNewKeyword] = useState('');
     const [expandedRules, setExpandedRules] = useState({ HOT_KEYWORD: true, HOT_OPPORT_EMAIL: true });
+    const [selectedFunnelForRule, setSelectedFunnelForRule] = useState({});
 
     const [segmentList, setSegmentList] = useState([]);
     const [segmentGroups, setSegmentGroups] = useState({});
@@ -566,37 +567,7 @@ const Automations = ({ initialTab }) => {
                 </div>
             </div>
 
-            {/* Tabs */}
-            <div className="automations-tabs">
-                <button
-                    className={`tab-btn ${activeTab === 'automations' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('automations')}
-                >
-                    <Zap size={18} />
-                    Basit Otomasyonlar ({automations.length})
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'flows' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('flows')}
-                >
-                    <GitBranch size={18} />
-                    Dinamik Otomasyonlar
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'unified' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('unified')}
-                >
-                    <Settings size={18} />
-                    Tüm Otomasyonlar
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'retellTemplates' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('retellTemplates')}
-                >
-                    <Phone size={18} />
-                    Arama Şablonları
-                </button>
-            </div>
+            {/* Tab bar hidden — controlled by initialTab prop from Hub */}
 
             {/* Content */}
             <div className="automations-content">
@@ -1002,24 +973,45 @@ const Automations = ({ initialTab }) => {
                                                                             </div>
                                                                         )}
 
-                                                                        {/* Bağlı Aşama — otomasyon-akış dedup bağlantısı */}
-                                                                        <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e5e7eb' }}>
-                                                                            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>🔗 Bağlı Akış Aşaması</label>
-                                                                            <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                value={rule.linkedStageId || ''} onChange={e => {
-                                                                                    const stageId = e.target.value || null;
-                                                                                    saveRule(auto.type, { isActive: rule.isActive, config: cfg, linkedStageId: stageId });
-                                                                                }}>
-                                                                                <option value="">Aşama bağlantısı yok</option>
-                                                                                {funnels.flatMap(f => (f.stages || []).map(s => (
-                                                                                    <option key={s.id} value={s.id}>{f.name} → {s.name}</option>
-                                                                                )))}
-                                                                            </select>
-                                                                            {rule.linkedStage && (
-                                                                                <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '3px' }}>
-                                                                                    ✅ {rule.linkedStage.funnel?.name} → {rule.linkedStage.name} aşamasına bağlı
-                                                                                </div>
-                                                                            )}
+                                                                        {/* Bağlı Aşama Seçici */}
+                                                                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+                                                                            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '6px' }}>📌 Bağlı Aşama</label>
+                                                                            <p style={{ fontSize: '0.7rem', color: '#9ca3af', margin: '0 0 6px' }}>Bir aşamaya bağlarsanız, sadece o aşamadaki kişilere uygulanır</p>
+                                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                                <select
+                                                                                    style={{ flex: 1, padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                    value={(() => {
+                                                                                        const r = getRule(auto.type);
+                                                                                        if (!r.linkedStage) return '';
+                                                                                        return r.linkedStage?.funnel?.id || '';
+                                                                                    })()}
+                                                                                    onChange={e => {
+                                                                                        // When funnel changes, reset stage
+                                                                                        if (!e.target.value) {
+                                                                                            saveRule(auto.type, { isActive: rule.isActive, config: rule.config, linkedStageId: null });
+                                                                                        }
+                                                                                        setSelectedFunnelForRule(prev => ({ ...prev, [auto.type]: e.target.value }));
+                                                                                    }}
+                                                                                >
+                                                                                    <option value="">Akış seçin...</option>
+                                                                                    {funnels.map(f => <option key={f.id} value={f.id}>{f.icon} {f.name}</option>)}
+                                                                                </select>
+                                                                                <select
+                                                                                    style={{ flex: 1, padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                    value={rule.linkedStageId || rule.linkedStage?.id || ''}
+                                                                                    onChange={e => {
+                                                                                        saveRule(auto.type, { isActive: rule.isActive, config: rule.config, linkedStageId: e.target.value || null });
+                                                                                    }}
+                                                                                >
+                                                                                    <option value="">Aşama seçin...</option>
+                                                                                    {(() => {
+                                                                                        const selFunnel = selectedFunnelForRule[auto.type] || rule.linkedStage?.funnel?.id;
+                                                                                        if (!selFunnel) return null;
+                                                                                        const funnel = funnels.find(f => f.id === selFunnel);
+                                                                                        return (funnel?.stages || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>);
+                                                                                    })()}
+                                                                                </select>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 )}

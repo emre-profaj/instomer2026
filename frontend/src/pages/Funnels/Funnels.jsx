@@ -29,6 +29,23 @@ const Funnels = () => {
     const [saving, setSaving] = useState(false);
 
     const [stageSaving, setStageSaving] = useState(false);
+    
+    const [linkedAutomations, setLinkedAutomations] = useState([]);
+    const [linkedAutomationsLoading, setLinkedAutomationsLoading] = useState(false);
+
+    const loadLinkedAutomations = async (stageId) => {
+        if (!stageId || !currentWorkspace?.id) return;
+        setLinkedAutomationsLoading(true);
+        try {
+            const res = await rulesAPI.getByStage(currentWorkspace.id, stageId);
+            setLinkedAutomations(res.data?.rules || []);
+        } catch (err) {
+            console.error('Linked automations load error:', err);
+            setLinkedAutomations([]);
+        } finally {
+            setLinkedAutomationsLoading(false);
+        }
+    };
 
     // Teams and Members loaded for dropdowns
     const [teams, setTeams] = useState([]);
@@ -359,6 +376,7 @@ const Funnels = () => {
             entryRules: stage.entryRules || ''
         });
         setFunnelPanel(null);
+        loadLinkedAutomations(stage.id);
     };
 
     const openFunnelPanel = (funnel) => {
@@ -973,6 +991,67 @@ const Funnels = () => {
                                     );
                                 })()}
                             </div>
+                            {/* 🔗 Bağlı Otomasyonlar */}
+                            <div className="settings-section" style={{ background: '#f0f7ff', borderRadius: '10px', padding: '14px', margin: '8px 0' }}>
+                                <div className="settings-section-title">🔗 Bağlı Otomasyonlar</div>
+                                <p className="settings-hint" style={{ marginBottom: '10px' }}>Otomasyonlar sayfasından bu aşamaya bağlanan kurallar</p>
+                                {linkedAutomationsLoading ? (
+                                    <div style={{ textAlign: 'center', padding: '12px', color: '#9ca3af', fontSize: '0.8rem' }}>Yükleniyor...</div>
+                                ) : linkedAutomations.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '12px', color: '#9ca3af', fontSize: '0.8rem' }}>
+                                        Bu aşamaya bağlı otomasyon yok
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {linkedAutomations.map(rule => (
+                                            <div key={rule.id} style={{
+                                                padding: '10px 12px',
+                                                background: '#fff',
+                                                border: rule.isActive ? '1px solid #bbf7d0' : '1px solid #e5e7eb',
+                                                borderRadius: '8px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ fontWeight: 600, fontSize: '0.82rem', color: rule.isActive ? '#111827' : '#9ca3af' }}>
+                                                            {rule.ruleType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: '0.6rem', fontWeight: 600, padding: '1px 6px', borderRadius: '6px',
+                                                            background: rule.isActive ? '#dcfce7' : '#f3f4f6',
+                                                            color: rule.isActive ? '#16a34a' : '#9ca3af'
+                                                        }}>
+                                                            {rule.isActive ? 'AKTİF' : 'PASİF'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <label className="toggle-switch" style={{ transform: 'scale(0.8)' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={rule.isActive}
+                                                        onChange={async () => {
+                                                            try {
+                                                                await rulesAPI.upsert(currentWorkspace.id, rule.ruleType, {
+                                                                    isActive: !rule.isActive,
+                                                                    config: rule.config,
+                                                                    linkedStageId: rule.linkedStageId
+                                                                });
+                                                                loadLinkedAutomations(stagePanel.id);
+                                                            } catch (err) {
+                                                                console.error('Toggle linked automation error:', err);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="toggle-slider" />
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
 
                             {/* Zamanlı Aksiyonlar */}
                             <div className="settings-section">
@@ -1067,6 +1146,68 @@ const Funnels = () => {
                                                 const newActions = [...actions, { type: 'CREATE_TASK', delayDays: 1, delayHours: 0, title: '' }];
                                                 setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
                                             }}>+ Zamanlı Aksiyon Ekle</button>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Çıkış Aksiyonları */}
+                            <div className="settings-section">
+                                <div className="settings-section-title">🚪 Çıkış Aksiyonları</div>
+                                <p className="settings-hint">Bir kişi bu aşamadan ayrıldığında otomatik çalışır</p>
+                                {(() => {
+                                    const config = stagePanel.exitActions ? (typeof stagePanel.exitActions === 'string' ? JSON.parse(stagePanel.exitActions) : stagePanel.exitActions) : { actions: [] };
+                                    const actions = config.actions || [];
+                                    const updateExitAction = (idx, changes) => {
+                                        const newActions = [...actions];
+                                        newActions[idx] = { ...newActions[idx], ...changes };
+                                        setStagePanel(p => ({ ...p, exitActions: JSON.stringify({ actions: newActions }) }));
+                                    };
+                                    return (
+                                        <>
+                                            {actions.map((a, i) => (
+                                                <div key={i} className="automation-item channel-action">
+                                                    <div className="action-row">
+                                                        <select
+                                                            value={a.type}
+                                                            onChange={e => updateExitAction(i, { type: e.target.value })}
+                                                        >
+                                                            <optgroup label="⚙️ Genel">
+                                                                <option value="CREATE_TASK">📋 Görev Oluştur</option>
+                                                                <option value="ADD_TAG">🏷️ Etiket Ekle</option>
+                                                                <option value="NOTIFY_TEAM">🔔 Takıma Bildir</option>
+                                                            </optgroup>
+                                                            <optgroup label="📱 WhatsApp">
+                                                                <option value="WA_SEND_TEMPLATE">📱 Şablon Gönder</option>
+                                                                <option value="WA_SEND_MESSAGE">💬 Mesaj Gönder</option>
+                                                            </optgroup>
+                                                        </select>
+                                                        <button className="btn-icon" onClick={() => {
+                                                            const newActions = actions.filter((_, idx) => idx !== i);
+                                                            setStagePanel(p => ({ ...p, exitActions: JSON.stringify({ actions: newActions }) }));
+                                                        }}><X size={12} /></button>
+                                                    </div>
+                                                    {a.type === 'WA_SEND_TEMPLATE' && (
+                                                        <select className="action-param" value={a.templateId || ''} onChange={e => updateExitAction(i, { templateId: e.target.value })}>
+                                                            <option value="">Şablon Seç...</option>
+                                                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {['WA_SEND_MESSAGE'].includes(a.type) && (
+                                                        <textarea className="action-param" placeholder="Mesaj içeriği" rows={2} value={a.message || ''} onChange={e => updateExitAction(i, { message: e.target.value })} />
+                                                    )}
+                                                    {['CREATE_TASK', 'NOTIFY_TEAM'].includes(a.type) && (
+                                                        <input className="action-param" placeholder={a.type === 'CREATE_TASK' ? 'Görev başlığı' : 'Bildirim içeriği'} value={a.title || ''} onChange={e => updateExitAction(i, { title: e.target.value })} />
+                                                    )}
+                                                    {a.type === 'ADD_TAG' && (
+                                                        <input className="action-param" placeholder="Etiket adı" value={a.tagName || ''} onChange={e => updateExitAction(i, { tagName: e.target.value })} />
+                                                    )}
+                                                </div>
+                                            ))}
+                                            <button className="btn-add-sm" onClick={() => {
+                                                const newActions = [...actions, { type: 'NOTIFY_TEAM', title: '' }];
+                                                setStagePanel(p => ({ ...p, exitActions: JSON.stringify({ actions: newActions }) }));
+                                            }}>+ Çıkış Aksiyonu Ekle</button>
                                         </>
                                     );
                                 })()}

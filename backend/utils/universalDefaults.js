@@ -157,4 +157,122 @@ export const DEFAULT_AUTOMATION_RULES = [
         needsTemplate: true,
         label: 'Memnuniyet Anketi (kapanış sonrası)'
     },
+    {
+        ruleType: 'APPOINTMENT_CONFIRM',
+        isActive: false,
+        config: { reminderHours: 24 },
+        linkedStageName: 'Randevu Verildi',
+        linkedFunnelType: 'APPOINTMENT',
+        needsTemplate: true,
+        label: 'Randevu Teyidi (24 saat önce)'
+    },
+    {
+        ruleType: 'APPOINTMENT_PLANNED_NOTIFY',
+        isActive: true,
+        config: {},
+        linkedStageName: 'Görüşme Planlandı',
+        linkedFunnelType: 'APPOINTMENT',
+        needsTemplate: true,
+        label: 'Randevu Planlandı Mesajı'
+    },
+    {
+        ruleType: 'NO_SHOW_FOLLOWUP',
+        isActive: false,
+        config: { delayMinutes: 120 },
+        linkedStageName: null,
+        linkedFunnelType: 'APPOINTMENT',
+        needsTemplate: true,
+        label: 'Gelmedi Takibi (2 saat sonra)'
+    },
+    {
+        ruleType: 'QUOTE_EXPIRY_NOTIFY',
+        isActive: false,
+        config: { daysAfter: 14 },
+        linkedStageName: 'Teklif Verildi',
+        linkedFunnelType: 'SALES',
+        needsTemplate: true,
+        label: 'Teklif Süresi Dolmak Üzere (14 gün)'
+    },
+    {
+        ruleType: 'POST_SALE_FOLLOWUP',
+        isActive: false,
+        config: { delayMinutes: 1440 },
+        linkedStageName: 'Kazanıldı',
+        linkedFunnelType: 'SALES',
+        needsTemplate: true,
+        label: 'Satış Sonrası Takip (1 gün)'
+    },
+    {
+        ruleType: 'BIRTHDAY_GREETING',
+        isActive: false,
+        config: {},
+        linkedStageName: null,
+        linkedFunnelType: null,
+        needsTemplate: true,
+        label: 'Doğum Günü Kutlama'
+    },
+    {
+        ruleType: 'DRIP_DAY_0',
+        isActive: false,
+        config: {},
+        linkedStageName: 'Yeni Başvuru',
+        linkedFunnelType: 'SALES',
+        needsTemplate: true,
+        label: 'Başvuru Günü Mesajı'
+    },
+    {
+        ruleType: 'DRIP_DAY_3',
+        isActive: false,
+        config: {},
+        linkedStageName: null,
+        linkedFunnelType: null,
+        needsTemplate: true,
+        label: '3. Gün Takip Mesajı'
+    },
+    {
+        ruleType: 'DRIP_DAY_14',
+        isActive: false,
+        config: {},
+        linkedStageName: null,
+        linkedFunnelType: null,
+        needsTemplate: true,
+        label: '14. Gün Kampanya Mesajı'
+    },
+    {
+        ruleType: 'DRIP_DAY_30',
+        isActive: false,
+        config: {},
+        linkedStageName: null,
+        linkedFunnelType: null,
+        needsTemplate: true,
+        label: '30. Gün Son Şans Mesajı'
+    },
+    {
+        ruleType: 'REFERRAL_REQUEST',
+        isActive: false,
+        config: {},
+        linkedStageName: 'Kazanıldı',
+        linkedFunnelType: 'SALES',
+        needsTemplate: true,
+        label: 'Referans İsteği'
+    },
+    {
+        ruleType: 'CUSTOMER_1ST_YEAR',
+        isActive: false,
+        config: {},
+        linkedStageName: null,
+        linkedFunnelType: null,
+        needsTemplate: true,
+        label: 'Müşteri 1. Yıl Kutlama'
+    },
+    {
+        ruleType: 'POSITIVE_LEAD_CAMPAIGN',
+        isActive: false,
+        config: {},
+        linkedStageName: null,
+        linkedFunnelType: null,
+        needsTemplate: true,
+        label: 'Olumlu Lead Kampanyası'
+    },
 ];
+

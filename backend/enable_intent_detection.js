@@ -33,7 +33,7 @@ async function enableIntentDetectionForAll() {
             // SALES_PHONE_CALL (Arama Talebi Algılama)
             const callRule = await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId: ws.id, ruleType: 'SALES_PHONE_CALL' }
+                    workspaceId_ruleType_linkedStageId: { workspaceId: ws.id, ruleType: 'SALES_PHONE_CALL', linkedStageId: null }
                 },
                 create: {
                     workspaceId: ws.id,
@@ -47,7 +47,7 @@ async function enableIntentDetectionForAll() {
             // APPOINTMENT_AUTO_PLAN (Randevu Talebi Algılama)
             const apptRule = await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId: ws.id, ruleType: 'APPOINTMENT_AUTO_PLAN' }
+                    workspaceId_ruleType_linkedStageId: { workspaceId: ws.id, ruleType: 'APPOINTMENT_AUTO_PLAN', linkedStageId: null }
                 },
                 create: {
                     workspaceId: ws.id,
@@ -61,7 +61,7 @@ async function enableIntentDetectionForAll() {
             // PHONE_CAPTURE (Telefon Yakalama) — da aktif olsun
             await prisma.workspaceRule.upsert({
                 where: {
-                    workspaceId_ruleType: { workspaceId: ws.id, ruleType: 'PHONE_CAPTURE' }
+                    workspaceId_ruleType_linkedStageId: { workspaceId: ws.id, ruleType: 'PHONE_CAPTURE', linkedStageId: null }
                 },
                 create: {
                     workspaceId: ws.id,

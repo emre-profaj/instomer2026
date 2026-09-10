@@ -22,8 +22,8 @@ const OtomasyonlarHub = () => {
         { key: 'agents', icon: Bot, label: 'Agents (Mesaj & Call)' },
         { key: 'classifier', icon: Brain, label: 'Sınıflandırma & Yönlendirme' },
         { key: 'taskManager', icon: ListTodo, label: 'Görev Yöneticisi' },
-        { key: 'basic', icon: Zap, label: 'Temel Otomasyonlar' },
-        { key: 'advanced', icon: GitBranch, label: 'Gelişmiş Otomasyonlar' },
+        { key: 'automations', icon: Zap, label: 'Otomasyonlar' },
+        { key: 'flowBuilder', icon: GitBranch, label: 'Akış Oluşturucu' },
         { key: 'callTemplates', icon: Phone, label: 'Arama Şablonları' },
         { key: 'integrations', icon: Settings, label: 'Entegrasyonlar & Bot Araçları' },
     ];
@@ -72,15 +72,15 @@ const OtomasyonlarHub = () => {
                     <TaskManagerSection workspaceId={currentWorkspace.id} />
                 )}
 
-                {/* Temel Otomasyonlar — mevcut Automations automations tab */}
-                {activeSection === 'basic' && (
+                {/* Otomasyonlar — Tüm otomasyonlar tek sayfada */}
+                {activeSection === 'automations' && (
                     <div style={{ margin: '-24px' }}>
                         <Automations initialTab="automations" />
                     </div>
                 )}
 
-                {/* Gelişmiş Otomasyonlar — mevcut Automations flows tab */}
-                {activeSection === 'advanced' && (
+                {/* Akış Oluşturucu — Visual flow builder */}
+                {activeSection === 'flowBuilder' && (
                     <div style={{ margin: '-24px' }}>
                         <Automations initialTab="flows" />
                     </div>

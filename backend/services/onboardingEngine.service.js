@@ -66,7 +66,7 @@ export async function applyUniversalDefaults(workspaceId) {
 
                 await prisma.workspaceRule.upsert({
                     where: {
-                        workspaceId_ruleType: { workspaceId, ruleType: ruleDef.ruleType }
+                        workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: ruleDef.ruleType, linkedStageId: null }
                     },
                     create: {
                         workspaceId,

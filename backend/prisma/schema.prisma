@@ -1151,7 +1151,7 @@ model WorkspaceRule {
   updatedAt     DateTime     @updatedAt
   workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@unique([workspaceId, ruleType])
+  @@unique([workspaceId, ruleType, linkedStageId])
   @@index([workspaceId])
   @@index([linkedStageId])
   @@map("workspace_rules")
