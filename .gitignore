@@ -16,6 +16,8 @@ logs/
 
 # Build
 dist/
+!frontend/dist/
+!frontend/dist/**
 build/
 
 # IDE
