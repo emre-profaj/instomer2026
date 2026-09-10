@@ -1802,7 +1802,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                         where: { conversationId },
                         orderBy: { createdAt: 'desc' },
                         take: 15,
-                        select: { content: true, isFromContact: true, direction: true }
+                        select: { content: true, isFromContact: true }
                     });
 
                     // Contact bilgilerini al

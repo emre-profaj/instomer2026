@@ -123,7 +123,7 @@ export async function executeUnifiedAICall({
 
         // ── 3. Konuşma geçmişini formatla ──
         const chatLog = recentMessages.map(m => {
-            const role = m.direction === 'IN' ? 'Müşteri' : 'Temsilci';
+            const role = (m.isFromContact || m.direction === 'IN') ? 'Müşteri' : 'Temsilci';
             return `${role}: ${m.content?.substring(0, 300) || ''}`;
         }).join('\n');
 
