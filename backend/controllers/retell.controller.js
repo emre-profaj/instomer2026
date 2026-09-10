@@ -2216,9 +2216,10 @@ export const bulkCall = async (req, res) => {
             for (let i = 0; i < contacts.length; i++) {
                 const c = contacts[i];
                 try {
-                    let phone = (c.phone || '').replace(/[\s\+\-\(\)]/g, '');
-                    if (phone.startsWith('0')) phone = '90' + phone.substring(1);
-                    else if (!phone.startsWith('90') && phone.length === 10) phone = '90' + phone;
+                    const phone = normalizePhone(c.phone);
+                    if (!phone) {
+                        throw new Error(`Geçersiz telefon numarası: ${c.phone || 'boş'}`);
+                    }
 
                     const callResponse = await client.call.createPhoneCall({
                         from_number: normalizePhone(workspace.retellFromNumber),
@@ -2355,6 +2356,9 @@ export const makeCall = async (req, res) => {
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const formattedTo = normalizePhone(toNumber);
+        if (!formattedTo || formattedTo.replace(/\D/g, '').length < 7) {
+            return res.status(400).json({ error: 'Geçersiz telefon numarası. Lütfen geçerli bir numara girin.' });
+        }
         const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, sourceConversationId);
         const effectiveAgentId = agentId || teamAgentId || workspace.retellAgentId;
 

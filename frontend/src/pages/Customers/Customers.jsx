@@ -65,6 +65,36 @@ import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import PipelineView from '../Pipeline/Pipeline';
 import NewConversationModal from '../../components/NewConversationModal/NewConversationModal';
 
+export const getContactPrimaryPhone = (contact) => {
+    if (!contact) return null;
+    const isValid = (num) => {
+        if (!num || typeof num !== 'string') return false;
+        const cleaned = num.replace(/[\s\-\(\)\.\[\]\"\'\{\}]/g, '').trim();
+        const digits = cleaned.replace(/\D/g, '');
+        return digits.length >= 7;
+    };
+
+    if (isValid(contact.phone)) return contact.phone.trim();
+
+    if (contact.phones) {
+        if (Array.isArray(contact.phones)) {
+            const found = contact.phones.find(p => isValid(p));
+            if (found) return found.trim();
+        } else if (typeof contact.phones === 'string') {
+            try {
+                const parsed = JSON.parse(contact.phones);
+                if (Array.isArray(parsed)) {
+                    const found = parsed.find(p => isValid(p));
+                    if (found) return found.trim();
+                }
+            } catch {
+                if (isValid(contact.phones)) return contact.phones.trim();
+            }
+        }
+    }
+    return null;
+};
+
 const Customers = () => {
     const { currentWorkspace, user } = useAuth();
     const navigate = useNavigate();
@@ -2934,8 +2964,8 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             {contact.email && (
                                                                 <span className="contact-email">{contact.email}</span>
                                                             )}
-                                                            {contact.phone && (
-                                                                <span className="contact-phone-sub">{contact.phone}</span>
+                                                            {getContactPrimaryPhone(contact) && (
+                                                                <span className="contact-phone-sub">{getContactPrimaryPhone(contact)}</span>
                                                             )}
                                                         </div>
                                                     </div>
@@ -3530,7 +3560,9 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                 <div style={{ padding: '1.5rem' }}>
                                     {(() => {
                                         const pool = allSelectedContacts.length > 0 ? allSelectedContacts : contacts;
-                                        const eligibleContacts = pool.filter(c => selectedIds.includes(c.id) && (c.phone || c.phones?.[0]));
+                                        const eligibleContacts = pool
+                                            .map(c => ({ ...c, resolvedPhone: getContactPrimaryPhone(c) }))
+                                            .filter(c => selectedIds.includes(c.id) && c.resolvedPhone);
                                         return (
                                             <>
                                                 <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
@@ -3571,7 +3603,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     try {
                                                                         await automationAPI.sendTemplateDynamic(currentWorkspace.id, {
                                                                             templateName: selectedTemplate,
-                                                                            phoneNumber: c.phone || c.phones?.[0],
+                                                                            phoneNumber: c.resolvedPhone,
                                                                             customerName: c.name || 'Müşteri'
                                                                         });
                                                                     } catch (e) { errors++; }
@@ -3695,7 +3727,9 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                 <div style={{ padding: '1.5rem' }}>
                                     {(() => {
                                         const pool = allSelectedContacts.length > 0 ? allSelectedContacts : contacts;
-                                        const eligibleContacts = pool.filter(c => selectedIds.includes(c.id) && (c.phone || c.phones?.[0]));
+                                        const eligibleContacts = pool
+                                            .map(c => ({ ...c, resolvedPhone: getContactPrimaryPhone(c) }))
+                                            .filter(c => selectedIds.includes(c.id) && c.resolvedPhone);
                                         return (
                                             <>
                                                 <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
@@ -3738,7 +3772,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             {eligibleContacts.map(c => (
                                                                 <div key={c.id} className="customers-bulk-call-item">
                                                                     <span>{c.name || 'İsimsiz'}</span>
-                                                                    <span style={{ color: '#6b7280', fontSize: '13px' }}>{c.phone || c.phones?.[0]}</span>
+                                                                    <span style={{ color: '#6b7280', fontSize: '13px' }}>{c.resolvedPhone}</span>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -3761,7 +3795,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     const c = eligibleContacts[i];
                                                                     try {
                                                                         await retellAPI.makeCall(currentWorkspace.id, {
-                                                                            toNumber: c.phone || c.phones?.[0],
+                                                                            toNumber: c.resolvedPhone,
                                                                             contactId: c.id,
                                                                             contactName: c.name || 'Müşteri',
                                                                             agentId: selectedAgentId

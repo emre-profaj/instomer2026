@@ -10,38 +10,46 @@
  * - Diğerleri → aynen bırak
  */
 export function normalizePhone(phone) {
-    if (!phone) return phone;
+    if (!phone) return '';
+    if (typeof phone !== 'string') phone = String(phone);
 
-    // Boşluk, tire, parantez, nokta temizle
-    let cleaned = phone.replace(/[\s\-\(\)\.]/g, '').trim();
+    // Boşluk, tire, parantez, nokta ve geçersiz parantez karakterlerini temizle
+    const hasPlus = phone.trim().startsWith('+');
+    let cleaned = phone.replace(/[\s\-\(\)\.\[\]\"\'\{\}]/g, '').trim();
+    if (!cleaned) return '';
 
-    // Zaten + ile başlıyorsa → uluslararası, dokunma
-    if (cleaned.startsWith('+')) {
-        return cleaned;
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length < 7) {
+        return '';
+    }
+
+    // Zaten + ile başlıyorsa → uluslararası (+ ve rakamlar)
+    if (hasPlus || cleaned.startsWith('+')) {
+        return '+' + digits;
     }
 
     // 00 ile başlıyorsa → uluslararası (00 → +)
     if (cleaned.startsWith('00')) {
-        return '+' + cleaned.slice(2);
+        return '+' + digits.slice(2);
     }
 
     // 0 ile başlayan 11 haneli → Türk numarası (05XX → +905XX)
-    if (cleaned.startsWith('0') && cleaned.length === 11) {
-        return '+9' + cleaned;
+    if (cleaned.startsWith('0') && digits.length === 11) {
+        return '+9' + digits;
     }
 
     // 5 ile başlayan 10 haneli → Türk GSM (5XX → +905XX)
-    if (cleaned.startsWith('5') && cleaned.length === 10) {
-        return '+90' + cleaned;
+    if (cleaned.startsWith('5') && digits.length === 10) {
+        return '+90' + digits;
     }
 
     // 90 ile başlayan 12 haneli → +90 ekle
-    if (cleaned.startsWith('90') && cleaned.length === 12) {
-        return '+' + cleaned;
+    if (cleaned.startsWith('90') && digits.length === 12) {
+        return '+' + digits;
     }
 
-    // Diğerleri → aynen bırak
-    return cleaned;
+    // Diğerleri → uluslararası format için başına + ekle
+    return '+' + digits;
 }
 
 /**
@@ -53,7 +61,7 @@ export function normalizePhonesArray(phonesJson) {
     try {
         const arr = JSON.parse(phonesJson);
         if (!Array.isArray(arr)) return phonesJson;
-        const normalized = arr.map(p => normalizePhone(p));
+        const normalized = arr.map(p => normalizePhone(p)).filter(Boolean);
         return JSON.stringify(normalized);
     } catch {
         return phonesJson;
