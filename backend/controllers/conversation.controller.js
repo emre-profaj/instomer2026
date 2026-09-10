@@ -1190,15 +1190,18 @@ export const assignConversation = async (req, res) => {
             ? `<b>${req.user?.name || 'Kullanıcı'}</b> konuşmayı <b>${assigneeName}</b> kullanıcısına atadı`
             : `<b>${req.user?.name || 'Kullanıcı'}</b> konuşma atamasını kaldırdı`;
 
-        logEvent({
-            conversationId,
-            contactId: conversation.contact?.id,
-            workspaceId,
-            eventType: 'ASSIGNED',
-            title: eventTitle,
-            actorId: req.user?.id,
-            actorType: 'USER'
-        }).catch(() => {});
+        let assignEvent = null;
+        try {
+            assignEvent = await logEvent({
+                conversationId,
+                contactId: conversation.contact?.id,
+                workspaceId,
+                eventType: 'ASSIGNED',
+                title: eventTitle,
+                actorId: req.user?.id,
+                actorType: 'USER'
+            });
+        } catch (_) {}
 
         // Atanan kişiye özel bildirim (browser notification + in-app notification)
         if (conversation.assignedToId && conversation.assignedToId !== req.user.id) {
@@ -1365,7 +1368,18 @@ export const assignConversation = async (req, res) => {
             }
         }
 
-        res.json({ conversation });
+        res.json({
+            conversation,
+            event: assignEvent ? {
+                id: assignEvent.id,
+                createdAt: assignEvent.createdAt,
+                eventType: assignEvent.eventType,
+                title: assignEvent.title,
+                actorType: assignEvent.actorType,
+                actorId: assignEvent.actorId,
+                details: assignEvent.details
+            } : null
+        });
     } catch (error) {
         console.error('❌ Assign conversation error:', error);
         res.status(500).json({ error: 'Atama sırasında sunucu hatası oluştu.' });
@@ -3320,21 +3334,25 @@ export const smartAssignConversation = async (req, res) => {
             } catch {}
         }
 
-        // WebSocket broadcast
+        // WebSocket broadcast — tüm workspace'e bildir
         try {
-            if (req.app?.locals?.io) {
-                req.app.locals.io.to(workspaceId).emit('conversation:assigned', {
-                    conversationId,
-                    teamId: teamId || null,
-                    agentId: resolvedAgentId,
-                    agentName: assignedTo?.name || null
-                });
-            }
-        } catch {}
+            emitToWorkspace(workspaceId, 'conversation_assigned', {
+                conversationId,
+                teamId: teamId || null,
+                teamIds: JSON.stringify(teamIds),
+                assignedToId: resolvedAgentId,
+                assignedToName: assignedTo?.name || null,
+                botEnabled: updated.botEnabled,
+                status: updated.status
+            });
+        } catch (wsErr) {
+            console.warn('Socket broadcast error:', wsErr.message);
+        }
 
         console.log(`✅ [Assign] Conv ${conversationId} → team:${teamId || 'none'} agent:${resolvedAgentId || 'pool'}`);
 
         // Log assignment event
+        let createdEvent = null;
         try {
             let teamName = null;
             if (teamId) {
@@ -3352,7 +3370,7 @@ export const smartAssignConversation = async (req, res) => {
             } else {
                 title = 'Atama güncellendi';
             }
-            logEvent({
+            createdEvent = await logEvent({
                 conversationId,
                 contactId: conversation.contactId,
                 workspaceId,
@@ -3361,10 +3379,25 @@ export const smartAssignConversation = async (req, res) => {
                 details: { teamId: teamId || null, agentId: resolvedAgentId || null, teamName, agentName },
                 actorId: req.user?.id,
                 actorType: 'USER'
-            }).catch(() => {});
-        } catch (_) {}
+            });
+        } catch (eventErr) {
+            console.error('Error logging assign event:', eventErr.message);
+        }
 
-        res.json({ success: true, conversation: { ...updated, assignedTo }, resolvedAgentId });
+        res.json({
+            success: true,
+            conversation: { ...updated, assignedTo },
+            resolvedAgentId,
+            event: createdEvent ? {
+                id: createdEvent.id,
+                createdAt: createdEvent.createdAt,
+                eventType: createdEvent.eventType,
+                title: createdEvent.title,
+                actorType: createdEvent.actorType,
+                actorId: createdEvent.actorId,
+                details: createdEvent.details
+            } : null
+        });
     } catch (error) {
         console.error('Assign Conversation Error:', error);
         res.status(500).json({ error: 'Atama yapılırken hata oluştu: ' + (error.message || String(error)) });
@@ -3486,15 +3519,18 @@ export const claimConversation = async (req, res) => {
         console.log(`🤝 [Claim] Conv ${conversationId} → agent:${userId}`);
 
         // Log claim event
-        logEvent({
-            conversationId,
-            contactId: conversation.contactId,
-            workspaceId,
-            eventType: 'CLAIMED',
-            title: `Konuşma <b>${req.user?.name || 'Bilinmeyen'}</b> tarafından üstlenildi`,
-            actorId: req.user?.id,
-            actorType: 'USER'
-        }).catch(() => {});
+        let claimEvent = null;
+        try {
+            claimEvent = await logEvent({
+                conversationId,
+                contactId: conversation.contactId,
+                workspaceId,
+                eventType: 'CLAIMED',
+                title: `Konuşma <b>${req.user?.name || 'Bilinmeyen'}</b> tarafından üstlenildi`,
+                actorId: req.user?.id,
+                actorType: 'USER'
+            });
+        } catch (_) {}
 
         // ═══════════════════════════════════════════════════════════
         // UPWARD CASCADE: Claim → Case → Siblings + Activities
@@ -3539,7 +3575,19 @@ export const claimConversation = async (req, res) => {
             }
         }
 
-        res.json({ success: true, conversation: updated });
+        res.json({
+            success: true,
+            conversation: updated,
+            event: claimEvent ? {
+                id: claimEvent.id,
+                createdAt: claimEvent.createdAt,
+                eventType: claimEvent.eventType,
+                title: claimEvent.title,
+                actorType: claimEvent.actorType,
+                actorId: claimEvent.actorId,
+                details: claimEvent.details
+            } : null
+        });
     } catch (error) {
         console.error('Claim Conversation Error:', error);
         res.status(500).json({ error: 'Üstlenme yapılırken hata oluştu' });

@@ -3453,6 +3453,42 @@ const Inbox = () => {
                 }
             }));
             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+
+            // ── Timeline'a atama sistem olayını anında ekle (sayfa yenilemeye gerek kalmadan) ──
+            const eventData = res.data?.event;
+            const teamName = teams?.find(t => t.id === teamId)?.name || null;
+            const fallbackTitle = teamName && agentName
+                ? `<b>${teamName}</b> takımına atandı — <b>${agentName}</b>'e verildi`
+                : teamName
+                    ? `<b>${teamName}</b> takımına atandı (havuz)`
+                    : agentName
+                        ? `<b>${agentName}</b> kişisine atandı`
+                        : 'Atama güncellendi';
+
+            const newSysEvt = eventData || {
+                id: `assign-${Date.now()}`,
+                createdAt: new Date().toISOString(),
+                isSystemEvent: true,
+                eventType: 'ASSIGNED',
+                title: fallbackTitle,
+                actorType: 'USER',
+                actorId: user?.id,
+                details: { teamId, agentId, teamName, agentName }
+            };
+
+            setMessages(prev => {
+                if (eventData && prev.some(m => m.id === eventData.id)) return prev;
+                return [...prev, {
+                    id: newSysEvt.id,
+                    createdAt: newSysEvt.createdAt,
+                    isSystemEvent: true,
+                    eventType: newSysEvt.eventType,
+                    title: newSysEvt.title,
+                    actorType: newSysEvt.actorType,
+                    actorId: newSysEvt.actorId,
+                    details: newSysEvt.details
+                }];
+            });
         } catch (e) {
             console.error('Assign error:', e);
             alert('Atama yapılamadı: ' + (e?.response?.data?.error || e?.message || 'Bilinmeyen hata'));
@@ -3506,6 +3542,32 @@ const Inbox = () => {
                 }
             }));
             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+
+            // ── Timeline'a üstlenme sistem olayını anında ekle (sayfa yenilemeye gerek kalmadan) ──
+            const claimEvtData = res.data?.event;
+            const newClaimEvt = claimEvtData || {
+                id: `claim-${Date.now()}`,
+                createdAt: new Date().toISOString(),
+                isSystemEvent: true,
+                eventType: 'CLAIMED',
+                title: `Konuşma <b>${user?.name || 'Bilinmeyen'}</b> tarafından üstlenildi`,
+                actorType: 'USER',
+                actorId: user?.id
+            };
+
+            setMessages(prev => {
+                if (claimEvtData && prev.some(m => m.id === claimEvtData.id)) return prev;
+                return [...prev, {
+                    id: newClaimEvt.id,
+                    createdAt: newClaimEvt.createdAt,
+                    isSystemEvent: true,
+                    eventType: newClaimEvt.eventType,
+                    title: newClaimEvt.title,
+                    actorType: newClaimEvt.actorType,
+                    actorId: newClaimEvt.actorId,
+                    details: newClaimEvt.details
+                }];
+            });
         } catch (e) {
             console.error('Claim error:', e);
         } finally {
@@ -7464,12 +7526,26 @@ const Inbox = () => {
                         onAssign={userId => handleAssignUser(selectedItem.id, userId)}
                         onAssignTeam={async (convId, teamId) => {
                             try {
-                                await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { teamId: teamId || null });
+                                const res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { teamId: teamId || null });
                                 const newTeamIds = teamId ? JSON.stringify([teamId]) : '[]';
                                 setSelectedItem(prev => prev ? { ...prev, teamIds: newTeamIds } : prev);
                                 setInboxItems(prev => prev.map(item =>
                                     item.id === selectedItem.id ? { ...item, teamIds: newTeamIds } : item
                                 ));
+                                const teamName = teams?.find(t => t.id === teamId)?.name || 'Takım';
+                                const evt = res?.data?.event || {
+                                    id: `team-assign-${Date.now()}`,
+                                    createdAt: new Date().toISOString(),
+                                    isSystemEvent: true,
+                                    eventType: 'ASSIGNED',
+                                    title: teamId ? `<b>${teamName}</b> takımına atandı` : 'Takım ataması kaldırıldı',
+                                    actorType: 'USER',
+                                    actorId: user?.id
+                                };
+                                setMessages(prev => {
+                                    if (res?.data?.event && prev.some(m => m.id === res.data.event.id)) return prev;
+                                    return [...prev, evt];
+                                });
                             } catch(e) {
                                 console.error('[Inbox] Team assign error:', e?.response?.data || e);
                                 alert('Takım ataması başarısız: ' + (e?.response?.data?.error || e.message));
@@ -7485,6 +7561,19 @@ const Inbox = () => {
                                 setInboxItems(prev => prev.map(item =>
                                     item.id === selectedItem.id ? { ...item, assignedToId: userId || null, assignedTo, teamIds: newTeamIds } : item
                                 ));
+                                const evt = res?.data?.event || {
+                                    id: `user-assign-${Date.now()}`,
+                                    createdAt: new Date().toISOString(),
+                                    isSystemEvent: true,
+                                    eventType: 'ASSIGNED',
+                                    title: assignedMember?.name ? `<b>${assignedMember.name}</b> kişisine atandı` : 'Kişi ataması kaldırıldı',
+                                    actorType: 'USER',
+                                    actorId: user?.id
+                                };
+                                setMessages(prev => {
+                                    if (res?.data?.event && prev.some(m => m.id === res.data.event.id)) return prev;
+                                    return [...prev, evt];
+                                });
                             } catch(e) {
                                 console.error('[Inbox] User assign error:', e?.response?.data || e);
                                 alert('Agent ataması başarısız: ' + (e?.response?.data?.error || e.message));
@@ -7502,6 +7591,19 @@ const Inbox = () => {
                                 setInboxItems(prev => prev.map(item =>
                                     item.id === selectedItem.id ? { ...item, assignedToId: myId, assignedTo: myInfo, teamIds: newTeamIds } : item
                                 ));
+                                const evt = response?.data?.event || {
+                                    id: `claim-${Date.now()}`,
+                                    createdAt: new Date().toISOString(),
+                                    isSystemEvent: true,
+                                    eventType: 'CLAIMED',
+                                    title: `Konuşma <b>${user?.name || 'Bilinmeyen'}</b> tarafından üstlenildi`,
+                                    actorType: 'USER',
+                                    actorId: user?.id
+                                };
+                                setMessages(prev => {
+                                    if (response?.data?.event && prev.some(m => m.id === response.data.event.id)) return prev;
+                                    return [...prev, evt];
+                                });
                             } catch(e) {
                                 console.error('[TakeOver/Claim] Error:', e);
                                 alert('Üstlenme başarısız: ' + (e?.response?.data?.error || e.message));
