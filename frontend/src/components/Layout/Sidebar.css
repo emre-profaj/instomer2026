@@ -877,3 +877,156 @@
 .mobile-bottom-nav {
     display: none;
 }
+
+/* ─── Insta AI Box (Sidebar Bottom, Above CHAT) ─── */
+.sidebar-insta-container {
+    padding: 6px 12px 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sidebar-insta-container.collapsed {
+    padding: 6px 8px 8px;
+    display: flex;
+    justify-content: center;
+}
+
+.sidebar-insta-box {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(244, 63, 94, 0.09) 100%);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-sizing: border-box;
+    text-align: left;
+    position: relative;
+    user-select: none;
+}
+
+.sidebar-insta-container.collapsed .sidebar-insta-box {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 10px;
+}
+
+.sidebar-insta-box:hover {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(244, 63, 94, 0.16) 100%);
+    border-color: rgba(239, 68, 68, 0.45);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.14);
+    transform: translateY(-1px);
+}
+
+.sidebar-insta-box:active {
+    transform: scale(0.98);
+}
+
+.sidebar-insta-box.active {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.14) 0%, rgba(244, 63, 94, 0.2) 100%);
+    border-color: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2), 0 4px 14px rgba(239, 68, 68, 0.16);
+}
+
+.sidebar-insta-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.sidebar-insta-icon-wrap {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: #ef4444;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+}
+
+.sidebar-insta-sparkle {
+    color: #ffffff;
+}
+
+.sidebar-insta-pulse-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 1.5px solid #ffffff;
+    box-shadow: 0 0 6px #22c55e;
+    animation: instaPulseDotAnim 2s infinite ease-in-out;
+}
+
+@keyframes instaPulseDotAnim {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.25); opacity: 0.7; }
+}
+
+.sidebar-insta-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sidebar-insta-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sidebar-insta-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.2;
+    letter-spacing: -0.2px;
+}
+
+.sidebar-insta-badge {
+    font-size: 9px;
+    font-weight: 800;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.12);
+    padding: 1px 4.5px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+    line-height: 1.2;
+}
+
+.sidebar-insta-sub {
+    font-size: 10.5px;
+    color: #64748b;
+    font-weight: 500;
+    line-height: 1.2;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-insta-action-arrow {
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-insta-box:hover .sidebar-insta-action-arrow {
+    color: #ef4444;
+    transform: translateX(2px);
+}

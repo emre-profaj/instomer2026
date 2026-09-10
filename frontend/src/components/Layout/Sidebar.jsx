@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -41,7 +41,19 @@ const Sidebar = () => {
         const saved = localStorage.getItem('sidebar-collapsed');
         return saved === 'true';
     });
+    const [isInstaOpen, setIsInstaOpen] = useState(false);
     const dropdownRef = useRef(null);
+
+    useEffect(() => {
+        const handleOpen = () => setIsInstaOpen(true);
+        const handleClose = () => setIsInstaOpen(false);
+        window.addEventListener('insta-opened', handleOpen);
+        window.addEventListener('insta-closed', handleClose);
+        return () => {
+            window.removeEventListener('insta-opened', handleOpen);
+            window.removeEventListener('insta-closed', handleClose);
+        };
+    }, []);
 
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
@@ -506,6 +518,39 @@ const Sidebar = () => {
                         </nav>
                     </div>
                 </div>
+
+                {/* Insta AI (Sadece SUPER_ADMIN) — Sol altta Chat yazısının hemen üzerinde kutucuk */}
+                {user?.role === 'SUPER_ADMIN' && (
+                    <div className={`sidebar-insta-container ${isCollapsed ? 'collapsed' : ''}`}>
+                        <button
+                            type="button"
+                            className={`sidebar-insta-box ${isInstaOpen ? 'active' : ''}`}
+                            onClick={() => window.dispatchEvent(new CustomEvent('open-insta', { detail: { action: 'toggle' } }))}
+                            title="Insta (AI Workspace Mimarı & Yapılandırıcı)"
+                        >
+                            <div className="sidebar-insta-left">
+                                <div className="sidebar-insta-icon-wrap">
+                                    <Sparkles size={15} className="sidebar-insta-sparkle" />
+                                    <span className="sidebar-insta-pulse-dot" />
+                                </div>
+                                {!isCollapsed && (
+                                    <div className="sidebar-insta-info">
+                                        <div className="sidebar-insta-title-row">
+                                            <span className="sidebar-insta-title">Insta AI</span>
+                                            <span className="sidebar-insta-badge">MİMAR</span>
+                                        </div>
+                                        <span className="sidebar-insta-sub">Workspace Yapılandırıcı</span>
+                                    </div>
+                                )}
+                            </div>
+                            {!isCollapsed && (
+                                <div className="sidebar-insta-action-arrow">
+                                    <ChevronRight size={14} />
+                                </div>
+                            )}
+                        </button>
+                    </div>
+                )}
 
                 {/* Gmail-style Chat Panel — nav dışında, footer öncesinde */}
                 <TeamChat isCollapsed={isCollapsed} />

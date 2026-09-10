@@ -1,13 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { aiAPI } from '../../services/api';
 import './Insta.css';
 
 const Insta = () => {
     const { user, currentWorkspace } = useAuth();
-    const location = useLocation();
-    const isInbox = location.pathname.startsWith('/inbox') || location.pathname === '/';
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'wizard' | 'health'
     const [isThinking, setIsThinking] = useState(false);
@@ -42,10 +39,14 @@ const Insta = () => {
     // Sadece SUPER_ADMIN kullanıcısına görünsün
     const isAuthorized = user?.role === 'SUPER_ADMIN';
 
-    // Global event listener to activate Insta from any screen (e.g. Base page)
+    // Global event listener to activate/toggle Insta from any screen or Sidebar
     useEffect(() => {
         const handleOpenInsta = (e) => {
-            setIsOpen(true);
+            if (e.detail?.action === 'toggle') {
+                setIsOpen(prev => !prev);
+            } else {
+                setIsOpen(true);
+            }
             if (e.detail?.tab) {
                 setActiveTab(e.detail.tab);
             }
@@ -53,6 +54,15 @@ const Insta = () => {
         window.addEventListener('open-insta', handleOpenInsta);
         return () => window.removeEventListener('open-insta', handleOpenInsta);
     }, []);
+
+    // Broadcast open/close state so Sidebar kutucuğu can highlight active state
+    useEffect(() => {
+        if (isOpen) {
+            window.dispatchEvent(new CustomEvent('insta-opened'));
+        } else {
+            window.dispatchEvent(new CustomEvent('insta-closed'));
+        }
+    }, [isOpen]);
 
     // Workspace değiştiğinde Insta'yı o workspace'e özel sıfırla
     useEffect(() => {
@@ -238,28 +248,7 @@ const Insta = () => {
 
     return (
         <>
-            {/* FLOATING RED NEON RING — Sadece Inbox dışında görünür (Inbox'ta chatin üzerinde kutucuk olarak yer alır) */}
-            {!isInbox && (
-                <div className="insta-ring-wrap">
-                    {!isOpen && (
-                        <div className="insta-tooltip-pill" onClick={() => setIsOpen(true)}>
-                            <span className="insta-tooltip-dot" />
-                            <span>Insta hazır. Tıklayın!</span>
-                        </div>
-                    )}
-
-                    <button
-                        className={`insta-ring-btn ${isOpen ? 'active' : ''} ${isThinking ? 'thinking' : ''}`}
-                        onClick={() => setIsOpen(!isOpen)}
-                        title="Insta (AI Workspace Yapılandırıcı)"
-                    >
-                        <div className="insta-inner-ring" />
-                        <div className="insta-core-glow" />
-                    </button>
-                </div>
-            )}
-
-            {/* SLIDE-OVER DRAWER */}
+            {/* SLIDE-OVER DRAWER (Sol altta Chat üzerindeki kutucuktan açılır) */}
             <div className={`insta-drawer ${isOpen ? 'open' : ''}`}>
                 
                 {/* Header */}

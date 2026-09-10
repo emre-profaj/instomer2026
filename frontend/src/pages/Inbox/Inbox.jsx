@@ -5950,23 +5950,9 @@ const Inbox = () => {
                                                                 disabled={takingOver}
                                                                 title="Bu konuşmayı üstlen"
                                                                 type="button"
-                                                            >
+                                                             >
                                                                 <UserCheck size={12} />
                                                                 <span>Üstlen</span>
-                                                            </button>
-                                                        )}
-
-                                                        {/* Insta AI Kutucuğu (Sadece SUPER_ADMIN) */}
-                                                        {user?.role === 'SUPER_ADMIN' && (
-                                                            <button
-                                                                type="button"
-                                                                className="apple-insta-trigger"
-                                                                onClick={() => window.dispatchEvent(new CustomEvent('open-insta'))}
-                                                                title="Insta (AI Workspace Yapılandırıcı & Mimar)"
-                                                            >
-                                                                <span className="insta-dot-pulse" />
-                                                                <Sparkles size={11} />
-                                                                <span>Insta AI</span>
                                                             </button>
                                                         )}
                                                     </>
@@ -7456,19 +7442,6 @@ const Inbox = () => {
                         <InboxIcon size={48} />
                         <h3>Öğe Seçin</h3>
                         <p>Detayları görüntülemek için soldan bir öğe seçin</p>
-                        {user?.role === 'SUPER_ADMIN' && (
-                            <button
-                                type="button"
-                                className="apple-insta-trigger"
-                                style={{ marginTop: 16, height: 32, padding: '0 14px', fontSize: '12px', gap: 7 }}
-                                onClick={() => window.dispatchEvent(new CustomEvent('open-insta'))}
-                                title="Insta AI Workspace Yapılandırıcı"
-                            >
-                                <span className="insta-dot-pulse" />
-                                <Sparkles size={13} />
-                                <span>Insta AI Workspace Mimarı'nı Aç</span>
-                            </button>
-                        )}
                     </div>
                 )}
             </div>
