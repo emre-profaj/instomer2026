@@ -2683,11 +2683,11 @@
     align-items: center;
     gap: 6px;
     padding: 3px 12px;
-    background: rgba(0, 0, 0, 0.038);
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.15);
     border-radius: 999px;
     font-size: 11px;
-    color: #64748b;
+    color: #b91c1c;
     letter-spacing: -0.01em;
     line-height: 1.4;
     text-align: center;
@@ -2695,16 +2695,22 @@
 }
 
 .apple-system-event-pill .apple-event-time {
-    color: #94a3b8;
+    color: rgba(185, 28, 28, 0.65);
     font-weight: 500;
     font-size: 10px;
 }
 
 .apple-system-event-pill .apple-event-actor {
-    color: #94a3b8;
+    color: rgba(185, 28, 28, 0.65);
     font-weight: 500;
     font-size: 10px;
     font-style: italic;
+}
+
+.apple-system-event-pill b,
+.apple-system-event-pill strong {
+    color: #991b1b;
+    font-weight: 600;
 }
 
 /* Transfer History */
@@ -2782,19 +2788,19 @@
 }
 
 .message.incoming .message-content {
-    background: #e9e9eb;
+    background: #ffffff;
     color: #000000;
-    border: none;
+    border: 1px solid rgba(0, 0, 0, 0.06);
     border-bottom-left-radius: 4px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .message.outgoing .message-content {
-    background: linear-gradient(180deg, #3d4654 0%, #2d3440 100%);
-    color: #f1f5f9;
-    border: none;
+    background: #0000000a;
+    color: black;
+    border: 1px solid rgba(0, 0, 0, 0.04);
     border-bottom-right-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .message.internal-note .message-content {
@@ -2980,11 +2986,11 @@
 }
 
 .message.incoming .message-content p {
-    color: #1c1c1e;
+    color: #000000;
 }
 
 .message.outgoing .message-content p {
-    color: #f1f5f9;
+    color: black;
 }
 
 .message.internal-note .message-content p {
@@ -3061,7 +3067,7 @@
 }
 
 .message.outgoing .email-html-content a {
-    color: #93c5fd;
+    color: #2563eb;
 }
 
 .email-html-content img {
@@ -3090,8 +3096,8 @@
 }
 
 .message.outgoing .email-html-content blockquote {
-    border-left-color: rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.1);
+    border-left-color: #cbd5e1;
+    background: rgba(0, 0, 0, 0.03);
 }
 
 .email-html-content table {
@@ -3204,7 +3210,7 @@
 }
 
 .message.outgoing .message-time {
-    color: rgba(255, 255, 255, 0.55);
+    color: #8e8e93;
 }
 
 .message-channel-tag {
@@ -3219,9 +3225,9 @@
 }
 
 .message.outgoing .message-channel-tag {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: rgba(255, 255, 255, 0.75);
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    color: #64748b;
 }
 
 .message-sender-tag {
@@ -3236,9 +3242,9 @@
 }
 
 .message.outgoing .message-sender-tag {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: rgba(255, 255, 255, 0.75);
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    color: #64748b;
 }
 
 .message-status {
@@ -3252,15 +3258,15 @@
 
 /* Message Status Icons */
 .message-status .status-sent {
-    color: rgba(255, 255, 255, 0.45);
+    color: #9ca3af;
 }
 
 .message-status .status-delivered {
-    color: rgba(255, 255, 255, 0.7);
+    color: #6b7280;
 }
 
 .message-status .status-read {
-    color: #60a5fa;
+    color: #3b82f6;
     filter: none;
 }
 
@@ -6959,8 +6965,8 @@
     color: #15803d;
 }
 .message.outgoing .message-channel-badge.channel-whatsapp {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.75);
+    background: rgba(37, 211, 102, 0.15);
+    color: #15803d;
 }
 
 .message-channel-badge.channel-facebook {
@@ -6968,8 +6974,8 @@
     color: #1d4ed8;
 }
 .message.outgoing .message-channel-badge.channel-facebook {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.75);
+    background: rgba(24, 119, 242, 0.15);
+    color: #1d4ed8;
 }
 
 .message-channel-badge.channel-instagram {
@@ -6977,8 +6983,8 @@
     color: #be185d;
 }
 .message.outgoing .message-channel-badge.channel-instagram {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.75);
+    background: rgba(228, 64, 95, 0.15);
+    color: #be185d;
 }
 
 .message-channel-badge.channel-email {
@@ -6986,8 +6992,8 @@
     color: #b45309;
 }
 .message.outgoing .message-channel-badge.channel-email {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.75);
+    background: rgba(245, 158, 11, 0.15);
+    color: #b45309;
 }
 
 .message-channel-badge.channel-widget {
@@ -6995,8 +7001,8 @@
     color: #4338ca;
 }
 .message.outgoing .message-channel-badge.channel-widget {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.75);
+    background: rgba(99, 102, 241, 0.15);
+    color: #4338ca;
 }
 
 .message-channel-badge.channel-lead {
@@ -7004,8 +7010,8 @@
     color: #6d28d9;
 }
 .message.outgoing .message-channel-badge.channel-lead {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.75);
+    background: rgba(139, 92, 246, 0.15);
+    color: #6d28d9;
 }
 
 /* Sender Badge on outgoing messages */
@@ -7023,8 +7029,8 @@
     color: #7c3aed;
 }
 .message.outgoing .message-sender-badge.bot {
-    background: rgba(139, 92, 246, 0.3);
-    color: #c4b5fd;
+    background: rgba(139, 92, 246, 0.15);
+    color: #7c3aed;
 }
 
 .message-sender-badge.human {
@@ -7032,8 +7038,8 @@
     color: #059669;
 }
 .message.outgoing .message-sender-badge.human {
-    background: rgba(16, 185, 129, 0.25);
-    color: #6ee7b7;
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
 }
 
 /* ─── Sohbet Durumu Toggle (Açık / Çözüldü) ────────────────────────────────── */
