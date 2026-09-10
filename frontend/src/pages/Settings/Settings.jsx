@@ -4,9 +4,117 @@ import { workspaceAPI, companyAPI } from '../../services/api';
 import AIIntegrationSettings from '../../components/Settings/AIIntegrationSettings';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import FlowTest from '../FlowTest/FlowTest';
-import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, GitBranch } from 'lucide-react';
+import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, GitBranch, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import './Settings.css';
+
+// ─── NetGSM SMS Ayarları Alt Bileşeni ─────────────────────
+const NetGSMSettings = ({ workspaceId }) => {
+    const [config, setConfig] = useState({ username: '', password: '', msgHeader: 'INSTOMER', enabled: false });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [testPhone, setTestPhone] = useState('');
+    const [testResult, setTestResult] = useState(null);
+    const [balance, setBalance] = useState(null);
+
+    useEffect(() => {
+        loadConfig();
+    }, [workspaceId]);
+
+    const loadConfig = async () => {
+        try {
+            setLoading(true);
+            const res = await workspaceAPI.getNetgsmConfig(workspaceId);
+            if (res.data?.config) setConfig(res.data.config);
+        } catch { } finally { setLoading(false); }
+    };
+
+    const saveConfig = async () => {
+        try {
+            setSaving(true);
+            const res = await workspaceAPI.updateNetgsmConfig(workspaceId, config);
+            if (res.data?.config) setConfig(res.data.config);
+            setTestResult({ type: 'success', msg: 'Ayarlar kaydedildi ✅' });
+        } catch (err) {
+            setTestResult({ type: 'error', msg: err.response?.data?.error || 'Kayıt hatası' });
+        } finally { setSaving(false); }
+    };
+
+    const handleTest = async () => {
+        if (!testPhone) return;
+        try {
+            setTestResult({ type: 'info', msg: 'SMS gönderiliyor...' });
+            const res = await workspaceAPI.testNetgsmSms(workspaceId, testPhone);
+            setTestResult({ type: res.data?.result?.success ? 'success' : 'error', msg: res.data?.result?.success ? 'Test SMS gönderildi ✅' : `Hata: ${res.data?.result?.error}` });
+        } catch (err) {
+            setTestResult({ type: 'error', msg: err.response?.data?.error || 'SMS gönderilemedi' });
+        }
+    };
+
+    const handleBalance = async () => {
+        try {
+            const res = await workspaceAPI.getNetgsmBalance(workspaceId);
+            setBalance(res.data?.success ? res.data.balance : 'Sorgulama hatası');
+        } catch { setBalance('Sorgulama hatası'); }
+    };
+
+    if (loading) return <div className="settings-section"><div className="loading">Yükleniyor...</div></div>;
+
+    return (
+        <div className="settings-section">
+            <div className="section-header"><h2><MessageSquare size={20} /> NetGSM SMS Entegrasyonu</h2></div>
+            <div className="card" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                    <label style={{ fontWeight: 600 }}>SMS Gönderim</label>
+                    <button
+                        className={`btn btn-sm ${config.enabled ? 'btn-success' : 'btn-secondary'}`}
+                        onClick={() => setConfig(c => ({ ...c, enabled: !c.enabled }))}
+                    >
+                        {config.enabled ? '✅ Aktif' : '⏸️ Pasif'}
+                    </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                    <div className="form-group">
+                        <label>Kullanıcı Adı (Abone No)</label>
+                        <input type="text" value={config.username || ''} onChange={e => setConfig(c => ({ ...c, username: e.target.value }))} placeholder="850XXXXXXX" />
+                    </div>
+                    <div className="form-group">
+                        <label>API Şifresi</label>
+                        <input type="password" value={config.password || ''} onChange={e => setConfig(c => ({ ...c, password: e.target.value }))} placeholder="••••••••" />
+                    </div>
+                    <div className="form-group">
+                        <label>Mesaj Başlığı (Gönderici)</label>
+                        <input type="text" value={config.msgHeader || ''} onChange={e => setConfig(c => ({ ...c, msgHeader: e.target.value }))} placeholder="INSTOMER" />
+                    </div>
+                    <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button className="btn btn-primary" onClick={saveConfig} disabled={saving} style={{ width: '100%' }}>
+                            {saving ? 'Kaydediliyor...' : '💾 Kaydet'}
+                        </button>
+                    </div>
+                </div>
+
+                {testResult && (
+                    <div style={{
+                        padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem',
+                        background: testResult.type === 'success' ? '#dcfce7' : testResult.type === 'error' ? '#fef2f2' : '#eff6ff',
+                        color: testResult.type === 'success' ? '#166534' : testResult.type === 'error' ? '#991b1b' : '#1e40af'
+                    }}>
+                        {testResult.msg}
+                    </div>
+                )}
+
+                <div style={{ borderTop: '1px solid #eee', paddingTop: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input type="tel" value={testPhone} onChange={e => setTestPhone(e.target.value)} placeholder="05XX XXX XX XX" style={{ flex: 1, maxWidth: '200px' }} />
+                    <button className="btn btn-sm btn-secondary" onClick={handleTest} disabled={!testPhone}>📱 Test SMS Gönder</button>
+                    <button className="btn btn-sm btn-secondary" onClick={handleBalance}>💰 Bakiye Sorgula</button>
+                    {balance !== null && <span style={{ fontSize: '0.85rem', color: '#666' }}>Bakiye: <strong>{balance}</strong> SMS</span>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const Settings = () => {
     const { currentWorkspace, user, switchWorkspace } = useAuth();
@@ -123,6 +231,9 @@ const Settings = () => {
                 <button className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
                     <Bot size={16} /> {t('settings.aiIntegration')}
                 </button>
+                <button className={`tab-btn ${activeTab === 'sms' ? 'active' : ''}`} onClick={() => setActiveTab('sms')}>
+                    <MessageSquare size={16} /> SMS (NetGSM)
+                </button>
                 {user?.role === 'SUPER_ADMIN' && (
                     <button className={`tab-btn ${activeTab === 'flow-test' ? 'active' : ''}`} onClick={() => setActiveTab('flow-test')}>
                         <GitBranch size={16} /> Akış Test
@@ -210,6 +321,7 @@ const Settings = () => {
                     </div>
                 )}
                 {activeTab === 'ai' && <AIIntegrationSettings />}
+                {activeTab === 'sms' && <NetGSMSettings workspaceId={currentWorkspace.id} />}
                 {activeTab === 'flow-test' && user?.role === 'SUPER_ADMIN' && (
                     <div style={{ margin: '-24px', height: 'calc(100vh - 180px)', minHeight: '650px' }}>
                         <FlowTest />

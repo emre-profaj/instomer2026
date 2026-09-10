@@ -3608,7 +3608,9 @@ export const updateBot = async (req, res) => {
             // Linked automations
             automations,
             // Handoff message
-            handoffMessage
+            handoffMessage,
+            // Bot yetenekleri (tool toggles)
+            capabilities
         } = req.body;
 
         // Verify bot belongs to this workspace
@@ -3661,7 +3663,9 @@ export const updateBot = async (req, res) => {
                 // Automations
                 automations: automations ? JSON.stringify(automations) : null,
                 // Handoff message
-                ...(handoffMessage !== undefined && { handoffMessage: handoffMessage || null })
+                ...(handoffMessage !== undefined && { handoffMessage: handoffMessage || null }),
+                // Bot capabilities (tool toggles)
+                ...(capabilities !== undefined && { capabilities: capabilities || null })
             }
         });
         res.json({ bot });

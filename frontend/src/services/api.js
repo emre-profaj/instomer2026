@@ -182,7 +182,12 @@ export const workspaceAPI = {
     // AI Usage
     getAiUsage: (workspaceId) => api.get(`/workspaces/${workspaceId}/ai-usage`),
     updateDisaoCrmSettings: (workspaceId, data) => api.patch(`/workspaces/${workspaceId}/disao-crm`, data),
-    testDisaoCrmConnection: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/disao-crm/test`, data)
+    testDisaoCrmConnection: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/disao-crm/test`, data),
+    // NetGSM SMS
+    getNetgsmConfig: (workspaceId) => api.get(`/workspaces/${workspaceId}/netgsm`),
+    updateNetgsmConfig: (workspaceId, data) => api.put(`/workspaces/${workspaceId}/netgsm`, data),
+    testNetgsmSms: (workspaceId, phone) => api.post(`/workspaces/${workspaceId}/netgsm/test`, { phone }),
+    getNetgsmBalance: (workspaceId) => api.get(`/workspaces/${workspaceId}/netgsm/balance`)
 };
 
 // Facebook API

@@ -31,7 +31,11 @@ import {
     updateDisaoCrmSettings,
     testDisaoCrmConnection,
     seedAllWorkspaces,
-    seedSingleWorkspace
+    seedSingleWorkspace,
+    getNetgsmConfig,
+    updateNetgsmConfig,
+    testNetgsmSms,
+    getNetgsmBalance
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/roleAuth.js';
@@ -170,5 +174,11 @@ router.post('/:workspaceId/disao-crm/test', requireWorkspaceAccess, testDisaoCrm
 // ─── Admin: Evrensel taban seed ───────────────────────────────────
 router.post('/admin/seed-all', requireRole('admin'), seedAllWorkspaces);
 router.post('/:workspaceId/seed-defaults', requireWorkspaceAccess, seedSingleWorkspace);
+
+// ─── NetGSM SMS ───────────────────────────────────────────────────
+router.get('/:workspaceId/netgsm', requireWorkspaceAccess, getNetgsmConfig);
+router.put('/:workspaceId/netgsm', requireWorkspaceAccess, updateNetgsmConfig);
+router.post('/:workspaceId/netgsm/test', requireWorkspaceAccess, testNetgsmSms);
+router.get('/:workspaceId/netgsm/balance', requireWorkspaceAccess, getNetgsmBalance);
 
 export default router;

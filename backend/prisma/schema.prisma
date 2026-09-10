@@ -219,6 +219,10 @@ model Workspace {
   RetellTemplate      RetellTemplate[]
   ScheduledMessage    ScheduledMessage[]
 
+  // NetGSM SMS entegrasyonu
+  // { username, password, msgHeader, enabled }
+  netgsmConfig Json?
+
   @@index([companyId])
   @@map("workspaces")
 }
@@ -257,6 +261,10 @@ model AIBot {
   workspaceId      String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  // Bot yetenekleri toggle (hangi tool'ları kullanabilir)
+  // { appointment: true, location: true, product: true, humanHandoff: true, ... }
+  capabilities     Json?
 
   // Scheduler: Bot active between these times
   schedulerEnabled  Boolean   @default(false)

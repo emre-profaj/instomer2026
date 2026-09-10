@@ -1019,3 +1019,100 @@ export const seedSingleWorkspace = async (req, res) => {
         res.status(500).json({ error: 'Seed hatası', details: error.message });
     }
 };
+
+// ─── NetGSM SMS Config ────────────────────────────────────
+export const getNetgsmConfig = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { netgsmConfig: true }
+        });
+        // Şifreyi maskelenerek döndür
+        const config = workspace?.netgsmConfig || {};
+        if (config.password) {
+            config.password = '••••••••';
+        }
+        res.json({ config });
+    } catch (error) {
+        res.status(500).json({ error: 'Config alınamadı', details: error.message });
+    }
+};
+
+export const updateNetgsmConfig = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { username, password, msgHeader, enabled } = req.body;
+
+        // Mevcut config'i al (şifre güncellenmeyebilir)
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { netgsmConfig: true }
+        });
+        const existing = workspace?.netgsmConfig || {};
+
+        const config = {
+            username: username || existing.username || '',
+            password: password === '••••••••' ? existing.password : (password || existing.password || ''),
+            msgHeader: msgHeader || existing.msgHeader || 'INSTOMER',
+            enabled: enabled !== undefined ? enabled : (existing.enabled || false),
+        };
+
+        await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { netgsmConfig: config }
+        });
+
+        // Şifreyi maskelenmiş döndür
+        res.json({ config: { ...config, password: '••••••••' }, message: 'NetGSM ayarları güncellendi' });
+    } catch (error) {
+        res.status(500).json({ error: 'Config güncellenemedi', details: error.message });
+    }
+};
+
+export const testNetgsmSms = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { phone } = req.body;
+
+        if (!phone) return res.status(400).json({ error: 'Telefon numarası gerekli' });
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { netgsmConfig: true }
+        });
+        const config = workspace?.netgsmConfig;
+        if (!config?.enabled || !config?.username) {
+            return res.status(400).json({ error: 'NetGSM yapılandırılmamış veya kapalı' });
+        }
+
+        const { sendSms } = await import('../services/netgsm.service.js');
+        const result = await sendSms(config, phone, 'Instomer test SMS ✅ Entegrasyon başarılı!');
+
+        res.json({ result });
+    } catch (error) {
+        res.status(500).json({ error: 'SMS gönderilemedi', details: error.message });
+    }
+};
+
+export const getNetgsmBalance = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { netgsmConfig: true }
+        });
+        const config = workspace?.netgsmConfig;
+        if (!config?.username) {
+            return res.status(400).json({ error: 'NetGSM yapılandırılmamış' });
+        }
+
+        const { checkBalance } = await import('../services/netgsm.service.js');
+        const result = await checkBalance(config);
+
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Bakiye sorgulanamadı', details: error.message });
+    }
+};
