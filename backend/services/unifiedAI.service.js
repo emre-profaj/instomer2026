@@ -13,7 +13,7 @@ import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getSectorPrompt } from '../utils/sectorPrompt.js';
 
-const MODEL_NAME = 'gemini-3.5-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 /**
  * Aşama isminden otomatik AI hedefi oluşturur.
@@ -91,7 +91,7 @@ export async function executeUnifiedAICall({
         // ── 1. Workspace ve bağlam bilgilerini yükle ──
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
-            select: { aiApiKey: true, companyName: true, companyDescription: true, industry: true }
+            select: { aiApiKey: true, aiModel: true, companyName: true, companyDescription: true, industry: true, company: { select: { aiModel: true } } }
         });
 
         if (!workspace?.aiApiKey) {
@@ -331,9 +331,12 @@ YANIT FORMATI (JSON):
 }`;
 
         // ── 9. Gemini API çağrısı ──
+        // Workspace veya company model'i kullan, yoksa default
+        const effectiveModel = workspace.aiModel || workspace.company?.aiModel || DEFAULT_MODEL;
+        console.log(`🧠 [UnifiedAI] Model: ${effectiveModel}`);
         const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
         const model = genAI.getGenerativeModel({
-            model: MODEL_NAME,
+            model: effectiveModel,
             systemInstruction: systemPrompt,
             generationConfig: {
                 responseMimeType: 'application/json',
@@ -382,16 +385,9 @@ YANIT FORMATI (JSON):
 }
 
 /**
- * Feature flag kontrolü — workspace birleşik AI kullanıyor mu?
+ * Birleşik AI daima aktif — classifier + chat tek çağrıda.
+ * Toggle bağımlılığı kaldırıldı (maliyet optimizasyonu).
  */
 export async function isUnifiedAIEnabled(workspaceId) {
-    try {
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { useUnifiedAI: true }
-        });
-        return workspace?.useUnifiedAI === true;
-    } catch {
-        return false;
-    }
+    return true;
 }

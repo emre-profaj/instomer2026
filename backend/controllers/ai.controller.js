@@ -159,6 +159,20 @@ const getEffectiveAiApiKey = async (workspaceId) => {
     return null;
 };
 
+// Helper to get effective AI model (workspace model > company model > default)
+const getEffectiveAiModel = async (workspaceId) => {
+    try {
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { aiModel: true, company: { select: { aiModel: true } } }
+        });
+        const model = workspace?.aiModel || workspace?.company?.aiModel || 'gemini-2.5-flash';
+        return model;
+    } catch {
+        return 'gemini-2.5-flash';
+    }
+};
+
 // Configure Multer for memory storage
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -2669,10 +2683,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
         };
 
         let result;
+        const effectiveModel = await getEffectiveAiModel(workspaceId);
+        console.log(`🤖 [AI] Using model: ${effectiveModel} for workspace ${workspaceId}`);
         try {
-            result = await tryGenerate("gemini-3.5-flash");
+            result = await tryGenerate(effectiveModel);
         } catch (e) {
-            console.warn(`⚠️ [AI] Primary model (gemini-3.5-flash) failed for workspace ${workspaceId}: ${e.message}`);
+            console.warn(`⚠️ [AI] Primary model (${effectiveModel}) failed for workspace ${workspaceId}: ${e.message}`);
 
             // 429 Rate Limit → 3 saniye bekle + farklı modelle dene
             if (e.message.includes('429') || e.message.includes('Resource exhausted')) {
@@ -2681,8 +2697,9 @@ ${systemPrompt}${appointmentContextPrompt}`;
             }
 
             try {
-                console.log('🔄 [AI] Falling back to gemini-3.5-flash...');
-                result = await tryGenerate("gemini-3.5-flash");
+                const fallbackModel = effectiveModel === 'gemini-2.5-flash' ? 'gemini-2.0-flash' : 'gemini-2.5-flash';
+                console.log(`🔄 [AI] Falling back to ${fallbackModel}...`);
+                result = await tryGenerate(fallbackModel);
             } catch (fallbackError) {
                 console.error(`❌ [AI] Both models failed for workspace ${workspaceId}. Primary: ${e.message}, Fallback: ${fallbackError.message}`);
                 if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
@@ -2700,7 +2717,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 // Retry once if response is completely empty (Gemini sometimes freezes)
                 try {
                     console.log(`🔄 [AI] Retrying with same message due to empty response...`);
-                    result = await tryGenerate("gemini-3.5-flash");
+                    result = await tryGenerate(effectiveModel);
                     responseText = stripAiThinking(result.response.text());
                     console.log(`✅ [AI] Retry Response Text length: ${responseText.length}`);
                 } catch (retryErr) {
