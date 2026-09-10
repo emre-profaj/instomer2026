@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { aiAPI } from '../../services/api';
 import './Insta.css';
 
 const Insta = () => {
     const { user, currentWorkspace } = useAuth();
+    const location = useLocation();
+    const isInbox = location.pathname.startsWith('/inbox') || location.pathname === '/';
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'wizard' | 'health'
     const [isThinking, setIsThinking] = useState(false);
@@ -36,12 +39,8 @@ const Insta = () => {
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
 
-    // Sadece MANAGER, ADMIN, OWNER ve SUPER_ADMIN kullanıcılarına görünsün (AGENT vb. göremez)
-    const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
-    const workspaceRole = workspaceMember?.role;
-    const isAuthorized = user?.role === 'SUPER_ADMIN' ||
-                         user?.role === 'ADMIN' ||
-                         ['OWNER', 'ADMIN', 'MANAGER'].includes(workspaceRole);
+    // Sadece SUPER_ADMIN kullanıcısına görünsün
+    const isAuthorized = user?.role === 'SUPER_ADMIN';
 
     // Global event listener to activate Insta from any screen (e.g. Base page)
     useEffect(() => {
@@ -239,24 +238,26 @@ const Insta = () => {
 
     return (
         <>
-            {/* FLOATING RED NEON RING */}
-            <div className="insta-ring-wrap">
-                {!isOpen && (
-                    <div className="insta-tooltip-pill" onClick={() => setIsOpen(true)}>
-                        <span className="insta-tooltip-dot" />
-                        <span>Insta hazır. Tıklayın!</span>
-                    </div>
-                )}
+            {/* FLOATING RED NEON RING — Sadece Inbox dışında görünür (Inbox'ta chatin üzerinde kutucuk olarak yer alır) */}
+            {!isInbox && (
+                <div className="insta-ring-wrap">
+                    {!isOpen && (
+                        <div className="insta-tooltip-pill" onClick={() => setIsOpen(true)}>
+                            <span className="insta-tooltip-dot" />
+                            <span>Insta hazır. Tıklayın!</span>
+                        </div>
+                    )}
 
-                <button
-                    className={`insta-ring-btn ${isOpen ? 'active' : ''} ${isThinking ? 'thinking' : ''}`}
-                    onClick={() => setIsOpen(!isOpen)}
-                    title="Insta (AI Workspace Yapılandırıcı)"
-                >
-                    <div className="insta-inner-ring" />
-                    <div className="insta-core-glow" />
-                </button>
-            </div>
+                    <button
+                        className={`insta-ring-btn ${isOpen ? 'active' : ''} ${isThinking ? 'thinking' : ''}`}
+                        onClick={() => setIsOpen(!isOpen)}
+                        title="Insta (AI Workspace Yapılandırıcı)"
+                    >
+                        <div className="insta-inner-ring" />
+                        <div className="insta-core-glow" />
+                    </button>
+                </div>
+            )}
 
             {/* SLIDE-OVER DRAWER */}
             <div className={`insta-drawer ${isOpen ? 'open' : ''}`}>

@@ -13,7 +13,7 @@ const KnowledgeBase = () => {
     const { t } = useTranslation();
     const { currentWorkspace, user } = useAuth();
     const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
-    const canManage = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || ['OWNER', 'ADMIN', 'MANAGER'].includes(workspaceMember?.role);
+    const canManage = user?.role === 'SUPER_ADMIN';
     const labels = getSectorLabels(currentWorkspace?.industry);
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');

@@ -21,14 +21,10 @@ const getEffectiveAiApiKey = async (workspaceId) => {
     return null;
 };
 
-// Sadece MANAGER, ADMIN, OWNER veya SUPER_ADMIN yetkisi olanlar erişebilir
+// Sadece SUPER_ADMIN yetkisi olanlar erişebilir
 const verifyInstaPermission = async (workspaceId, user) => {
     if (!user) return false;
-    if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') return true;
-    const member = await prisma.workspaceMember.findFirst({
-        where: { workspaceId, userId: user.id }
-    });
-    return ['OWNER', 'ADMIN', 'MANAGER'].includes(member?.role);
+    return user.role === 'SUPER_ADMIN';
 };
 
 // ─── INSTA CALLABLE FUNCTIONS ──────────────────────────────────────

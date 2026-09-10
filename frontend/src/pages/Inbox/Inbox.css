@@ -2082,6 +2082,53 @@
     cursor: not-allowed;
 }
 
+/* Apple Insta Trigger Button ("Insta AI" Kutucuğu) */
+.apple-insta-trigger {
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    border-radius: 7px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    color: #dc2626;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(220, 38, 38, 0.06);
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.apple-insta-trigger:hover {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #b91c1c;
+    box-shadow: 0 1px 4px rgba(220, 38, 38, 0.18);
+    transform: translateY(-0.5px);
+}
+
+.apple-insta-trigger:active {
+    transform: scale(0.98);
+}
+
+.apple-insta-trigger .insta-dot-pulse {
+    width: 6.5px;
+    height: 6.5px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
+    animation: instaDotPulseAnim 2s infinite ease-in-out;
+}
+
+@keyframes instaDotPulseAnim {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+}
+
 /* Legacy triggers support */
 .stage-mega-trigger {
     display: inline-flex;
