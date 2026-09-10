@@ -5,6 +5,8 @@ import './i18n/index.js'
 import App from './App.jsx'
 
 
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary.jsx'
+
 // Production'da console log'larını gizle
 if (import.meta.env.PROD) {
   console.log = () => {};
@@ -16,6 +18,8 @@ if (import.meta.env.PROD) {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 )

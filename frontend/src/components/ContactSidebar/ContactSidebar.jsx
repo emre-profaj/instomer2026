@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase, Building2 } from 'lucide-react';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase, Building2, Bot } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI, productAPI, appointmentConfigAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import { activityAPI } from '../../services/activity.api';
@@ -11,6 +11,7 @@ import './ContactSidebar.css';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { detectCallIntent } from '../../utils/callIntentDetector';
+import ErrorBoundary from '../ErrorBoundary/ErrorBoundary';
 
 // Phone normalization (frontend mirror of backend)
 const normalizePhone = (phone) => {
@@ -22,6 +23,29 @@ const normalizePhone = (phone) => {
     if (cleaned.startsWith('5') && cleaned.length === 10) return '+90' + cleaned;
     if (cleaned.startsWith('90') && cleaned.length === 12) return '+' + cleaned;
     return cleaned;
+};
+
+// Safe date helpers to prevent RangeError: Invalid time value
+const safeFormatDate = (dateVal, options) => {
+    if (!dateVal) return '';
+    try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleDateString('tr-TR', options);
+    } catch {
+        return '';
+    }
+};
+
+const safeFormatDateTime = (dateVal, options) => {
+    if (!dateVal) return '';
+    try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleString('tr-TR', options);
+    } catch {
+        return '';
+    }
 };
 
 // Kategori seçenekleri
@@ -144,6 +168,19 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
 const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null, onOpenConversationPopup = null, onConversationStatusChange = null, funnelOptions = [], initialAction = null }) => {
     const { currentWorkspace, onlineUsers, user } = useAuth();
     const navigate = useNavigate();
+
+    // Safe helper to check online status without crashing if onlineUsers is not a Map
+    const isUserOnline = (userId, userObj) => {
+        try {
+            if (onlineUsers && typeof onlineUsers.get === 'function') {
+                const status = onlineUsers.get(userId);
+                if (status && status.isOnline !== undefined) return Boolean(status.isOnline);
+            }
+            return Boolean(userObj?.isOnline);
+        } catch {
+            return false;
+        }
+    };
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -256,11 +293,56 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [callScheduleMode, setCallScheduleMode] = useState(false);
     const [scheduledDateTime, setScheduledDateTime] = useState('');
     const [schedulingCall, setSchedulingCall] = useState(false);
+    const [callingInProgress, setCallingInProgress] = useState(false);
+    const [retellAgentsLoading, setRetellAgentsLoading] = useState(false);
+    const [targetCallPhone, setTargetCallPhone] = useState('');
     const [callRefreshKey, setCallRefreshKey] = useState(0);
     const [retellAgents, setRetellAgents] = useState([]);
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [selectedRetellTemplateId, setSelectedRetellTemplateId] = useState(null);
     const [retellCallTemplates, setRetellCallTemplates] = useState([]);
+
+    // AI Sesli Arama Modalı Açıcı (Hatasız ve güvenli veri yükleme)
+    const handleOpenAiCall = (phoneToCall) => {
+        const raw = phoneToCall || profile?.phone;
+        if (!raw) {
+            return alert('Arama yapılacak telefon numarası bulunamadı.');
+        }
+        const normalized = normalizePhone(raw);
+        setTargetCallPhone(normalized);
+        setCallScheduleMode(false);
+        setScheduledDateTime('');
+        setSelectedAgentId('');
+        setSelectedRetellTemplateId(null);
+        setShowCallPopup(true);
+        setRetellAgentsLoading(true);
+
+        if (currentWorkspace?.id) {
+            retellAPI.getAgents(currentWorkspace.id)
+                .then(res => {
+                    const list = res.data?.agents || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+                    setRetellAgents(Array.isArray(list) ? list : []);
+                })
+                .catch(err => {
+                    console.warn('⚠️ [Retell] Agent listesi yüklenemedi:', err?.message);
+                    setRetellAgents([]);
+                })
+                .finally(() => {
+                    setRetellAgentsLoading(false);
+                });
+
+            retellAPI.getTemplates(currentWorkspace.id)
+                .then(res => {
+                    const list = res.data?.data || res.data?.templates || (Array.isArray(res.data) ? res.data : []);
+                    setRetellCallTemplates(Array.isArray(list) ? list : []);
+                })
+                .catch(err => {
+                    console.warn('⚠️ [Retell] Şablon listesi yüklenemedi:', err?.message);
+                    setRetellCallTemplates([]);
+                });
+        }
+    };
+
     const [reminderForm, setReminderForm] = useState({
         reminderDate: '',
         assignedToId: '',
@@ -1799,17 +1881,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </span>
                                                     <span
                                                         className="inline-action-btn inline-action-call"
-                                                        title="AI Call"
-                                                        onClick={() => {
-                                                            if (!profile?.phone) return alert('Telefon numarası bulunamadı');
-                                                            setCallScheduleMode(false);
-                                                            setScheduledDateTime('');
-                                                            setSelectedAgentId('');
-                                                            setShowCallPopup(true);
-                                                            retellAPI.getAgents(currentWorkspace.id).then(res => setRetellAgents(res.data.agents || [])).catch(() => { });
-                                                            retellAPI.getTemplates(currentWorkspace.id).then(res => setRetellCallTemplates(res.data?.templates || res.data || [])).catch(() => { });
-                                                            setSelectedRetellTemplateId(null);
-                                                        }}
+                                                        title="AI Sesli Arama"
+                                                        onClick={() => handleOpenAiCall(profile?.phone)}
                                                     >
                                                         <PhoneCall size={14} />
                                                     </span>
@@ -1869,6 +1942,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 }}
                                                                 placeholder={`Telefon Numarası ${idx + 2}`}
                                                             />
+                                                            <span
+                                                                className="inline-action-btn inline-action-whatsapp"
+                                                                title="WhatsApp"
+                                                                onClick={() => {
+                                                                    if (!ph) return alert('Telefon numarası bulunamadı');
+                                                                    window.open(`https://wa.me/${ph.replace(/[^0-9]/g, '')}`, '_blank');
+                                                                }}
+                                                            >
+                                                                <svg viewBox="0 0 512 512" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+                                                                    <path fill="currentColor" d="M256.064,0h-0.128l0,0C114.784,0,0,114.816,0,256c0,56,18.048,107.904,48.736,150.048l-31.904,95.104l98.4-31.456C155.712,496.512,204,512,256.064,512C397.216,512,512,397.152,512,256S397.216,0,256.064,0z"></path>
+                                                                    <path fill="#fff" d="M405.024,361.504c-6.176,17.44-30.688,31.904-50.24,36.128c-13.376,2.848-30.848,5.12-89.664-19.264C189.888,347.2,141.44,270.752,137.664,265.792c-3.616-4.96-30.4-40.48-30.4-77.216s18.656-54.624,26.176-62.304c6.176-6.304,16.384-9.184,26.176-9.184c3.168,0,6.016,0.16,8.576,0.288c7.52,0.32,11.296,0.768,16.256,12.64c6.176,14.88,21.216,51.616,23.008,55.392c1.824,3.776,3.648,8.896,1.088,13.856c-2.4,5.12-4.512,7.392-8.288,11.744c-3.776,4.352-7.36,7.68-11.136,12.352c-3.456,4.064-7.36,8.416-3.008,15.936c4.352,7.36,19.392,31.904,41.536,51.616c28.576,25.44,51.744,33.568,60.032,37.024c6.176,2.56,13.536,1.952,18.048-2.848c5.728-6.176,12.8-16.416,20-26.496c5.12-7.232,11.584-8.128,18.368-5.568c6.912,2.4,43.488,20.48,51.008,24.224c7.52,3.776,12.48,5.568,14.304,8.736C411.2,329.152,411.2,344.032,405.024,361.504z"></path>
+                                                                </svg>
+                                                            </span>
+                                                            <span
+                                                                className="inline-action-btn inline-action-call"
+                                                                title="AI Sesli Arama"
+                                                                onClick={() => handleOpenAiCall(ph)}
+                                                            >
+                                                                <PhoneCall size={14} />
+                                                            </span>
                                                             <button
                                                                 className="unified-extra-remove-btn"
                                                                 onClick={() => {
@@ -4362,7 +4455,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             {/* Stats */}
                                                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
                                                                 <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
-                                                                    📅 {new Date(ac.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                    📅 {safeFormatDateTime(ac.createdAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                                 </span>
                                                                 {ac.duration && (
                                                                     <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
@@ -4451,17 +4544,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                     {/* Planlandı vs Yapıldı gösterimi */}
                                                                                     {item.dueDate && (
                                                                                         <span style={{ fontSize: 11, color: '#64748b' }}>
-                                                                                            📅 {new Date(item.dueDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                                            📅 {safeFormatDateTime(item.dueDate, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                                                         </span>
                                                                                     )}
                                                                                     {item.completedAt && item.dueDate && (
                                                                                         <span style={{ fontSize: 11, color: '#10b981', marginLeft: 6 }}>
-                                                                                            ✅ {new Date(item.completedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                                                            ✅ {safeFormatDateTime(item.completedAt, { hour: '2-digit', minute: '2-digit' })}
                                                                                         </span>
                                                                                     )}
                                                                                     {!item.dueDate && item.date && (
                                                                                         <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
-                                                                                            {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                                            {safeFormatDateTime(item.date, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                                                         </span>
                                                                                     )}
                                                                                 </div>
@@ -4481,7 +4574,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     {expandedMilestone._sourceItems.map((item, ci) => {
                                                         const due = item.dueDate ? new Date(item.dueDate) : null;
-                                                        const overdue = due && due < new Date();
+                                                        const overdue = due && !isNaN(due.getTime()) && due < new Date();
                                                         return (
                                                         <div key={ci} style={{ padding: '12px 14px', background: overdue ? '#fef2f2' : '#f8fafc', borderRadius: '10px', border: `1px solid ${overdue ? '#fecaca' : '#e5e7eb'}` }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -4490,10 +4583,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 </span>
                                                                 {overdue && <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: '#fee2e2', color: '#dc2626', fontWeight: 700 }}>⚠️ Gecikmiş</span>}
                                                             </div>
-                                                            {due && (
+                                                            {due && !isNaN(due.getTime()) && (
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', color: '#6b7280', marginBottom: '6px' }}>
                                                                     <Clock size={12} />
-                                                                    {due.toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                    {safeFormatDateTime(due, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                                 </div>
                                                             )}
                                                             {(item.content || item.description) && (
@@ -4768,7 +4861,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     style={{ borderColor: !activityForm.caseId ? '#fca5a5' : '#e5e7eb', marginBottom: '4px' }}
                                                 >
                                                     <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                                    {allCases.map(c => (
+                                                    {(Array.isArray(allCases) ? allCases : []).map(c => (
                                                         <option key={c.id} value={c.id}>
                                                             {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
                                                         </option>
@@ -4798,7 +4891,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <div>📋 Planlanmış aramayı tamamla</div>
                                                         <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#9ca3af', marginTop: 2 }}>
                                                             {existingPlannedCall?.dueDate
-                                                                ? `${new Date(existingPlannedCall.dueDate).toLocaleDateString('tr-TR')} tarihli planlı arama`
+                                                                ? `${safeFormatDate(existingPlannedCall.dueDate)} tarihli planlı arama`
                                                                 : 'Varsa açık planlı aramayı tamamla'}
                                                             {existingPlannedCall?.callTopic ? ` • ${existingPlannedCall.callTopic}` : ''}
                                                         </div>
@@ -4942,15 +5035,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 }
                                                                 return null;
                                                             };
-                                                            let filteredMembers = members;
+                                                            let filteredMembers = members || [];
                                                             if (selectedTeamId && teams) {
                                                                 const team = findTeam(teams, selectedTeamId);
                                                                 const memberIds = new Set((team?.members || []).map(m => m.userId));
-                                                                filteredMembers = members.filter(m => memberIds.has(m.user?.id || m.id));
+                                                                filteredMembers = (members || []).filter(m => memberIds.has(m.user?.id || m.id));
                                                             }
-                                                            return filteredMembers.map(member => (
+                                                            return (Array.isArray(filteredMembers) ? filteredMembers : []).map(member => (
                                                                 <option key={member.user?.id || member.id} value={member.user?.id || member.id}>
-                                                                    {(onlineUsers.get(member.user?.id || member.id)?.isOnline || member.user?.isOnline) ? '🟢' : '⚪'} {member.user?.name || member.name}
+                                                                    {isUserOnline(member.user?.id || member.id, member.user) ? '🟢' : '⚪'} {member.user?.name || member.name}
                                                                 </option>
                                                             ));
                                                         })()}
@@ -5327,7 +5420,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 {/* ═══ STICKY FOOTER — Aktivite & Satış Butonları ═══ */}
                 {profile && (
                     <div className="sidebar-action-footer">
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: 4 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px', marginBottom: 4 }}>
+                            <button
+                                className="activity-btn"
+                                style={{
+                                    padding: '6px 3px',
+                                    minHeight: 48,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '3px',
+                                    background: '#f5f3ff',
+                                    border: '1px solid #ddd6fe'
+                                }}
+                                onClick={() => handleOpenAiCall(profile?.phone)}
+                                title="AI Sesli Arama Başlat"
+                            >
+                                <Bot size={15} style={{ color: '#7c3aed' }} />
+                                <span style={{ fontSize: '0.55rem', color: '#6d28d9', fontWeight: 600, textAlign: 'center', lineHeight: 1.1 }}>AI Ara</span>
+                            </button>
                             <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('NOTE')}>
                                 <span style={{ position: 'relative', display: 'inline-flex', width: 24, height: 20, alignItems: 'center', justifyContent: 'center' }}>
                                     <PhoneCall size={15} style={{ color: '#374151' }} />
@@ -5383,8 +5495,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 <X size={16} />
                             </button>
                         </div>
-                        <p className="call-popup-contact">
-                            {profile?.name || profile?.phone}
+                        <p className="call-popup-contact" style={{ textAlign: 'center', marginBottom: '14px' }}>
+                            <span style={{ fontWeight: 700, fontSize: '15px', color: '#1e293b', display: 'block' }}>
+                                {profile?.name || 'Müşteri'}
+                            </span>
+                            <span style={{ fontSize: '13px', color: '#4f46e5', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                <Phone size={13} /> {targetCallPhone || profile?.phone}
+                            </span>
                         </p>
 
                         <div className="call-agent-selector" style={{ padding: '0 20px', marginBottom: '15px' }}>
@@ -5403,15 +5520,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     cursor: 'pointer'
                                 }}
                             >
-                                <option value="">Varsayılan Agent</option>
-                                {retellAgents.map(a => (
+                                <option value="">Varsayılan Agent (Sistem Ayarı)</option>
+                                {(Array.isArray(retellAgents) ? retellAgents : []).map(a => (
                                     <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>
                                 ))}
                             </select>
+                            {retellAgentsLoading && (
+                                <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Loader size={12} className="spin" /> Agentlar kontrol ediliyor...
+                                </div>
+                            )}
                         </div>
 
                         {/* Arama Şablonu Seçimi */}
-                        <div style={{ marginBottom: 10 }}>
+                        <div style={{ padding: '0 20px', marginBottom: 15 }}>
                             <label style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 4, display: 'block' }}>📋 Arama Şablonu (opsiyonel)</label>
                             <select
                                 value={selectedRetellTemplateId || ''}
@@ -5423,7 +5545,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 }}
                             >
                                 <option value="">Şablon Kullanma</option>
-                                {(retellCallTemplates || []).map(t => (
+                                {(Array.isArray(retellCallTemplates) ? retellCallTemplates : []).map(t => (
                                     <option key={t.id} value={t.id}>{t.name}</option>
                                 ))}
                             </select>
@@ -5433,25 +5555,33 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             <div className="call-popup-options">
                                 <button
                                     className="call-option-btn call-now"
+                                    disabled={callingInProgress}
+                                    style={{ opacity: callingInProgress ? 0.7 : 1, cursor: callingInProgress ? 'not-allowed' : 'pointer' }}
                                     onClick={async () => {
                                         try {
+                                            const phoneToUse = targetCallPhone || profile?.phone;
+                                            if (!phoneToUse) return alert('Telefon numarası bulunamadı');
+                                            setCallingInProgress(true);
                                             await retellAPI.makeCall(currentWorkspace.id, {
-                                                toNumber: profile.phone,
-                                                contactId: profile.id,
-                                                contactName: profile.name,
+                                                toNumber: phoneToUse,
+                                                contactId: profile?.id,
+                                                contactName: profile?.name,
                                                 conversationId: conversationId || null,
                                                 ...(selectedAgentId && { agentId: selectedAgentId }),
                                                 ...(selectedRetellTemplateId && { retellTemplateId: selectedRetellTemplateId })
                                             });
                                             setShowCallPopup(false);
-                                            alert('✅ Arama başlatıldı!');
+                                            setCallRefreshKey(prev => prev + 1);
+                                            alert('✅ AI Sesli Araması başarıyla başlatıldı!');
                                         } catch (err) {
-                                            alert(err.response?.data?.error || 'Arama başlatılamadı.');
+                                            alert(err.response?.data?.error || err.message || 'AI Araması başlatılamadı.');
+                                        } finally {
+                                            setCallingInProgress(false);
                                         }
                                     }}
                                 >
-                                    <PhoneCall size={20} />
-                                    <span>Hemen Ara</span>
+                                    {callingInProgress ? <Loader size={20} className="spin" /> : <PhoneCall size={20} />}
+                                    <span>{callingInProgress ? 'Aranıyor...' : 'Hemen Ara'}</span>
                                 </button>
                                 <button
                                     className="call-option-btn call-schedule"
@@ -5482,11 +5612,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         disabled={!scheduledDateTime || schedulingCall}
                                         onClick={async () => {
                                             try {
+                                                const phoneToUse = targetCallPhone || profile?.phone;
+                                                if (!phoneToUse) return alert('Telefon numarası bulunamadı');
                                                 setSchedulingCall(true);
                                                 await retellAPI.scheduleCall(currentWorkspace.id, {
-                                                    toNumber: profile.phone,
-                                                    contactId: profile.id,
-                                                    contactName: profile.name,
+                                                    toNumber: phoneToUse,
+                                                    contactId: profile?.id,
+                                                    contactName: profile?.name,
                                                     scheduledAt: new Date(scheduledDateTime).toISOString(),
                                                     ...(selectedAgentId && { agentId: selectedAgentId }),
                                                     ...(selectedRetellTemplateId && { retellTemplateId: selectedRetellTemplateId })
@@ -5494,9 +5626,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 setShowCallPopup(false);
                                                 setCallScheduleMode(false);
                                                 setCallRefreshKey(prev => prev + 1);
-                                                alert('✅ Arama planlandı!');
+                                                alert('✅ AI Sesli Araması planlandı!');
                                             } catch (err) {
-                                                alert(err.response?.data?.error || 'Planlama başarısız.');
+                                                alert(err.response?.data?.error || err.message || 'Planlama başarısız.');
                                             } finally {
                                                 setSchedulingCall(false);
                                             }
@@ -6156,15 +6288,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             }
                                             return null;
                                         };
-                                        let filteredMembers = members;
+                                        let filteredMembers = members || [];
                                         if (selectedTeamId && teams) {
                                             const team = findTeam(teams, selectedTeamId);
                                             const memberIds = new Set((team?.members || []).map(m => m.userId));
-                                            filteredMembers = members.filter(m => memberIds.has(m.user?.id || m.id));
+                                            filteredMembers = (members || []).filter(m => memberIds.has(m.user?.id || m.id));
                                         }
-                                        return filteredMembers.map(member => (
+                                        return (Array.isArray(filteredMembers) ? filteredMembers : []).map(member => (
                                             <option key={member.user?.id || member.id} value={member.user?.id || member.id}>
-                                                {(onlineUsers.get(member.user?.id || member.id)?.isOnline || member.user?.isOnline) ? '🟢' : '⚪'} {member.user?.name || member.name}
+                                                {isUserOnline(member.user?.id || member.id, member.user) ? '🟢' : '⚪'} {member.user?.name || member.name}
                                             </option>
                                         ));
                                     })()}
@@ -6211,4 +6343,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     );
 };
 
-export default ContactSidebar;
+const ContactSidebarWithBoundary = (props) => (
+    <ErrorBoundary title="Kişi Detayı Yüklenemedi" message="Kişi kartı açılırken bir hata oluştu. Lütfen tekrar deneyin.">
+        <ContactSidebar {...props} />
+    </ErrorBoundary>
+);
+
+export default ContactSidebarWithBoundary;
