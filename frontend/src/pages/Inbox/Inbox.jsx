@@ -356,7 +356,7 @@ const getConversationStatusInfo = (status) => {
 };
 
 const Inbox = () => {
-    const { currentWorkspace, user, setUnreadCount, onlineUsers } = useAuth();
+    const { currentWorkspace, user, setUnreadCount, onlineUsers, switchWorkspace } = useAuth();
     const { t } = useTranslation();
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1279,7 +1279,19 @@ const Inbox = () => {
     useEffect(() => {
         const conversationId = searchParams.get('conversationId');
         const contactId = searchParams.get('contactId');
+        const urlWorkspaceId = searchParams.get('workspaceId');
         if (!conversationId && !contactId) return;
+
+        // URL'de farklı bir workspace belirtilmişse önce geçiş yap
+        if (urlWorkspaceId && currentWorkspace && urlWorkspaceId !== currentWorkspace.id) {
+            switchWorkspace(urlWorkspaceId);
+            // switchWorkspace sonrası currentWorkspace değişecek ve bu effect tekrar tetiklenecek
+            // workspaceId parametresini temizle ki sonsuz döngü olmasın
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('workspaceId');
+            setSearchParams(newParams, { replace: true });
+            return;
+        }
 
         if (conversationId && currentWorkspace) {
             // Force switch to chat mode to ensure the UI becomes visible (e.g., when navigated from pipeline view)
@@ -1658,10 +1670,11 @@ const Inbox = () => {
             );
 
             // Browser notification da göster (sekme arka plandaysa)
+            const assignWorkspaceId = data.workspaceId;
             notificationService.showNotification('📋 Yeni Konuşma Atandı', {
                 body: message || `${assignedBy} size bir konuşma atadı`,
                 tag: `assign-${conversationId}`,
-                data: { url: `/inbox?conversationId=${conversationId}` }
+                data: { url: `/inbox?conversationId=${conversationId}${assignWorkspaceId ? `&workspaceId=${assignWorkspaceId}` : ''}` }
             });
         });
 
