@@ -20,8 +20,21 @@ import {
     CheckCheck,
     X,
     Bell
-} from 'lucide-react';
 import './Support.css';
+
+const getFullMediaUrl = (url) => {
+    if (!url) return '';
+    let cleanUrl = String(url).trim();
+    if (cleanUrl.startsWith('/uploads/')) cleanUrl = `/api${cleanUrl}`;
+    if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+        if (cleanUrl.includes('/uploads/') && !cleanUrl.includes('/api/uploads/')) {
+            cleanUrl = cleanUrl.replace('/uploads/', '/api/uploads/');
+        }
+        return cleanUrl;
+    }
+    if (!cleanUrl.startsWith('/api/')) cleanUrl = `/api/${cleanUrl.replace(/^\/+/, '')}`;
+    return cleanUrl;
+};
 
 const QUICK_TOPICS = [
     { label: 'Hata Bildirimi', icon: Bug, prefix: '🐛 [Hata Bildirimi]: ' },
@@ -311,11 +324,11 @@ export default function Support() {
                                                     {msg.mediaUrl && (
                                                         <div className="support-msg-media">
                                                             {msg.type === 'IMAGE' || msg.mediaUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                                                                <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="support-media-image-link">
-                                                                    <img src={msg.mediaUrl} alt="Ekran Görüntüsü" className="support-media-img" />
+                                                                <a href={getFullMediaUrl(msg.mediaUrl)} target="_blank" rel="noreferrer" className="support-media-image-link">
+                                                                    <img src={getFullMediaUrl(msg.mediaUrl)} alt="Ekran Görüntüsü" className="support-media-img" />
                                                                 </a>
                                                             ) : (
-                                                                <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="support-file-link">
+                                                                <a href={getFullMediaUrl(msg.mediaUrl)} target="_blank" rel="noreferrer" className="support-file-link">
                                                                     <Paperclip size={14} />
                                                                     <span>{msg.fileName || 'Ekli Dosyayı İndir'}</span>
                                                                 </a>

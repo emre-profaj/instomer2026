@@ -303,23 +303,35 @@ export const upsertRule = async (req, res) => {
             return res.status(400).json({ error: 'Geçersiz kural tipi' });
         }
 
-        const rule = await prisma.workspaceRule.upsert({
+        const existingRule = await prisma.workspaceRule.findFirst({
             where: {
-                workspaceId_ruleType_linkedStageId: { workspaceId, ruleType, linkedStageId: linkedStageId || null }
-            },
-            create: {
                 workspaceId,
                 ruleType,
-                isActive: isActive !== undefined ? isActive : false,
-                config: config ? JSON.stringify(config) : '{}',
-                ...(linkedStageId !== undefined && { linkedStageId: linkedStageId || null })
-            },
-            update: {
-                ...(isActive !== undefined && { isActive }),
-                ...(config !== undefined && { config: JSON.stringify(config) }),
-                ...(linkedStageId !== undefined && { linkedStageId: linkedStageId || null })
+                linkedStageId: linkedStageId || null
             }
         });
+
+        let rule;
+        if (existingRule) {
+            rule = await prisma.workspaceRule.update({
+                where: { id: existingRule.id },
+                data: {
+                    ...(isActive !== undefined && { isActive }),
+                    ...(config !== undefined && { config: JSON.stringify(config) }),
+                    ...(linkedStageId !== undefined && { linkedStageId: linkedStageId || null })
+                }
+            });
+        } else {
+            rule = await prisma.workspaceRule.create({
+                data: {
+                    workspaceId,
+                    ruleType,
+                    isActive: isActive !== undefined ? isActive : false,
+                    config: config ? JSON.stringify(config) : '{}',
+                    ...(linkedStageId !== undefined && { linkedStageId: linkedStageId || null })
+                }
+            });
+        }
 
         res.json({
             rule: {
@@ -395,8 +407,8 @@ export const getRulesByStage = async (req, res) => {
 export const executePhoneCaptureRule = async (workspaceId, conversationId, messageContent) => {
     try {
         // Check if rule exists — if explicitly disabled, skip. If not in DB, proceed by default.
-        const rule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'PHONE_CAPTURE', linkedStageId: null } }
+        const rule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'PHONE_CAPTURE' }
         });
         if (!rule || !rule.isActive) return;
 
@@ -470,8 +482,8 @@ export const executePhoneCaptureRule = async (workspaceId, conversationId, messa
 export const executeHotKeywordRule = async (workspaceId, conversationId, messageContent) => {
     try {
         // Check if rule is active
-        const rule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'HOT_KEYWORD', linkedStageId: null } }
+        const rule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'HOT_KEYWORD' }
         });
         if (!rule || !rule.isActive) return;
 
@@ -525,8 +537,8 @@ export const executeHotKeywordRule = async (workspaceId, conversationId, message
  */
 export const executeHotOpportunityEmailRule = async (workspaceId, contactId) => {
     try {
-        const rule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'HOT_OPPORT_EMAIL', linkedStageId: null } }
+        const rule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'HOT_OPPORT_EMAIL' }
         });
         if (!rule || !rule.isActive) return;
 
@@ -617,8 +629,8 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
     // TODO: executeSalesPhoneCallRule yerine changeFunnelStage() + stage entry actions kullanılacak.
     try {
         // 1. Check if rule is active
-        const rule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'SALES_PHONE_CALL', linkedStageId: null } }
+        const rule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'SALES_PHONE_CALL' }
         });
         if (!rule || !rule.isActive) return;
 
@@ -994,8 +1006,8 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
     setTimeout(() => global._autoCallPlanningLocks.delete(lockKey), 30000);
     try {
         // SALES_PHONE_CALL config'inden team/funnel bilgisi al (varsa)
-        const rule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'SALES_PHONE_CALL', linkedStageId: null } }
+        const rule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'SALES_PHONE_CALL' }
         });
         if (!rule || !rule.isActive) {
             console.log(`ℹ️ [RULE:AUTO_CALL] Rule is disabled or missing for workspace ${workspaceId}`);
@@ -1399,8 +1411,8 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
 
     try {
         // 1. Check if rule is active
-        const rule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'APPOINTMENT_AUTO_PLAN', linkedStageId: null } }
+        const rule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'APPOINTMENT_AUTO_PLAN' }
         });
         if (!rule || !rule.isActive) {
             console.log(`ℹ️ [RULE:APPOINTMENT] Rule is disabled or missing for workspace ${workspaceId}`);

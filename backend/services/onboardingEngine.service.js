@@ -64,23 +64,24 @@ export async function applyUniversalDefaults(workspaceId) {
                     linkedStageId = stageMap[`${ruleDef.linkedFunnelType}:${ruleDef.linkedStageName}`] || null;
                 }
 
-                await prisma.workspaceRule.upsert({
-                    where: {
-                        workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: ruleDef.ruleType, linkedStageId: null }
-                    },
-                    create: {
-                        workspaceId,
-                        ruleType: ruleDef.ruleType,
-                        isActive: ruleDef.isActive,
-                        config: JSON.stringify({
-                            ...ruleDef.config,
-                            label: ruleDef.label,
-                            needsTemplate: ruleDef.needsTemplate,
-                        }),
-                        ...(linkedStageId && { linkedStageId }),
-                    },
-                    update: {} // Var olan kuralı değiştirme
+                const existing = await prisma.workspaceRule.findFirst({
+                    where: { workspaceId, ruleType: ruleDef.ruleType }
                 });
+                if (!existing) {
+                    await prisma.workspaceRule.create({
+                        data: {
+                            workspaceId,
+                            ruleType: ruleDef.ruleType,
+                            isActive: ruleDef.isActive,
+                            config: JSON.stringify({
+                                ...ruleDef.config,
+                                label: ruleDef.label,
+                                needsTemplate: ruleDef.needsTemplate,
+                            }),
+                            ...(linkedStageId && { linkedStageId }),
+                        }
+                    });
+                }
                 result.rules++;
             }
 

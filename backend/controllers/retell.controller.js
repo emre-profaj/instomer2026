@@ -1840,8 +1840,8 @@ export const processScheduledCalls = async () => {
                     const fbMinPre = nowTRFbPre.getMinutes();
                     let fbStartPre = 10, fbEndPre = 21;
                     try {
-                        const salesRulePre = await prisma.workspaceRule.findUnique({
-                            where: { workspaceId_ruleType_linkedStageId: { workspaceId: sc.workspaceId, ruleType: 'SALES_PHONE_CALL', linkedStageId: null } }
+                        const salesRulePre = await prisma.workspaceRule.findFirst({
+                            where: { workspaceId: sc.workspaceId, ruleType: 'SALES_PHONE_CALL' }
                         });
                         if (salesRulePre?.config) {
                             const cfgPre = typeof salesRulePre.config === 'string' ? JSON.parse(salesRulePre.config) : salesRulePre.config;

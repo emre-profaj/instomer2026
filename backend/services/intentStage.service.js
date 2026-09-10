@@ -242,8 +242,8 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
 
     // Toggle kontrolü: workspace'te bu otomasyon açık mı?
     const ruleTypeForAction = (action === 'CALL') ? 'SALES_PHONE_CALL' : 'APPOINTMENT_AUTO_PLAN';
-    const rule = await prisma.workspaceRule.findUnique({
-      where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: ruleTypeForAction, linkedStageId: null } }
+    const rule = await prisma.workspaceRule.findFirst({
+      where: { workspaceId, ruleType: ruleTypeForAction }
     });
     if (!rule || !rule.isActive) {
       console.log(`📋 [IntentActivity] ${ruleTypeForAction} toggle kapalı veya tanımsız — ${action} görevi oluşturulmayacak`);

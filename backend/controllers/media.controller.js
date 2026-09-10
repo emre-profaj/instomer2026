@@ -49,8 +49,8 @@ export const uploadMedia = async (req, res) => {
             mediaType = 'audio';
         }
 
-        // Relative URL format: /uploads/media/filename.ext
-        const url = `/uploads/media/${req.file.filename}`;
+        // Relative URL format: /api/uploads/media/filename.ext (proxied by Nginx /api/ to backend)
+        const url = `/api/uploads/media/${req.file.filename}`;
 
         res.json({
             url,

@@ -13,6 +13,29 @@ import { getDescendantFunnelKeys, getAllowedFunnelKeysForAgent } from '../utils/
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
+export const getPublicMediaUrl = (rawUrl) => {
+    if (!rawUrl) return null;
+    let url = String(rawUrl).trim();
+    // Normalize /uploads/ to /api/uploads/
+    if (url.startsWith('/uploads/')) {
+        url = `/api${url}`;
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        url = url.replace('https://app.instomer.com', 'https://chatcrm.instomer.com');
+        if (url.includes('/uploads/') && !url.includes('/api/uploads/')) {
+            url = url.replace('/uploads/', '/api/uploads/');
+        }
+        return url;
+    }
+    const baseUrl = (process.env.BACKEND_URL || process.env.APP_URL || process.env.FRONTEND_URL || 'https://chatcrm.instomer.com')
+        .replace(/\/$/, '')
+        .replace('https://app.instomer.com', 'https://chatcrm.instomer.com');
+    const effectiveBaseUrl = (baseUrl.includes('localhost') || !baseUrl.startsWith('http'))
+        ? 'https://chatcrm.instomer.com'
+        : baseUrl;
+    return `${effectiveBaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
 export const getConversations = async (req, res) => {
     try {
         const { workspaceId } = req.params;
@@ -728,6 +751,11 @@ export const sendMessage = async (req, res) => {
             messageType = 'EMAIL';
         }
 
+        // Normalize mediaUrl if provided
+        const normalizedMediaUrl = mediaUrl
+            ? (mediaUrl.startsWith('/uploads/') ? `/api${mediaUrl}` : mediaUrl)
+            : null;
+
         // Create message in database with initial SENT status
         const message = await prisma.message.create({
             data: {
@@ -738,7 +766,7 @@ export const sendMessage = async (req, res) => {
                 messageType,
                 isInternal: isInternal || false,
                 mentionedIds: mentionedIds || null,
-                mediaUrl: mediaUrl || null,
+                mediaUrl: normalizedMediaUrl,
                 mediaType: mediaType || null,
                 status: 'SENT' // Initial status - will be updated to DELIVERED/READ by webhook
             },
@@ -758,7 +786,8 @@ export const sendMessage = async (req, res) => {
             if (conversation.facebookPage && conversation.contact.facebookId) {
                 try {
                     const isInstagram = !!conversation.instagramBusinessId;
-                    console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}`);
+                    const fullMediaUrl = getPublicMediaUrl(mediaUrl);
+                    console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}, media: ${fullMediaUrl || 'none'}`);
     
                     const fbPayload = mediaUrl
                         ? {
@@ -767,7 +796,7 @@ export const sendMessage = async (req, res) => {
                                 attachment: {
                                     type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'file',
                                     payload: {
-                                        url: `${process.env.APP_URL || 'https://app.instomer.com'}${mediaUrl}`,
+                                        url: fullMediaUrl,
                                         is_reusable: true
                                     }
                                 }
@@ -800,8 +829,33 @@ export const sendMessage = async (req, res) => {
                         });
                         console.log(`✅ ${isInstagram ? 'Instagram' : 'Facebook'} message sent, ID: ${fbMessageId}`);
                     }
+
+                    // If user also typed distinct text along with the media, send it as follow-up
+                    if (mediaUrl && content && content !== fileName && content !== 'Dosya' && content !== 'Fotoğraf' && content.trim()) {
+                        try {
+                            await axios.post(
+                                `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                                {
+                                    recipient: { id: String(conversation.contact.facebookId) },
+                                    message: { text: content.trim() }
+                                },
+                                {
+                                    params: {
+                                        access_token: conversation.facebookPage.pageAccessToken
+                                    }
+                                }
+                            );
+                        } catch (textErr) {
+                            console.warn('⚠️ [Send Message] Follow-up text caption error:', textErr.response?.data || textErr.message);
+                        }
+                    }
                 } catch (error) {
-                    console.log(`⚠️ [Send Message] ${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} error:`, error.response?.data?.error?.message || error.message);
+                    const errMsg = error.response?.data?.error?.message || error.message;
+                    console.error(`❌ [Send Message] ${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} error:`, errMsg, error.response?.data || '');
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: { status: 'FAILED' }
+                    }).catch(e => console.error('Failed to update message status to FAILED:', e.message));
                 }
             }
     
@@ -816,21 +870,22 @@ export const sendMessage = async (req, res) => {
                     const whatsappToken = process.env.WHATSAPP_SYSTEM_USER_TOKEN || conversation.whatsappPhoneNumber.accessToken;
     
                     try {
-                        console.log(`📤 Sending WhatsApp message to ${sanitizedPhone} using Waba ${conversation.whatsappPhoneNumber.phoneNumberId}`);
+                        const fullMediaUrl = getPublicMediaUrl(mediaUrl);
+                        console.log(`📤 Sending WhatsApp message to ${sanitizedPhone} using Waba ${conversation.whatsappPhoneNumber.phoneNumberId}, media: ${fullMediaUrl || 'none'}`);
     
-                        const fullMediaUrl = `${process.env.APP_URL || 'https://app.instomer.com'}${mediaUrl}`;
+                        const hasTextCaption = content && content !== fileName && content !== 'Dosya' && content !== 'Fotoğraf' && content.trim();
                         const waPayload = mediaUrl
                             ? {
                                 messaging_product: 'whatsapp',
                                 to: sanitizedPhone,
                                 type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'document',
                                 ...(mediaType === 'image'
-                                    ? { image: { link: fullMediaUrl, caption: content || undefined } }
+                                    ? { image: { link: fullMediaUrl, caption: hasTextCaption ? content : undefined } }
                                     : mediaType === 'video'
-                                    ? { video: { link: fullMediaUrl, caption: content || undefined } }
+                                    ? { video: { link: fullMediaUrl, caption: hasTextCaption ? content : undefined } }
                                     : mediaType === 'audio'
                                     ? { audio: { link: fullMediaUrl } }
-                                    : { document: { link: fullMediaUrl, filename: fileName || 'dosya', caption: content || undefined } })
+                                    : { document: { link: fullMediaUrl, filename: fileName || 'dosya', caption: hasTextCaption ? content : undefined } })
                             }
                             : {
                                 messaging_product: 'whatsapp',
@@ -869,6 +924,10 @@ export const sendMessage = async (req, res) => {
                             status: error.response?.status,
                             message: error.message
                         });
+                        await prisma.message.update({
+                            where: { id: message.id },
+                            data: { status: 'FAILED' }
+                        }).catch(e => console.error('Failed to update message status to FAILED:', e.message));
                     }
                 }
             }

@@ -54,6 +54,25 @@ const isFormMessage = (msg, channel) => {
     return channel === 'FORM' && msg.isFromContact && msg.content?.includes('📋');
 };
 
+// Helper to resolve media URL to proper /api/uploads endpoint
+const getFullMediaUrl = (url) => {
+    if (!url) return '';
+    let cleanUrl = String(url).trim();
+    if (cleanUrl.startsWith('/uploads/')) {
+        cleanUrl = `/api${cleanUrl}`;
+    }
+    if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+        if (cleanUrl.includes('/uploads/') && !cleanUrl.includes('/api/uploads/')) {
+            cleanUrl = cleanUrl.replace('/uploads/', '/api/uploads/');
+        }
+        return cleanUrl;
+    }
+    if (!cleanUrl.startsWith('/api/')) {
+        cleanUrl = `/api/${cleanUrl.replace(/^\/+/, '')}`;
+    }
+    return cleanUrl;
+};
+
 // Helpers to detect field types for icon assignment
 const getFieldIcon = (label) => {
     const l = label.toLowerCase();
@@ -6229,22 +6248,22 @@ const Inbox = () => {
                                                              <div className="message-media">
                                                                  {msg.mediaType === 'image' || msg.mediaType === 'sticker' ? (
                                                                      <img
-                                                                         src={msg.mediaUrl}
+                                                                         src={getFullMediaUrl(msg.mediaUrl)}
                                                                          alt="Fotoğraf"
                                                                          className="message-media-image"
-                                                                         onClick={() => window.open(msg.mediaUrl, '_blank')}
+                                                                         onClick={() => window.open(getFullMediaUrl(msg.mediaUrl), '_blank')}
                                                                          loading="lazy"
                                                                      />
                                                                  ) : msg.mediaType === 'video' ? (
                                                                 <video controls className="message-media-video">
-                                                                    <source src={msg.mediaUrl} />
+                                                                    <source src={getFullMediaUrl(msg.mediaUrl)} />
                                                                 </video>
                                                             ) : msg.mediaType === 'audio' ? (
                                                                 <audio controls className="message-media-audio">
-                                                                    <source src={msg.mediaUrl} />
+                                                                    <source src={getFullMediaUrl(msg.mediaUrl)} />
                                                                 </audio>
                                                             ) : msg.mediaType === 'document' ? (
-                                                                <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="message-media-doc">
+                                                                <a href={getFullMediaUrl(msg.mediaUrl)} target="_blank" rel="noopener noreferrer" className="message-media-doc">
                                                                     📄 Dosyayı İndir
                                                                 </a>
                                                             ) : null}

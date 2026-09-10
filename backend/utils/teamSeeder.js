@@ -89,18 +89,19 @@ export async function seedDefaultTeams(workspaceId) {
 export async function seedDefaultRules(workspaceId) {
     try {
         for (const rule of DEFAULT_RULES) {
-            await prisma.workspaceRule.upsert({
-                where: {
-                    workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: rule.ruleType, linkedStageId: null }
-                },
-                create: {
-                    workspaceId,
-                    ruleType: rule.ruleType,
-                    isActive: rule.isActive,
-                    config: rule.config
-                },
-                update: {} // Var olan kuralı değiştirme
+            const existing = await prisma.workspaceRule.findFirst({
+                where: { workspaceId, ruleType: rule.ruleType }
             });
+            if (!existing) {
+                await prisma.workspaceRule.create({
+                    data: {
+                        workspaceId,
+                        ruleType: rule.ruleType,
+                        isActive: rule.isActive,
+                        config: rule.config
+                    }
+                });
+            }
         }
         console.log(`🌱 Seeded default rules for workspace ${workspaceId}`);
     } catch (error) {

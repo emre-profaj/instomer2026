@@ -644,9 +644,10 @@ export const sendTemplateMessage = async (req, res) => {
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
             let rawMediaUrl = headerMediaUrl || template.headerContent;
             
-            // If it's a local relative path, convert to absolute (assuming app.instomer.com)
+            // If it's a local relative path, convert to absolute (using chatcrm.instomer.com/api/uploads)
             if (rawMediaUrl && (rawMediaUrl.startsWith('/api/uploads') || rawMediaUrl.startsWith('/uploads'))) {
-                rawMediaUrl = `https://app.instomer.com${rawMediaUrl}`;
+                const cleanPath = rawMediaUrl.startsWith('/uploads') ? `/api${rawMediaUrl}` : rawMediaUrl;
+                rawMediaUrl = `https://chatcrm.instomer.com${cleanPath}`;
             }
             
             const mediaUrl = convertGoogleDriveLink(rawMediaUrl);
@@ -1061,7 +1062,8 @@ export const sendTemplateDynamic = async (req, res) => {
             let rawUrl = headerMediaUrl || template.headerContent;
             
             if (rawUrl && (rawUrl.startsWith('/api/uploads') || rawUrl.startsWith('/uploads'))) {
-                rawUrl = `https://app.instomer.com${rawUrl}`;
+                const cleanPath = rawUrl.startsWith('/uploads') ? `/api${rawUrl}` : rawUrl;
+                rawUrl = `https://chatcrm.instomer.com${cleanPath}`;
             }
             const mediaUrl = convertGoogleDriveLink(rawUrl);
 

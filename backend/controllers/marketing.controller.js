@@ -914,9 +914,10 @@ const WHATSAPP_API_VERSION = 'v22.0';
 function toAbsoluteUrl(url) {
     if (!url) return null;
     if (url.startsWith('/api/uploads') || url.startsWith('/uploads')) {
-        return `https://app.instomer.com${url}`;
+        const cleanPath = url.startsWith('/uploads') ? `/api${url}` : url;
+        return `https://chatcrm.instomer.com${cleanPath}`;
     }
-    return url;
+    return url.replace('https://app.instomer.com', 'https://chatcrm.instomer.com');
 }
 
 // Helper: upload media to Meta and get media_id
@@ -1098,7 +1099,7 @@ export const sendCampaign = async (req, res) => {
                 const rawUrl = toAbsoluteUrl(template.headerContent);
                 if (rawUrl) {
                     const needsUpload = rawUrl.includes('scontent.whatsapp.net') || rawUrl.includes('drive.google.com');
-                    if (needsUpload || rawUrl.startsWith('https://app.instomer.com')) {
+                    if (needsUpload || rawUrl.startsWith('https://chatcrm.instomer.com') || rawUrl.startsWith('https://app.instomer.com')) {
                         cachedMediaId = await uploadMediaToMeta(rawUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
                     }
                 }

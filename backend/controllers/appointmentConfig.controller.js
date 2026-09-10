@@ -3,8 +3,8 @@ import prisma from '../lib/prisma.js';
 // ─── LOCATIONS (ŞUBELER / KLİNİK MERKEZLERİ) ─────────────────────────────────
 
 const getLocationsConfig = async (workspaceId) => {
-    const locRule = await prisma.workspaceRule.findUnique({
-        where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'CLINIC_LOCATIONS', linkedStageId: null } }
+    const locRule = await prisma.workspaceRule.findFirst({
+        where: { workspaceId, ruleType: 'CLINIC_LOCATIONS' }
     });
 
     if (locRule?.config) {
@@ -38,18 +38,24 @@ const getLocationsConfig = async (workspaceId) => {
 };
 
 const saveLocationsConfig = async (workspaceId, config) => {
-    return prisma.workspaceRule.upsert({
-        where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'CLINIC_LOCATIONS', linkedStageId: null } },
-        create: {
-            workspaceId,
-            ruleType: 'CLINIC_LOCATIONS',
-            isActive: true,
-            config: JSON.stringify(config)
-        },
-        update: {
-            config: JSON.stringify(config)
-        }
+    const existing = await prisma.workspaceRule.findFirst({
+        where: { workspaceId, ruleType: 'CLINIC_LOCATIONS' }
     });
+    if (existing) {
+        return prisma.workspaceRule.update({
+            where: { id: existing.id },
+            data: { config: JSON.stringify(config) }
+        });
+    } else {
+        return prisma.workspaceRule.create({
+            data: {
+                workspaceId,
+                ruleType: 'CLINIC_LOCATIONS',
+                isActive: true,
+                config: JSON.stringify(config)
+            }
+        });
+    }
 };
 
 export const getLocations = async (req, res) => {
@@ -476,8 +482,8 @@ export const getFirmSettings = async (req, res) => {
         }
 
         // Sector config
-        const sectorRule = await prisma.workspaceRule.findUnique({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'WORKSPACE_SECTOR', linkedStageId: null } }
+        const sectorRule = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'WORKSPACE_SECTOR' }
         });
 
         let sectorConfig = { sector: 'HEALTH' };
@@ -589,18 +595,24 @@ export const updateFirmSettings = async (req, res) => {
         const { sector, companyName, companyPhone, companyAddress, companyEmail, companyWorkingHours } = req.body;
 
         if (sector) {
-            await prisma.workspaceRule.upsert({
-                where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'WORKSPACE_SECTOR', linkedStageId: null } },
-                create: {
-                    workspaceId,
-                    ruleType: 'WORKSPACE_SECTOR',
-                    isActive: true,
-                    config: JSON.stringify({ sector, updatedAt: new Date().toISOString() })
-                },
-                update: {
-                    config: JSON.stringify({ sector, updatedAt: new Date().toISOString() })
-                }
+            const existingSector = await prisma.workspaceRule.findFirst({
+                where: { workspaceId, ruleType: 'WORKSPACE_SECTOR' }
             });
+            if (existingSector) {
+                await prisma.workspaceRule.update({
+                    where: { id: existingSector.id },
+                    data: { config: JSON.stringify({ sector, updatedAt: new Date().toISOString() }) }
+                });
+            } else {
+                await prisma.workspaceRule.create({
+                    data: {
+                        workspaceId,
+                        ruleType: 'WORKSPACE_SECTOR',
+                        isActive: true,
+                        config: JSON.stringify({ sector, updatedAt: new Date().toISOString() })
+                    }
+                });
+            }
         }
 
         const wsUpdate = {};
@@ -631,18 +643,24 @@ export const seedHealthDemo = async (req, res) => {
         const { workspaceId } = req.params;
 
         // Set sector rule to HEALTH
-        await prisma.workspaceRule.upsert({
-            where: { workspaceId_ruleType_linkedStageId: { workspaceId, ruleType: 'WORKSPACE_SECTOR', linkedStageId: null } },
-            create: {
-                workspaceId,
-                ruleType: 'WORKSPACE_SECTOR',
-                isActive: true,
-                config: JSON.stringify({ sector: 'HEALTH', updatedAt: new Date().toISOString() })
-            },
-            update: {
-                config: JSON.stringify({ sector: 'HEALTH', updatedAt: new Date().toISOString() })
-            }
+        const existingHealth = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'WORKSPACE_SECTOR' }
         });
+        if (existingHealth) {
+            await prisma.workspaceRule.update({
+                where: { id: existingHealth.id },
+                data: { config: JSON.stringify({ sector: 'HEALTH', updatedAt: new Date().toISOString() }) }
+            });
+        } else {
+            await prisma.workspaceRule.create({
+                data: {
+                    workspaceId,
+                    ruleType: 'WORKSPACE_SECTOR',
+                    isActive: true,
+                    config: JSON.stringify({ sector: 'HEALTH', updatedAt: new Date().toISOString() })
+                }
+            });
+        }
 
         // 1. Seed Locations (Şubeler)
         const demoLocations = [
