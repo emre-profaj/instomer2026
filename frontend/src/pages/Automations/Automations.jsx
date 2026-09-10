@@ -1001,6 +1001,26 @@ const Automations = ({ initialTab }) => {
                                                                                 )}
                                                                             </div>
                                                                         )}
+
+                                                                        {/* Bağlı Aşama — otomasyon-akış dedup bağlantısı */}
+                                                                        <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #e5e7eb' }}>
+                                                                            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>🔗 Bağlı Akış Aşaması</label>
+                                                                            <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                value={rule.linkedStageId || ''} onChange={e => {
+                                                                                    const stageId = e.target.value || null;
+                                                                                    saveRule(auto.type, { isActive: rule.isActive, config: cfg, linkedStageId: stageId });
+                                                                                }}>
+                                                                                <option value="">Aşama bağlantısı yok</option>
+                                                                                {funnels.flatMap(f => (f.stages || []).map(s => (
+                                                                                    <option key={s.id} value={s.id}>{f.name} → {s.name}</option>
+                                                                                )))}
+                                                                            </select>
+                                                                            {rule.linkedStage && (
+                                                                                <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '3px' }}>
+                                                                                    ✅ {rule.linkedStage.funnel?.name} → {rule.linkedStage.name} aşamasına bağlı
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                             </div>

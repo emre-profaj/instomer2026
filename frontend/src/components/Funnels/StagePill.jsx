@@ -1,6 +1,6 @@
-import { Settings, Bot, Users, User } from 'lucide-react';
+import { Settings, Bot, Users, User, Zap } from 'lucide-react';
 
-const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick, teams = [], members = [], bots = [] }) => {
+const StagePill = ({ stage, count = 0, automationCount = 0, isSelected, onClick, onSettingsClick, teams = [], members = [], bots = [] }) => {
     const assignedTeam = (teams || []).find(t => t.id === stage.assignedTeamId);
     const assignedUser = (members || []).find(m => m.id === stage.assignedUserId);
     const assignedBot = (bots || []).find(b => b.id === stage.assignedBotId);
@@ -13,6 +13,14 @@ const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick, tea
         >
             <span className="stage-color-dot" style={{ backgroundColor: stage.color || '#6b7280' }} />
             <span className="stage-name">{stage.name}</span>
+            {/* Otomasyon bağlantı rozeti */}
+            {automationCount > 0 && (
+                <span className="stage-assign-badge" title={`${automationCount} otomasyon bağlı`}
+                    style={{ background: '#fef3c7', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '0.6rem', padding: '1px 4px', borderRadius: '4px', fontWeight: 600 }}>
+                    <Zap size={8} />
+                    {automationCount}
+                </span>
+            )}
             {/* Sorumlu mini rozetleri */}
             {(stage.assignedBotId || stage.assignedTeamId || stage.assignedUserId) && (
                 <span

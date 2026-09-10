@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI, appointmentConfigAPI } from '../../services/api';
+import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI, appointmentConfigAPI, rulesAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
@@ -40,6 +40,8 @@ const Funnels = () => {
 
     // Stage counts
     const [stageCounts, setStageCounts] = useState({});
+    // Otomasyon bağlantı sayıları (stageId → count)
+    const [stageAutomationCounts, setStageAutomationCounts] = useState({});
 
     // Settings panels
     const [stagePanel, setStagePanel] = useState(null);   // { stage, funnelId }
@@ -101,18 +103,28 @@ const Funnels = () => {
 
     const loadTeamsAndMembers = async () => {
         try {
-            const [teamsRes, membersRes, botsRes, tplRes, autoRes] = await Promise.all([
+            const [teamsRes, membersRes, botsRes, tplRes, autoRes, rulesRes] = await Promise.all([
                 teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
                 workspaceAPI.getMembers(currentWorkspace.id).catch(() => ({ data: { members: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
                 automationAPI.getTemplates(currentWorkspace.id).catch(() => ({ data: { templates: [] } })),
-                automationAPI.getAutomations(currentWorkspace.id).catch(() => ({ data: { automations: [] } }))
+                automationAPI.getAutomations(currentWorkspace.id).catch(() => ({ data: { automations: [] } })),
+                rulesAPI.getAll(currentWorkspace.id).catch(() => ({ data: { rules: [] } }))
             ]);
             setTeams(teamsRes.data?.teams || []);
             setMembers(membersRes.data?.members?.map(m => m.user) || membersRes.data || []);
             setBots(botsRes.data?.bots || []);
             setTemplates(tplRes.data?.templates || tplRes.data || []);
             setAutomations(autoRes.data?.automations || autoRes.data || []);
+            // Otomasyon → Aşama bağlantı sayıları
+            const rules = rulesRes.data?.rules || [];
+            const counts = {};
+            for (const r of rules) {
+                if (r.linkedStageId) {
+                    counts[r.linkedStageId] = (counts[r.linkedStageId] || 0) + 1;
+                }
+            }
+            setStageAutomationCounts(counts);
             // Topic Categories yükle
             try {
                 const catRes = await getTopicCategories(currentWorkspace.id);
@@ -469,6 +481,7 @@ const Funnels = () => {
                 key={funnel.id}
                 funnel={funnel}
                 stageCounts={stageCounts}
+                stageAutomationCounts={stageAutomationCounts}
                 selectedStage={selectedStage}
                 connectedChannels={allChannelRoutings.filter(r => r.funnelId === funnel.id)}
                 onStageClick={(stage) => setSelectedStage(stage.id === selectedStage ? null : stage.id)}

@@ -5,6 +5,7 @@ import StagePill from './StagePill';
 const FunnelPipeline = ({
     funnel,
     stageCounts = {},
+    stageAutomationCounts = {},
     selectedStage,
     connectedChannels = [],
     onStageClick,
@@ -315,6 +316,7 @@ const FunnelPipeline = ({
                                         <StagePill
                                             stage={stage}
                                             count={stageCounts[stage.id] || 0}
+                                            automationCount={stageAutomationCounts[stage.id] || 0}
                                             isSelected={selectedStage === stage.id}
                                             onClick={onStageClick}
                                             onSettingsClick={onStageSettingsClick}
