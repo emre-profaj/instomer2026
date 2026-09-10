@@ -358,36 +358,10 @@ async function processPostSave(workspaceId, conversation, contact, messageText, 
     console.error('[InboxController] Attribution error:', attrErr.message);
   }
 
-  // ── 16. Niyet → Aşama geçişi (Madde 1) ──────────────────
-  try {
-    const classifierModule = await import('../services/universalClassifier.service.js');
-    const classify = classifierModule.classifyAndExtract || classifierModule.default?.classifyAndExtract;
-    
-    if (classify && messageText && messageText.trim()) {
-      // Önceki mesajları al
-      const recentMessages = await prisma.message.findMany({
-        where: { conversationId: conversation.id },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        select: { content: true, isFromContact: true, createdAt: true }
-      });
-
-      const classifierResult = await classify(
-        conversation.id,
-        recentMessages.reverse(),
-        contact,
-        channelType,
-        workspaceId
-      );
-
-      if (classifierResult && classifierResult.classification !== 'GENEL') {
-        const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
-        await executeClassificationActions(workspaceId, conversation.id, contact.id, classifierResult);
-      }
-    }
-  } catch (intentErr) {
-    console.error('[InboxController] Intent stage error:', intentErr.message);
-  }
+  // ── 16. Niyet → Aşama geçişi ──────────────────────────────
+  // ⚠️ KALDIRILDI: classifyAndExtract burada çağrılıyordu ama classifiedAt kaydetmiyordu.
+  // ai.controller.js getAutoReply() içinde tek seferde çalışıyor (30dk cooldown + classifiedAt kaydı).
+  // Çift Gemini çağrısı → %50+ gereksiz AI maliyetine neden oluyordu.
 
   // ── 17. Lead Puanlama (Madde 3) ──────────────────────────
   try {
@@ -434,36 +408,10 @@ export async function runChannelPostProcessing(workspaceId, conversationId, cont
         console.error('Auto-unarchive error:', unarchiveErr);
     }
 
-    // ── 1. Niyet → Aşama geçişi (Madde 1) ──────────────────
-    try {
-      const classifierModule = await import('../services/universalClassifier.service.js');
-      const classify = classifierModule.classifyAndExtract || classifierModule.default?.classifyAndExtract;
-      
-      if (classify && messageText && messageText.trim()) {
-        const contact = await prisma.contact.findUnique({ where: { id: contactId } });
-        const recentMessages = await prisma.message.findMany({
-          where: { conversationId },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          select: { content: true, isFromContact: true, createdAt: true }
-        });
-
-        const classifierResult = await classify(
-          conversationId,
-          recentMessages.reverse(),
-          contact,
-          channelType,
-          workspaceId
-        );
-
-        if (classifierResult && classifierResult.classification !== 'GENEL') {
-          const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
-          await executeClassificationActions(workspaceId, conversationId, contactId, classifierResult);
-        }
-      }
-    } catch (intentErr) {
-      console.error('[PostProcess] Intent stage error:', intentErr.message);
-    }
+    // ── 1. Niyet → Aşama geçişi ──────────────────────────────
+    // ⚠️ KALDIRILDI: classifyAndExtract burada çağrılıyordu ama classifiedAt kaydetmiyordu.
+    // ai.controller.js getAutoReply() içinde tek seferde çalışıyor (30dk cooldown + classifiedAt kaydı).
+    // Çift Gemini çağrısı → %50+ gereksiz AI maliyetine neden oluyordu.
 
     // ── 2. Lead Puanlama (Madde 3) ──────────────────────────
     try {
