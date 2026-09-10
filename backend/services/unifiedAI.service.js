@@ -12,6 +12,7 @@
 import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getSectorPrompt } from '../utils/sectorPrompt.js';
+import { getBaseKnowledgeContext } from './baseKnowledge.service.js';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 
@@ -99,8 +100,8 @@ export async function executeUnifiedAICall({
             return null;
         }
 
-        // ── 2. Akış ve konu bilgilerini yükle ──
-        const [funnels, topicCategories] = await Promise.all([
+        // ── 2. Akış, konu ve BASE MODÜLÜ (Şubeler, Ürünler, Uzmanlar, SSS) yükle ──
+        const [funnels, topicCategories, baseKnowledge] = await Promise.all([
             prisma.funnel.findMany({
                 where: { workspaceId },
                 select: {
@@ -118,7 +119,8 @@ export async function executeUnifiedAICall({
                         select: { id: true, name: true }
                     }
                 }
-            })
+            }),
+            getBaseKnowledgeContext(workspaceId)
         ]);
 
         // ── 3. Konuşma geçmişini formatla ──
@@ -282,6 +284,11 @@ ${funnelContext || '(Akış tanımlanmamış)'}
 
 KONU KATEGORİLERİ VE ÜRÜNLER:
 ${topicContext || '(Konu tanımlanmamış)'}
+${baseKnowledge?.text ? `
+═══════════════════════════════════════
+🏢 BASE MODÜLÜ TANIMLARI (ŞİRKET, ŞUBELER, ÜRÜNLER/FİYATLAR, UZMANLAR, SSS):
+${baseKnowledge.text}
+═══════════════════════════════════════` : ''}
 
 ═══════════════════════════════════════
 ${getSectorPrompt(workspace.industry)}
@@ -298,8 +305,9 @@ ${stageAIConfig.transitionCriteria?.description ? `\n⚠️ GEÇİŞ KRİTERİ: 
 
 YANITLAMA KURALLARI:
 - Kısa ve öz yanıt ver (max 3-4 cümle)
-- ${workspace.companyDescription ? `Firma bilgisi: ${workspace.companyDescription}` : ''}
-- Emin olmadığın bilgi verme, [HANDOFF] ile insana devret
+- Müşterinin sorduğu şube, adres, ürün, fiyat, uzman/doktor, şirket politikası veya SSS konularında MUTLAKA yukarıdaki "BASE MODÜLÜ TANIMLARI"nı referans al ve oradaki resmi bilgiyi kullan
+- Bilmediğin bir fiyatı, hizmeti veya şubeyi asla kafandan uydurma
+- Emin olmadığın durumlarda [HANDOFF] ile insana devret
 - Müşteri kızgınsa sakinleştir, empati kur
 
 YANIT FORMATI (JSON):

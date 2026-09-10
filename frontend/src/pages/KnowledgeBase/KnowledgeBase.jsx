@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search } from 'lucide-react';
 import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
@@ -51,6 +51,7 @@ const KnowledgeBase = () => {
     // Knowledge Base States
     const [knowledgeEntries, setKnowledgeEntries] = useState([]);
     const [kbLoading, setKbLoading] = useState(false);
+    const [newKbTitle, setNewKbTitle] = useState('');
     const [newKbContent, setNewKbContent] = useState('');
     const [uploading, setUploading] = useState(false);
     const [expandedEntries, setExpandedEntries] = useState({}); // Track which entries are expanded
@@ -422,20 +423,20 @@ const KnowledgeBase = () => {
 
     const handleAddTextEntry = async () => {
         if (!newKbContent.trim()) {
-            alert(t('knowledgeBase.contentRequired'));
+            alert(t('knowledgeBase.contentRequired') || 'İçerik alanı gereklidir');
             return;
         }
 
         try {
-            // Auto-generate title from first 50 chars of content
-            const autoTitle = newKbContent.trim().substring(0, 50) + (newKbContent.length > 50 ? '...' : '');
+            const finalTitle = newKbTitle.trim() || newKbContent.trim().substring(0, 50) + (newKbContent.length > 50 ? '...' : '');
             await knowledgeBaseAPI.addText(currentWorkspace.id, {
-                title: autoTitle,
+                title: finalTitle,
                 content: newKbContent
             });
+            setNewKbTitle('');
             setNewKbContent('');
             loadKnowledgeBase();
-            alert('Bilgi eklendi');
+            alert('Bilgi başarıyla eklendi');
         } catch (error) {
             console.error('Error adding text entry:', error);
             alert('Bilgi eklenirken hata oluştu');
@@ -582,6 +583,7 @@ const KnowledgeBase = () => {
             setSyncingRetell(false);
         }
     };
+
 
     if (!currentWorkspace) {
         return (
@@ -1319,12 +1321,28 @@ const KnowledgeBase = () => {
             {/* Text Tab */}
             {activeTab === 'text' && (
                 <div className="card kb-add-form">
+                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                        <label style={{ fontWeight: '600', marginBottom: '6px', display: 'block', color: 'var(--text-primary, #1e293b)' }}>
+                            Başlık / Soru / Konu
+                        </label>
+                        <input
+                            type="text"
+                            className="input"
+                            placeholder="Örn: İade Koşulları, Kargo Ücreti Ne Kadar?, Çalışma Prensipleri..."
+                            value={newKbTitle}
+                            onChange={(e) => setNewKbTitle(e.target.value)}
+                        />
+                    </div>
                     <div className="form-group">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <label style={{ margin: 0 }}>{t('knowledgeBase.content')}</label>
+                            <label style={{ fontWeight: '600', margin: 0, color: 'var(--text-primary, #1e293b)' }}>
+                                İçerik / Cevap / Detaylar
+                            </label>
                             <button
                                 className="btn btn-outline kb-template-btn"
-                                onClick={() => setNewKbContent(`📍 GENEL BİLGİLER
+                                onClick={() => {
+                                    setNewKbTitle('Şirket & Hizmet Genel Bilgileri');
+                                    setNewKbContent(`📍 GENEL BİLGİLER
 Firma Adı: [Firma adınızı yazın]
 İletişim: Telefon: [+90 xxx] | E-posta: [info@firma.com] | Web: [www.firma.com]
 Adres: [Şehir, İlçe, tam adres]
@@ -1332,32 +1350,20 @@ Adres: [Şehir, İlçe, tam adres]
 
 🏢 FİRMA HAKKINDA
 Ne üretiyor/satıyor: [Ürün ve hizmet açıklaması]
-Nereye satıyor: [Türkiye geneli / İzmir / Online vb.]
+Nereye satıyor: [Türkiye geneli / Online vb.]
 Hedef kitle: [Bireysel müşteriler / Kurumsal / B2B vb.]
 
 📦 ÜRÜN VE HİZMET LİSTESİ
-1. [Ürün/Hizmet Adı] — [Açıklama] — [Fiyat: ₺xxx veya "Fiyat bilgisi yok"]
+1. [Ürün/Hizmet Adı] — [Açıklama] — [Fiyat: ₺xxx]
 2. [Ürün/Hizmet Adı] — [Açıklama] — [Fiyat: ₺xxx]
-3. ...
 
-❓ SIK SORULAN SORULAR (SSS)
+❓ SIK SORULAN SORULAR
 S: [Soru 1]
 C: [Cevap 1]
 
-S: [Soru 2]
-C: [Cevap 2]
-
-S: [Soru 3]
-C: [Cevap 3]
-
-🌍 DİLLER VE BÖLGELER
-Hizmet dilleri: [Türkçe, İngilizce vb.]
-Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
-
 ⚠️ ÖNEMLİ NOTLAR
-- [Garanti koşulları, iade politikası, özel kurallar vb.]
-- [Hangi konularda bilgi verilmemeli]
-- [Özel kampanya veya indirimler]`)}
+- [Garanti koşulları, iade politikası, özel kurallar vb.]`);
+                                }}
                                 style={{ fontSize: '12px', padding: '6px 12px', gap: '4px' }}
                             >
                                 <ClipboardList size={14} />
@@ -1366,16 +1372,13 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
                         </div>
                         <textarea
                             className="input"
-                            rows="16"
-                            placeholder="Bilgi içeriğini buraya yazın. AI bu bilgileri müşterilere yanıt verirken kullanacak...
+                            rows="14"
+                            placeholder="Bilgi, soru-cevap veya doküman içeriğini buraya yazın. AI müşteriyle konuşurken bu bilgileri kullanacaktır...
 
-Örnek:
-- Ürün bilgileri, fiyatlar
+Örnekler:
 - Sık sorulan sorular ve cevapları
-- Şirket politikaları
-- Destek prosedürleri
-
-💡 İpucu: Sağ üstteki 'Şablondan Başla' butonuna tıklayarak hazır yapıyı kullanabilirsiniz."
+- Ürün ve hizmet detayları, kampanya veya indirim koşulları
+- İade, garanti, kargo veya randevu politikaları"
                             value={newKbContent}
                             onChange={(e) => setNewKbContent(e.target.value)}
                         />
@@ -1653,7 +1656,7 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
                                         <div className="kb-entry-info">
                                             <h4>{entry.title}</h4>
                                             <span className="kb-entry-meta">
-                                                {entry.sourceType === 'FILE' ? entry.fileType?.toUpperCase() : entry.sourceType === 'URL' ? '🌐 Web URL' : entry.sourceType === 'FEED' ? '🔗 Dinamik Feed' : 'Metin'} •
+                                                {entry.sourceType === 'FILE' ? entry.fileType?.toUpperCase() : entry.sourceType === 'URL' ? '🌐 Web URL' : entry.sourceType === 'FEED' ? '🔗 Dinamik Feed' : entry.sourceType === 'FAQ' ? '❓ Soru-Cevap' : '📝 Metin'} •
                                                 {new Date(entry.createdAt).toLocaleDateString('tr-TR')}
                                                 {entry.lastSyncedAt && ` • Son Senkronize: ${new Date(entry.lastSyncedAt).toLocaleString('tr-TR')}`}
                                             </span>
@@ -1669,7 +1672,7 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
                                                     <RefreshCw size={16} className={syncingEntry === entry.id ? 'spinning' : ''} />
                                                 </button>
                                             )}
-                                            {entry.sourceType === 'TEXT' && (
+                                            {(entry.sourceType === 'TEXT' || entry.sourceType === 'FAQ' || !entry.sourceType) && (
                                                 <button
                                                     className="btn-icon btn-edit"
                                                     onClick={() => handleEditEntry(entry)}

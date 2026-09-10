@@ -13,6 +13,7 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { mergeContacts } from '../services/contactMerge.service.js';
 import { generateCaseNumber } from './case.controller.js';
 import { getSectorPrompt } from '../utils/sectorPrompt.js';
+import { getBaseKnowledgeContext } from '../services/baseKnowledge.service.js';
 
 
 // Lock to prevent duplicate AI replies for same conversation
@@ -267,50 +268,8 @@ export const deleteBotDocument = async (req, res) => {
 // Helper function to get workspace knowledge base context
 const getWorkspaceKnowledgeContext = async (workspaceId) => {
     try {
-        // Get company info
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: {
-                companyName: true,
-                companyDescription: true,
-                companyAddress: true,
-                companyPhone: true,
-                companyEmail: true,
-                companyWebsite: true,
-                companyWorkingHours: true
-            }
-        });
-
-        // Get knowledge base entries
-        const knowledgeEntries = await prisma.knowledgeBase.findMany({
-            where: { workspaceId },
-            select: { title: true, content: true, sourceType: true }
-        });
-
-        let context = "";
-
-        // Add company info if exists
-        if (workspace && (workspace.companyName || workspace.companyDescription)) {
-            context += "=== ŞİRKET BİLGİLERİ ===\n";
-            if (workspace.companyName) context += `Şirket Adı: ${workspace.companyName}\n`;
-            if (workspace.companyDescription) context += `Hakkımızda: ${workspace.companyDescription}\n`;
-            if (workspace.companyAddress) context += `Adres: ${workspace.companyAddress}\n`;
-            if (workspace.companyPhone) context += `Telefon: ${workspace.companyPhone}\n`;
-            if (workspace.companyEmail) context += `E-posta: ${workspace.companyEmail}\n`;
-            if (workspace.companyWebsite) context += `Website: ${workspace.companyWebsite}\n`;
-            if (workspace.companyWorkingHours) context += `Çalışma Saatleri: ${workspace.companyWorkingHours}\n`;
-            context += "\n";
-        }
-
-        // Add knowledge base entries
-        if (knowledgeEntries && knowledgeEntries.length > 0) {
-            context += "=== BİLGİ BANKASI ===\n";
-            for (const entry of knowledgeEntries) {
-                context += `--- ${entry.title} ---\n${entry.content}\n\n`;
-            }
-        }
-
-        return context;
+        const baseContext = await getBaseKnowledgeContext(workspaceId);
+        return baseContext?.text || "";
     } catch (error) {
         console.error('Error getting workspace knowledge context:', error);
         return "";

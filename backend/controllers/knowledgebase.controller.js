@@ -232,7 +232,7 @@ export const getKnowledgeBase = async (req, res) => {
 export const addTextEntry = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { title, content } = req.body;
+        const { title, content, sourceType, sourceUrl } = req.body;
 
         if (!title || !content) {
             return res.status(400).json({ error: 'Başlık ve içerik gereklidir' });
@@ -241,9 +241,10 @@ export const addTextEntry = async (req, res) => {
         const entry = await prisma.knowledgeBase.create({
             data: {
                 workspaceId,
-                title,
-                content,
-                sourceType: 'TEXT'
+                title: title.trim(),
+                content: content.trim(),
+                sourceType: sourceType || 'TEXT',
+                sourceUrl: sourceUrl ? sourceUrl.trim() : null
             }
         });
 
@@ -304,7 +305,7 @@ export const uploadFile = async (req, res) => {
 export const updateEntry = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { title, content } = req.body;
+        const { title, content, sourceType, sourceUrl } = req.body;
 
         // Verify entry belongs to this workspace
         const existing = await prisma.knowledgeBase.findFirst({ where: { id, workspaceId } });
@@ -315,8 +316,10 @@ export const updateEntry = async (req, res) => {
         const entry = await prisma.knowledgeBase.update({
             where: { id },
             data: {
-                ...(title && { title }),
-                ...(content && { content })
+                ...(title !== undefined && { title: title.trim() }),
+                ...(content !== undefined && { content: content.trim() }),
+                ...(sourceType !== undefined && { sourceType }),
+                ...(sourceUrl !== undefined && { sourceUrl: sourceUrl ? sourceUrl.trim() : null })
             }
         });
 
@@ -360,10 +363,27 @@ export const getKnowledgeContent = async (workspaceId) => {
     try {
         const entries = await prisma.knowledgeBase.findMany({
             where: { workspaceId },
-            select: { title: true, content: true }
+            select: { title: true, content: true, sourceType: true, sourceUrl: true }
         });
 
-        return entries.map(e => `## ${e.title}\n${e.content}`).join('\n\n---\n\n');
+        const faqs = entries.filter(e => e.sourceType === 'FAQ');
+        const docs = entries.filter(e => e.sourceType !== 'FAQ');
+
+        let output = '';
+        if (faqs.length > 0) {
+            output += "### SIKÇA SORULAN SORULAR VE CEVAPLAR (SSS)\n";
+            output += faqs.map(f => {
+                const cat = f.sourceUrl ? `[${f.sourceUrl}] ` : '';
+                return `${cat}S: ${f.title}\nC: ${f.content}`;
+            }).join('\n\n') + '\n\n---\n\n';
+        }
+
+        if (docs.length > 0) {
+            output += "### BİLGİ BANKASI DOKÜMANLARI\n";
+            output += docs.map(e => `## ${e.title}\n${e.content}`).join('\n\n---\n\n');
+        }
+
+        return output;
     } catch (error) {
         console.error('Get knowledge content error:', error);
         return '';
