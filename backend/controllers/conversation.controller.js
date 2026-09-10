@@ -11,7 +11,107 @@ import { processShortcodes } from '../utils/shortcodeExecutor.js';
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
 import { getDescendantFunnelKeys, getAllowedFunnelKeysForAgent } from '../utils/funnelHierarchy.js';
 
+import fs from 'fs';
+import path from 'path';
+import FormData from 'form-data';
+
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
+
+// Helper to find local file on disk
+export const getLocalFilePath = (mediaUrl) => {
+    if (!mediaUrl) return null;
+    const cleanUrl = String(mediaUrl).split('?')[0];
+    const filename = path.basename(cleanUrl);
+    if (!filename || filename.length < 3) return null;
+
+    const candidates = [
+        path.join(process.cwd(), 'uploads', 'media', filename),
+        path.join(process.cwd(), 'uploads', filename),
+        path.join(process.cwd(), 'backend', 'uploads', 'media', filename),
+        path.join(process.cwd(), 'backend', 'uploads', filename),
+        path.join(process.cwd(), '..', 'uploads', 'media', filename)
+    ];
+
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) return p;
+        } catch (_) {}
+    }
+    return null;
+};
+
+// Helper for WhatsApp media type & MIME resolution
+export const getWhatsAppMediaTypeAndMime = (filePath, requestedMediaType) => {
+    const ext = path.extname(filePath).toLowerCase().replace('.', '');
+    
+    // Images
+    if (['jpg', 'jpeg'].includes(ext)) return { type: 'image', mime: 'image/jpeg' };
+    if (ext === 'png') return { type: 'image', mime: 'image/png' };
+    if (['webp', 'gif'].includes(ext)) {
+        return { type: 'document', mime: ext === 'webp' ? 'image/webp' : 'image/gif' };
+    }
+    
+    // Videos
+    if (ext === 'mp4') return { type: 'video', mime: 'video/mp4' };
+    if (ext === '3gp' || ext === '3gpp') return { type: 'video', mime: 'video/3gpp' };
+    
+    // Audio
+    if (ext === 'mp3') return { type: 'audio', mime: 'audio/mpeg' };
+    if (ext === 'ogg') return { type: 'audio', mime: 'audio/ogg' };
+    if (ext === 'm4a') return { type: 'audio', mime: 'audio/mp4' };
+    if (ext === 'aac') return { type: 'audio', mime: 'audio/aac' };
+    if (ext === 'wav') return { type: 'audio', mime: 'audio/wav' };
+    if (ext === 'amr') return { type: 'audio', mime: 'audio/amr' };
+
+    // Documents
+    if (ext === 'pdf') return { type: 'document', mime: 'application/pdf' };
+    if (ext === 'doc') return { type: 'document', mime: 'application/msword' };
+    if (ext === 'docx') return { type: 'document', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+    if (ext === 'xls') return { type: 'document', mime: 'application/vnd.ms-excel' };
+    if (ext === 'xlsx') return { type: 'document', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+    if (ext === 'ppt') return { type: 'document', mime: 'application/vnd.ms-powerpoint' };
+    if (ext === 'pptx') return { type: 'document', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+    if (ext === 'txt') return { type: 'document', mime: 'text/plain' };
+    if (ext === 'csv') return { type: 'document', mime: 'text/csv' };
+
+    return {
+        type: requestedMediaType === 'image' ? 'image' : requestedMediaType === 'video' ? 'video' : requestedMediaType === 'audio' ? 'audio' : 'document',
+        mime: requestedMediaType === 'image' ? 'image/jpeg' : 'application/octet-stream'
+    };
+};
+
+// Direct upload to Meta WhatsApp Media API
+export const uploadMediaToWhatsApp = async (filePath, mimeType, filename, phoneNumberId, accessToken) => {
+    try {
+        console.log(`📤 [WA Media Upload] Uploading directly to Meta API (${phoneNumberId}): ${filename} [${mimeType}]`);
+        const form = new FormData();
+        form.append('file', fs.createReadStream(filePath), {
+            filename: filename || path.basename(filePath),
+            contentType: mimeType
+        });
+        form.append('type', mimeType);
+        form.append('messaging_product', 'whatsapp');
+
+        const uploadResp = await axios.post(
+            `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/media`,
+            form,
+            {
+                headers: {
+                    ...form.getHeaders(),
+                    Authorization: `Bearer ${accessToken}`
+                },
+                timeout: 35000
+            }
+        );
+
+        const mediaId = uploadResp.data?.id;
+        console.log(`✅ [WA Media Upload] Meta media_id received: ${mediaId}`);
+        return mediaId;
+    } catch (error) {
+        console.error('❌ [WA Media Upload] Direct upload to Meta failed:', error.response?.data || error.message);
+        return null;
+    }
+};
 
 export const getPublicMediaUrl = (rawUrl) => {
     if (!rawUrl) return null;
@@ -786,36 +886,81 @@ export const sendMessage = async (req, res) => {
             if (conversation.facebookPage && conversation.contact.facebookId) {
                 try {
                     const isInstagram = !!conversation.instagramBusinessId;
+                    const localPath = getLocalFilePath(mediaUrl);
                     const fullMediaUrl = getPublicMediaUrl(mediaUrl);
-                    console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}, media: ${fullMediaUrl || 'none'}`);
+                    console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}, local: ${localPath || 'none'}, url: ${fullMediaUrl || 'none'}`);
     
-                    const fbPayload = mediaUrl
-                        ? {
-                            recipient: { id: String(conversation.contact.facebookId) },
-                            message: {
+                    let fbResponse;
+                    let sentViaDirectUpload = false;
+
+                    // If local file exists, try uploading directly via multipart/form-data
+                    if (mediaUrl && localPath && fs.existsSync(localPath)) {
+                        try {
+                            const { mime } = getWhatsAppMediaTypeAndMime(localPath, mediaType);
+                            const attachmentType = mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'file';
+                            const form = new FormData();
+                            form.append('recipient', JSON.stringify({ id: String(conversation.contact.facebookId) }));
+                            form.append('message', JSON.stringify({
                                 attachment: {
-                                    type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'file',
-                                    payload: {
-                                        url: fullMediaUrl,
-                                        is_reusable: true
+                                    type: attachmentType,
+                                    payload: { is_reusable: true }
+                                }
+                            }));
+                            form.append('filedata', fs.createReadStream(localPath), {
+                                filename: fileName || path.basename(localPath),
+                                contentType: mime
+                            });
+
+                            fbResponse = await axios.post(
+                                `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                                form,
+                                {
+                                    params: {
+                                        access_token: conversation.facebookPage.pageAccessToken
+                                    },
+                                    headers: {
+                                        ...form.getHeaders()
+                                    },
+                                    timeout: 40000
+                                }
+                            );
+                            sentViaDirectUpload = true;
+                            console.log(`✅ ${isInstagram ? 'Instagram' : 'Facebook'} sent via direct filedata upload!`);
+                        } catch (uploadErr) {
+                            console.warn(`⚠️ [Send Message] Direct filedata upload failed (${uploadErr.response?.data?.error?.message || uploadErr.message}), falling back to URL...`);
+                        }
+                    }
+
+                    // Fallback to URL or text
+                    if (!sentViaDirectUpload) {
+                        const fbPayload = mediaUrl
+                            ? {
+                                recipient: { id: String(conversation.contact.facebookId) },
+                                message: {
+                                    attachment: {
+                                        type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'file',
+                                        payload: {
+                                            url: fullMediaUrl,
+                                            is_reusable: true
+                                        }
                                     }
                                 }
                             }
-                        }
-                        : {
-                            recipient: { id: String(conversation.contact.facebookId) },
-                            message: { text: content }
-                        };
+                            : {
+                                recipient: { id: String(conversation.contact.facebookId) },
+                                message: { text: content }
+                            };
 
-                    const fbResponse = await axios.post(
-                        `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
-                        fbPayload,
-                        {
-                            params: {
-                                access_token: conversation.facebookPage.pageAccessToken
+                        fbResponse = await axios.post(
+                            `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                            fbPayload,
+                            {
+                                params: {
+                                    access_token: conversation.facebookPage.pageAccessToken
+                                }
                             }
-                        }
-                    );
+                        );
+                    }
     
                     // Save Facebook message ID and set status to SENT
                     const fbMessageId = fbResponse.data?.message_id;
@@ -870,29 +1015,64 @@ export const sendMessage = async (req, res) => {
                     const whatsappToken = process.env.WHATSAPP_SYSTEM_USER_TOKEN || conversation.whatsappPhoneNumber.accessToken;
     
                     try {
+                        const localPath = getLocalFilePath(mediaUrl);
                         const fullMediaUrl = getPublicMediaUrl(mediaUrl);
-                        console.log(`📤 Sending WhatsApp message to ${sanitizedPhone} using Waba ${conversation.whatsappPhoneNumber.phoneNumberId}, media: ${fullMediaUrl || 'none'}`);
-    
                         const hasTextCaption = content && content !== fileName && content !== 'Dosya' && content !== 'Fotoğraf' && content.trim();
-                        const waPayload = mediaUrl
-                            ? {
+
+                        let mediaId = null;
+                        let waMediaType = mediaType || 'document';
+
+                        if (localPath) {
+                            const { type: resolvedType, mime: resolvedMime } = getWhatsAppMediaTypeAndMime(localPath, mediaType);
+                            waMediaType = resolvedType;
+                            mediaId = await uploadMediaToWhatsApp(
+                                localPath,
+                                resolvedMime,
+                                fileName || path.basename(localPath),
+                                conversation.whatsappPhoneNumber.phoneNumberId,
+                                whatsappToken
+                            );
+                        }
+
+                        let waPayload;
+                        if (mediaId) {
+                            // 🚀 Direct Meta Media ID: 100% reliable, zero external server download needed
+                            console.log(`📤 Sending WhatsApp message via Meta media_id: ${mediaId} to ${sanitizedPhone}`);
+                            waPayload = {
                                 messaging_product: 'whatsapp',
                                 to: sanitizedPhone,
-                                type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'document',
-                                ...(mediaType === 'image'
-                                    ? { image: { link: fullMediaUrl, caption: hasTextCaption ? content : undefined } }
-                                    : mediaType === 'video'
-                                    ? { video: { link: fullMediaUrl, caption: hasTextCaption ? content : undefined } }
-                                    : mediaType === 'audio'
-                                    ? { audio: { link: fullMediaUrl } }
-                                    : { document: { link: fullMediaUrl, filename: fileName || 'dosya', caption: hasTextCaption ? content : undefined } })
-                            }
-                            : {
-                                messaging_product: 'whatsapp',
-                                to: sanitizedPhone,
-                                type: 'text',
-                                text: { body: content }
+                                type: waMediaType,
+                                ...(waMediaType === 'image'
+                                    ? { image: { id: mediaId, caption: hasTextCaption ? content : undefined } }
+                                    : waMediaType === 'video'
+                                    ? { video: { id: mediaId, caption: hasTextCaption ? content : undefined } }
+                                    : waMediaType === 'audio'
+                                    ? { audio: { id: mediaId } }
+                                    : { document: { id: mediaId, filename: fileName || path.basename(localPath) || 'dosya', caption: hasTextCaption ? content : undefined } })
                             };
+                        } else {
+                            // Fallback to URL link
+                            console.log(`📤 Sending WhatsApp message via URL link: ${fullMediaUrl} to ${sanitizedPhone}`);
+                            waPayload = mediaUrl
+                                ? {
+                                    messaging_product: 'whatsapp',
+                                    to: sanitizedPhone,
+                                    type: mediaType === 'image' ? 'image' : mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'document',
+                                    ...(mediaType === 'image'
+                                        ? { image: { link: fullMediaUrl, caption: hasTextCaption ? content : undefined } }
+                                        : mediaType === 'video'
+                                        ? { video: { link: fullMediaUrl, caption: hasTextCaption ? content : undefined } }
+                                        : mediaType === 'audio'
+                                        ? { audio: { link: fullMediaUrl } }
+                                        : { document: { link: fullMediaUrl, filename: fileName || 'dosya', caption: hasTextCaption ? content : undefined } })
+                                }
+                                : {
+                                    messaging_product: 'whatsapp',
+                                    to: sanitizedPhone,
+                                    type: 'text',
+                                    text: { body: content }
+                                };
+                        }
 
                         const waResponse = await axios.post(
                             `https://graph.facebook.com/${GRAPH_API_VERSION}/${conversation.whatsappPhoneNumber.phoneNumberId}/messages`,
