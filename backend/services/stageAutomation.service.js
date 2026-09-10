@@ -48,6 +48,9 @@ export async function executeEntryActions(stageId, contactId, workspaceId) {
         for (const action of actions) {
             try {
                 await executeSingleAction(action, contactId, workspaceId);
+
+                // 🔗 automationLog'a yaz → automationCron ile dedup sağla
+                await writeAutomationLog(workspaceId, contactId, stageId, action.type, 'ENTRY');
             } catch (err) {
                 console.error(`[StageAutomation] Entry action failed:`, action.type, err.message);
             }
@@ -105,6 +108,9 @@ export async function scheduleTimedActions(stageId, contactId, workspaceId) {
                     ...(timedActionCaseId ? { caseId: timedActionCaseId } : {})
                 }
             });
+
+            // 🔗 automationLog'a yaz → automationCron ile dedup sağla
+            await writeAutomationLog(workspaceId, contactId, stageId, action.type, 'TIMED');
         }
     } catch (err) {
         console.error('[StageAutomation] scheduleTimedActions error:', err.message);
@@ -695,5 +701,29 @@ async function checkSingleRequirement(field, contactId, workspaceId) {
 
         default:
             return true;
+    }
+}
+
+/**
+ * 🔗 automationLog'a kayıt yaz — automationCron.service.js ile ortak dedup tablosu.
+ * Stage aksiyonu çalışınca buraya yazar → automationCron aynı kişiye tekrar göndermez.
+ * 
+ * ruleType formatı: STAGE_ACTION:{stageId}:{actionType}:{trigger}
+ * Bu format automationCron'daki linkedStageId kontrolüyle eşleşir.
+ */
+async function writeAutomationLog(workspaceId, contactId, stageId, actionType, trigger) {
+    try {
+        await prisma.automationLog.create({
+            data: {
+                workspaceId,
+                contactId,
+                ruleType: `STAGE_ACTION:${stageId}:${actionType}:${trigger}`,
+                result: 'SUCCESS',
+                metadata: JSON.stringify({ stageId, actionType, trigger, source: 'stageAutomation' })
+            }
+        });
+    } catch (err) {
+        // Non-fatal — log silently
+        console.error('[StageAutomation] automationLog write failed:', err.message);
     }
 }

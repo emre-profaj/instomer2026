@@ -1132,17 +1132,20 @@ model Automation {
 
 // Workspace-level Automation Rules (Kurallar)
 model WorkspaceRule {
-  id          String    @id @default(uuid())
-  workspaceId String
-  ruleType    String // PHONE_CAPTURE | HOT_KEYWORD | HOT_OPPORT_EMAIL
-  isActive    Boolean   @default(false)
-  config      String    @default("{}") // JSON: { keywords:[], teamId, emailChannelId }
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id            String       @id @default(uuid())
+  workspaceId   String
+  ruleType      String // PHONE_CAPTURE | HOT_KEYWORD | HOT_OPPORT_EMAIL | APPOINTMENT_REMINDER | QUOTE_REMINDER | DRIP_DAY_1 ...
+  isActive      Boolean      @default(false)
+  config        String       @default("{}") // JSON: { keywords:[], teamId, emailChannelId, label, needsTemplate }
+  linkedStageId String? // Bağlı akış aşaması — bu aşamadaki kişilere çalışır
+  linkedStage   FunnelStage? @relation("StageAutomationRules", fields: [linkedStageId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, ruleType])
   @@index([workspaceId])
+  @@index([linkedStageId])
   @@map("workspace_rules")
 }
 
@@ -1579,6 +1582,9 @@ model FunnelStage {
   aiGoal             String? @db.Text // "Bu aşamada müşteriyi randevuya yönlendir"
   aiInstruction      String? @db.Text // "Müşteriyle görüşme saati belirle, telefon numarası al"
   transitionCriteria String? @db.Text // JSON: { conditions: [{ field: "phone", op: "exists" }], autoTransition: true }
+
+  // Bağlı otomasyon kuralları (Otomasyonlar sayfasından)
+  automationRules WorkspaceRule[] @relation("StageAutomationRules")
 
   @@index([funnelId])
   @@map("funnel_stages")

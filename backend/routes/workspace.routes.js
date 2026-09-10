@@ -29,7 +29,9 @@ import {
     toggleRealEstateModuleWS,
     toggleSalesModuleWS,
     updateDisaoCrmSettings,
-    testDisaoCrmConnection
+    testDisaoCrmConnection,
+    seedAllWorkspaces,
+    seedSingleWorkspace
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/roleAuth.js';
@@ -164,5 +166,9 @@ router.patch('/:workspaceId/sales-module', requireWorkspaceAccess, toggleSalesMo
 // Disao CRM Settings
 router.patch('/:workspaceId/disao-crm', requireWorkspaceAccess, updateDisaoCrmSettings);
 router.post('/:workspaceId/disao-crm/test', requireWorkspaceAccess, testDisaoCrmConnection);
+
+// ─── Admin: Evrensel taban seed ───────────────────────────────────
+router.post('/admin/seed-all', requireRole('admin'), seedAllWorkspaces);
+router.post('/:workspaceId/seed-defaults', requireWorkspaceAccess, seedSingleWorkspace);
 
 export default router;

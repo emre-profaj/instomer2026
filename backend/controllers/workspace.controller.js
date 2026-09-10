@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { getAiUsageStats } from '../services/aiUsage.service.js';
 import { logAdminActivity } from '../services/activityLog.service.js';
 import { seedDefaultTeams } from '../utils/teamSeeder.js';
+import { applyUniversalDefaults } from '../services/onboardingEngine.service.js';
 import { disaoService } from '../services/disao.service.js';
 
 
@@ -92,6 +93,7 @@ export const createWorkspace = async (req, res) => {
         await seedDefaultTeams(workspace.id);
 
         // Create default 'Insta' AI bot
+        const { DEFAULT_BOT_PROMPT } = await import('../utils/universalDefaults.js');
         await prisma.aIBot.create({
             data: {
                 workspaceId: workspace.id,
@@ -103,23 +105,13 @@ export const createWorkspace = async (req, res) => {
                 facebookEnabled: true,
                 widgetEnabled: true,
                 botType: 'CHATS',
-                prompt: `Sen Insta, profesyonel bir AI müşteri asistanısın.
-
-Görevlerin:
-- Müşteri sorularını yanıtla
-- Ürün ve hizmetler hakkında bilgi ver
-- Randevu ve görüşme planla
-- Şikayetleri kayıt altına al
-- Satış fırsatlarını takip et
-
-Kuralların:
-- Her zaman nazik ve profesyonel ol
-- Bilmediğin konularda bir temsilciye yönlendir
-- Müşterinin ihtiyacını anlamaya çalış
-- Kısa ve net yanıtlar ver
-- Türkçe konuş`
+                prompt: DEFAULT_BOT_PROMPT
             }
         });
+
+        // 🌱 Evrensel taban: akışlar, kategoriler, otomasyon kuralları
+        applyUniversalDefaults(workspace.id)
+            .catch(err => console.error('⚠️ [Onboarding] Non-fatal error:', err.message));
 
         res.status(201).json({ workspace });
         
@@ -1001,5 +993,29 @@ export const testDisaoCrmConnection = async (req, res) => {
     } catch (error) {
         console.error('testDisaoCrmConnection error:', error);
         res.status(500).json({ error: 'Bağlantı test edilemedi.', details: error.message });
+    }
+};
+
+// ─── Admin: Mevcut workspace'lere evrensel taban uygula (migration) ───
+export const seedAllWorkspaces = async (req, res) => {
+    try {
+        const { seedExistingWorkspaces } = await import('../services/onboardingEngine.service.js');
+        const result = await seedExistingWorkspaces();
+        res.json({ message: 'Migration tamamlandı', ...result });
+    } catch (error) {
+        console.error('seedAllWorkspaces error:', error);
+        res.status(500).json({ error: 'Migration hatası', details: error.message });
+    }
+};
+
+// ─── Admin: Tek workspace'e evrensel taban uygula ─────────────────
+export const seedSingleWorkspace = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const result = await applyUniversalDefaults(workspaceId);
+        res.json({ message: 'Seed tamamlandı', ...result });
+    } catch (error) {
+        console.error('seedSingleWorkspace error:', error);
+        res.status(500).json({ error: 'Seed hatası', details: error.message });
     }
 };

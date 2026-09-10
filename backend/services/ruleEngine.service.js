@@ -38,6 +38,7 @@ export async function getRuleConfig(workspaceId, ruleType) {
         if (!rule || !rule.isActive) return null;
         let config = {};
         try { config = rule.config ? JSON.parse(rule.config) : {}; } catch { config = {}; }
+        config._linkedStageId = rule.linkedStageId || null; // Çapraz dedup için
         return config;
     } catch (e) {
         console.error(`${TAG} getRuleConfig error:`, e.message);
@@ -46,9 +47,12 @@ export async function getRuleConfig(workspaceId, ruleType) {
 }
 
 // ─── Duplikasyon kontrolü — aynı kişiye aynı kural belirli sürede tekrar gönderilmesin ──
-export async function wasAlreadyExecuted(workspaceId, ruleType, contactId, withinHours = 24) {
+// linkedStageId varsa, stage aksiyonları da kontrol edilir (çapraz dedup)
+export async function wasAlreadyExecuted(workspaceId, ruleType, contactId, withinHours = 24, linkedStageId = null) {
     try {
         const since = new Date(Date.now() - withinHours * 60 * 60 * 1000);
+
+        // 1. Kendi ruleType'ı ile çalıştı mı?
         const existing = await prisma.automationLog.findFirst({
             where: {
                 workspaceId,
@@ -58,7 +62,26 @@ export async function wasAlreadyExecuted(workspaceId, ruleType, contactId, withi
                 result: 'SUCCESS'
             }
         });
-        return !!existing;
+        if (existing) return true;
+
+        // 2. Bağlı aşama varsa → stage aksiyonları da çalıştı mı? (çapraz dedup)
+        if (linkedStageId) {
+            const stageLog = await prisma.automationLog.findFirst({
+                where: {
+                    workspaceId,
+                    contactId,
+                    ruleType: { startsWith: `STAGE_ACTION:${linkedStageId}:` },
+                    executedAt: { gte: since },
+                    result: 'SUCCESS'
+                }
+            });
+            if (stageLog) {
+                console.log(`⏭️ [RuleEngine] ${ruleType} → contact ${contactId} zaten stage aksiyonuyla yapıldı, skip`);
+                return true;
+            }
+        }
+
+        return false;
     } catch (e) {
         console.error(`${TAG} wasAlreadyExecuted error:`, e.message);
         return false;
@@ -198,10 +221,10 @@ export async function executeRule(workspaceId, ruleType, ctx = {}, opts = {}) {
             return null;
         }
 
-        // 2. Duplikasyon kontrolü
+        // 2. Duplikasyon kontrolü (linkedStageId varsa stage aksiyonlarını da kontrol et)
         const dupHours = opts.duplicateHours || 24;
         if (!opts.skipDuplicateCheck) {
-            const alreadyDone = await wasAlreadyExecuted(workspaceId, ruleType, contactId, dupHours);
+            const alreadyDone = await wasAlreadyExecuted(workspaceId, ruleType, contactId, dupHours, config._linkedStageId);
             if (alreadyDone) {
                 console.log(`⏭️ ${TAG} ${ruleType} → contact ${contactId} zaten ${dupHours}h içinde çalıştı, skip`);
                 return null;
@@ -280,6 +303,7 @@ export async function getActiveRules(workspaceId, ruleTypes = []) {
         for (const r of rules) {
             let config = {};
             try { config = r.config ? JSON.parse(r.config) : {}; } catch { config = {}; }
+            config._linkedStageId = r.linkedStageId || null; // Bağlı aşama ID
             result[r.ruleType] = config;
         }
         return result;

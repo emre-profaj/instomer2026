@@ -227,10 +227,15 @@ export const getRules = async (req, res) => {
         const { workspaceId } = req.params;
 
         const dbRules = await prisma.workspaceRule.findMany({
-            where: { workspaceId }
+            where: { workspaceId },
+            include: {
+                linkedStage: {
+                    select: { id: true, name: true, funnel: { select: { id: true, name: true } } }
+                }
+            }
         });
 
-        // Merge DB rules with defaults so all 3 always appear
+        // Merge DB rules with defaults so all always appear
         const rules = DEFAULT_RULES.map(def => {
             const dbRule = dbRules.find(r => r.ruleType === def.ruleType);
             if (dbRule) {
@@ -245,10 +250,22 @@ export const getRules = async (req, res) => {
                 ruleType: def.ruleType,
                 isActive: def.isActive,
                 config: safeParseJSON(def.config, {}),
+                linkedStageId: null,
+                linkedStage: null,
                 createdAt: null,
                 updatedAt: null
             };
         });
+
+        // DB'de olan ama DEFAULT_RULES'da olmayan kuralları da ekle (universalDefaults'tan gelen)
+        for (const dbRule of dbRules) {
+            if (!rules.find(r => r.ruleType === dbRule.ruleType)) {
+                rules.push({
+                    ...dbRule,
+                    config: safeParseJSON(dbRule.config, {})
+                });
+            }
+        }
 
         res.json({ rules });
     } catch (error) {
@@ -260,9 +277,23 @@ export const getRules = async (req, res) => {
 export const upsertRule = async (req, res) => {
     try {
         const { workspaceId, ruleType } = req.params;
-        const { isActive, config } = req.body;
+        const { isActive, config, linkedStageId } = req.body;
 
-        const validTypes = ['PHONE_CAPTURE', 'HOT_KEYWORD', 'HOT_OPPORT_EMAIL', 'SALES_PHONE_CALL', 'APPOINTMENT_AUTO_PLAN'];
+        // Expanded valid types — universalDefaults'tan gelen tipleri de kabul et
+        const validTypes = [
+            'PHONE_CAPTURE', 'HOT_KEYWORD', 'HOT_OPPORT_EMAIL', 'SALES_PHONE_CALL', 'APPOINTMENT_AUTO_PLAN',
+            // universalDefaults kuralları
+            'DRIP_DAY_0', 'DRIP_DAY_1', 'DRIP_DAY_3', 'DRIP_DAY_7', 'DRIP_DAY_14', 'DRIP_DAY_30',
+            'APPOINTMENT_REMINDER', 'APPOINTMENT_CONFIRM', 'NO_SHOW_FOLLOWUP',
+            'QUOTE_REMINDER', 'QUOTE_EXPIRY_NOTIFY',
+            'POST_SALE_FOLLOWUP', 'SATISFACTION_SURVEY', 'REFERRAL_REQUEST',
+            'BIRTHDAY_GREETING', 'CUSTOMER_1ST_YEAR',
+            'INACTIVE_REACTIVATION', 'POSITIVE_LEAD_CAMPAIGN',
+            'FIRST_RESPONSE_SLA', 'TASK_OVERDUE_ALERT', 'UNASSIGNED_TASK_ALERT',
+            'DAILY_SUMMARY', 'TEAM_PERFORMANCE', 'PAYMENT_REMINDER', 'DOCUMENT_REQUEST',
+            'CONTRACT_RENEWAL', 'UPSELL_SUGGEST', 'TICKET_CLOSE_NOTIFY',
+            'HEALTH_APPOINTMENT_PREP', 'FIRST_PURCHASE_ANNIV', 'SPECIAL_DAY_CAMPAIGN',
+        ];
         if (!validTypes.includes(ruleType)) {
             return res.status(400).json({ error: 'Geçersiz kural tipi' });
         }
@@ -275,11 +306,13 @@ export const upsertRule = async (req, res) => {
                 workspaceId,
                 ruleType,
                 isActive: isActive !== undefined ? isActive : false,
-                config: config ? JSON.stringify(config) : '{}'
+                config: config ? JSON.stringify(config) : '{}',
+                ...(linkedStageId !== undefined && { linkedStageId: linkedStageId || null })
             },
             update: {
                 ...(isActive !== undefined && { isActive }),
-                ...(config !== undefined && { config: JSON.stringify(config) })
+                ...(config !== undefined && { config: JSON.stringify(config) }),
+                ...(linkedStageId !== undefined && { linkedStageId: linkedStageId || null })
             }
         });
 
