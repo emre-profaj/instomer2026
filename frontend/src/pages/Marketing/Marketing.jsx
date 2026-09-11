@@ -5,8 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
-    BarChart2, Phone, Mail, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown
+    BarChart2, Phone, Mail, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
+    Loader2, Sparkles, RefreshCw
 } from 'lucide-react';
+import CampaignWizardModal from './CampaignWizardModal';
 import './Marketing.css';
 import '../KnowledgeBase/KnowledgeBase.css';
 
@@ -97,6 +99,8 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [stats, setStats] = useState({ total: 0, active: 0, sent: 0, delivered: 0, read: 0 });
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [showWizard, setShowWizard] = useState(false);
+    const [syncingPast, setSyncingPast] = useState(false);
     const [editItem, setEditItem] = useState(null);
     const [campaignTypeFilter, setCampaignTypeFilter] = useState('ALL'); // 'ALL' | 'MARKETING' | 'AUTOMATION'
 
@@ -108,13 +112,29 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             setStats(res.data.stats || { total: 0, active: 0, sent: 0, delivered: 0, read: 0 });
         } catch (e) {
             console.error(e);
-            // Fallback for development if API is missing
             setCampaigns([]);
         }
         setLoading(false);
     }, [wsId]);
 
     useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+    const handleSyncPastData = async () => {
+        if (!window.confirm('Sistemdeki tüm geçmiş Meta WhatsApp şablonları ve Retell AI sesli aramaları taranarak "Genel & Geçmiş Gönderimler (Arşiv)" kampanyası altında toplanacaktır.\n\nDevam etmek istiyor musunuz?')) return;
+        setSyncingPast(true);
+        try {
+            const res = await api.post(`/marketing-v2/${wsId}/sync-past-data`);
+            if (res.data?.success) {
+                const s = res.data.synced;
+                alert(`✅ Geçmiş Veriler Eşitlendi!\n\n• WhatsApp Şablonları: ${s?.whatsappCount || 0} adet (Teslim: ${s?.whatsappDelivered || 0}, Okunan: ${s?.whatsappRead || 0})\n• Retell AI Aramaları: ${s?.retellCallsCount || 0} adet (Başarılı: ${s?.retellCallsSuccessful || 0})\n\nRaporlar ve üst istatistik çubuğu güncellendi.`);
+                fetchCampaigns();
+            }
+        } catch (err) {
+            alert('Senkronizasyon hatası: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setSyncingPast(false);
+        }
+    };
 
     const handleSave = async (data) => {
         try {
@@ -152,8 +172,8 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             <div className="mkt-stats-row">
                 <StatBig icon={<Megaphone size={20}/>} label="Toplam Kampanya" value={stats.total} color="#2563eb" />
                 <StatBig icon={<Play size={20}/>} label="Aktif" value={stats.active} color="#16a34a" />
-                <StatBig icon={<Send size={20}/>} label="Gönderilen" value={stats.sent} color="#8b5cf6" />
-                <StatBig icon={<CheckCircle size={20}/>} label="Teslim/Okunan" value={`${stats.delivered} / ${stats.read}`} color="#f59e0b" />
+                <StatBig icon={<Send size={20}/>} label="Gönderilen / Arama" value={stats.sent} color="#8b5cf6" />
+                <StatBig icon={<CheckCircle size={20}/>} label="Teslim / Okunan" value={`${stats.delivered} / ${stats.read}`} color="#f59e0b" />
             </div>
             <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -176,7 +196,38 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                         Tümü ({campaigns.length})
                     </button>
                 </div>
-                <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Kampanya</button>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <button
+                        className="mkt-btn-outline"
+                        onClick={handleSyncPastData}
+                        disabled={syncingPast}
+                        title="Geçmiş WhatsApp şablonlarını ve Retell aramalarını arşive bağlar"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '8px 14px',
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            border: '1.5px solid #d1d5db',
+                            background: '#fff',
+                            color: '#374151',
+                            cursor: syncingPast ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        {syncingPast ? <Loader2 size={15} className="mkt-spin" /> : <RefreshCw size={15} />}
+                        <span>{syncingPast ? 'Eşitleniyor...' : 'Geçmiş Verileri Eşitle (Meta & Retell)'}</span>
+                    </button>
+                    <button
+                        className="mkt-btn-primary"
+                        onClick={() => setShowWizard(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                        <Sparkles size={16} />
+                        <span>+ Yeni Kampanya</span>
+                    </button>
+                </div>
             </div>
             
             <div className="mkt-table-wrap" style={{ padding: 20 }}>
@@ -201,6 +252,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                                     <div style={{ fontWeight: 600, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                         {c.name}
+                                        {c.isArchive && <span style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🏛️ Arşiv</span>}
                                         {c.isAutomation && <span style={{ fontSize: 11, background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🤖 Otomasyon</span>}
                                         {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>📦 Eski</span>}
                                     </div>
@@ -215,16 +267,18 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 </div>
                                 <div style={{ background: '#f9fafb', padding: 12, borderRadius: 8, marginBottom: 16 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
-                                        <span>Gönderilen: {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0}</span>
-                                        <span>Okunan: {c.isLegacy ? c.readCount || 0 : c.stats?.read || 0}</span>
+                                        <span>Gönderilen / Arama: {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0}</span>
+                                        <span>Teslim / Okunan: {c.isLegacy ? `${c.deliveredCount || 0} / ${c.readCount || 0}` : `${c.stats?.delivered || 0} / ${c.stats?.read || 0}`}</span>
                                     </div>
                                     <div style={{ height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
-                                        <div style={{ width: `${((c.isLegacy ? c.readCount : c.stats?.read) / (c.isLegacy ? (c.sentCount||1) : (c.stats?.sent||1))) * 100}%`, background: '#10b981' }} />
+                                        <div style={{ width: `${Math.min(100, (((c.isLegacy ? c.readCount : c.stats?.read) || 0) / ((c.isLegacy ? (c.sentCount||1) : (c.stats?.sent||1)) || 1)) * 100)}%`, background: '#10b981' }} />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}><Folder size={14}/> {c.isLegacy || c.isAutomation ? '-' : (c.groupCount || 0)} Grup</span>
-                                    {!c.isLegacy && (
+                                    <span style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <Folder size={14}/> {c.isLegacy || c.isAutomation ? '-' : (c.groupsCount || c.groupCount || c.groups?.length || 0)} Grup
+                                    </span>
+                                    {!c.isLegacy && !c.isArchive && (
                                         <div style={{ display: 'flex', gap: 8 }} onClick={e => e.stopPropagation()}>
                                             <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }}><Edit2 size={14}/></button>
                                             <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)}><Trash2 size={14}/></button>
@@ -238,6 +292,20 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 )}
             </div>
 
+            {/* Campaign Wizard Modal */}
+            {showWizard && (
+                <CampaignWizardModal
+                    workspaceId={wsId}
+                    isOpen={showWizard}
+                    onClose={() => setShowWizard(false)}
+                    onSuccess={(newCampaign) => {
+                        fetchCampaigns();
+                        if (newCampaign?.id) onGoToGroups(newCampaign.id);
+                    }}
+                />
+            )}
+
+            {/* Basic Campaign Edit Modal (for editing existing campaigns) */}
             {showForm && (
                 <CampaignFormModal initial={editItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />
             )}
@@ -438,12 +506,13 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                 <th>Kampanya</th>
                                 <th>Kanal</th>
                                 <th>Hedef Liste</th>
+                                <th>Performans</th>
                                 <th>Durum</th>
                                 <th style={{ textAlign: 'right' }}>İşlemler</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredSets.length === 0 && <tr><td colSpan={6} style={{ textAlign:'center', padding:20 }}>Grup bulunamadı.</td></tr>}
+                            {filteredSets.length === 0 && <tr><td colSpan={7} style={{ textAlign:'center', padding:20 }}>Grup bulunamadı.</td></tr>}
                             {filteredSets.map(s => (
                                 <React.Fragment key={s.id}>
                                     <tr onClick={() => toggleExpand(s.id)}>
@@ -462,6 +531,18 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                         </td>
                                         <td>{contactGroups.find(c => c.id === s.listId)?.name || '-'}</td>
                                         <td>
+                                            <div style={{ fontSize: 12 }}>
+                                                <span style={{ fontWeight: 600, color: '#111827' }}>
+                                                    {s.channel === 'AI_CALL' ? `Arama: ${s.sentCount || 0}` : `Gönderilen: ${s.sentCount || 0}`}
+                                                </span>
+                                                <div style={{ color: '#6b7280', fontSize: 11 }}>
+                                                    {s.channel === 'AI_CALL' 
+                                                        ? `Başarılı: ${s.deliveredCount || s.readCount || 0}`
+                                                        : `Teslim/Okunan: ${s.deliveredCount || 0} / ${s.readCount || 0}`}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
                                             <span style={{ padding: '4px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: s.status === 'COMPLETED' ? '#dcfce7' : s.status === 'SENDING' ? '#dbeafe' : '#f3f4f6', color: s.status === 'COMPLETED' ? '#166534' : s.status === 'SENDING' ? '#1e40af' : '#4b5563' }}>
                                                 {s.status || 'DRAFT'}
                                             </span>
@@ -476,7 +557,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                     </tr>
                                     {expandedSet === s.id && (
                                         <tr style={{ background: '#fafafa' }}>
-                                            <td colSpan={6} style={{ padding: '20px 40px' }}>
+                                            <td colSpan={7} style={{ padding: '20px 40px' }}>
                                                 <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 13, color: '#374151' }}>Bağlı Mesajlar</div>
                                                 {s.groupMessages && s.groupMessages.length > 0 ? (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
