@@ -6,7 +6,7 @@ import api from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
     BarChart2, Phone, Mail, Smartphone, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
-    Loader2, Sparkles, RefreshCw, Calendar, Filter, X
+    Loader2, Sparkles, RefreshCw, Calendar, Filter, X, Eye
 } from 'lucide-react';
 import CampaignWizardModal from './CampaignWizardModal';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
@@ -1112,6 +1112,12 @@ function ListsTab({ wsId }) {
     const [showForm, setShowForm] = useState(false);
     const [editGroup, setEditGroup] = useState(null);
 
+    const [viewGroup, setViewGroup] = useState(null);
+    const [members, setMembers] = useState([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [memberSearch, setMemberSearch] = useState('');
+    const [memberTotal, setMemberTotal] = useState(0);
+
     const fetchGroups = useCallback(async () => {
         if (!wsId) return;
         setLoading(true);
@@ -1123,6 +1129,40 @@ function ListsTab({ wsId }) {
     }, [wsId]);
 
     useEffect(() => { fetchGroups(); }, [fetchGroups]);
+
+    const fetchMembers = useCallback(async (groupId, search = '') => {
+        if (!wsId || !groupId) return;
+        setMembersLoading(true);
+        try {
+            const res = await api.get(`/contact-groups/${wsId}/groups/${groupId}/members`, {
+                params: { search, limit: 100 }
+            });
+            setMembers(res.data.members || []);
+            setMemberTotal(res.data.total || (res.data.members || []).length);
+        } catch (e) {
+            console.error('Üyeler yüklenemedi:', e);
+        } finally {
+            setMembersLoading(false);
+        }
+    }, [wsId]);
+
+    useEffect(() => {
+        if (viewGroup) {
+            fetchMembers(viewGroup.id, memberSearch);
+        }
+    }, [viewGroup, memberSearch, fetchMembers]);
+
+    const handleRemoveMember = async (contactId) => {
+        if (!window.confirm('Bu kişiyi listeden çıkarmak istediğinize emin misiniz?')) return;
+        try {
+            await api.delete(`/contact-groups/${wsId}/groups/${viewGroup.id}/members/${contactId}`);
+            setMembers(prev => prev.filter(m => m.id !== contactId));
+            setMemberTotal(prev => Math.max(0, prev - 1));
+            setGroups(prev => prev.map(g => g.id === viewGroup.id ? { ...g, _count: { members: Math.max(0, (g._count?.members || 1) - 1) } } : g));
+        } catch (e) {
+            alert('Kişi listeden çıkarılamadı');
+        }
+    };
 
     const handleCreate = async (data) => {
         try {
@@ -1169,18 +1209,25 @@ function ListsTab({ wsId }) {
                         <tbody>
                             {groups.map(g => (
                                 <tr key={g.id}>
-                                    <td>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: g.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                                    <td onClick={() => { setViewGroup(g); setMemberSearch(''); }} style={{ cursor: 'pointer' }}>
+                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: g.color || '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
                                             {g.name.charAt(0).toUpperCase()}
                                         </div>
                                     </td>
-                                    <td style={{ fontWeight: 600 }}>{g.name}</td>
+                                    <td onClick={() => { setViewGroup(g); setMemberSearch(''); }} style={{ fontWeight: 600, cursor: 'pointer' }}>
+                                        <span style={{ color: '#1d4ed8' }}>{g.name}</span>
+                                    </td>
                                     <td style={{ fontSize: 12, color: '#6b7280' }}>{g.description || '-'}</td>
-                                    <td>{(g._count?.members || 0).toLocaleString()} kişi</td>
+                                    <td>
+                                        <span className="mkt-badge" style={{ background: '#eff6ff', color: '#1d4ed8', fontWeight: 600 }}>
+                                            {(g._count?.members || 0).toLocaleString()} kişi
+                                        </span>
+                                    </td>
                                     <td style={{ textAlign: 'right' }}>
                                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                                            <button className="grp-icon-action" onClick={() => { setEditGroup(g); setShowForm(true); }}><Edit2 size={14}/></button>
-                                            <button className="grp-icon-action danger" onClick={() => handleDelete(g)}><Trash2 size={14}/></button>
+                                            <button className="grp-icon-action" title="Kişileri Görüntüle" onClick={() => { setViewGroup(g); setMemberSearch(''); }}><Eye size={14}/></button>
+                                            <button className="grp-icon-action" title="Düzenle" onClick={() => { setEditGroup(g); setShowForm(true); }}><Edit2 size={14}/></button>
+                                            <button className="grp-icon-action danger" title="Sil" onClick={() => handleDelete(g)}><Trash2 size={14}/></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1221,6 +1268,138 @@ function ListsTab({ wsId }) {
                                     <button type="submit" className="grp-btn-save" style={{ background: '#2563eb' }}>Kaydet</button>
                                 </div>
                             </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Listeye Kayıtlı Kişiler / Üye Görüntüleme Modalı */}
+            {viewGroup && (
+                <div className="mkt-modal-overlay" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>
+                    <div className="grp-form-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+                        <div className="grp-modal-header">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{
+                                    width: 34, height: 34, borderRadius: 8,
+                                    background: viewGroup.color || '#2563eb', color: '#fff',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 14
+                                }}>
+                                    {viewGroup.name?.charAt(0).toUpperCase() || '👥'}
+                                </div>
+                                <div>
+                                    <h2 className="grp-modal-title" style={{ margin: 0, fontSize: 16 }}>{viewGroup.name}</h2>
+                                    <div style={{ fontSize: 12, color: '#6b7280' }}>
+                                        {viewGroup.description || 'Hedef Kitle Listesi'} • <strong style={{ color: '#2563eb' }}>{memberTotal || members.length} Kişi</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <button className="grp-modal-close" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>✕</button>
+                        </div>
+
+                        <div style={{ padding: '12px 24px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
+                            <div style={{ position: 'relative' }}>
+                                <Search size={16} style={{ position: 'absolute', left: 12, top: 11, color: '#9ca3af' }} />
+                                <input
+                                    type="text"
+                                    className="grp-input"
+                                    placeholder="Bu listede ara (Ad, telefon, e-posta)..."
+                                    value={memberSearch}
+                                    onChange={e => setMemberSearch(e.target.value)}
+                                    style={{ paddingLeft: 36, fontSize: 13, height: 38 }}
+                                />
+                                {memberSearch && (
+                                    <button
+                                        onClick={() => setMemberSearch('')}
+                                        style={{ position: 'absolute', right: 10, top: 9, background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+                            {membersLoading ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 0', gap: 10, color: '#6b7280' }}>
+                                    <Loader2 className="spinning" size={24} style={{ color: '#2563eb' }} />
+                                    <span style={{ fontSize: 13 }}>Kişiler yükleniyor...</span>
+                                </div>
+                            ) : members.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6b7280' }}>
+                                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', color: '#9ca3af' }}>
+                                        <Users size={24} />
+                                    </div>
+                                    <p style={{ margin: 0, fontWeight: 500, color: '#374151' }}>
+                                        {memberSearch ? 'Aramanıza uygun kişi bulunamadı.' : 'Bu listede henüz kayıtlı kişi bulunmuyor.'}
+                                    </p>
+                                    <p style={{ margin: '6px 0 0', fontSize: 12 }}>
+                                        Kişiler menüsünden müşteri seçip bu listeye ekleyebilir veya doğrudan toplu kampanya başlatabilirsiniz.
+                                    </p>
+                                </div>
+                            ) : (
+                                <table className="mkt-table" style={{ width: '100%', fontSize: 13 }}>
+                                    <thead>
+                                        <tr>
+                                            <th>Kişi</th>
+                                            <th>Telefon</th>
+                                            <th>E-posta</th>
+                                            <th>Eklenme Tarihi</th>
+                                            <th style={{ textAlign: 'right' }}>İşlem</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {members.map(m => (
+                                            <tr key={m.id}>
+                                                <td style={{ fontWeight: 600, color: '#111827' }}>
+                                                    {m.name || 'İsimsiz Müşteri'}
+                                                </td>
+                                                <td style={{ color: '#4b5563' }}>
+                                                    {m.phone ? (
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                            <Phone size={12} style={{ color: '#9ca3af' }} />
+                                                            {m.phone}
+                                                        </span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td style={{ color: '#4b5563' }}>
+                                                    {m.email ? (
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                            <Mail size={12} style={{ color: '#9ca3af' }} />
+                                                            {m.email}
+                                                        </span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td style={{ fontSize: 12, color: '#9ca3af' }}>
+                                                    {m.addedAt ? new Date(m.addedAt).toLocaleDateString('tr-TR') : '-'}
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <button
+                                                        className="grp-icon-action danger"
+                                                        title="Listeden Çıkar"
+                                                        onClick={() => handleRemoveMember(m.id)}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        <div className="grp-modal-footer" style={{ padding: '12px 24px', borderTop: '1px solid #f3f4f6', background: '#fafafa', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 12, color: '#6b7280' }}>
+                                💡 Bu kitleyi <strong>Gruplar (Ad Sets)</strong> sekmesinde hedef kitle olarak seçebilirsiniz.
+                            </span>
+                            <button
+                                type="button"
+                                className="grp-btn-save"
+                                style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', padding: '6px 16px', fontSize: 13 }}
+                                onClick={() => { setViewGroup(null); setMemberSearch(''); }}
+                            >
+                                Kapat
+                            </button>
                         </div>
                     </div>
                 </div>
