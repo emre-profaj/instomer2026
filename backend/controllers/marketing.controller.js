@@ -1301,7 +1301,7 @@ export const updateCampaignRecipientStatus = async (whatsappMsgId, status) => {
 
             // Update campaign aggregate counts
             const [delivered, read, failed] = await Promise.all([
-                prisma.marketingRecipient.count({ where: { campaignId: recipient.campaignId, status: 'DELIVERED' } }),
+                prisma.marketingRecipient.count({ where: { campaignId: recipient.campaignId, status: { in: ['DELIVERED', 'READ'] } } }),
                 prisma.marketingRecipient.count({ where: { campaignId: recipient.campaignId, status: 'READ' } }),
                 prisma.marketingRecipient.count({ where: { campaignId: recipient.campaignId, status: 'FAILED' } })
             ]);
@@ -1313,7 +1313,7 @@ export const updateCampaignRecipientStatus = async (whatsappMsgId, status) => {
             // Update group aggregate counts (if recipient belongs to a group)
             if (recipient.groupId) {
                 const [groupDelivered, groupRead, groupFailed] = await Promise.all([
-                    prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: 'DELIVERED' } }),
+                    prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: { in: ['DELIVERED', 'READ'] } } }),
                     prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: 'READ' } }),
                     prisma.marketingRecipient.count({ where: { groupId: recipient.groupId, status: 'FAILED' } })
                 ]);

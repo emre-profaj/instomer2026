@@ -28,6 +28,17 @@ export const getCampaigns = async (req, res) => {
             const isAutomation = c.type === 'AUTOMATION' || Boolean(c.automationId);
             const isArchive = c.type === 'ARCHIVE_DEFAULT';
             const isLegacy = !isAutomation && !isArchive && c.groups.length === 0 && (c._count.recipients > 0 || c.messagesLegacy.length > 0 || c.templateId != null);
+
+            const groupsSent = c.groups.reduce((sum, g) => sum + (g.sentCount || 0), 0);
+            const groupsDelivered = c.groups.reduce((sum, g) => sum + (g.deliveredCount || 0), 0);
+            const groupsRead = c.groups.reduce((sum, g) => sum + (g.readCount || 0), 0);
+            const groupsFailed = c.groups.reduce((sum, g) => sum + (g.failedCount || 0), 0);
+
+            const sent = Math.max(c.sentCount || 0, groupsSent);
+            const delivered = Math.max(c.deliveredCount || 0, groupsDelivered);
+            const read = Math.max(c.readCount || 0, groupsRead);
+            const failed = Math.max(c.failedCount || 0, groupsFailed);
+
             return {
                 ...c,
                 isLegacy,
@@ -36,22 +47,22 @@ export const getCampaigns = async (req, res) => {
                 groupsCount: c._count.groups,
                 recipientsCount: c._count.recipients,
                 stats: {
-                    sent: c.sentCount || 0,
-                    delivered: c.deliveredCount || 0,
-                    read: c.readCount || 0,
-                    failed: c.failedCount || 0,
+                    sent,
+                    delivered,
+                    read,
+                    failed,
                     replied: c.repliedCount || 0
                 }
             };
         });
 
-        // Aggregate stats for top bar
+        // Aggregate stats for top bar (excluding automation logs from marketing KPIs if desired, or all)
         const stats = {
             total: mapped.length,
             active: mapped.filter(c => c.status === 'ACTIVE').length,
-            sent: mapped.reduce((sum, c) => sum + (c.sentCount || 0), 0),
-            delivered: mapped.reduce((sum, c) => sum + (c.deliveredCount || 0), 0),
-            read: mapped.reduce((sum, c) => sum + (c.readCount || 0), 0)
+            sent: mapped.reduce((sum, c) => sum + (c.stats.sent || 0), 0),
+            delivered: mapped.reduce((sum, c) => sum + (c.stats.delivered || 0), 0),
+            read: mapped.reduce((sum, c) => sum + (c.stats.read || 0), 0)
         };
 
         res.json({ success: true, campaigns: mapped, stats });
@@ -103,9 +114,26 @@ export const getCampaign = async (req, res) => {
 
         if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
 
+        const groupsSent = campaign.groups.reduce((sum, g) => sum + (g.sentCount || 0), 0);
+        const groupsDelivered = campaign.groups.reduce((sum, g) => sum + (g.deliveredCount || 0), 0);
+        const groupsRead = campaign.groups.reduce((sum, g) => sum + (g.readCount || 0), 0);
+        const groupsFailed = campaign.groups.reduce((sum, g) => sum + (g.failedCount || 0), 0);
+
+        const sent = Math.max(campaign.sentCount || 0, groupsSent);
+        const delivered = Math.max(campaign.deliveredCount || 0, groupsDelivered);
+        const read = Math.max(campaign.readCount || 0, groupsRead);
+        const failed = Math.max(campaign.failedCount || 0, groupsFailed);
+
         const isLegacy = campaign.groups.length === 0 && (campaign._count.recipients > 0 || campaign.messagesLegacy.length > 0 || campaign.templateId != null);
 
-        res.json({ success: true, campaign: { ...campaign, isLegacy } });
+        res.json({
+            success: true,
+            campaign: {
+                ...campaign,
+                isLegacy,
+                stats: { sent, delivered, read, failed }
+            }
+        });
     } catch (error) {
         console.error('❌ [getCampaign]', error);
         res.status(500).json({ error: 'Kampanya detayı getirilemedi' });
