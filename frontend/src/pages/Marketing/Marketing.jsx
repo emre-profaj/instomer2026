@@ -126,7 +126,8 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             const res = await api.post(`/marketing-v2/${wsId}/sync-past-data`);
             if (res.data?.success) {
                 const s = res.data.synced;
-                alert(`✅ Geçmiş Veriler Eşitlendi!\n\n• WhatsApp Şablonları: ${s?.whatsappCount || 0} adet (Teslim: ${s?.whatsappDelivered || 0}, Okunan: ${s?.whatsappRead || 0})\n• Retell AI Aramaları: ${s?.retellCallsCount || 0} adet (Başarılı: ${s?.retellCallsSuccessful || 0})\n\nRaporlar ve üst istatistik çubuğu güncellendi.`);
+                const legacyMsg = s?.legacyUpdatedCount ? `• Reklam Grubu Eklenen Eski Kampanya: ${s.legacyUpdatedCount} adet\n` : '';
+                alert(`✅ Geçmiş Veriler Eşitlendi!\n\n${legacyMsg}• WhatsApp Şablonları: ${s?.whatsappCount || 0} adet (Teslim: ${s?.whatsappDelivered || 0}, Okunan: ${s?.whatsappRead || 0})\n• Retell AI Aramaları: ${s?.retellCallsCount || 0} adet (Başarılı: ${s?.retellCallsSuccessful || 0})\n\nRaporlar ve üst istatistik çubuğu güncellendi.`);
                 fetchCampaigns();
             }
         } catch (err) {
@@ -549,7 +550,9 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
                                             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                                                <button className="mkt-btn-send-bulk" onClick={() => handleExecute(s.id)} disabled={s.status === 'SENDING'} style={{ padding: '4px 10px', fontSize: 12 }}>Gönder</button>
+                                                {s.status !== 'COMPLETED' && (
+                                                    <button className="mkt-btn-send-bulk" onClick={() => handleExecute(s.id)} disabled={s.status === 'SENDING'} style={{ padding: '4px 10px', fontSize: 12 }}>Gönder</button>
+                                                )}
                                                 <button className="grp-icon-action" onClick={() => { setEditItem(s); setShowForm(true); }}><Edit2 size={14}/></button>
                                                 <button className="grp-icon-action danger" onClick={() => handleDelete(s.id)}><Trash2 size={14}/></button>
                                             </div>
