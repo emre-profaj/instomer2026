@@ -101,6 +101,15 @@ export const getCampaigns = async (req, res) => {
         // Auto-ensure legacy campaigns without groups are given a default group
         await ensureDefaultGroupsForLegacyCampaigns(workspaceId).catch(() => {});
 
+        // Auto-ensure Archive campaign exists if not yet created (No need to press sync button!)
+        const hasArchive = await prisma.marketingCampaign.findFirst({
+            where: { workspaceId, type: 'ARCHIVE_DEFAULT' },
+            select: { id: true }
+        });
+        if (!hasArchive) {
+            await syncPastDataCore(workspaceId).catch(err => console.warn('⚠️ [getCampaigns:autoSyncArchive]', err.message));
+        }
+
         const campaigns = await prisma.marketingCampaign.findMany({
             where: { workspaceId },
             include: {
@@ -1191,236 +1200,241 @@ export const wizardLaunchCampaign = async (req, res) => {
 // 8. SYNC PAST DATA (META & RETELL ARCHIVE CAMPAIGN)
 // ══════════════════════════════════════════════════════════════════════════
 
+export async function syncPastDataCore(workspaceId) {
+    // 0. Ensure legacy campaigns without groups get their default groups and messages
+    const legacyUpdatedCount = await ensureDefaultGroupsForLegacyCampaigns(workspaceId);
+
+    // 1. Find or create default archive campaign
+    let archiveCampaign = await prisma.marketingCampaign.findFirst({
+        where: { workspaceId, type: 'ARCHIVE_DEFAULT' }
+    });
+
+    if (!archiveCampaign) {
+        archiveCampaign = await prisma.marketingCampaign.create({
+            data: {
+                workspaceId,
+                name: 'Genel & Geçmiş Gönderimler (Arşiv)',
+                description: 'Sistemdeki geçmiş Meta WhatsApp şablonları ve Retell AI aramaları',
+                status: 'COMPLETED',
+                type: 'ARCHIVE_DEFAULT'
+            }
+        });
+    }
+
+    // 2. Find or create default groups under archive campaign
+    let waGroup = await prisma.campaignGroup.findFirst({
+        where: { campaignId: archiveCampaign.id, channel: 'WHATSAPP' }
+    });
+    if (!waGroup) {
+        waGroup = await prisma.campaignGroup.create({
+            data: {
+                campaignId: archiveCampaign.id,
+                name: 'WhatsApp Şablon Gönderimleri (Meta)',
+                channel: 'WHATSAPP',
+                status: 'COMPLETED'
+            }
+        });
+    }
+
+    let callGroup = await prisma.campaignGroup.findFirst({
+        where: { campaignId: archiveCampaign.id, channel: 'AI_CALL' }
+    });
+    if (!callGroup) {
+        callGroup = await prisma.campaignGroup.create({
+            data: {
+                campaignId: archiveCampaign.id,
+                name: 'AI Sesli Aramalar (Retell)',
+                channel: 'AI_CALL',
+                status: 'COMPLETED'
+            }
+        });
+    }
+
+    // 3. Find all past WhatsApp TEMPLATE messages
+    const pastWaMessages = await prisma.message.findMany({
+        where: {
+            messageType: 'TEMPLATE',
+            isFromContact: false,
+            conversation: { workspaceId }
+        },
+        include: { conversation: { include: { contact: true } } }
+    });
+
+    // Fast lookup of existing recipients to prevent duplicate work
+    const existingRecs = await prisma.marketingRecipient.findMany({
+        where: {
+            campaign: { workspaceId },
+            messageId: { not: null }
+        },
+        select: { messageId: true }
+    });
+    const existingMessageIdSet = new Set(existingRecs.map(r => r.messageId));
+
+    const toCreate = [];
+    for (const msg of pastWaMessages) {
+        if (existingMessageIdSet.has(msg.id)) continue;
+
+        const status = msg.status || 'SENT';
+        toCreate.push({
+            campaignId: archiveCampaign.id,
+            groupId: waGroup.id,
+            contactId: msg.conversation?.contactId || null,
+            phone: msg.conversation?.contact?.phone || null,
+            name: msg.conversation?.contact?.name || null,
+            messageId: msg.id,
+            status,
+            deliveredAt: ['DELIVERED', 'READ'].includes(status) ? msg.updatedAt : null,
+            readAt: status === 'READ' ? msg.updatedAt : null,
+            failedAt: status === 'FAILED' ? msg.updatedAt : null,
+            sentAt: msg.createdAt
+        });
+    }
+
+    if (toCreate.length > 0) {
+        for (let i = 0; i < toCreate.length; i += 100) {
+            await prisma.marketingRecipient.createMany({
+                data: toCreate.slice(i, i + 100),
+                skipDuplicates: true
+            });
+        }
+    }
+
+    // 4. Find all past Retell AI calls
+    const pastCalls = await prisma.retellCall.findMany({
+        where: { workspaceId }
+    });
+
+    const existingCallRecs = await prisma.marketingRecipient.findMany({
+        where: {
+            campaignId: archiveCampaign.id,
+            groupId: callGroup.id,
+            messageId: { not: null }
+        },
+        select: { messageId: true }
+    });
+    const existingCallIdSet = new Set(existingCallRecs.map(r => r.messageId));
+
+    const callsToCreate = [];
+    for (const call of pastCalls) {
+        const callMsgId = `call_${call.callId || call.id}`;
+        if (existingCallIdSet.has(callMsgId)) continue;
+
+        const isSuccess = Boolean(call.callSuccessful || (call.duration && call.duration > 15) || call.status === 'completed');
+        callsToCreate.push({
+            campaignId: archiveCampaign.id,
+            groupId: callGroup.id,
+            contactId: call.contactId || null,
+            phone: call.toNumber || null,
+            messageId: callMsgId,
+            status: isSuccess ? 'READ' : 'FAILED',
+            deliveredAt: isSuccess ? call.createdAt : null,
+            readAt: isSuccess ? call.createdAt : null,
+            failedAt: !isSuccess ? call.createdAt : null,
+            failReason: call.endedReason || null,
+            sentAt: call.startedAt || call.createdAt
+        });
+    }
+
+    if (callsToCreate.length > 0) {
+        for (let i = 0; i < callsToCreate.length; i += 100) {
+            await prisma.marketingRecipient.createMany({
+                data: callsToCreate.slice(i, i + 100),
+                skipDuplicates: true
+            });
+        }
+    }
+
+    // 5. Compute exact counts directly from DB recipients
+    const [waSent, waDelivered, waRead, waFailed] = await Promise.all([
+        prisma.marketingRecipient.count({ where: { groupId: waGroup.id } }),
+        prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: { in: ['DELIVERED', 'READ'] } } }),
+        prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: 'READ' } }),
+        prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: 'FAILED' } })
+    ]);
+
+    await prisma.campaignGroup.update({
+        where: { id: waGroup.id },
+        data: {
+            sentCount: waSent,
+            deliveredCount: waDelivered,
+            readCount: waRead,
+            failedCount: waFailed
+        }
+    });
+
+    const [callsTotal, callsSuccessful, callsFailed] = await Promise.all([
+        prisma.marketingRecipient.count({ where: { groupId: callGroup.id } }),
+        prisma.marketingRecipient.count({ where: { groupId: callGroup.id, status: { in: ['DELIVERED', 'READ'] } } }),
+        prisma.marketingRecipient.count({ where: { groupId: callGroup.id, status: 'FAILED' } })
+    ]);
+
+    await prisma.campaignGroup.update({
+        where: { id: callGroup.id },
+        data: {
+            sentCount: callsTotal,
+            deliveredCount: callsSuccessful,
+            readCount: callsSuccessful,
+            failedCount: callsFailed
+        }
+    });
+
+    // 6. Update overall archive campaign stats
+    await prisma.marketingCampaign.update({
+        where: { id: archiveCampaign.id },
+        data: {
+            sentCount: waSent + callsTotal,
+            deliveredCount: waDelivered + callsSuccessful,
+            readCount: waRead + callsSuccessful,
+            failedCount: waFailed + callsFailed,
+            totalCount: waSent + callsTotal
+        }
+    });
+
+    // 7. Auto-import approved WhatsApp templates to MarketingMessage
+    const waTemplates = await prisma.whatsappTemplate.findMany({
+        where: { workspaceId, status: 'APPROVED' }
+    }).catch(() => []);
+
+    for (const tpl of waTemplates) {
+        const existing = await prisma.marketingMessage.findFirst({
+            where: { workspaceId, templateId: tpl.id }
+        });
+        if (!existing) {
+            await prisma.marketingMessage.create({
+                data: {
+                    workspaceId,
+                    name: tpl.name || 'WhatsApp Şablonu',
+                    channel: 'WHATSAPP',
+                    templateId: tpl.id,
+                    templateName: tpl.name,
+                    content: tpl.bodyText || ''
+                }
+            }).catch(() => {});
+        }
+    }
+
+    return {
+        archiveCampaign,
+        synced: {
+            legacyUpdatedCount,
+            whatsappCount: waSent,
+            whatsappDelivered: waDelivered,
+            whatsappRead: waRead,
+            retellCallsCount: callsTotal,
+            retellCallsSuccessful: callsSuccessful
+        }
+    };
+}
+
 export const syncPastData = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-
-        // 0. Ensure legacy campaigns without groups get their default groups and messages
-        const legacyUpdatedCount = await ensureDefaultGroupsForLegacyCampaigns(workspaceId);
-
-        // 1. Find or create default archive campaign
-        let archiveCampaign = await prisma.marketingCampaign.findFirst({
-            where: { workspaceId, type: 'ARCHIVE_DEFAULT' }
-        });
-
-        if (!archiveCampaign) {
-            archiveCampaign = await prisma.marketingCampaign.create({
-                data: {
-                    workspaceId,
-                    name: 'Genel & Geçmiş Gönderimler (Arşiv)',
-                    description: 'Sistemdeki geçmiş Meta WhatsApp şablonları ve Retell AI aramaları',
-                    status: 'COMPLETED',
-                    type: 'ARCHIVE_DEFAULT'
-                }
-            });
-        }
-
-        // 2. Find or create default groups under archive campaign
-        let waGroup = await prisma.campaignGroup.findFirst({
-            where: { campaignId: archiveCampaign.id, channel: 'WHATSAPP' }
-        });
-        if (!waGroup) {
-            waGroup = await prisma.campaignGroup.create({
-                data: {
-                    campaignId: archiveCampaign.id,
-                    name: 'WhatsApp Şablon Gönderimleri (Meta)',
-                    channel: 'WHATSAPP',
-                    status: 'COMPLETED'
-                }
-            });
-        }
-
-        let callGroup = await prisma.campaignGroup.findFirst({
-            where: { campaignId: archiveCampaign.id, channel: 'AI_CALL' }
-        });
-        if (!callGroup) {
-            callGroup = await prisma.campaignGroup.create({
-                data: {
-                    campaignId: archiveCampaign.id,
-                    name: 'AI Sesli Aramalar (Retell)',
-                    channel: 'AI_CALL',
-                    status: 'COMPLETED'
-                }
-            });
-        }
-
-        // 3. Find all past WhatsApp TEMPLATE messages
-        const pastWaMessages = await prisma.message.findMany({
-            where: {
-                messageType: 'TEMPLATE',
-                isFromContact: false,
-                conversation: { workspaceId }
-            },
-            include: { conversation: { include: { contact: true } } }
-        });
-
-        // Fast lookup of existing recipients to prevent duplicate work
-        const existingRecs = await prisma.marketingRecipient.findMany({
-            where: {
-                campaign: { workspaceId },
-                messageId: { not: null }
-            },
-            select: { messageId: true }
-        });
-        const existingMessageIdSet = new Set(existingRecs.map(r => r.messageId));
-
-        const toCreate = [];
-        for (const msg of pastWaMessages) {
-            if (existingMessageIdSet.has(msg.id)) continue;
-
-            const status = msg.status || 'SENT';
-            toCreate.push({
-                campaignId: archiveCampaign.id,
-                groupId: waGroup.id,
-                contactId: msg.conversation?.contactId || null,
-                phone: msg.conversation?.contact?.phone || null,
-                name: msg.conversation?.contact?.name || null,
-                messageId: msg.id,
-                status,
-                deliveredAt: ['DELIVERED', 'READ'].includes(status) ? msg.updatedAt : null,
-                readAt: status === 'READ' ? msg.updatedAt : null,
-                failedAt: status === 'FAILED' ? msg.updatedAt : null,
-                sentAt: msg.createdAt
-            });
-        }
-
-        if (toCreate.length > 0) {
-            for (let i = 0; i < toCreate.length; i += 100) {
-                await prisma.marketingRecipient.createMany({
-                    data: toCreate.slice(i, i + 100),
-                    skipDuplicates: true
-                });
-            }
-        }
-
-        // 4. Find all past Retell AI calls
-        const pastCalls = await prisma.retellCall.findMany({
-            where: { workspaceId }
-        });
-
-        const existingCallRecs = await prisma.marketingRecipient.findMany({
-            where: {
-                campaignId: archiveCampaign.id,
-                groupId: callGroup.id,
-                messageId: { not: null }
-            },
-            select: { messageId: true }
-        });
-        const existingCallIdSet = new Set(existingCallRecs.map(r => r.messageId));
-
-        const callsToCreate = [];
-        for (const call of pastCalls) {
-            const callMsgId = `call_${call.callId || call.id}`;
-            if (existingCallIdSet.has(callMsgId)) continue;
-
-            const isSuccess = Boolean(call.callSuccessful || (call.duration && call.duration > 15) || call.status === 'completed');
-            callsToCreate.push({
-                campaignId: archiveCampaign.id,
-                groupId: callGroup.id,
-                contactId: call.contactId || null,
-                phone: call.toNumber || null,
-                messageId: callMsgId,
-                status: isSuccess ? 'READ' : 'FAILED',
-                deliveredAt: isSuccess ? call.createdAt : null,
-                readAt: isSuccess ? call.createdAt : null,
-                failedAt: !isSuccess ? call.createdAt : null,
-                failReason: call.endedReason || null,
-                sentAt: call.startedAt || call.createdAt
-            });
-        }
-
-        if (callsToCreate.length > 0) {
-            for (let i = 0; i < callsToCreate.length; i += 100) {
-                await prisma.marketingRecipient.createMany({
-                    data: callsToCreate.slice(i, i + 100),
-                    skipDuplicates: true
-                });
-            }
-        }
-
-        // 5. Compute exact counts directly from DB recipients
-        const [waSent, waDelivered, waRead, waFailed] = await Promise.all([
-            prisma.marketingRecipient.count({ where: { groupId: waGroup.id } }),
-            prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: { in: ['DELIVERED', 'READ'] } } }),
-            prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: 'READ' } }),
-            prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: 'FAILED' } })
-        ]);
-
-        await prisma.campaignGroup.update({
-            where: { id: waGroup.id },
-            data: {
-                sentCount: waSent,
-                deliveredCount: waDelivered,
-                readCount: waRead,
-                failedCount: waFailed
-            }
-        });
-
-        const [callsTotal, callsSuccessful, callsFailed] = await Promise.all([
-            prisma.marketingRecipient.count({ where: { groupId: callGroup.id } }),
-            prisma.marketingRecipient.count({ where: { groupId: callGroup.id, status: { in: ['DELIVERED', 'READ'] } } }),
-            prisma.marketingRecipient.count({ where: { groupId: callGroup.id, status: 'FAILED' } })
-        ]);
-
-        await prisma.campaignGroup.update({
-            where: { id: callGroup.id },
-            data: {
-                sentCount: callsTotal,
-                deliveredCount: callsSuccessful,
-                readCount: callsSuccessful,
-                failedCount: callsFailed
-            }
-        });
-
-        // 6. Update overall archive campaign stats
-        await prisma.marketingCampaign.update({
-            where: { id: archiveCampaign.id },
-            data: {
-                sentCount: waSent + callsTotal,
-                deliveredCount: waDelivered + callsSuccessful,
-                readCount: waRead + callsSuccessful,
-                failedCount: waFailed + callsFailed,
-                totalCount: waSent + callsTotal
-            }
-        });
-
-        // 7. Auto-import approved WhatsApp templates to MarketingMessage
-        const waTemplates = await prisma.whatsappTemplate.findMany({
-            where: { workspaceId, status: 'APPROVED' }
-        }).catch(() => []);
-
-        for (const tpl of waTemplates) {
-            const existing = await prisma.marketingMessage.findFirst({
-                where: { workspaceId, templateId: tpl.id }
-            });
-            if (!existing) {
-                await prisma.marketingMessage.create({
-                    data: {
-                        workspaceId,
-                        name: tpl.name || 'WhatsApp Şablonu',
-                        channel: 'WHATSAPP',
-                        templateId: tpl.id,
-                        templateName: tpl.name,
-                        content: tpl.bodyText || ''
-                    }
-                }).catch(() => {});
-            }
-        }
-
+        const result = await syncPastDataCore(workspaceId);
         res.json({
             success: true,
             message: 'Geçmiş Meta & Retell verileri ve reklam grupları başarıyla eşitlendi',
-            archiveCampaign,
-            synced: {
-                legacyUpdatedCount,
-                whatsappCount: waSent,
-                whatsappDelivered: waDelivered,
-                whatsappRead: waRead,
-                retellCallsCount: callsTotal,
-                retellCallsSuccessful: callsSuccessful
-            }
+            ...result
         });
-
     } catch (error) {
         console.error('❌ [syncPastData]', error);
         res.status(500).json({ error: 'Geçmiş veriler eşitlenemedi' });
