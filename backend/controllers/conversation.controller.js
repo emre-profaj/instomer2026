@@ -147,37 +147,29 @@ export const getConversations = async (req, res) => {
             workspaceId,
             // Hide conversations from soft-deleted contacts
             contact: { isDeleted: false },
-            ...(channel === 'WHATSAPP' && {
-                OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }]
-            }),
-            ...(channel === 'FACEBOOK' && {
-                OR: [{ channel: 'FACEBOOK' }, { facebookPageId: { not: null }, instagramBusinessId: null }]
-            }),
-            ...(channel === 'INSTAGRAM' && {
-                OR: [{ channel: 'INSTAGRAM' }, { instagramBusinessId: { not: null } }]
-            }),
-            ...(channel === 'EMAIL' && {
-                channel: 'EMAIL'
-            }),
-            ...(channel === 'WIDGET' && {
-                channel: 'WIDGET'
-            }),
-            ...(channel === 'PHONE' && {
-                channel: 'PHONE'
-            }),
+            ...(channel === 'EMAIL' && { channel: 'EMAIL' }),
+            ...(channel === 'WIDGET' && { channel: 'WIDGET' }),
+            ...(channel === 'PHONE' && { channel: 'PHONE' }),
             ...(status && { status }),
             ...(contactId && { contactId }),
             // Direct conversation funnelStageId filter (no fallback to contact)
             ...(funnelStageId && { funnelStageId }),
             // Keep contactStatus check just in case legacy calls use it
-            ...(contactStatus && { contact: { status: contactStatus } }),
+            ...(contactStatus && { contact: { status: contactStatus, isDeleted: false } }),
             ...(req.query.showArchived !== 'true' && { isArchived: false }),
-            // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle (sistem sohbetleri hariç)
-            ...(req.query.showBulk !== 'true' && { OR: [{ isBulkSend: false }, { isSystemChat: true }] }),
             // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
             ...(req.query.hideUnanswered === 'true' && {
                 messages: { some: { isFromContact: true } }
-            })
+            }),
+            // AND: birden fazla OR koşulunu çakıştırmamak için
+            AND: [
+                // Kanal filtresi (OR kullanan kanallar)
+                ...(channel === 'WHATSAPP' ? [{ OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }] }] : []),
+                ...(channel === 'FACEBOOK' ? [{ OR: [{ channel: 'FACEBOOK' }, { facebookPageId: { not: null }, instagramBusinessId: null }] }] : []),
+                ...(channel === 'INSTAGRAM' ? [{ OR: [{ channel: 'INSTAGRAM' }, { instagramBusinessId: { not: null } }] }] : []),
+                // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle (sistem sohbetleri hariç)
+                ...(req.query.showBulk !== 'true' ? [{ OR: [{ isBulkSend: false }, { isSystemChat: true }] }] : [])
+            ]
         };
 
         // Funnel hiyerarşisi: Seçilen akışın altındaki tüm alt akışları recursive dahil et
@@ -187,6 +179,7 @@ export const getConversations = async (req, res) => {
         if (search && search.trim()) {
             const term = search.trim();
             where.contact = {
+                isDeleted: false,
                 OR: [
                     { name: { contains: term, mode: 'insensitive' } },
                     { fullName: { contains: term, mode: 'insensitive' } },
