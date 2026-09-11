@@ -372,14 +372,13 @@ ${customerInfo}
 ${documentContext || "Bilgi bankası boş."}
 
 ### VARSAYILAN YANITLAMA KURALLARI ###
-1. SADECE yukarıdaki bilgileri kullanarak yanıt ver.
-2. Bilgi bankasında olmayan konularda doğrudan web sitesine veya iletişim e-posta adresine yönlendir. ASLA "emin değilim", "bilmiyorum" gibi belirsiz ifadeler kullanma.
-3. Yanıtların kısa, net ve profesyonel olsun.
-4. Türkçe yanıt ver.
-5. Müşteriye her zaman yardımcı olmaya çalış.
-6. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
-7. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
-8. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş.
+1. SADECE VE YALNIZCA yukarıdaki "KULLANILACAK BİLGİLER" ve "ANA SİSTEM TALİMATI"nda yer alan bilgileri kullanarak yanıt ver. Bilgi bankasında veya prompt'ta olmayan konularda KENDİNCE YORUM YAPMA, TAHMİN YÜRÜTME VEYA BİLGİ UYDURMA! Doğrudan web sitesine veya yetkili ekibe yönlendir.
+2. Yanıtların orta düzeyde uzunlukta (ideal olarak 2-4 cümle), net, anlaşılır ve doğrudan soruya odaklı olsun. Asla destan gibi uzun paragraflar yazma.
+3. Türkçe yanıt ver.
+4. Müşteriye her zaman yardımcı olmaya çalış.
+5. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
+6. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
+7. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş.
 
 ### ⭐ ANA SİSTEM TALİMATI (EN YÜKSEK ÖNCELİK) ⭐ ###
 Aşağıdaki talimat işletme sahibi tarafından yazılmıştır ve yukarıdaki varsayılan kurallarla çeliştiğinde BU TALİMAT GEÇERLİDİR. Her zaman önce bu talimata uy:
@@ -426,7 +425,10 @@ ${systemPrompt}`;
             console.log(`🤖 Attempting to generate with model: ${modelName}`);
             const model = genAI.getGenerativeModel({
                 model: modelName,
-                systemInstruction: fullSystemInstruction
+                systemInstruction: fullSystemInstruction,
+                generationConfig: {
+                    temperature: 0.2,
+                }
             });
             const chat = model.startChat({ history: historyParts });
             return await chat.sendMessage("Son mesaja uygun bir yanıt öner.");
@@ -2047,9 +2049,9 @@ ${customerInfo}
 ${documentContext || "Knowledge base is empty."}
 
 ### DEFAULT RESPONSE RULES ###
-1. ONLY respond using the information above.
-2. **IMPORTANT**: If the knowledge base does NOT contain information about the topic asked AND it is not a simple greeting, write [HANDOFF] at the beginning of your response and then say "${handoffMsg}". Never write [HANDOFF] for greetings or introductions (hi, hello, hey, good morning, etc.) — just greet them warmly.
-3. Keep your responses short, clear and professional.
+1. **STRICT FACTUAL GROUNDING (ZERO HALLUCINATION)**: ONLY respond using the information in AVAILABLE INFORMATION (Knowledge Base, Company Info, Documents) and PRIMARY SYSTEM INSTRUCTION. Do NOT interpret creatively, guess, extrapolate, or invent any rules, conditions, prices, guarantees, policies, or services that are not explicitly stated.
+2. **IMPORTANT**: If the knowledge base and prompt do NOT contain information about the topic asked AND it is not a simple greeting, DO NOT invent or guess an answer. Write [HANDOFF] at the beginning of your response and then say "${handoffMsg}". Never write [HANDOFF] for greetings or introductions — just greet them warmly.
+3. **BALANCED MEDIUM LENGTH (CONCISE AND CLEAR)**: Never write excessively long responses, essays, or dense paragraphs. Keep replies balanced and medium-length (ideally 2-4 sentences), directly answering the user's specific question in a clear, professional, and friendly tone. Do not dump entire documents; summarize only what was asked.
 4. Respond in English.
 5. Always try to help the customer.
 6. If asked about date or time, use the CURRENT DATE information above, do NOT use your own knowledge.
@@ -2076,9 +2078,9 @@ ${customerInfo}
 ${documentContext || "Bilgi bankası boş."}
 
 ### VARSAYILAN YANITLAMA KURALLARI ###
-1. SADECE yukarıdaki bilgileri kullanarak yanıt ver.
-2. **ÖNEMLİ**: Eğer bilgi bankasında sorulan konuyla ilgili BİLGİ YOKSA VE mesaj sadece selamlama/tanışma değilse, yanıtının başına [HANDOFF] yaz ve ardından "${handoffMsg}" mesajını ver. Selamlama mesajlarına (selam, merhaba, iyi günler, nasılsınız, vs.) ASLA [HANDOFF] yazma, nazikçe karşıla.
-3. Yanıtların kısa, net ve profesyonel olsun.
+1. **SIFIR TAHMİN / SIFIR UYDURMA (KATI KURAL)**: SADECE VE YALNIZCA yukarıdaki "KULLANILACAK BİLGİLER" (Bilgi Bankası, Şirket Bilgileri, Dökümanlar, SSS) ve "ANA SİSTEM TALİMATI"nda yer alan doğrulanmış resmi bilgileri kullan. Bu kaynaklarda açıkça yazmayan hiçbir kural, fiyat, şart, vaat, özellik, prosedür, indirim veya hizmet hakkında KENDİNCE YORUM YAPMA, TAHMİN YÜRÜTME VEYA ASLA KAFANDAN BİLGİ UYDURMA!
+2. **ÖNEMLİ**: Eğer bilgi bankasında ve AI prompt'ta sorulan konuyla ilgili BİLGİ YOKSA: ASLA kendince bir cevap veya tahmin üretme! Mesaj sadece selamlama/tanışma değilse, yanıtının başına [HANDOFF] yaz ve ardından "${handoffMsg}" mesajını ver. Selamlama mesajlarına (selam, merhaba, iyi günler, nasılsınız, vs.) ASLA [HANDOFF] yazma, nazikçe karşıla.
+3. **ORTA VE DENGELİ MESAJ UZUNLUĞU (UZUN OLMADAN, ÖZ VE NET)**: Yanıtların ASLA çok uzun, destan gibi, paragraflar dolusu veya gereksiz açıklamalarla dolu olmasın! İdeal olarak 2-4 cümlelik, doğrudan müşterinin sorusuna cevap veren, orta düzeyde uzunlukta, net ve profesyonel olsun. Bilgi bankasındaki tüm metinleri kopyalama, sadece ilgili kısmı özetleyerek aktar.
 4. Türkçe yanıt ver.
 5. Müşteriye her zaman yardımcı olmaya çalış.
 6. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
@@ -2086,7 +2088,7 @@ ${documentContext || "Bilgi bankası boş."}
 8. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
 9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
 10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.
-11. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım", "düşünüyorum"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum", "tam olarak bilemiyorum", "şu an bilgi sahibi değilim"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş (örn. "Ekibimiz size yardımcı olacaktır"). Cevabını bilmediğin sorularda "emin değilim" DEME, doğrudan web sitesine veya e-posta adresine yönlendir.
+11. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım", "düşünüyorum"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum", "tam olarak bilemiyorum", "şu an bilgi sahibi değilim"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş (örn. "Ekibimiz size yardımcı olacaktır"). Cevabını bilmediğin sorularda "emin değilim" DEME, doğrudan yetkiliye aktaracağını belirt.
 12. **ÇOKLU ŞUBE KURALI**: Eğer bilgi bankanızda veya dökümanlarınızda birden fazla ayrı şube/lokasyon bilgisi varsa ve müşteri belirli bir şube belirtmeden genel bir hizmet/fiyat sorduysa, doğrudan tek bir şubenin fiyatını vermek yerine müşteriye hangi şube için bilgi almak istediğini sor. Müşteri şubesini belirttikten sonra o şubenin detaylarını ver.
 
 ${getSectorPrompt(wsAppointmentCheck?.industry)}
@@ -2504,7 +2506,10 @@ ${systemPrompt}${appointmentContextPrompt}`;
         const tryGenerate = async (modelName) => {
             const modelConfig = {
                 model: modelName,
-                systemInstruction: finalSystemInstruction
+                systemInstruction: finalSystemInstruction,
+                generationConfig: {
+                    temperature: 0.2, // Strict grounding, zero hallucination
+                }
             };
 
             if (geminiTools.length > 0) {

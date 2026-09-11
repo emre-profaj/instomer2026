@@ -168,6 +168,7 @@ export async function callGemini(workspaceId, options = {}) {
 
     // 5. GenerationConfig
     const genConfig = {
+        temperature: 0.2,
         ...generationConfig,
         ...(jsonMode && { responseMimeType: 'application/json' }),
     };

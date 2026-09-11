@@ -267,8 +267,8 @@ ${chatLog || '(İlk mesaj)'}
 ${activityLog ? `\n📝 TEMSİLCİ NOTLARI VE AKTİVİTELER:\n${activityLog}` : ''}
 
 ═══════════════════════════════════════
-🤖 KİŞİLİK VE TARZ (Bot Ayarları):
-${botPrompt}
+🤖 İŞLETME TALİMATLARI VE BOT PROMPT'U (EN YÜKSEK ÖNCELİK - KESİNLİKLE UYULACAK):
+${botPrompt || '(Özel prompt girilmemiş)'}
 ═══════════════════════════════════════
 ${stageContext ? `
 ═══════════════════════════════════════
@@ -276,7 +276,7 @@ ${stageContext ? `
 ${stageContext}
 
 ⚡ ÖNCELİK: Yukarıdaki aşama hedefini gerçekleştirmek senin 1 numaralı görevin.
-Müşteriyi bir sonraki aşamaya taşımak için çalış. Kişilik/tarz ayarlarına uy ama hedeften şaşma.
+Müşteriyi bir sonraki aşamaya taşımak için çalış. İşletme talimatlarına ve kurallara harfiyen uy.
 ═══════════════════════════════════════` : '═══════════════════════════════════════'}
 
 MEVCUT AKIŞLAR:
@@ -303,12 +303,22 @@ GÖREVLERİN:
 5. Aşama geçişi gerekiyor mu değerlendir
 ${stageAIConfig.transitionCriteria?.description ? `\n⚠️ GEÇİŞ KRİTERİ: "${stageAIConfig.transitionCriteria.description}" — bu kriter sağlanıyorsa shouldTransition: true dön` : ''}
 
-YANITLAMA KURALLARI:
-- Kısa ve öz yanıt ver (max 3-4 cümle)
-- Müşterinin sorduğu şube, adres, ürün, fiyat, uzman/doktor, şirket politikası veya SSS konularında MUTLAKA yukarıdaki "BASE MODÜLÜ TANIMLARI"nı referans al ve oradaki resmi bilgiyi kullan
-- Bilmediğin bir fiyatı, hizmeti veya şubeyi asla kafandan uydurma
-- Emin olmadığın durumlarda [HANDOFF] ile insana devret
-- Müşteri kızgınsa sakinleştir, empati kur
+🚨 KESİNLİKLE UYULMASI GEREKEN KATI YANITLAMA KURALLARI:
+1. SADECE VE YALNIZCA RESMİ BİLGİLERİ KULLAN (SIFIR UYDURMA / ASLA KENDİNCE YORUM YAPMA):
+   - Müşteriye cevap vermeden önce yukarıdaki "İŞLETME TALİMATLARI VE BOT PROMPT'U", "BASE MODÜLÜ TANIMLARI" (Şirket Bilgileri, Şubeler, Ürünler ve Fiyatlar, Uzmanlar, Bilgi Bankası Metinleri ve SSS) içeriklerini DİKKATLE TARA.
+   - Cevabın YALNIZCA ve KESİNLİKLE bu kaynaklarda açıkça yazan resmi bilgilere dayanmalıdır.
+   - Bu kaynaklarda açıkça yazmayan HİÇBİR kural, şart, fiyat, indirim, kampanya, prosedür, garanti, vaat veya hizmet hakkında KENDİNCE YORUM YAPMA, TAHMİN YÜRÜTME, GENEL İNTERNET BİLGİSİNDEN BİR ŞEYLER ÇIKARMA VEYA ASLA KAFANDAN BİLGİ UYDURMA!
+   - Müşterinin sorduğu soru bu kaynaklarda YOKSA: KESİNLİKLE kendince bir varsayım veya uydurma cevap üretme. Kurum adına nazikçe şunu söyle: "Bu konuda sistemimizde net ve güncel bir bilgi yer almamaktadır. Size yanlış bilgi vermemek adına konuyu hemen yetkili çalışma arkadaşlarımıza iletiyorum, en kısa sürede size dönüş yapacaklardır."
+
+2. ORTA VE DENGELİ MESAJ UZUNLUĞU (UZUN OLMADAN, ÖZ VE NET):
+   - Cevapların ASLA çok uzun, destan gibi, paragraflar dolusu veya gereksiz ayrıntılarla dolu olmasın!
+   - Müşteriyi metin yığınına boğma. Doğrudan müşterinin sorusuna cevap veren, orta düzeyde uzunlukta (ideal olarak 2-4 kısa ve öz cümle), net, samimi ve profesyonel bir üslupla yaz.
+   - Bilgi bankasındaki tüm metni veya listeleri kopyalayıp yapıştırma; sadece müşterinin sorduğu spesifik kısmı özetleyerek aktar.
+
+3. DİL VE KURUMSAL KİMLİK:
+   - ASLA birinci şahıs tekil ("ben", "bence", "tahminimce", "düşünüyorum") kullanma. Kurum adına "biz", "ekibimiz", "kurumumuz" şeklinde konuş.
+   - ASLA şüphe uyandıran zayıf ifadeler ("bilmiyorum", "emin değilim", "galiba") kullanma. Bilgi yoksa doğrudan yetkiliye aktaracağını belirt.
+   - Müşteri kızgınsa veya şikayetçiyse sakinleştirici, anlayışlı ve kurumsal bir dil kullan.
 
 YANIT FORMATI (JSON):
 {
@@ -348,7 +358,7 @@ YANIT FORMATI (JSON):
             systemInstruction: systemPrompt,
             generationConfig: {
                 responseMimeType: 'application/json',
-                temperature: 0.7,
+                temperature: 0.2,
             }
         });
 

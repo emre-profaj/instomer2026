@@ -53,7 +53,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
                     groupName: true,
                     category: { select: { name: true } }
                 },
-                take: 60
+                take: 150
             }),
             // 4. Kaynaklar & Uzmanlar
             prisma.calendarResource.findMany({
@@ -65,14 +65,14 @@ export async function getBaseKnowledgeContext(workspaceId) {
                     availableStart: true,
                     availableEnd: true
                 },
-                take: 25
+                take: 50
             }),
             // 5. Bilgi Bankası Metinleri & SSS
             prisma.knowledgeBase.findMany({
                 where: { workspaceId },
                 select: { title: true, content: true, sourceType: true, sourceUrl: true },
                 orderBy: { updatedAt: 'desc' },
-                take: 40
+                take: 100
             })
         ]);
 
@@ -113,7 +113,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
                 if (p.priceUSD) info += ` ($${p.priceUSD})`;
                 if (p.priceEUR) info += ` (€${p.priceEUR})`;
                 if (p.category?.name) info += ` | Kategori: ${p.category.name}`;
-                if (p.description) info += ` | Açıklama: ${p.description.substring(0, 150)}`;
+                if (p.description) info += ` | Açıklama: ${p.description.substring(0, 500)}`;
                 if (p.aiContext) info += ` | [Satış Notu: ${p.aiContext}]`;
                 return info;
             });
@@ -145,8 +145,12 @@ export async function getBaseKnowledgeContext(workspaceId) {
             }
 
             if (docs.length > 0) {
-                const docLines = docs.map(d => `--- ${d.title} ---\n${d.content.substring(0, 1500)}`);
-                sections.push(`📚 BİLGİ BANKASI VE DOKÜMANLAR:\n${docLines.join('\n\n')}`);
+                const docLines = docs.map(d => {
+                    const content = (d.content || '').trim();
+                    const trimmed = content.length > 15000 ? content.substring(0, 15000) + '... (devamı var)' : content;
+                    return `--- ${d.title} ---\n${trimmed}`;
+                });
+                sections.push(`📚 BİLGİ BANKASI VE DOKÜMANLAR (RESMİ KURUMSAL BİLGİLER):\n${docLines.join('\n\n')}`);
             }
         }
 
