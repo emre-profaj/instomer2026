@@ -200,9 +200,9 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <button
                         className="mkt-btn-outline"
-                        onClick={handleSyncPastData}
-                        disabled={syncingPast}
-                        title="Geçmiş WhatsApp şablonlarını ve Retell aramalarını arşive bağlar"
+                        onClick={() => fetchCampaigns()}
+                        disabled={loading}
+                        title="Kampanyaları ve gönderim istatistiklerini yenile"
                         style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -214,11 +214,11 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                             border: '1.5px solid #d1d5db',
                             background: '#fff',
                             color: '#374151',
-                            cursor: syncingPast ? 'not-allowed' : 'pointer'
+                            cursor: 'pointer'
                         }}
                     >
-                        {syncingPast ? <Loader2 size={15} className="mkt-spin" /> : <RefreshCw size={15} />}
-                        <span>{syncingPast ? 'Eşitleniyor...' : 'Geçmiş Verileri Eşitle (Meta & Retell)'}</span>
+                        <RefreshCw size={15} className={loading ? 'mkt-spin' : ''} />
+                        <span>Yenile</span>
                     </button>
                     <button
                         className="mkt-btn-primary"
@@ -253,7 +253,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                                     <div style={{ fontWeight: 600, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                         {c.name}
-                                        {c.isArchive && <span style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🏛️ Arşiv</span>}
+                                        {c.isArchive && <span style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🏛️ Geçmiş Kampanya</span>}
                                         {c.isAutomation && <span style={{ fontSize: 11, background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🤖 Otomasyon</span>}
                                         {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>📦 Eski</span>}
                                     </div>

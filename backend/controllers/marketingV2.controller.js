@@ -101,14 +101,8 @@ export const getCampaigns = async (req, res) => {
         // Auto-ensure legacy campaigns without groups are given a default group
         await ensureDefaultGroupsForLegacyCampaigns(workspaceId).catch(() => {});
 
-        // Auto-ensure Archive campaign exists if not yet created (No need to press sync button!)
-        const hasArchive = await prisma.marketingCampaign.findFirst({
-            where: { workspaceId, type: 'ARCHIVE_DEFAULT' },
-            select: { id: true }
-        });
-        if (!hasArchive) {
-            await syncPastDataCore(workspaceId).catch(err => console.warn('⚠️ [getCampaigns:autoSyncArchive]', err.message));
-        }
+        // Auto-sync past messages and calls into date-based campaigns seamlessly (Zero button click required!)
+        await syncPastDataCore(workspaceId).catch(err => console.warn('⚠️ [getCampaigns:autoSync]', err.message));
 
         const campaigns = await prisma.marketingCampaign.findMany({
             where: { workspaceId },
@@ -124,7 +118,7 @@ export const getCampaigns = async (req, res) => {
 
         const mapped = campaigns.map(c => {
             const isAutomation = c.type === 'AUTOMATION' || Boolean(c.automationId);
-            const isArchive = c.type === 'ARCHIVE_DEFAULT';
+            const isArchive = c.type === 'ARCHIVE_DEFAULT' || c.type === 'LEGACY_DATE_SYNC';
             const isLegacy = !isAutomation && !isArchive && c.groups.length === 0 && (c._count.recipients > 0 || c.messagesLegacy.length > 0 || c.templateId != null);
 
             const groupsSent = c.groups.reduce((sum, g) => sum + (g.sentCount || 0), 0);
@@ -1197,200 +1191,332 @@ export const wizardLaunchCampaign = async (req, res) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// 8. SYNC PAST DATA (META & RETELL ARCHIVE CAMPAIGN)
+// 8. SYNC PAST DATA (DATE-BY-DATE AUTOMATIC CAMPAIGN ORGANIZATION)
 // ══════════════════════════════════════════════════════════════════════════
 
 export async function syncPastDataCore(workspaceId) {
     // 0. Ensure legacy campaigns without groups get their default groups and messages
     const legacyUpdatedCount = await ensureDefaultGroupsForLegacyCampaigns(workspaceId);
 
-    // 1. Find or create default archive campaign
-    let archiveCampaign = await prisma.marketingCampaign.findFirst({
+    // Clean up any monolithic ARCHIVE_DEFAULT campaign so past sends are neatly grouped by DATE
+    const oldArchiveCampaigns = await prisma.marketingCampaign.findMany({
         where: { workspaceId, type: 'ARCHIVE_DEFAULT' }
     });
-
-    if (!archiveCampaign) {
-        archiveCampaign = await prisma.marketingCampaign.create({
-            data: {
-                workspaceId,
-                name: 'Genel & Geçmiş Gönderimler (Arşiv)',
-                description: 'Sistemdeki geçmiş Meta WhatsApp şablonları ve Retell AI aramaları',
-                status: 'COMPLETED',
-                type: 'ARCHIVE_DEFAULT'
-            }
-        });
+    for (const oldCamp of oldArchiveCampaigns) {
+        await prisma.marketingRecipient.deleteMany({ where: { campaignId: oldCamp.id } }).catch(() => {});
+        await prisma.campaignGroup.deleteMany({ where: { campaignId: oldCamp.id } }).catch(() => {});
+        await prisma.marketingCampaign.delete({ where: { id: oldCamp.id } }).catch(() => {});
     }
 
-    // 2. Find or create default groups under archive campaign
-    let waGroup = await prisma.campaignGroup.findFirst({
-        where: { campaignId: archiveCampaign.id, channel: 'WHATSAPP' }
-    });
-    if (!waGroup) {
-        waGroup = await prisma.campaignGroup.create({
-            data: {
-                campaignId: archiveCampaign.id,
-                name: 'WhatsApp Şablon Gönderimleri (Meta)',
-                channel: 'WHATSAPP',
-                status: 'COMPLETED'
-            }
-        });
-    }
-
-    let callGroup = await prisma.campaignGroup.findFirst({
-        where: { campaignId: archiveCampaign.id, channel: 'AI_CALL' }
-    });
-    if (!callGroup) {
-        callGroup = await prisma.campaignGroup.create({
-            data: {
-                campaignId: archiveCampaign.id,
-                name: 'AI Sesli Aramalar (Retell)',
-                channel: 'AI_CALL',
-                status: 'COMPLETED'
-            }
-        });
-    }
-
-    // 3. Find all past WhatsApp TEMPLATE messages
+    // 1. Gather all past WhatsApp TEMPLATE messages
     const pastWaMessages = await prisma.message.findMany({
         where: {
             messageType: 'TEMPLATE',
             isFromContact: false,
             conversation: { workspaceId }
         },
-        include: { conversation: { include: { contact: true } } }
+        include: { conversation: { include: { contact: true } } },
+        orderBy: { createdAt: 'desc' }
     });
 
-    // Fast lookup of existing recipients to prevent duplicate work
+    // Lookup existing recipients belonging to user-created campaigns to avoid double counting
     const existingRecs = await prisma.marketingRecipient.findMany({
         where: {
-            campaign: { workspaceId },
+            campaign: { workspaceId, type: { notIn: ['LEGACY_DATE_SYNC', 'ARCHIVE_DEFAULT'] } },
             messageId: { not: null }
         },
         select: { messageId: true }
     });
     const existingMessageIdSet = new Set(existingRecs.map(r => r.messageId));
 
-    const toCreate = [];
+    // Group unassigned messages by Date (YYYY-MM-DD) and Template Name
+    const messagesByDate = new Map();
     for (const msg of pastWaMessages) {
         if (existingMessageIdSet.has(msg.id)) continue;
 
-        const status = msg.status || 'SENT';
-        toCreate.push({
-            campaignId: archiveCampaign.id,
-            groupId: waGroup.id,
-            contactId: msg.conversation?.contactId || null,
-            phone: msg.conversation?.contact?.phone || null,
-            name: msg.conversation?.contact?.name || null,
-            messageId: msg.id,
-            status,
-            deliveredAt: ['DELIVERED', 'READ'].includes(status) ? msg.updatedAt : null,
-            readAt: status === 'READ' ? msg.updatedAt : null,
-            failedAt: status === 'FAILED' ? msg.updatedAt : null,
-            sentAt: msg.createdAt
-        });
-    }
+        const dateKey = msg.createdAt.toISOString().split('T')[0];
+        let tplName = 'WhatsApp Şablonu';
+        const match = msg.content?.match(/^\[Şablon:\s*([^\]]+)\]/);
+        if (match && match[1]) {
+            tplName = match[1].trim();
+        }
 
-    if (toCreate.length > 0) {
-        for (let i = 0; i < toCreate.length; i += 100) {
-            await prisma.marketingRecipient.createMany({
-                data: toCreate.slice(i, i + 100),
-                skipDuplicates: true
+        if (!messagesByDate.has(dateKey)) {
+            messagesByDate.set(dateKey, {
+                date: msg.createdAt,
+                dateKey,
+                templates: new Map()
             });
         }
+
+        const dayGroup = messagesByDate.get(dateKey);
+        if (!dayGroup.templates.has(tplName)) {
+            dayGroup.templates.set(tplName, []);
+        }
+        dayGroup.templates.get(tplName).push(msg);
     }
 
-    // 4. Find all past Retell AI calls
+    let syncedWaCampaigns = 0;
+    let totalSyncedWaMessages = 0;
+
+    for (const [dateKey, dayGroup] of messagesByDate.entries()) {
+        const formattedDate = new Date(dayGroup.date).toLocaleDateString('tr-TR', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        const tplNames = Array.from(dayGroup.templates.keys());
+        const campaignName = tplNames.length === 1
+            ? `Eski Kampanya (${tplNames[0]}) - ${formattedDate}`
+            : `Eski Kampanya - ${formattedDate}`;
+
+        let campaign = await prisma.marketingCampaign.findFirst({
+            where: {
+                workspaceId,
+                type: 'LEGACY_DATE_SYNC',
+                description: `Tarih: ${dateKey}`
+            }
+        });
+
+        if (!campaign) {
+            campaign = await prisma.marketingCampaign.create({
+                data: {
+                    workspaceId,
+                    name: campaignName,
+                    description: `Tarih: ${dateKey}`,
+                    status: 'COMPLETED',
+                    type: 'LEGACY_DATE_SYNC',
+                    startDate: dayGroup.date,
+                    endDate: dayGroup.date
+                }
+            });
+        }
+
+        for (const [tplName, msgs] of dayGroup.templates.entries()) {
+            let group = await prisma.campaignGroup.findFirst({
+                where: {
+                    campaignId: campaign.id,
+                    name: `${tplName} Grubu`
+                }
+            });
+
+            if (!group) {
+                group = await prisma.campaignGroup.create({
+                    data: {
+                        campaignId: campaign.id,
+                        name: `${tplName} Grubu`,
+                        channel: 'WHATSAPP',
+                        status: 'COMPLETED',
+                        sentAt: dayGroup.date
+                    }
+                });
+            }
+
+            const groupRecs = await prisma.marketingRecipient.findMany({
+                where: { groupId: group.id },
+                select: { messageId: true }
+            });
+            const groupRecMsgSet = new Set(groupRecs.map(r => r.messageId));
+
+            const toCreate = [];
+            for (const msg of msgs) {
+                if (groupRecMsgSet.has(msg.id)) continue;
+                const status = msg.status || 'SENT';
+                toCreate.push({
+                    campaignId: campaign.id,
+                    groupId: group.id,
+                    contactId: msg.conversation?.contactId || null,
+                    phone: msg.conversation?.contact?.phone || null,
+                    name: msg.conversation?.contact?.name || null,
+                    messageId: msg.id,
+                    status,
+                    deliveredAt: ['DELIVERED', 'READ'].includes(status) ? msg.updatedAt : null,
+                    readAt: status === 'READ' ? msg.updatedAt : null,
+                    failedAt: status === 'FAILED' ? msg.updatedAt : null,
+                    sentAt: msg.createdAt
+                });
+            }
+
+            if (toCreate.length > 0) {
+                for (let i = 0; i < toCreate.length; i += 100) {
+                    await prisma.marketingRecipient.createMany({
+                        data: toCreate.slice(i, i + 100),
+                        skipDuplicates: true
+                    });
+                }
+            }
+
+            // Update group counts
+            const [sent, delivered, read, failed] = await Promise.all([
+                prisma.marketingRecipient.count({ where: { groupId: group.id } }),
+                prisma.marketingRecipient.count({ where: { groupId: group.id, status: { in: ['DELIVERED', 'READ'] } } }),
+                prisma.marketingRecipient.count({ where: { groupId: group.id, status: 'READ' } }),
+                prisma.marketingRecipient.count({ where: { groupId: group.id, status: 'FAILED' } })
+            ]);
+
+            await prisma.campaignGroup.update({
+                where: { id: group.id },
+                data: { sentCount: sent, deliveredCount: delivered, readCount: read, failedCount: failed }
+            });
+            totalSyncedWaMessages += sent;
+        }
+
+        // Aggregate campaign counts from its groups
+        const groups = await prisma.campaignGroup.findMany({ where: { campaignId: campaign.id } });
+        await prisma.marketingCampaign.update({
+            where: { id: campaign.id },
+            data: {
+                sentCount: groups.reduce((s, g) => s + g.sentCount, 0),
+                deliveredCount: groups.reduce((s, g) => s + g.deliveredCount, 0),
+                readCount: groups.reduce((s, g) => s + g.readCount, 0),
+                failedCount: groups.reduce((s, g) => s + g.failedCount, 0),
+                totalCount: groups.reduce((s, g) => s + g.sentCount, 0)
+            }
+        });
+        syncedWaCampaigns++;
+    }
+
+    // 2. Gather past Retell AI calls
     const pastCalls = await prisma.retellCall.findMany({
-        where: { workspaceId }
+        where: { workspaceId },
+        orderBy: { createdAt: 'desc' }
     });
 
-    const existingCallRecs = await prisma.marketingRecipient.findMany({
-        where: {
-            campaignId: archiveCampaign.id,
-            groupId: callGroup.id,
-            messageId: { not: null }
-        },
-        select: { messageId: true }
-    });
-    const existingCallIdSet = new Set(existingCallRecs.map(r => r.messageId));
-
-    const callsToCreate = [];
+    const callsByDate = new Map();
     for (const call of pastCalls) {
-        const callMsgId = `call_${call.callId || call.id}`;
-        if (existingCallIdSet.has(callMsgId)) continue;
-
-        const isSuccess = Boolean(call.callSuccessful || (call.duration && call.duration > 15) || call.status === 'completed');
-        callsToCreate.push({
-            campaignId: archiveCampaign.id,
-            groupId: callGroup.id,
-            contactId: call.contactId || null,
-            phone: call.toNumber || null,
-            messageId: callMsgId,
-            status: isSuccess ? 'READ' : 'FAILED',
-            deliveredAt: isSuccess ? call.createdAt : null,
-            readAt: isSuccess ? call.createdAt : null,
-            failedAt: !isSuccess ? call.createdAt : null,
-            failReason: call.endedReason || null,
-            sentAt: call.startedAt || call.createdAt
-        });
-    }
-
-    if (callsToCreate.length > 0) {
-        for (let i = 0; i < callsToCreate.length; i += 100) {
-            await prisma.marketingRecipient.createMany({
-                data: callsToCreate.slice(i, i + 100),
-                skipDuplicates: true
+        const dateKey = (call.startedAt || call.createdAt).toISOString().split('T')[0];
+        if (!callsByDate.has(dateKey)) {
+            callsByDate.set(dateKey, {
+                date: call.startedAt || call.createdAt,
+                dateKey,
+                calls: []
             });
         }
+        callsByDate.get(dateKey).calls.push(call);
     }
 
-    // 5. Compute exact counts directly from DB recipients
-    const [waSent, waDelivered, waRead, waFailed] = await Promise.all([
-        prisma.marketingRecipient.count({ where: { groupId: waGroup.id } }),
-        prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: { in: ['DELIVERED', 'READ'] } } }),
-        prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: 'READ' } }),
-        prisma.marketingRecipient.count({ where: { groupId: waGroup.id, status: 'FAILED' } })
-    ]);
+    let syncedCallCampaigns = 0;
+    let totalSyncedCalls = 0;
 
-    await prisma.campaignGroup.update({
-        where: { id: waGroup.id },
-        data: {
-            sentCount: waSent,
-            deliveredCount: waDelivered,
-            readCount: waRead,
-            failedCount: waFailed
+    for (const [dateKey, dayData] of callsByDate.entries()) {
+        const formattedDate = new Date(dayData.date).toLocaleDateString('tr-TR', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        const campaignName = `Eski Kampanya (AI Arama) - ${formattedDate}`;
+
+        let campaign = await prisma.marketingCampaign.findFirst({
+            where: {
+                workspaceId,
+                type: 'LEGACY_DATE_SYNC',
+                description: `Arama Tarihi: ${dateKey}`
+            }
+        });
+
+        if (!campaign) {
+            campaign = await prisma.marketingCampaign.create({
+                data: {
+                    workspaceId,
+                    name: campaignName,
+                    description: `Arama Tarihi: ${dateKey}`,
+                    status: 'COMPLETED',
+                    type: 'LEGACY_DATE_SYNC',
+                    startDate: dayData.date,
+                    endDate: dayData.date
+                }
+            });
         }
-    });
 
-    const [callsTotal, callsSuccessful, callsFailed] = await Promise.all([
-        prisma.marketingRecipient.count({ where: { groupId: callGroup.id } }),
-        prisma.marketingRecipient.count({ where: { groupId: callGroup.id, status: { in: ['DELIVERED', 'READ'] } } }),
-        prisma.marketingRecipient.count({ where: { groupId: callGroup.id, status: 'FAILED' } })
-    ]);
+        let group = await prisma.campaignGroup.findFirst({
+            where: {
+                campaignId: campaign.id,
+                channel: 'AI_CALL'
+            }
+        });
 
-    await prisma.campaignGroup.update({
-        where: { id: callGroup.id },
-        data: {
-            sentCount: callsTotal,
-            deliveredCount: callsSuccessful,
-            readCount: callsSuccessful,
-            failedCount: callsFailed
+        if (!group) {
+            group = await prisma.campaignGroup.create({
+                data: {
+                    campaignId: campaign.id,
+                    name: 'AI Sesli Arama Grubu',
+                    channel: 'AI_CALL',
+                    status: 'COMPLETED',
+                    sentAt: dayData.date
+                }
+            });
         }
-    });
 
-    // 6. Update overall archive campaign stats
-    await prisma.marketingCampaign.update({
-        where: { id: archiveCampaign.id },
-        data: {
-            sentCount: waSent + callsTotal,
-            deliveredCount: waDelivered + callsSuccessful,
-            readCount: waRead + callsSuccessful,
-            failedCount: waFailed + callsFailed,
-            totalCount: waSent + callsTotal
+        const groupRecs = await prisma.marketingRecipient.findMany({
+            where: { groupId: group.id },
+            select: { messageId: true }
+        });
+        const groupRecMsgSet = new Set(groupRecs.map(r => r.messageId));
+
+        const callsToCreate = [];
+        for (const call of dayData.calls) {
+            const callMsgId = `call_${call.callId || call.id}`;
+            if (groupRecMsgSet.has(callMsgId)) continue;
+
+            const isSuccess = Boolean(call.callSuccessful || (call.duration && call.duration > 15) || call.status === 'completed');
+            callsToCreate.push({
+                campaignId: campaign.id,
+                groupId: group.id,
+                contactId: call.contactId || null,
+                phone: call.toNumber || null,
+                messageId: callMsgId,
+                status: isSuccess ? 'READ' : 'FAILED',
+                deliveredAt: isSuccess ? call.createdAt : null,
+                readAt: isSuccess ? call.createdAt : null,
+                failedAt: !isSuccess ? call.createdAt : null,
+                failReason: call.endedReason || null,
+                sentAt: call.startedAt || call.createdAt
+            });
         }
-    });
 
-    // 7. Auto-import approved WhatsApp templates to MarketingMessage
+        if (callsToCreate.length > 0) {
+            for (let i = 0; i < callsToCreate.length; i += 100) {
+                await prisma.marketingRecipient.createMany({
+                    data: callsToCreate.slice(i, i + 100),
+                    skipDuplicates: true
+                });
+            }
+        }
+
+        const [totalCalls, successfulCalls, failedCalls] = await Promise.all([
+            prisma.marketingRecipient.count({ where: { groupId: group.id } }),
+            prisma.marketingRecipient.count({ where: { groupId: group.id, status: { in: ['DELIVERED', 'READ'] } } }),
+            prisma.marketingRecipient.count({ where: { groupId: group.id, status: 'FAILED' } })
+        ]);
+
+        await prisma.campaignGroup.update({
+            where: { id: group.id },
+            data: {
+                sentCount: totalCalls,
+                deliveredCount: successfulCalls,
+                readCount: successfulCalls,
+                failedCount: failedCalls
+            }
+        });
+
+        await prisma.marketingCampaign.update({
+            where: { id: campaign.id },
+            data: {
+                sentCount: totalCalls,
+                deliveredCount: successfulCalls,
+                readCount: successfulCalls,
+                failedCount: failedCalls,
+                totalCount: totalCalls
+            }
+        });
+
+        syncedCallCampaigns++;
+        totalSyncedCalls += totalCalls;
+    }
+
+    // 3. Auto-import approved WhatsApp templates to MarketingMessage
     const waTemplates = await prisma.whatsappTemplate.findMany({
         where: { workspaceId, status: 'APPROVED' }
     }).catch(() => []);
@@ -1414,14 +1540,12 @@ export async function syncPastDataCore(workspaceId) {
     }
 
     return {
-        archiveCampaign,
         synced: {
             legacyUpdatedCount,
-            whatsappCount: waSent,
-            whatsappDelivered: waDelivered,
-            whatsappRead: waRead,
-            retellCallsCount: callsTotal,
-            retellCallsSuccessful: callsSuccessful
+            syncedWaCampaigns,
+            totalSyncedWaMessages,
+            syncedCallCampaigns,
+            totalSyncedCalls
         }
     };
 }
@@ -1432,7 +1556,7 @@ export const syncPastData = async (req, res) => {
         const result = await syncPastDataCore(workspaceId);
         res.json({
             success: true,
-            message: 'Geçmiş Meta & Retell verileri ve reklam grupları başarıyla eşitlendi',
+            message: 'Geçmiş Meta & Retell verileri tarih bazlı kampanyalar olarak başarıyla eşitlendi',
             ...result
         });
     } catch (error) {
