@@ -1516,6 +1516,71 @@ export const toggleAutomation = async (req, res) => {
 };
 
 // Execute automation for a lead (called internally)
+/**
+ * Ortak koşul değerlendirme fonksiyonu — tüm otomasyon executor'ları tarafından kullanılır.
+ * @returns {boolean} true = koşullar sağlandı, otomasyon çalıştırılabilir
+ */
+async function evaluateAutomationConditions(automation, contact, context = {}) {
+    if (!automation.conditions) return true;
+    
+    try {
+        const conds = typeof automation.conditions === 'string' ? JSON.parse(automation.conditions) : automation.conditions;
+        
+        // 1. Akış/Aşama kontrolü (STAGE_REACHED tetikleyicisi için)
+        if (conds.funnelId && context.funnelId && conds.funnelId !== context.funnelId) {
+            console.log(`⏭️ [Automation] Skipping "${automation.name}" - funnel mismatch`);
+            return false;
+        }
+        if (conds.stageId && context.stageId && conds.stageId !== context.stageId) {
+            console.log(`⏭️ [Automation] Skipping "${automation.name}" - stage mismatch`);
+            return false;
+        }
+        
+        // 2. Segment kontrolü
+        if (conds.segment && contact?.id) {
+            const { evaluateContactSegment } = await import('../services/smartSegment.service.js');
+            const matches = await evaluateContactSegment(contact.id, conds.segment, context.workspaceId);
+            if (!matches) {
+                console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact not in segment ${conds.segment}`);
+                return false;
+            }
+        }
+        
+        // 3. Etiket kontrolü
+        if (conds.tags?.length && contact) {
+            const contactTags = (() => { try { return JSON.parse(contact.tags || '[]'); } catch { return []; } })();
+            const hasMatchingTag = conds.tags.some(t => contactTags.includes(t));
+            if (!hasMatchingTag) {
+                console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact missing required tags`);
+                return false;
+            }
+        }
+        
+        // 4. Dil kontrolü
+        if (conds.language && contact?.language) {
+            if (contact.language.toLowerCase() !== conds.language.toLowerCase()) {
+                console.log(`⏭️ [Automation] Skipping "${automation.name}" - language mismatch (${contact.language} != ${conds.language})`);
+                return false;
+            }
+        }
+        
+        // 5. Saat aralığı kontrolü
+        if (conds.timeRange?.start && conds.timeRange?.end) {
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            if (currentTime < conds.timeRange.start || currentTime > conds.timeRange.end) {
+                console.log(`⏭️ [Automation] Skipping "${automation.name}" - outside time range (${currentTime} not in ${conds.timeRange.start}-${conds.timeRange.end})`);
+                return false;
+            }
+        }
+        
+        return true;
+    } catch (parseErr) {
+        console.warn(`⚠️ [Automation] Failed to parse conditions for "${automation.name}":`, parseErr.message);
+        return true; // Hata durumunda otomasyonu çalıştır
+    }
+}
+
 export const executeLeadAutomation = async (workspaceId, lead, contact) => {
     try {
         console.log(`🤖 [AUTOMATION] executeLeadAutomation called`);
@@ -1542,34 +1607,9 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
         for (const automation of automations) {
             console.log(`🤖 [AUTOMATION] Processing: ${automation.name}`);
 
-            // Smart Segment condition evaluation
-            if (automation.conditions) {
-                try {
-                    const conds = JSON.parse(automation.conditions);
-                    
-                    // Segment check
-                    if (conds.segment && contact?.id) {
-                        const { evaluateContactSegment } = await import('../services/smartSegment.service.js');
-                        const matches = await evaluateContactSegment(contact.id, conds.segment, workspaceId);
-                        if (!matches) {
-                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact not in segment ${conds.segment}`);
-                            continue;
-                        }
-                    }
-                    
-                    // Tag check
-                    if (conds.tags?.length && contact) {
-                        const contactTags = (() => { try { return JSON.parse(contact.tags || '[]'); } catch { return []; } })();
-                        const hasMatchingTag = conds.tags.some(t => contactTags.includes(t));
-                        if (!hasMatchingTag) {
-                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact missing required tags`);
-                            continue;
-                        }
-                    }
-                } catch (parseErr) {
-                    console.warn(`⚠️ [Automation] Failed to parse conditions for "${automation.name}":`, parseErr.message);
-                }
-            }
+            // Koşul değerlendirmesi (ortak fonksiyon)
+            const conditionsMet = await evaluateAutomationConditions(automation, contact, { workspaceId });
+            if (!conditionsMet) continue;
 
             // Parse actions from JSON or use legacy single action
             let actionsToExecute = [];
@@ -2079,34 +2119,9 @@ export const executeWebFormAutomation = async (workspaceId, contact, formData = 
         for (const automation of automations) {
             console.log(`🤖 [AUTOMATION] Processing: ${automation.name}`);
 
-            // Smart Segment condition evaluation
-            if (automation.conditions) {
-                try {
-                    const conds = JSON.parse(automation.conditions);
-                    
-                    // Segment check
-                    if (conds.segment && contact?.id) {
-                        const { evaluateContactSegment } = await import('../services/smartSegment.service.js');
-                        const matches = await evaluateContactSegment(contact.id, conds.segment, workspaceId);
-                        if (!matches) {
-                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact not in segment ${conds.segment}`);
-                            continue;
-                        }
-                    }
-                    
-                    // Tag check
-                    if (conds.tags?.length && contact) {
-                        const contactTags = (() => { try { return JSON.parse(contact.tags || '[]'); } catch { return []; } })();
-                        const hasMatchingTag = conds.tags.some(t => contactTags.includes(t));
-                        if (!hasMatchingTag) {
-                            console.log(`⏭️ [Automation] Skipping "${automation.name}" - contact missing required tags`);
-                            continue;
-                        }
-                    }
-                } catch (parseErr) {
-                    console.warn(`⚠️ [Automation] Failed to parse conditions for "${automation.name}":`, parseErr.message);
-                }
-            }
+            // Koşul değerlendirmesi (ortak fonksiyon)
+            const conditionsMet = await evaluateAutomationConditions(automation, contact, { workspaceId });
+            if (!conditionsMet) continue;
 
             // Parse actions from JSON or use legacy single action
             let actionsToExecute = [];
@@ -2378,5 +2393,186 @@ export const toggleUnifiedAutomation = async (req, res) => {
     } catch (error) {
         console.error('❌ [UnifiedToggle]', error.message);
         res.status(500).json({ error: 'Durum değiştirilemedi' });
+    }
+};
+
+/**
+ * Aşama değişimi tetikleyicisi — bir kişi belirli bir akış aşamasına geldiğinde çalışır.
+ * funnelStageManager.service.js'den çağrılır.
+ */
+export const executeStageReachedAutomation = async (workspaceId, contactId, funnelId, stageId, options = {}) => {
+    try {
+        console.log(`🏁 [AUTOMATION] executeStageReachedAutomation called`);
+        console.log(`🏁 [AUTOMATION] WorkspaceId: ${workspaceId}, ContactId: ${contactId}`);
+        console.log(`🏁 [AUTOMATION] FunnelId: ${funnelId}, StageId: ${stageId}`);
+
+        const automations = await prisma.automation.findMany({
+            where: { workspaceId, isActive: true, trigger: 'STAGE_REACHED' }
+        });
+
+        console.log(`🏁 [AUTOMATION] Found ${automations.length} active STAGE_REACHED automations`);
+        if (automations.length === 0) return;
+
+        const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+        if (!contact) {
+            console.log(`⚠️ [AUTOMATION] Contact not found: ${contactId}`);
+            return;
+        }
+
+        const conversationId = options.conversationId;
+
+        for (const automation of automations) {
+            console.log(`🏁 [AUTOMATION] Processing: ${automation.name}`);
+
+            const conditionsMet = await evaluateAutomationConditions(automation, contact, {
+                workspaceId, funnelId, stageId
+            });
+            if (!conditionsMet) continue;
+
+            let actionsToExecute = [];
+            try {
+                actionsToExecute = automation.actions ? JSON.parse(automation.actions) : [automation.action];
+            } catch (e) {
+                actionsToExecute = [automation.action];
+            }
+
+            console.log(`🏁 [AUTOMATION] Actions: ${actionsToExecute.join(', ')}`);
+
+            const { executeAutomationAction } = await import('../services/automationExecutor.js');
+            for (const actionType of actionsToExecute) {
+                const actionAutomation = { ...automation, action: actionType };
+                await executeAutomationAction(actionAutomation, {
+                    workspaceId, contactId, conversationId, contact
+                });
+            }
+        }
+    } catch (error) {
+        console.error('❌ [AUTOMATION] executeStageReachedAutomation error:', error);
+    }
+};
+
+/**
+ * Günlük otomasyon tetikleyicisi — her gün cron tarafından çağrılır.
+ * Doğum günü, yıldönümü, hareketsizlik gibi takvim bazlı otomasyonları çalıştırır.
+ */
+export const executeDailyAutomations = async () => {
+    try {
+        console.log(`📅 [AUTOMATION] executeDailyAutomations started`);
+
+        const automations = await prisma.automation.findMany({
+            where: { isActive: true, trigger: 'DAILY_CHECK' }
+        });
+
+        console.log(`📅 [AUTOMATION] Found ${automations.length} active DAILY_CHECK automations`);
+        if (automations.length === 0) return;
+
+        const today = new Date();
+        const todayMonth = today.getMonth() + 1;
+        const todayDay = today.getDate();
+
+        for (const automation of automations) {
+            try {
+                const conds = automation.conditions ? JSON.parse(automation.conditions) : {};
+                const dailyCondition = conds.dailyCondition;
+                const workspaceId = automation.workspaceId;
+
+                console.log(`📅 [AUTOMATION] Processing: ${automation.name} (condition: ${dailyCondition})`);
+
+                let matchingContacts = [];
+
+                if (dailyCondition === 'BIRTHDAY') {
+                    const allContacts = await prisma.contact.findMany({
+                        where: { workspaceId, birthDate: { not: null } }
+                    });
+                    matchingContacts = allContacts.filter(c => {
+                        const bday = new Date(c.birthDate);
+                        return bday.getMonth() + 1 === todayMonth && bday.getDate() === todayDay;
+                    });
+                    console.log(`🎂 [AUTOMATION] Found ${matchingContacts.length} contacts with birthday today`);
+
+                } else if (dailyCondition === 'INACTIVE') {
+                    const inactiveDays = conds.inactiveDays || 30;
+                    const cutoffDate = new Date();
+                    cutoffDate.setDate(cutoffDate.getDate() - inactiveDays);
+                    matchingContacts = await prisma.contact.findMany({
+                        where: { workspaceId, updatedAt: { lt: cutoffDate } }
+                    });
+                    console.log(`💤 [AUTOMATION] Found ${matchingContacts.length} inactive contacts (${inactiveDays} days)`);
+
+                } else if (dailyCondition === 'ANNIVERSARY') {
+                    const allContacts = await prisma.contact.findMany({
+                        where: { workspaceId }
+                    });
+                    matchingContacts = allContacts.filter(c => {
+                        const created = new Date(c.createdAt);
+                        return created.getMonth() + 1 === todayMonth && created.getDate() === todayDay && created.getFullYear() < today.getFullYear();
+                    });
+                    console.log(`🎉 [AUTOMATION] Found ${matchingContacts.length} contacts with anniversary today`);
+                }
+
+                if (matchingContacts.length === 0) continue;
+
+                let actionsToExecute = [];
+                try {
+                    actionsToExecute = automation.actions ? JSON.parse(automation.actions) : [automation.action];
+                } catch (e) {
+                    actionsToExecute = [automation.action];
+                }
+
+                const { executeAutomationAction } = await import('../services/automationExecutor.js');
+
+                for (const contact of matchingContacts) {
+                    const conditionsMet = await evaluateAutomationConditions(automation, contact, { workspaceId });
+                    if (!conditionsMet) continue;
+
+                    // Deduplikasyon — aynı gün aynı kişiye aynı otomasyon çalışmasın
+                    const todayStart = new Date();
+                    todayStart.setHours(0, 0, 0, 0);
+                    const alreadyRun = await prisma.automationLog.findFirst({
+                        where: {
+                            workspaceId,
+                            ruleType: `DAILY_${dailyCondition}_${automation.id}`,
+                            contactId: contact.id,
+                            executedAt: { gte: todayStart }
+                        }
+                    });
+                    if (alreadyRun) {
+                        console.log(`⏭️ [AUTOMATION] Skipping "${automation.name}" for contact ${contact.id} - already executed today`);
+                        continue;
+                    }
+
+                    console.log(`📅 [AUTOMATION] Executing for contact: ${contact.name || contact.phone}`);
+
+                    const conversation = await prisma.conversation.findFirst({
+                        where: { contactId: contact.id, workspaceId },
+                        orderBy: { lastMessageAt: 'desc' }
+                    });
+
+                    for (const actionType of actionsToExecute) {
+                        const actionAutomation = { ...automation, action: actionType };
+                        await executeAutomationAction(actionAutomation, {
+                            workspaceId, contactId: contact.id, conversationId: conversation?.id, contact
+                        });
+                    }
+
+                    // Log execution for deduplication
+                    await prisma.automationLog.create({
+                        data: {
+                            workspaceId,
+                            ruleType: `DAILY_${dailyCondition}_${automation.id}`,
+                            contactId: contact.id,
+                            action: actionsToExecute.join(','),
+                            result: 'executed'
+                        }
+                    });
+                }
+            } catch (automationErr) {
+                console.error(`❌ [AUTOMATION] Error processing daily automation "${automation.name}":`, automationErr);
+            }
+        }
+
+        console.log(`📅 [AUTOMATION] executeDailyAutomations completed`);
+    } catch (error) {
+        console.error('❌ [AUTOMATION] executeDailyAutomations error:', error);
     }
 };

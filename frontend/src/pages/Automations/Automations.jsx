@@ -463,6 +463,8 @@ const Automations = ({ initialTab }) => {
             case 'NEW_WEBFORM': return '📋 Yeni Web Form';
             case 'RETELL_COMPLETED_SUCCESS': return '📞 AI Call: Başarılı Görüşme';
             case 'RETELL_COMPLETED_FAIL': return '📞 AI Call: Başarısız Görüşme';
+            case 'STAGE_REACHED': return '🏁 Aşama Değişimi';
+            case 'DAILY_CHECK': return '📅 Günlük Kontrol';
             default: return trigger;
         }
     };
@@ -1345,21 +1347,115 @@ const Automations = ({ initialTab }) => {
                                             <option value="NEW_WEBFORM">📋 Yeni Web Form Geldiğinde</option>
                                             <option value="RETELL_COMPLETED_SUCCESS">📞 AI Call Konuşması Başarılı Olduğunda</option>
                                             <option value="RETELL_COMPLETED_FAIL">📞 AI Call Konuşması Başarısız Olduğunda</option>
+                                            <option value="STAGE_REACHED">🏁 Belirli Bir Aşamaya Geldiğinde</option>
+                                            <option value="DAILY_CHECK">📅 Günlük Kontrol (Doğum Günü vb.)</option>
                                         </select>
                                     </div>
-                                    <div className="form-group">
-                                        <label>Kanal</label>
-                                        <select
-                                            value={automationForm.triggerChannel}
-                                            onChange={(e) => setAutomationForm({ ...automationForm, triggerChannel: e.target.value })}
-                                        >
-                                            <option value="ALL">Tümü</option>
-                                            <option value="WHATSAPP">WhatsApp</option>
-                                            <option value="FACEBOOK">Facebook</option>
-                                            <option value="INSTAGRAM">Instagram</option>
-                                        </select>
-                                    </div>
+                                    {!['STAGE_REACHED', 'DAILY_CHECK'].includes(automationForm.trigger) && (
+                                        <div className="form-group">
+                                            <label>Kanal</label>
+                                            <select
+                                                value={automationForm.triggerChannel}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, triggerChannel: e.target.value })}
+                                            >
+                                                <option value="ALL">Tümü</option>
+                                                <option value="WHATSAPP">WhatsApp</option>
+                                                <option value="FACEBOOK">Facebook</option>
+                                                <option value="INSTAGRAM">Instagram</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
+
+                                {/* Aşama Tetikleyici: Akış ve Aşama Seçimi */}
+                                {automationForm.trigger === 'STAGE_REACHED' && (
+                                    <div className="form-row" style={{ marginTop: 8 }}>
+                                        <div className="form-group">
+                                            <label>Akış *</label>
+                                            <select
+                                                value={(() => { try { return JSON.parse(automationForm.conditions || '{}').funnelId || ''; } catch { return ''; } })()}
+                                                onChange={e => {
+                                                    const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                    currentConds.funnelId = e.target.value || undefined;
+                                                    // Akış değişince aşamayı sıfırla
+                                                    delete currentConds.stageId;
+                                                    setAutomationForm(prev => ({ ...prev, conditions: JSON.stringify(currentConds) }));
+                                                }}
+                                            >
+                                                <option value="">Akış seçin...</option>
+                                                {funnels.map(f => <option key={f.id} value={f.id}>{f.icon} {f.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Aşama *</label>
+                                            <select
+                                                value={(() => { try { return JSON.parse(automationForm.conditions || '{}').stageId || ''; } catch { return ''; } })()}
+                                                onChange={e => {
+                                                    const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                    currentConds.stageId = e.target.value || undefined;
+                                                    setAutomationForm(prev => ({ ...prev, conditions: JSON.stringify(currentConds) }));
+                                                }}
+                                            >
+                                                <option value="">Aşama seçin...</option>
+                                                {(() => {
+                                                    const selectedFunnelId = (() => { try { return JSON.parse(automationForm.conditions || '{}').funnelId; } catch { return null; } })();
+                                                    if (!selectedFunnelId) return null;
+                                                    const funnel = funnels.find(f => f.id === selectedFunnelId);
+                                                    return (funnel?.stages || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>);
+                                                })()}
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Günlük Kontrol: Koşul Seçimi */}
+                                {automationForm.trigger === 'DAILY_CHECK' && (
+                                    <div style={{ marginTop: 8 }}>
+                                        <div className="form-row">
+                                            <div className="form-group">
+                                                <label>Günlük Koşul *</label>
+                                                <select
+                                                    value={(() => { try { return JSON.parse(automationForm.conditions || '{}').dailyCondition || ''; } catch { return ''; } })()}
+                                                    onChange={e => {
+                                                        const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                        currentConds.dailyCondition = e.target.value || undefined;
+                                                        if (e.target.value !== 'INACTIVE') delete currentConds.inactiveDays;
+                                                        setAutomationForm(prev => ({ ...prev, conditions: JSON.stringify(currentConds) }));
+                                                    }}
+                                                >
+                                                    <option value="">Koşul seçin...</option>
+                                                    <option value="BIRTHDAY">🎂 Doğum Günü Bugün Olanlar</option>
+                                                    <option value="INACTIVE">💤 Belirli Süredir Hareketsiz</option>
+                                                    <option value="ANNIVERSARY">🎉 Müşteri Yıldönümü</option>
+                                                </select>
+                                            </div>
+                                            {(() => {
+                                                try {
+                                                    const conds = JSON.parse(automationForm.conditions || '{}');
+                                                    if (conds.dailyCondition === 'INACTIVE') {
+                                                        return (
+                                                            <div className="form-group">
+                                                                <label>Hareketsizlik Süresi (gün)</label>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    value={conds.inactiveDays || 30}
+                                                                    onChange={e => {
+                                                                        const currentConds = { ...conds, inactiveDays: parseInt(e.target.value) || 30 };
+                                                                        setAutomationForm(prev => ({ ...prev, conditions: JSON.stringify(currentConds) }));
+                                                                    }}
+                                                                    placeholder="30"
+                                                                />
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                } catch { return null; }
+                                            })()}
+                                        </div>
+                                    </div>
+                                )}
+
 
                                 {/* Hedef Kitle (Opsiyonel) */}
                                 <div style={{ marginTop: 16, marginBottom: 16, padding: '12px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
@@ -1402,6 +1498,72 @@ const Automations = ({ initialTab }) => {
                                                 </optgroup>
                                             ))}
                                         </select>
+                                    </div>
+
+                                    {/* Dil Filtresi */}
+                                    <div style={{ marginBottom: 8 }}>
+                                        <label style={{ fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 4, display: 'block' }}>🌍 Dil</label>
+                                        <select
+                                            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, background: '#fff' }}
+                                            value={(() => { try { return JSON.parse(automationForm.conditions || '{}').language || ''; } catch { return ''; } })()}
+                                            onChange={e => {
+                                                const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                if (e.target.value) {
+                                                    currentConds.language = e.target.value;
+                                                } else {
+                                                    delete currentConds.language;
+                                                }
+                                                setAutomationForm(prev => ({ ...prev, conditions: Object.keys(currentConds).length ? JSON.stringify(currentConds) : '' }));
+                                            }}
+                                        >
+                                            <option value="">Tüm diller</option>
+                                            <option value="tr">🇹🇷 Türkçe</option>
+                                            <option value="en">🇬🇧 İngilizce</option>
+                                            <option value="ar">🇸🇦 Arapça</option>
+                                            <option value="de">🇩🇪 Almanca</option>
+                                            <option value="fr">🇫🇷 Fransızca</option>
+                                            <option value="ru">🇷🇺 Rusça</option>
+                                            <option value="es">🇪🇸 İspanyolca</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Saat Aralığı */}
+                                    <div style={{ marginBottom: 8 }}>
+                                        <label style={{ fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 4, display: 'block' }}>⏰ Saat Aralığı</label>
+                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            <input
+                                                type="time"
+                                                style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}
+                                                value={(() => { try { return JSON.parse(automationForm.conditions || '{}').timeRange?.start || ''; } catch { return ''; } })()}
+                                                onChange={e => {
+                                                    const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                    if (e.target.value) {
+                                                        currentConds.timeRange = { ...(currentConds.timeRange || {}), start: e.target.value };
+                                                    } else {
+                                                        if (currentConds.timeRange) delete currentConds.timeRange.start;
+                                                        if (currentConds.timeRange && !currentConds.timeRange.end) delete currentConds.timeRange;
+                                                    }
+                                                    setAutomationForm(prev => ({ ...prev, conditions: Object.keys(currentConds).length ? JSON.stringify(currentConds) : '' }));
+                                                }}
+                                            />
+                                            <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
+                                            <input
+                                                type="time"
+                                                style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}
+                                                value={(() => { try { return JSON.parse(automationForm.conditions || '{}').timeRange?.end || ''; } catch { return ''; } })()}
+                                                onChange={e => {
+                                                    const currentConds = (() => { try { return JSON.parse(automationForm.conditions || '{}'); } catch { return {}; } })();
+                                                    if (e.target.value) {
+                                                        currentConds.timeRange = { ...(currentConds.timeRange || {}), end: e.target.value };
+                                                    } else {
+                                                        if (currentConds.timeRange) delete currentConds.timeRange.end;
+                                                        if (currentConds.timeRange && !currentConds.timeRange.start) delete currentConds.timeRange;
+                                                    }
+                                                    setAutomationForm(prev => ({ ...prev, conditions: Object.keys(currentConds).length ? JSON.stringify(currentConds) : '' }));
+                                                }}
+                                            />
+                                        </div>
+                                        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>Boş bırakırsanız her saat geçerli olur</div>
                                     </div>
                                 </div>
 

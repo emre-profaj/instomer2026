@@ -627,6 +627,24 @@ if (isMasterInstance) {
     }, 80000);
   });
 
+  // Günlük otomasyon kontrolü (doğum günü, hareketsizlik vb. — her gün saat 09:00'da)
+  let lastDailyRunKey = null;
+  setInterval(async () => {
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+    const currentHour = now.getHours();
+    if (currentHour >= 9 && lastDailyRunKey !== todayKey) {
+      lastDailyRunKey = todayKey;
+      try {
+        const { executeDailyAutomations } = await import('./controllers/automation.controller.js');
+        console.log('📅 [DailyCron] Running daily automations...');
+        await executeDailyAutomations();
+      } catch (err) {
+        console.error('❌ [DailyCron] Daily automations error:', err.message);
+      }
+    }
+  }, 5 * 60 * 1000);
+
   // KB → Retell otomatik startup sync
   import('./controllers/knowledgebase.controller.js').then(({ bulkSyncAllToRetell: startupKbSync }) => {
     setTimeout(async () => {

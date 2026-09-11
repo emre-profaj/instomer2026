@@ -204,6 +204,14 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
       console.error('Entry/Timed actions execution error:', err);
     }
 
+    // 7.5 STAGE_REACHED otomasyonlarını tetikle
+    try {
+      const { executeStageReachedAutomation } = await import('../controllers/automation.controller.js');
+      await executeStageReachedAutomation(workspaceId, contactId, funnelId, stageId, { conversationId });
+    } catch (err) {
+      console.error('Stage-reached automation error:', err);
+    }
+
     // 8. WebSocket Event fırlat
     try {
       const { emitToWorkspace } = await import('../socket.js');

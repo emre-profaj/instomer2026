@@ -2319,6 +2319,19 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <option value="nl">🇳🇱 Nederlands</option>
                                                     </select>
                                                 </div>
+                                                <div className="unified-loc-item">
+                                                    <input
+                                                        type="date"
+                                                        className="unified-loc-input"
+                                                        value={profile.birthDate ? profile.birthDate.substring(0, 10) : ''}
+                                                        onChange={(e) => {
+                                                            setProfile(prev => ({ ...prev, birthDate: e.target.value || null }));
+                                                            handleUpdateProfile({ birthDate: e.target.value ? new Date(e.target.value).toISOString() : null });
+                                                        }}
+                                                        title="Doğum Tarihi"
+                                                        style={{ fontSize: '10px' }}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
