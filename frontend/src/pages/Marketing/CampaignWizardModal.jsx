@@ -231,7 +231,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
         }
 
         if (channels.includes('AI_CALL') && !selectedAgentId) {
-            setErrorMsg('Lütfen sesli arama için bir Retell Asistanı seçin');
+            setErrorMsg('Lütfen sesli arama için bir AI Asistanı seçin');
             setStep(2);
             return;
         }
@@ -634,7 +634,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#4338ca', fontSize: 14 }}>
                                                 <Phone size={16} />
-                                                <span>AI Sesli Arama (Retell)</span>
+                                                <span>AI Sesli Arama</span>
                                             </div>
                                             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#4b5563' }}>
                                                 Yapay zeka sesli asistanı ile otomatik dış arama
@@ -793,7 +793,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                         <div className="grp-field">
-                                            <label className="grp-label">Arayacak Retell Asistanı *</label>
+                                            <label className="grp-label">Arayacak AI Sesli Asistanı *</label>
                                             <select
                                                 className="grp-input"
                                                 value={selectedAgentId}
@@ -919,7 +919,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                     ))}
                                 </div>
                                 <span style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }}>
-                                    Hız limiti, Meta ve Retell API sınırlarına takılmamak ve spam korumasını sağlamak için uygulanır.
+                                    Hız limiti, operatör ve yapay zeka sınırlarına takılmamak ve spam korumasını sağlamak için uygulanır.
                                 </span>
                             </div>
                         </div>
@@ -975,7 +975,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
 
                                     {channels.includes('AI_CALL') && (
                                         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                            <span style={{ color: '#64748b' }}>Retell Asistanı:</span>
+                                            <span style={{ color: '#64748b' }}>AI Sesli Asistan:</span>
                                             <span style={{ fontWeight: 600, color: '#0f172a' }}>
                                                 {retellAgents.find(a => (a.agent_id || a.id) === selectedAgentId)?.agent_name || selectedAgentId}
                                             </span>

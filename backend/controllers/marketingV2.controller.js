@@ -1707,7 +1707,7 @@ export const syncPastData = async (req, res) => {
         const result = await syncPastDataCore(workspaceId);
         res.json({
             success: true,
-            message: 'Geçmiş Meta & Retell verileri tarih bazlı kampanyalar olarak başarıyla eşitlendi',
+            message: 'Geçmiş Meta WhatsApp ve AI Sesli Arama verileri tarih bazlı kampanyalar olarak başarıyla eşitlendi',
             ...result
         });
     } catch (error) {

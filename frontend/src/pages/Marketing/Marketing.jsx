@@ -101,8 +101,23 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [showForm, setShowForm] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
     const [syncingPast, setSyncingPast] = useState(false);
-    const [editItem, setEditItem] = useState(null);
-    const [campaignTypeFilter, setCampaignTypeFilter] = useState('ALL'); // 'ALL' | 'MARKETING' | 'AUTOMATION'
+    const [campaignTypeFilter, setCampaignTypeFilter] = useState('MARKETING'); // 'ALL' | 'MARKETING' | 'AUTOMATION'
+    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'DRAFT'
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const getCampaignChannels = (c) => {
+        const chs = new Set();
+        if (c.groups && c.groups.length > 0) {
+            c.groups.forEach(g => { if (g.channel) chs.add(g.channel); });
+        }
+        if (chs.size === 0) {
+            if (c.name?.includes('AI Arama') || c.description?.includes('Arama')) chs.add('AI_CALL');
+            else if (c.name?.includes('SMS')) chs.add('SMS');
+            else if (c.name?.includes('E-posta') || c.name?.includes('Email')) chs.add('EMAIL');
+            else chs.add('WHATSAPP');
+        }
+        return Array.from(chs);
+    };
 
     const fetchCampaigns = useCallback(async () => {
         setLoading(true);
@@ -120,14 +135,14 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
 
     const handleSyncPastData = async () => {
-        if (!window.confirm('Sistemdeki tüm geçmiş Meta WhatsApp şablonları ve Retell AI sesli aramaları taranarak "Genel & Geçmiş Gönderimler (Arşiv)" kampanyası altında toplanacaktır.\n\nDevam etmek istiyor musunuz?')) return;
+        if (!window.confirm('Sistemdeki tüm geçmiş Meta WhatsApp şablonları ve AI sesli aramaları taranarak "Genel & Geçmiş Gönderimler (Arşiv)" kampanyası altında toplanacaktır.\n\nDevam etmek istiyor musunuz?')) return;
         setSyncingPast(true);
         try {
             const res = await api.post(`/marketing-v2/${wsId}/sync-past-data`);
             if (res.data?.success) {
                 const s = res.data.synced;
                 const legacyMsg = s?.legacyUpdatedCount ? `• Reklam Grubu Eklenen Eski Kampanya: ${s.legacyUpdatedCount} adet\n` : '';
-                alert(`✅ Geçmiş Veriler Eşitlendi!\n\n${legacyMsg}• WhatsApp Şablonları: ${s?.whatsappCount || 0} adet (Teslim: ${s?.whatsappDelivered || 0}, Okunan: ${s?.whatsappRead || 0})\n• Retell AI Aramaları: ${s?.retellCallsCount || 0} adet (Başarılı: ${s?.retellCallsSuccessful || 0})\n\nRaporlar ve üst istatistik çubuğu güncellendi.`);
+                alert(`✅ Geçmiş Veriler Eşitlendi!\n\n${legacyMsg}• WhatsApp Şablonları: ${s?.whatsappCount || 0} adet (Teslim: ${s?.whatsappDelivered || 0}, Okunan: ${s?.whatsappRead || 0})\n• AI Sesli Aramaları: ${s?.retellCallsCount || 0} adet (Başarılı: ${s?.retellCallsSuccessful || 0})\n\nRaporlar ve üst istatistik çubuğu güncellendi.`);
                 fetchCampaigns();
             }
         } catch (err) {
@@ -163,8 +178,10 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     };
 
     const filteredCampaigns = campaigns.filter(c => {
-        if (campaignTypeFilter === 'MARKETING') return !c.isAutomation;
-        if (campaignTypeFilter === 'AUTOMATION') return c.isAutomation;
+        if (campaignTypeFilter === 'MARKETING' && c.isAutomation) return false;
+        if (campaignTypeFilter === 'AUTOMATION' && !c.isAutomation) return false;
+        if (statusFilter !== 'ALL' && c.status !== statusFilter) return false;
+        if (searchQuery.trim() && !c.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
         return true;
     });
 
@@ -176,27 +193,71 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 <StatBig icon={<Send size={20}/>} label="Gönderilen / Arama" value={stats.sent} color="#8b5cf6" />
                 <StatBig icon={<CheckCircle size={20}/>} label="Teslim / Okunan" value={`${stats.delivered} / ${stats.read}`} color="#f59e0b" />
             </div>
+            
             <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button
-                        className={`mkt-filter-tab ${campaignTypeFilter === 'MARKETING' ? 'active' : ''}`}
-                        onClick={() => setCampaignTypeFilter('MARKETING')}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* Pazarlama vs Otomasyon sekmeleri */}
+                    <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 10 }}>
+                        <button
+                            className={`mkt-filter-tab ${campaignTypeFilter === 'MARKETING' ? 'active' : ''}`}
+                            onClick={() => setCampaignTypeFilter('MARKETING')}
+                            style={{ borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}
+                        >
+                            📢 Pazarlama ({campaigns.filter(c => !c.isAutomation).length})
+                        </button>
+                        <button
+                            className={`mkt-filter-tab ${campaignTypeFilter === 'AUTOMATION' ? 'active' : ''}`}
+                            onClick={() => setCampaignTypeFilter('AUTOMATION')}
+                            style={{ borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}
+                        >
+                            🤖 Otomasyon Logları ({campaigns.filter(c => c.isAutomation).length})
+                        </button>
+                        <button
+                            className={`mkt-filter-tab ${campaignTypeFilter === 'ALL' ? 'active' : ''}`}
+                            onClick={() => setCampaignTypeFilter('ALL')}
+                            style={{ borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}
+                        >
+                            Tümü ({campaigns.length})
+                        </button>
+                    </div>
+
+                    {/* Durum Filtresi (Aktif, Tamamlandı, Pasif) */}
+                    <select
+                        className="mkt-filter-select"
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        style={{ height: 38, fontSize: 13, borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontWeight: 500 }}
                     >
-                        📢 Pazarlama ({campaigns.filter(c => !c.isAutomation).length})
-                    </button>
-                    <button
-                        className={`mkt-filter-tab ${campaignTypeFilter === 'AUTOMATION' ? 'active' : ''}`}
-                        onClick={() => setCampaignTypeFilter('AUTOMATION')}
-                    >
-                        🤖 Otomasyon Logları ({campaigns.filter(c => c.isAutomation).length})
-                    </button>
-                    <button
-                        className={`mkt-filter-tab ${campaignTypeFilter === 'ALL' ? 'active' : ''}`}
-                        onClick={() => setCampaignTypeFilter('ALL')}
-                    >
-                        Tümü ({campaigns.length})
-                    </button>
+                        <option value="ALL">Tüm Durumlar</option>
+                        <option value="ACTIVE">🟢 Aktif</option>
+                        <option value="COMPLETED">🏁 Tamamlandı</option>
+                        <option value="PAUSED">⏸️ Duraklatıldı / Pasif</option>
+                        <option value="DRAFT">⚪ Taslak</option>
+                    </select>
+
+                    {/* Arama Kutusu */}
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Search size={15} style={{ position: 'absolute', left: 10, color: '#94a3b8' }} />
+                        <input
+                            type="text"
+                            placeholder="Kampanya ara..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            style={{
+                                paddingLeft: 32,
+                                paddingRight: 12,
+                                height: 38,
+                                borderRadius: 8,
+                                border: '1.5px solid #e2e8f0',
+                                fontSize: 13,
+                                outline: 'none',
+                                width: 170,
+                                background: '#fff'
+                            }}
+                        />
+                    </div>
                 </div>
+
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <button
                         className="mkt-btn-outline"
@@ -233,11 +294,21 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             
             <div className="mkt-table-wrap" style={{ padding: 20 }}>
                 {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                         {filteredCampaigns.map(c => (
                             <div
                                 key={c.id}
-                                style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, cursor: 'pointer', transition: 'box-shadow 0.2s' }}
+                                style={{
+                                    background: '#fff',
+                                    borderRadius: 12,
+                                    border: '1px solid #e2e8f0',
+                                    padding: '18px 22px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 12
+                                }}
                                 onClick={() => {
                                     if (c.isAutomation) {
                                         alert(`Bu kayıt 'Karşılama' otomasyonu tarafından oluşturulan günlük rapordur.\n\nGönderilen: ${c.sentCount || 0} adet.`);
@@ -247,48 +318,117 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                         onGoToGroups(c.id);
                                     }
                                 }}
-                                onMouseOver={e => e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)'}
-                                onMouseOut={e => e.currentTarget.style.boxShadow='none'}
+                                onMouseOver={e => {
+                                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.06)';
+                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                }}
+                                onMouseOut={e => {
+                                    e.currentTarget.style.boxShadow = 'none';
+                                    e.currentTarget.style.borderColor = '#e2e8f0';
+                                }}
                             >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                        {c.name}
-                                        {c.isArchive && <span style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🏛️ Geçmiş Kampanya</span>}
-                                        {c.isAutomation && <span style={{ fontSize: 11, background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🤖 Otomasyon</span>}
-                                        {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>📦 Eski</span>}
+                                {/* Üst Satır: Başlık, Kanal Rozetleri, Durum & İşlemler */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: 700, fontSize: 16, color: '#0f172a' }}>{c.name}</span>
+                                        
+                                        {/* Kanal Rozetleri */}
+                                        {getCampaignChannels(c).map(ch => {
+                                            if (ch === 'WHATSAPP') return (
+                                                <span key={ch} style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                    <MessageSquare size={12} /> WhatsApp
+                                                </span>
+                                            );
+                                            if (ch === 'AI_CALL') return (
+                                                <span key={ch} style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                    <Phone size={12} /> AI Sesli Arama
+                                                </span>
+                                            );
+                                            if (ch === 'SMS') return (
+                                                <span key={ch} style={{ fontSize: 11, background: '#f3e8ff', color: '#7e22ce', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                    <Smartphone size={12} /> SMS
+                                                </span>
+                                            );
+                                            if (ch === 'EMAIL') return (
+                                                <span key={ch} style={{ fontSize: 11, background: '#fef3c7', color: '#b45309', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                    <Mail size={12} /> E-posta
+                                                </span>
+                                            );
+                                            return null;
+                                        })}
+
+                                        {/* Tip Rozetleri */}
+                                        {c.isArchive && <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>🏛️ Geçmiş Kampanya</span>}
+                                        {c.isAutomation && <span style={{ fontSize: 11, background: '#ede9fe', color: '#6d28d9', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>🤖 Otomasyon</span>}
+                                        {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>📦 Eski</span>}
                                     </div>
-                                    <span style={{ padding: '4px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: c.status === 'ACTIVE' ? '#dcfce7' : '#f3f4f6', color: c.status === 'ACTIVE' ? '#166534' : '#4b5563' }}>
-                                        {c.status}
-                                    </span>
-                                </div>
-                                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>{c.description || (c.isAutomation ? 'Günlük Karşılama Otomasyonu' : 'Açıklama yok')}</div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5563', marginBottom: 16 }}>
-                                    <span>📅 {c.startDate ? new Date(c.startDate).toLocaleDateString() : '-'} - {c.endDate ? new Date(c.endDate).toLocaleDateString() : '-'}</span>
-                                    <span>💰 {c.budget ? c.budget + ' TL' : '-'}</span>
-                                </div>
-                                <div style={{ background: '#f9fafb', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
-                                        <span>Gönderilen / Arama: {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0}</span>
-                                        <span>Teslim / Okunan: {c.isLegacy ? `${c.deliveredCount || 0} / ${c.readCount || 0}` : `${c.stats?.delivered || 0} / ${c.stats?.read || 0}`}</span>
+
+                                    {/* Durum & Hızlı Aksiyonlar */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <span style={{
+                                            padding: '4px 10px',
+                                            borderRadius: 12,
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            background: c.status === 'ACTIVE' ? '#dcfce7' : c.status === 'COMPLETED' ? '#e0f2fe' : '#f3f4f6',
+                                            color: c.status === 'ACTIVE' ? '#15803d' : c.status === 'COMPLETED' ? '#0369a1' : '#4b5563'
+                                        }}>
+                                            {c.status === 'ACTIVE' ? '🟢 Aktif' : c.status === 'COMPLETED' ? '🏁 Tamamlandı' : c.status === 'PAUSED' ? '⏸️ Duraklatıldı' : '⚪ ' + (c.status || 'Taslak')}
+                                        </span>
+                                        {!c.isLegacy && !c.isArchive && (
+                                            <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                                                <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }} title="Düzenle"><Edit2 size={14}/></button>
+                                                <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)} title="Sil"><Trash2 size={14}/></button>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div style={{ height: 6, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
-                                        <div style={{ width: `${Math.min(100, (((c.isLegacy ? c.readCount : c.stats?.read) || 0) / ((c.isLegacy ? (c.sentCount||1) : (c.stats?.sent||1)) || 1)) * 100)}%`, background: '#10b981' }} />
+                                </div>
+
+                                {/* Orta Satır: Açıklama, Tarihler, Bütçe, Reklam Grupları */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, fontSize: 13, color: '#64748b' }}>
+                                    <div>{c.description || (c.isAutomation ? 'Günlük Karşılama Otomasyonu' : 'Açıklama yok')}</div>
+                                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 12, color: '#475569' }}>
+                                        <span>📅 {c.startDate ? new Date(c.startDate).toLocaleDateString('tr-TR') : '-'} — {c.endDate ? new Date(c.endDate).toLocaleDateString('tr-TR') : '-'}</span>
+                                        {c.budget ? <span style={{ fontWeight: 600 }}>💰 {c.budget} TL</span> : null}
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            <Folder size={14} color="#6366f1" />
+                                            <strong style={{ color: '#1e293b' }}>{c.isLegacy || c.isAutomation ? '1' : (c.groupsCount || c.groups?.length || 0)}</strong> Reklam Grubu
+                                        </span>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <Folder size={14}/> {c.isLegacy || c.isAutomation ? '-' : (c.groupsCount || c.groupCount || c.groups?.length || 0)} Grup
-                                    </span>
-                                    {!c.isLegacy && !c.isArchive && (
-                                        <div style={{ display: 'flex', gap: 8 }} onClick={e => e.stopPropagation()}>
-                                            <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }}><Edit2 size={14}/></button>
-                                            <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)}><Trash2 size={14}/></button>
+
+                                {/* Alt Satır: İlerleme Çubuğu ve KPI Metrikleri */}
+                                <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+                                    <div style={{ flex: 1, minWidth: 200 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 5 }}>
+                                            <span>İlerleme: {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0} Gönderim</span>
+                                            <span>
+                                                {Math.round((((c.isLegacy ? c.readCount : c.stats?.read) || 0) / ((c.isLegacy ? (c.sentCount || 1) : (c.stats?.sent || 1)) || 1)) * 100)}%
+                                            </span>
                                         </div>
-                                    )}
+                                        <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
+                                            <div style={{
+                                                width: `${Math.min(100, (((c.isLegacy ? c.readCount : c.stats?.read) || 0) / ((c.isLegacy ? (c.sentCount || 1) : (c.stats?.sent || 1)) || 1)) * 100)}%`,
+                                                background: '#10b981'
+                                            }} />
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#475569' }}>
+                                        <span><strong>Gönderilen:</strong> {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0}</span>
+                                        <span><strong>Teslimat:</strong> {c.isLegacy ? c.deliveredCount || 0 : c.stats?.delivered || 0}</span>
+                                        <span><strong>Okunan / Başarılı:</strong> <strong style={{ color: '#16a34a' }}>{c.isLegacy ? c.readCount || 0 : c.stats?.read || 0}</strong></span>
+                                        {(c.isLegacy ? c.failedCount : c.stats?.failed) > 0 && (
+                                            <span style={{ color: '#dc2626' }}><strong>Hata:</strong> {c.isLegacy ? c.failedCount : c.stats?.failed}</span>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#2563eb', fontSize: 12, fontWeight: 600 }}>
+                                        <span>Detayları İncele</span>
+                                        <ChevronRight size={14} />
+                                    </div>
                                 </div>
                             </div>
                         ))}
-                        {filteredCampaigns.length === 0 && <div className="mkt-empty" style={{ gridColumn: '1 / -1' }}><p>Bu filtrede kampanya bulunamadı.</p></div>}
+                        {filteredCampaigns.length === 0 && <div className="mkt-empty"><p>Bu filtrede kampanya bulunamadı.</p></div>}
                     </div>
                 )}
             </div>
@@ -688,7 +828,7 @@ function MessageFormModal({ wsId, initial, onClose, onSave }) {
                     
                     {channel === 'AI_CALL' && (
                         <div className="grp-field">
-                            <label className="grp-label">Retell Agent</label>
+                            <label className="grp-label">AI Sesli Asistanı</label>
                             <select className="grp-input" value={externalId} onChange={e => setExternalId(e.target.value)}>
                                 <option value="">Seçiniz...</option>
                                 {retellAgents.map(a => <option key={a.agent_id || a.id} value={a.agent_id || a.id}>{a.agent_name || a.name || a.agent_id}</option>)}
