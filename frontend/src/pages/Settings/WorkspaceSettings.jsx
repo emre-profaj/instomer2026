@@ -423,7 +423,7 @@ const WorkspaceSettings = () => {
                                     <Phone size={22} />
                                 </div>
                                 <div className="ws-settings-card-info">
-                                    <div className="ws-settings-card-name">Retell AI Sesli Arama</div>
+                                    <div className="ws-settings-card-name">AI Call Agent (Sesli Arama)</div>
                                     <div className="ws-settings-card-desc">
                                         {retellConfigured
                                             ? retellAutoCallEnabled

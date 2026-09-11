@@ -996,7 +996,7 @@ const UsersTeams = () => {
                         <Bot size={15} /> AI Asistan Ekle
                     </button>
                     <button className="ut-btn-outline" onClick={() => setShowRetellModal(true)}>
-                        <Phone size={15} /> Sesli Asistan Ekle
+                        <Phone size={15} /> AI Call Agent Ekle
                     </button>
                     <button className="ut-btn-primary" onClick={() => setTeamModal({ show: true, team: null, parentId: null, parentName: null })}>
                         <Plus size={15} /> Takım Oluştur

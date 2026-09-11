@@ -2155,7 +2155,7 @@ export const bulkCall = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true, retellFromNumber: true }
         });
-        if (!workspace?.retellApiKey)  return res.status(400).json({ error: 'Retell API key eksik' });
+        if (!workspace?.retellApiKey)  return res.status(400).json({ error: 'AI Call Agent API key eksik' });
         if (!workspace.retellFromNumber) return res.status(400).json({ error: 'Arama numarası yapılandırılmamış' });
 
         // Build contact query
@@ -4977,7 +4977,7 @@ export const syncKnowledgeBase = async (req, res) => {
             success: true,
             knowledgeBaseId: retellKbId,
             sourceCount: textsToAdd.length,
-            message: `${textsToAdd.length} bilgi ayrı ayrı Retell'e sync edildi`
+            message: `${textsToAdd.length} bilgi ayrı ayrı AI Call Agent'a sync edildi`
         });
     } catch (error) {
         console.error('❌ [RetellKB] syncKnowledgeBase error:', error.message);

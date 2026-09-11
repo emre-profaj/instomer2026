@@ -1369,7 +1369,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                                                 setKbsLoading(true);
                                                 await api.post(`/knowledge-base/${workspaceId}/bulk-sync-retell`);
                                                 await fetchKnowledgeBases();
-                                                setMessage({ type: 'success', text: 'Tüm KB\'ler Retell\'e senkronize edildi' });
+                                                setMessage({ type: 'success', text: 'Tüm Bilgi Bankaları AI Call Agent\'a senkronize edildi' });
                                             } catch (e) {
                                                 setMessage({ type: 'error', text: 'Senkronizasyon hatası: ' + (e.response?.data?.error || e.message) });
                                             } finally {
@@ -1385,7 +1385,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                                         <RefreshCw size={12} /> Tümünü Senkronize Et
                                     </button>
                                     <span style={{ fontSize: '0.68rem', color: '#9ca3af', fontStyle: 'italic' }}>
-                                        Instomer KB'leri Retell'e aktarır
+                                        Instomer Bilgi Bankasını AI Call Agent'a aktarır
                                     </span>
                                 </div>
                             </div>
@@ -1465,7 +1465,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
             setLastSynced(new Date());
             setMessage({
                 type: 'success',
-                text: 'Bilgi bankası Retell\'e başarıyla kaydedildi'
+                text: 'Bilgi bankası AI Call Agent\'a başarıyla kaydedildi'
             });
             loadAll();
         } catch (e) {
@@ -1526,7 +1526,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                     style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box', resize: 'vertical' }}
                 />
                 <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
-                    Kaydettiğinizde bu metin doğrudan Retell üzerindeki bilgi bankasıyla eşitlenir.
+                    Kaydettiğinizde bu metin doğrudan AI Call Agent üzerindeki bilgi bankasıyla eşitlenir.
                 </div>
             </div>
 
@@ -1563,7 +1563,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                     }}
                 >
                     {syncing ? <Loader size={16} className="spin" /> : <RefreshCw size={16} />}
-                    {syncing ? 'Kaydediliyor...' : `Retell'e Kaydet`}
+                    {syncing ? 'Kaydediliyor...' : `AI Call Agent'a Kaydet`}
                 </button>
             </div>
         </div>

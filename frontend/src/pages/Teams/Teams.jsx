@@ -536,7 +536,7 @@ const Teams = () => {
                         {team.members?.filter(m => m.retellAgentId).length > 0 && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0d9488' }}>
                                 <Phone size={15} />
-                                <span>{team.members.filter(m => m.retellAgentId).length} Arama Asistanı</span>
+                                <span>{team.members.filter(m => m.retellAgentId).length} AI Call Agent</span>
                             </div>
                         )}
                         {hasChildren && (
@@ -914,16 +914,16 @@ const Teams = () => {
                             </div>
                         </div>
 
-                        {/* Arama Asistanı Ekle */}
+                        {/* AI Call Agent Ekle */}
                         <div className="add-member-section add-retell-section" style={{ marginTop: '4px', paddingTop: '12px', borderTop: '1px solid #f3f4f6' }}>
-                            <div className="members-section-label retell-label" style={{ color: '#0d9488' }}><Phone size={13} /> Arama Asistanı Ekle</div>
+                            <div className="members-section-label retell-label" style={{ color: '#0d9488' }}><Phone size={13} /> AI Call Agent Ekle</div>
                             <div className="member-select-row">
                                 <select
                                     className="member-select"
                                     value={selectedRetellAgentToAdd}
                                     onChange={(e) => setSelectedRetellAgentToAdd(e.target.value)}
                                 >
-                                    <option value="">Arama Asistanı Seçin</option>
+                                    <option value="">AI Call Agent Seçin</option>
                                     {getAvailableRetellAgents().map(a => (
                                         <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>
                                     ))}
@@ -988,7 +988,7 @@ const Teams = () => {
                                             </div>
                                             <div className="member-details">
                                                 <span className="member-name">{agentName}</span>
-                                                <span className="member-type-badge retell-badge">Arama Asistanı</span>
+                                                <span className="member-type-badge retell-badge">AI Call Agent</span>
                                             </div>
                                         </div>
                                         <button className="icon-btn danger" onClick={() => handleRemoveRetellAgent(member.retellAgentId)} title={t('common.remove') || 'Remove'}>

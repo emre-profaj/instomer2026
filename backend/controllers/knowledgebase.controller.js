@@ -129,7 +129,7 @@ export const bulkSyncAllToRetell = async (req, res) => {
             await autoSyncToRetell(workspaceId, entry);
             count++;
         }
-        res.json({ success: true, message: `${count} KB Retell'e senkronize edildi`, synced: count });
+        res.json({ success: true, message: `${count} Bilgi Bankası AI Call Agent'a senkronize edildi`, synced: count });
     } catch (error) {
         console.error('bulkSyncAllToRetell error:', error.message);
         res.status(500).json({ error: 'Toplu senkronizasyon başarısız' });
