@@ -3,6 +3,8 @@ import axios from 'axios';
 import { randomUUID } from 'crypto';
 import Retell from 'retell-sdk';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { sendSms } from '../services/netgsm.service.js';
+import { sendEmailViaChannel } from '../services/emailSender.service.js';
 
 // ══════════════════════════════════════════════════════════════════════════
 // 1. CAMPAIGNS CRUD
@@ -833,6 +835,155 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                                 campaignId: group.campaignId,
                                 contactId: contact.id,
                                 phone,
+                                name: contact.name,
+                                status: 'FAILED',
+                                groupId: groupId,
+                                failReason: err.message,
+                                failedAt: new Date()
+                            }
+                        });
+
+                        await prisma.marketingCampaign.update({
+                            where: { id: group.campaignId },
+                            data: { failedCount: { increment: 1 } }
+                        });
+
+                        await prisma.campaignGroup.update({
+                            where: { id: group.id },
+                            data: { failedCount: { increment: 1 } }
+                        });
+                    }
+                }
+            } else if (group.channel === 'SMS') {
+                const msgTemplate = messages.find(m => m.channel === 'SMS') || messages[0];
+                if (!msgTemplate) throw new Error('SMS mesaj içeriği bulunamadı');
+
+                const workspace = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { netgsmConfig: true }
+                });
+                if (!workspace?.netgsmConfig || !workspace.netgsmConfig.username) {
+                    throw new Error('NetGSM SMS entegrasyonu yapılandırılmamış');
+                }
+
+                for (const member of members) {
+                    const contact = member.contact;
+                    const phone = contact?.phone;
+                    if (!phone) continue;
+
+                    try {
+                        const smsText = msgTemplate.content || msgTemplate.bodyText || '';
+                        const smsResult = await sendSms(workspace.netgsmConfig, phone, smsText);
+
+                        if (!smsResult.success) {
+                            throw new Error(smsResult.error || smsResult.description || 'SMS gönderilemedi');
+                        }
+
+                        await prisma.marketingRecipient.create({
+                            data: {
+                                campaignId: group.campaignId,
+                                contactId: contact.id,
+                                phone,
+                                name: contact.name,
+                                status: 'SENT',
+                                groupId: groupId,
+                                sentAt: new Date()
+                            }
+                        });
+
+                        await prisma.marketingCampaign.update({
+                            where: { id: group.campaignId },
+                            data: { sentCount: { increment: 1 } }
+                        });
+
+                        await prisma.campaignGroup.update({
+                            where: { id: group.id },
+                            data: { sentCount: { increment: 1 } }
+                        });
+
+                        await new Promise(r => setTimeout(r, delayMs));
+
+                    } catch (err) {
+                        console.error(`❌ [executeGroupSend] SMS failed for ${phone}:`, err.message);
+                        await prisma.marketingRecipient.create({
+                            data: {
+                                campaignId: group.campaignId,
+                                contactId: contact.id,
+                                phone,
+                                name: contact.name,
+                                status: 'FAILED',
+                                groupId: groupId,
+                                failReason: err.message,
+                                failedAt: new Date()
+                            }
+                        });
+
+                        await prisma.marketingCampaign.update({
+                            where: { id: group.campaignId },
+                            data: { failedCount: { increment: 1 } }
+                        });
+
+                        await prisma.campaignGroup.update({
+                            where: { id: group.id },
+                            data: { failedCount: { increment: 1 } }
+                        });
+                    }
+                }
+            } else if (group.channel === 'EMAIL') {
+                const msgTemplate = messages.find(m => m.channel === 'EMAIL') || messages[0];
+                if (!msgTemplate) throw new Error('E-posta şablonu bulunamadı');
+
+                const emailChannel = await prisma.emailChannel.findFirst({
+                    where: { workspaceId, isActive: true }
+                });
+                if (!emailChannel) {
+                    throw new Error('Aktif bir e-posta kanalı (SMTP/Gmail) bulunamadı');
+                }
+
+                for (const member of members) {
+                    const contact = member.contact;
+                    const email = contact?.email;
+                    if (!email) continue;
+
+                    try {
+                        const subject = msgTemplate.emailSubject || msgTemplate.subject || 'Bilgilendirme';
+                        const body = msgTemplate.emailBody || msgTemplate.content || msgTemplate.bodyText || '';
+
+                        await sendEmailViaChannel(emailChannel.id, email, subject, body, { isHtml: true });
+
+                        await prisma.marketingRecipient.create({
+                            data: {
+                                campaignId: group.campaignId,
+                                contactId: contact.id,
+                                phone: contact.phone || '',
+                                email: email,
+                                name: contact.name,
+                                status: 'SENT',
+                                groupId: groupId,
+                                sentAt: new Date()
+                            }
+                        });
+
+                        await prisma.marketingCampaign.update({
+                            where: { id: group.campaignId },
+                            data: { sentCount: { increment: 1 } }
+                        });
+
+                        await prisma.campaignGroup.update({
+                            where: { id: group.id },
+                            data: { sentCount: { increment: 1 } }
+                        });
+
+                        await new Promise(r => setTimeout(r, delayMs));
+
+                    } catch (err) {
+                        console.error(`❌ [executeGroupSend] Email failed for ${email}:`, err.message);
+                        await prisma.marketingRecipient.create({
+                            data: {
+                                campaignId: group.campaignId,
+                                contactId: contact.id,
+                                phone: contact.phone || '',
+                                email: email,
                                 name: contact.name,
                                 status: 'FAILED',
                                 groupId: groupId,

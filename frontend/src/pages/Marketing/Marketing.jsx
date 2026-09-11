@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
-    BarChart2, Phone, Mail, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
+    BarChart2, Phone, Mail, Smartphone, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
     Loader2, Sparkles, RefreshCw
 } from 'lucide-react';
 import CampaignWizardModal from './CampaignWizardModal';
@@ -359,6 +359,7 @@ function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClo
                             <option value="WHATSAPP">WhatsApp</option>
                             <option value="AI_CALL">AI Arama</option>
                             <option value="EMAIL">E-posta</option>
+                            <option value="SMS">SMS (NetGSM)</option>
                         </select>
                     </div>
                     <div className="grp-field">
@@ -482,6 +483,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
         if (ch === 'WHATSAPP') return <MessageSquare size={16} color="#10b981"/>;
         if (ch === 'AI_CALL') return <Phone size={16} color="#3b82f6"/>;
         if (ch === 'EMAIL') return <Mail size={16} color="#f59e0b"/>;
+        if (ch === 'SMS') return <Smartphone size={16} color="#8b5cf6"/>;
         return null;
     };
 
@@ -645,6 +647,7 @@ function MessageFormModal({ wsId, initial, onClose, onSave }) {
             retellAgentId: channel === 'AI_CALL' ? externalId : null,
             emailSubject: channel === 'EMAIL' ? subject : null,
             emailBody: channel === 'EMAIL' ? bodyText : null,
+            content: (channel === 'SMS' || channel === 'WHATSAPP') ? (bodyText || null) : null,
             subject,
             bodyText
         });
@@ -669,6 +672,7 @@ function MessageFormModal({ wsId, initial, onClose, onSave }) {
                             <option value="WHATSAPP">WhatsApp</option>
                             <option value="AI_CALL">AI Arama</option>
                             <option value="EMAIL">E-posta</option>
+                            <option value="SMS">SMS (NetGSM)</option>
                         </select>
                     </div>
                     
@@ -703,6 +707,23 @@ function MessageFormModal({ wsId, initial, onClose, onSave }) {
                                 <textarea className="grp-input" rows={4} value={bodyText} onChange={e => setBodyText(e.target.value)} />
                             </div>
                         </>
+                    )}
+
+                    {channel === 'SMS' && (
+                        <div className="grp-field">
+                            <label className="grp-label">SMS Metni (NetGSM)</label>
+                            <textarea
+                                className="grp-input"
+                                rows={4}
+                                placeholder="SMS içeriğinizi yazın..."
+                                value={bodyText}
+                                onChange={e => setBodyText(e.target.value)}
+                            />
+                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                                <span>NetGSM SMS başlığı ile gönderilir.</span>
+                                <span>{bodyText.length} karakter ({Math.ceil(bodyText.length / 160) || 1} SMS)</span>
+                            </div>
+                        </div>
                     )}
                 </div>
                 <div className="grp-modal-footer">
@@ -758,7 +779,7 @@ function MessagesTab({ wsId }) {
         <div className="mkt-analytics-wrap">
             <div className="mkt-analytics-bar">
                 <div className="mkt-filter-tabs">
-                    {[{value: '', label: 'Tümü'}, {value: 'WHATSAPP', label: 'WhatsApp'}, {value: 'AI_CALL', label: 'AI Arama'}, {value: 'EMAIL', label: 'E-posta'}].map(o => (
+                    {[{value: '', label: 'Tümü'}, {value: 'WHATSAPP', label: 'WhatsApp'}, {value: 'AI_CALL', label: 'AI Arama'}, {value: 'EMAIL', label: 'E-posta'}, {value: 'SMS', label: 'SMS'}].map(o => (
                         <button key={o.value} className={`mkt-filter-tab ${channelFilter === o.value ? 'active' : ''}`} onClick={() => setChannelFilter(o.value)}>{o.label}</button>
                     ))}
                 </div>
