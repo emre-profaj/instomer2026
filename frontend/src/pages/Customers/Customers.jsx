@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI, aiAPI, appointmentConfigAPI } from '../../services/api';
+import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI, aiAPI, appointmentConfigAPI, marketingV2API } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import * as XLSX from 'xlsx';
 import {
@@ -283,6 +283,11 @@ const Customers = () => {
     const [bulkCallProgress, setBulkCallProgress] = useState({ called: 0, total: 0, errors: 0 });
     const [retellAgents, setRetellAgents] = useState([]);
     const [selectedAgentId, setSelectedAgentId] = useState('');
+
+    // Automatic Marketing Campaign & Ad Set for Bulk Actions
+    const [createCampaignForBulk, setCreateCampaignForBulk] = useState(true);
+    const [bulkCampaignName, setBulkCampaignName] = useState('');
+    const [bulkCampaignSuccess, setBulkCampaignSuccess] = useState(null); // { campaignId, campaignName, groupName, total }
 
     // Bulk Status Change state
     const [showBulkStatus, setShowBulkStatus] = useState(false);
@@ -3504,6 +3509,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     )}
                                     <button className="customers-bulk-action-btn customers-bulk-wa-btn" onClick={async () => {
                                         setShowBulkWA(true);
+                                        setCreateCampaignForBulk(true);
+                                        setBulkCampaignSuccess(null);
+                                        const now = new Date();
+                                        setBulkCampaignName(`Toplu WhatsApp - ${now.toLocaleDateString('tr-TR')} ${now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`);
                                         try {
                                             const res = await automationAPI.getTemplates(currentWorkspace.id);
                                             setWaTemplates(res.data.templates || res.data || []);
@@ -3514,6 +3523,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     </button>
                                     <button className="customers-bulk-action-btn customers-bulk-email-btn" onClick={async () => {
                                         setShowBulkEmail(true);
+                                        setCreateCampaignForBulk(true);
+                                        setBulkCampaignSuccess(null);
+                                        const now = new Date();
+                                        setBulkCampaignName(`Toplu E-posta - ${now.toLocaleDateString('tr-TR')} ${now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`);
                                         try {
                                             const res = await emailAPI.getChannels(currentWorkspace.id);
                                             setEmailChannels(res.data.emailChannels || res.data.channels || res.data || []);
@@ -3522,7 +3535,13 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         <Mail size={16} />
                                         E-posta
                                     </button>
-                                    <button className="customers-bulk-action-btn customers-bulk-call-btn" onClick={() => setShowBulkCall(true)}>
+                                    <button className="customers-bulk-action-btn customers-bulk-call-btn" onClick={() => {
+                                        setShowBulkCall(true);
+                                        setCreateCampaignForBulk(true);
+                                        setBulkCampaignSuccess(null);
+                                        const now = new Date();
+                                        setBulkCampaignName(`Toplu AI Sesli Arama - ${now.toLocaleDateString('tr-TR')} ${now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`);
+                                    }}>
                                         <PhoneCall size={16} />
                                         Ara
                                     </button>
@@ -3563,6 +3582,45 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         const eligibleContacts = pool
                                             .map(c => ({ ...c, resolvedPhone: getContactPrimaryPhone(c) }))
                                             .filter(c => selectedIds.includes(c.id) && c.resolvedPhone);
+
+                                        if (bulkCampaignSuccess) {
+                                            return (
+                                                <div style={{ textAlign: 'center', padding: '1rem 0.5rem' }}>
+                                                    <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+                                                        <Check size={28} />
+                                                    </div>
+                                                    <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                                                        Kampanya ve Reklam Grubu Oluşturuldu!
+                                                    </h3>
+                                                    <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.5, marginBottom: '20px' }}>
+                                                        <strong>"{bulkCampaignSuccess.campaignName}"</strong> kampanyası ve <strong>"{bulkCampaignSuccess.groupName}"</strong> reklam grubu altında seçilen <strong>{bulkCampaignSuccess.total}</strong> kişiye gönderim başlatıldı.
+                                                    </p>
+                                                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '13px', color: '#64748b' }}>
+                                                        💡 Gönderim durumlarını, teslimat ve okunma oranlarını <strong>Pazarlama / Kampanyalar</strong> ekranından canlı olarak takip edebilirsiniz.
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                                        <button className="btn btn-outline" onClick={() => {
+                                                            setShowBulkWA(false);
+                                                            setBulkCampaignSuccess(null);
+                                                            setSelectedIds([]);
+                                                            setAllSelectedContacts([]);
+                                                        }}>
+                                                            Kapat
+                                                        </button>
+                                                        <button className="btn btn-primary" onClick={() => {
+                                                            setShowBulkWA(false);
+                                                            setBulkCampaignSuccess(null);
+                                                            setSelectedIds([]);
+                                                            setAllSelectedContacts([]);
+                                                            navigate('/marketing');
+                                                        }}>
+                                                            Pazarlama Sayfasında Gör ↗️
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
                                         return (
                                             <>
                                                 <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
@@ -3572,7 +3630,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                     <p style={{ color: '#ef4444' }}>Seçilen kişilerin telefon numarası yok.</p>
                                                 ) : (
                                                     <>
-                                                        <div className="form-group">
+                                                        <div className="form-group" style={{ marginBottom: '14px' }}>
                                                             <label>Şablon Seç</label>
                                                             <select className="form-input" value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)}>
                                                                 <option value="">-- Şablon seçin --</option>
@@ -3582,8 +3640,37 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             </select>
                                                         </div>
 
+                                                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '13px', color: '#166534', cursor: 'pointer' }}>
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={createCampaignForBulk} 
+                                                                    onChange={e => setCreateCampaignForBulk(e.target.checked)} 
+                                                                    style={{ width: '16px', height: '16px', accentColor: '#16a34a', cursor: 'pointer' }}
+                                                                />
+                                                                <span>🎯 Otomatik Pazarlama Kampanyası ve Reklam Grubu Oluştur</span>
+                                                            </label>
+                                                            {createCampaignForBulk && (
+                                                                <div style={{ marginTop: '10px' }}>
+                                                                    <label style={{ display: 'block', fontSize: '12px', color: '#374151', marginBottom: '4px', fontWeight: 500 }}>
+                                                                        Kampanya Adı
+                                                                    </label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        className="form-input" 
+                                                                        value={bulkCampaignName} 
+                                                                        onChange={e => setBulkCampaignName(e.target.value)} 
+                                                                        placeholder="Örn: Toplu WhatsApp Gönderimi"
+                                                                        style={{ fontSize: '13px', padding: '8px 10px', backgroundColor: '#fff' }}
+                                                                    />
+                                                                    <p style={{ fontSize: '11px', color: '#15803d', marginTop: '4px', margin: '4px 0 0 0' }}>
+                                                                        💡 Pazarlama sayfasında otomatik olarak bu isimde bir Kampanya ve WhatsApp Reklam Grubu açılarak tüm teslim/okundu istatistikleri canlı takip edilir.
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
 
-                                                        {bulkWASending && (
+                                                        {bulkWASending && !createCampaignForBulk && (
                                                             <div className="customers-bulk-progress">
                                                                 <div className="customers-bulk-progress-bar">
                                                                     <div className="customers-bulk-progress-fill" style={{ width: `${(bulkWAProgress.sent / bulkWAProgress.total) * 100}%` }} />
@@ -3594,30 +3681,52 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         <div className="modal-actions">
                                                             <button className="btn btn-outline" onClick={() => setShowBulkWA(false)} disabled={bulkWASending}>İptal</button>
                                                             <button className="btn btn-primary" disabled={!selectedTemplate || bulkWASending} onClick={async () => {
-                                                                setBulkWASending(true);
-                                                                const total = eligibleContacts.length;
-                                                                setBulkWAProgress({ sent: 0, total, errors: 0 });
-                                                                let errors = 0;
-                                                                for (let i = 0; i < eligibleContacts.length; i++) {
-                                                                    const c = eligibleContacts[i];
+                                                                if (createCampaignForBulk) {
+                                                                    setBulkWASending(true);
                                                                     try {
-                                                                        await automationAPI.sendTemplateDynamic(currentWorkspace.id, {
+                                                                        const res = await marketingV2API.quickBulkCampaign(currentWorkspace.id, {
+                                                                            channel: 'WHATSAPP',
+                                                                            campaignName: bulkCampaignName,
                                                                             templateName: selectedTemplate,
-                                                                            phoneNumber: c.resolvedPhone,
-                                                                            customerName: c.name || 'Müşteri'
+                                                                            contactIds: eligibleContacts.map(c => c.id)
                                                                         });
-                                                                    } catch (e) { errors++; }
-                                                                    setBulkWAProgress({ sent: i + 1, total, errors });
-                                                                    if (i < eligibleContacts.length - 1) await new Promise(r => setTimeout(r, 500));
+                                                                        setBulkCampaignSuccess({
+                                                                            campaignId: res.data.campaign?.id,
+                                                                            campaignName: res.data.campaign?.name || bulkCampaignName,
+                                                                            groupName: res.data.group?.name,
+                                                                            total: res.data.totalEligible || eligibleContacts.length
+                                                                        });
+                                                                    } catch (err) {
+                                                                        alert('Hata: ' + (err.response?.data?.error || err.message));
+                                                                    } finally {
+                                                                        setBulkWASending(false);
+                                                                    }
+                                                                } else {
+                                                                    setBulkWASending(true);
+                                                                    const total = eligibleContacts.length;
+                                                                    setBulkWAProgress({ sent: 0, total, errors: 0 });
+                                                                    let errors = 0;
+                                                                    for (let i = 0; i < eligibleContacts.length; i++) {
+                                                                        const c = eligibleContacts[i];
+                                                                        try {
+                                                                            await automationAPI.sendTemplateDynamic(currentWorkspace.id, {
+                                                                                templateName: selectedTemplate,
+                                                                                phoneNumber: c.resolvedPhone,
+                                                                                customerName: c.name || 'Müşteri'
+                                                                            });
+                                                                        } catch (e) { errors++; }
+                                                                        setBulkWAProgress({ sent: i + 1, total, errors });
+                                                                        if (i < eligibleContacts.length - 1) await new Promise(r => setTimeout(r, 500));
+                                                                    }
+                                                                    setBulkWASending(false);
+                                                                    alert(`✅ ${total - errors} / ${total} kişiye şablon gönderildi.`);
+                                                                    setShowBulkWA(false);
+                                                                    setSelectedTemplate('');
+                                                                    setSelectedIds([]);
+                                                                    setAllSelectedContacts([]);
                                                                 }
-                                                                setBulkWASending(false);
-                                                                alert(`✅ ${total - errors} / ${total} kişiye şablon gönderildi.`);
-                                                                setShowBulkWA(false);
-                                                                setSelectedTemplate('');
-                                                                setSelectedIds([]);
-                                                                setAllSelectedContacts([]);
                                                             }}>
-                                                                {bulkWASending ? <><Loader size={14} className="spin" /> Gönderiliyor...</> : <><Send size={14} /> Gönder</>}
+                                                                {bulkWASending ? <><Loader size={14} className="spin" /> {createCampaignForBulk ? 'Kampanya Başlatılıyor...' : 'Gönderiliyor...'}</> : <><Send size={14} /> Gönder</>}
                                                             </button>
                                                         </div>
                                                     </>
@@ -3642,6 +3751,45 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     {(() => {
                                         const pool = allSelectedContacts.length > 0 ? allSelectedContacts : contacts;
                                         const eligibleContacts = pool.filter(c => selectedIds.includes(c.id) && (c.email || c.emails?.[0]));
+
+                                        if (bulkCampaignSuccess) {
+                                            return (
+                                                <div style={{ textAlign: 'center', padding: '1rem 0.5rem' }}>
+                                                    <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+                                                        <Check size={28} />
+                                                    </div>
+                                                    <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                                                        Kampanya ve Reklam Grubu Oluşturuldu!
+                                                    </h3>
+                                                    <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.5, marginBottom: '20px' }}>
+                                                        <strong>"{bulkCampaignSuccess.campaignName}"</strong> kampanyası ve <strong>"{bulkCampaignSuccess.groupName}"</strong> reklam grubu altında seçilen <strong>{bulkCampaignSuccess.total}</strong> kişiye e-posta gönderimi başlatıldı.
+                                                    </p>
+                                                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '13px', color: '#64748b' }}>
+                                                        💡 Gönderim durumlarını ve istatistikleri <strong>Pazarlama / Kampanyalar</strong> ekranından canlı olarak takip edebilirsiniz.
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                                        <button className="btn btn-outline" onClick={() => {
+                                                            setShowBulkEmail(false);
+                                                            setBulkCampaignSuccess(null);
+                                                            setSelectedIds([]);
+                                                            setAllSelectedContacts([]);
+                                                        }}>
+                                                            Kapat
+                                                        </button>
+                                                        <button className="btn btn-primary" onClick={() => {
+                                                            setShowBulkEmail(false);
+                                                            setBulkCampaignSuccess(null);
+                                                            setSelectedIds([]);
+                                                            setAllSelectedContacts([]);
+                                                            navigate('/marketing');
+                                                        }}>
+                                                            Pazarlama Sayfasında Gör ↗️
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
                                         return (
                                             <>
                                                 <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
@@ -3668,7 +3816,38 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             <label>Mesaj</label>
                                                             <textarea className="form-input" rows={5} placeholder="E-posta içeriği..." value={emailBody} onChange={e => setEmailBody(e.target.value)} style={{ resize: 'vertical', minHeight: '100px' }} />
                                                         </div>
-                                                        {bulkEmailSending && (
+
+                                                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '13px', color: '#166534', cursor: 'pointer' }}>
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={createCampaignForBulk} 
+                                                                    onChange={e => setCreateCampaignForBulk(e.target.checked)} 
+                                                                    style={{ width: '16px', height: '16px', accentColor: '#16a34a', cursor: 'pointer' }}
+                                                                />
+                                                                <span>🎯 Otomatik Pazarlama Kampanyası ve Reklam Grubu Oluştur</span>
+                                                            </label>
+                                                            {createCampaignForBulk && (
+                                                                <div style={{ marginTop: '10px' }}>
+                                                                    <label style={{ display: 'block', fontSize: '12px', color: '#374151', marginBottom: '4px', fontWeight: 500 }}>
+                                                                        Kampanya Adı
+                                                                    </label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        className="form-input" 
+                                                                        value={bulkCampaignName} 
+                                                                        onChange={e => setBulkCampaignName(e.target.value)} 
+                                                                        placeholder="Örn: Toplu E-posta Kampanyası"
+                                                                        style={{ fontSize: '13px', padding: '8px 10px', backgroundColor: '#fff' }}
+                                                                    />
+                                                                    <p style={{ fontSize: '11px', color: '#15803d', marginTop: '4px', margin: '4px 0 0 0' }}>
+                                                                        💡 Pazarlama sayfasında otomatik olarak bu isimde bir Kampanya ve E-posta Reklam Grubu açılarak canlı takip edilir.
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {bulkEmailSending && !createCampaignForBulk && (
                                                             <div className="customers-bulk-progress">
                                                                 <div className="customers-bulk-progress-bar">
                                                                     <div className="customers-bulk-progress-fill" style={{ width: `${(bulkEmailProgress.sent / bulkEmailProgress.total) * 100}%` }} />
@@ -3679,31 +3858,55 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         <div className="modal-actions">
                                                             <button className="btn btn-outline" onClick={() => setShowBulkEmail(false)} disabled={bulkEmailSending}>İptal</button>
                                                             <button className="btn btn-primary" disabled={!selectedEmailChannel || !emailSubject.trim() || !emailBody.trim() || bulkEmailSending} onClick={async () => {
-                                                                setBulkEmailSending(true);
-                                                                const total = eligibleContacts.length;
-                                                                setBulkEmailProgress({ sent: 0, total, errors: 0 });
-                                                                let errors = 0;
-                                                                for (let i = 0; i < eligibleContacts.length; i++) {
-                                                                    const c = eligibleContacts[i];
+                                                                if (createCampaignForBulk) {
+                                                                    setBulkEmailSending(true);
                                                                     try {
-                                                                        await emailAPI.sendNew(selectedEmailChannel, {
-                                                                            to: c.email || c.emails?.[0],
-                                                                            subject: emailSubject,
-                                                                            body: emailBody
+                                                                        const res = await marketingV2API.quickBulkCampaign(currentWorkspace.id, {
+                                                                            channel: 'EMAIL',
+                                                                            campaignName: bulkCampaignName,
+                                                                            emailSubject,
+                                                                            emailBody,
+                                                                            emailChannelId: selectedEmailChannel,
+                                                                            contactIds: eligibleContacts.map(c => c.id)
                                                                         });
-                                                                    } catch (e) { errors++; }
-                                                                    setBulkEmailProgress({ sent: i + 1, total, errors });
-                                                                    if (i < eligibleContacts.length - 1) await new Promise(r => setTimeout(r, 300));
+                                                                        setBulkCampaignSuccess({
+                                                                            campaignId: res.data.campaign?.id,
+                                                                            campaignName: res.data.campaign?.name || bulkCampaignName,
+                                                                            groupName: res.data.group?.name,
+                                                                            total: res.data.totalEligible || eligibleContacts.length
+                                                                        });
+                                                                    } catch (err) {
+                                                                        alert('Hata: ' + (err.response?.data?.error || err.message));
+                                                                    } finally {
+                                                                        setBulkEmailSending(false);
+                                                                    }
+                                                                } else {
+                                                                    setBulkEmailSending(true);
+                                                                    const total = eligibleContacts.length;
+                                                                    setBulkEmailProgress({ sent: 0, total, errors: 0 });
+                                                                    let errors = 0;
+                                                                    for (let i = 0; i < eligibleContacts.length; i++) {
+                                                                        const c = eligibleContacts[i];
+                                                                        try {
+                                                                            await emailAPI.sendNew(selectedEmailChannel, {
+                                                                                to: c.email || c.emails?.[0],
+                                                                                subject: emailSubject,
+                                                                                body: emailBody
+                                                                            });
+                                                                        } catch (e) { errors++; }
+                                                                        setBulkEmailProgress({ sent: i + 1, total, errors });
+                                                                        if (i < eligibleContacts.length - 1) await new Promise(r => setTimeout(r, 300));
+                                                                    }
+                                                                    setBulkEmailSending(false);
+                                                                    alert(`✅ ${total - errors} / ${total} kişiye e-posta gönderildi.`);
+                                                                    setShowBulkEmail(false);
+                                                                    setEmailSubject('');
+                                                                    setEmailBody('');
+                                                                    setSelectedIds([]);
+                                                                    setAllSelectedContacts([]);
                                                                 }
-                                                                setBulkEmailSending(false);
-                                                                alert(`✅ ${total - errors} / ${total} kişiye e-posta gönderildi.`);
-                                                                setShowBulkEmail(false);
-                                                                setEmailSubject('');
-                                                                setEmailBody('');
-                                                                setSelectedIds([]);
-                                                                setAllSelectedContacts([]);
                                                             }}>
-                                                                {bulkEmailSending ? <><Loader size={14} className="spin" /> Gönderiliyor...</> : <><Send size={14} /> Gönder</>}
+                                                                {bulkEmailSending ? <><Loader size={14} className="spin" /> {createCampaignForBulk ? 'Kampanya Başlatılıyor...' : 'Gönderiliyor...'}</> : <><Send size={14} /> Gönder</>}
                                                             </button>
                                                         </div>
                                                     </>
@@ -3722,7 +3925,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                             <div className="modal-content bulk-modal" onClick={e => e.stopPropagation()}>
                                 <button className="modal-close" onClick={() => !bulkCallRunning && setShowBulkCall(false)}><X size={20} /></button>
                                 <div className="modal-header">
-                                    <h2>📞 Toplu Arama</h2>
+                                    <h2>📞 Toplu AI Sesli Arama</h2>
                                 </div>
                                 <div style={{ padding: '1.5rem' }}>
                                     {(() => {
@@ -3730,6 +3933,45 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         const eligibleContacts = pool
                                             .map(c => ({ ...c, resolvedPhone: getContactPrimaryPhone(c) }))
                                             .filter(c => selectedIds.includes(c.id) && c.resolvedPhone);
+
+                                        if (bulkCampaignSuccess) {
+                                            return (
+                                                <div style={{ textAlign: 'center', padding: '1rem 0.5rem' }}>
+                                                    <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+                                                        <Check size={28} />
+                                                    </div>
+                                                    <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                                                        Kampanya ve Reklam Grubu Oluşturuldu!
+                                                    </h3>
+                                                    <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.5, marginBottom: '20px' }}>
+                                                        <strong>"{bulkCampaignSuccess.campaignName}"</strong> kampanyası ve <strong>"{bulkCampaignSuccess.groupName}"</strong> reklam grubu altında seçilen <strong>{bulkCampaignSuccess.total}</strong> kişiye AI sesli aramalar başlatıldı.
+                                                    </p>
+                                                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '13px', color: '#64748b' }}>
+                                                        💡 Arama sonuçlarını, başarı oranlarını ve çağrı kayıtlarını <strong>Pazarlama / Kampanyalar</strong> ekranından canlı olarak takip edebilirsiniz.
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                                        <button className="btn btn-outline" onClick={() => {
+                                                            setShowBulkCall(false);
+                                                            setBulkCampaignSuccess(null);
+                                                            setSelectedIds([]);
+                                                            setAllSelectedContacts([]);
+                                                        }}>
+                                                            Kapat
+                                                        </button>
+                                                        <button className="btn btn-primary" onClick={() => {
+                                                            setShowBulkCall(false);
+                                                            setBulkCampaignSuccess(null);
+                                                            setSelectedIds([]);
+                                                            setAllSelectedContacts([]);
+                                                            navigate('/marketing');
+                                                        }}>
+                                                            Pazarlama Sayfasında Gör ↗️
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
                                         return (
                                             <>
                                                 <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
@@ -3740,11 +3982,11 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 ) : (
                                                     <>
                                                         <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#92400e' }}>
-                                                            ⚠️ Aramalar sıralı olarak başlatılacaktır. Her arama arasında bekleme süresi olacaktır.
+                                                            ⚠️ Aramalar sıralı olarak başlatılacaktır. Her arama arasında sistem güvenliği için bekleme süresi olacaktır.
                                                         </div>
 
                                                         <div className="bulk-call-agent-selector" style={{ marginBottom: '20px' }}>
-                                                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#4b5563', marginBottom: '8px' }}>Konuşacak Agent</label>
+                                                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#4b5563', marginBottom: '8px' }}>Konuşacak AI Call Agent</label>
                                                             <select
                                                                 value={selectedAgentId}
                                                                 onChange={(e) => setSelectedAgentId(e.target.value)}
@@ -3759,15 +4001,46 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     cursor: 'pointer'
                                                                 }}
                                                             >
-                                                                <option value="">Varsayılan Agent</option>
+                                                                <option value="">Varsayılan AI Call Agent</option>
                                                                 {retellAgents.map(a => (
                                                                     <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>
                                                                 ))}
                                                             </select>
                                                             <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
-                                                                Boş bırakırsanız varsayılan agent kullanılır.
+                                                                Boş bırakırsanız varsayılan AI Call Agent kullanılır.
                                                             </p>
                                                         </div>
+
+                                                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '13px', color: '#166534', cursor: 'pointer' }}>
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={createCampaignForBulk} 
+                                                                    onChange={e => setCreateCampaignForBulk(e.target.checked)} 
+                                                                    style={{ width: '16px', height: '16px', accentColor: '#16a34a', cursor: 'pointer' }}
+                                                                />
+                                                                <span>🎯 Otomatik Pazarlama Kampanyası ve Reklam Grubu Oluştur</span>
+                                                            </label>
+                                                            {createCampaignForBulk && (
+                                                                <div style={{ marginTop: '10px' }}>
+                                                                    <label style={{ display: 'block', fontSize: '12px', color: '#374151', marginBottom: '4px', fontWeight: 500 }}>
+                                                                        Kampanya Adı
+                                                                    </label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        className="form-input" 
+                                                                        value={bulkCampaignName} 
+                                                                        onChange={e => setBulkCampaignName(e.target.value)} 
+                                                                        placeholder="Örn: Toplu AI Sesli Arama Kampanyası"
+                                                                        style={{ fontSize: '13px', padding: '8px 10px', backgroundColor: '#fff' }}
+                                                                    />
+                                                                    <p style={{ fontSize: '11px', color: '#15803d', marginTop: '4px', margin: '4px 0 0 0' }}>
+                                                                        💡 Pazarlama sayfasında otomatik olarak bu isimde bir Kampanya ve AI Sesli Arama Reklam Grubu açılarak canlı takip edilir.
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
                                                         <div className="customers-bulk-call-list">
                                                             {eligibleContacts.map(c => (
                                                                 <div key={c.id} className="customers-bulk-call-item">
@@ -3776,7 +4049,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                        {bulkCallRunning && (
+                                                        {bulkCallRunning && !createCampaignForBulk && (
                                                             <div className="customers-bulk-progress">
                                                                 <div className="customers-bulk-progress-bar">
                                                                     <div className="customers-bulk-progress-fill" style={{ width: `${(bulkCallProgress.called / bulkCallProgress.total) * 100}%` }} />
@@ -3787,30 +4060,52 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         <div className="modal-actions">
                                                             <button className="btn btn-outline" onClick={() => setShowBulkCall(false)} disabled={bulkCallRunning}>İptal</button>
                                                             <button className="btn btn-primary" disabled={bulkCallRunning} onClick={async () => {
-                                                                setBulkCallRunning(true);
-                                                                const total = eligibleContacts.length;
-                                                                setBulkCallProgress({ called: 0, total, errors: 0 });
-                                                                let errors = 0;
-                                                                for (let i = 0; i < eligibleContacts.length; i++) {
-                                                                    const c = eligibleContacts[i];
+                                                                if (createCampaignForBulk) {
+                                                                    setBulkCallRunning(true);
                                                                     try {
-                                                                        await retellAPI.makeCall(currentWorkspace.id, {
-                                                                            toNumber: c.resolvedPhone,
-                                                                            contactId: c.id,
-                                                                            contactName: c.name || 'Müşteri',
-                                                                            agentId: selectedAgentId
+                                                                        const res = await marketingV2API.quickBulkCampaign(currentWorkspace.id, {
+                                                                            channel: 'AI_CALL',
+                                                                            campaignName: bulkCampaignName,
+                                                                            agentId: selectedAgentId,
+                                                                            contactIds: eligibleContacts.map(c => c.id)
                                                                         });
-                                                                    } catch (e) { errors++; }
-                                                                    setBulkCallProgress({ called: i + 1, total, errors });
-                                                                    if (i < eligibleContacts.length - 1) await new Promise(r => setTimeout(r, 3000));
+                                                                        setBulkCampaignSuccess({
+                                                                            campaignId: res.data.campaign?.id,
+                                                                            campaignName: res.data.campaign?.name || bulkCampaignName,
+                                                                            groupName: res.data.group?.name,
+                                                                            total: res.data.totalEligible || eligibleContacts.length
+                                                                        });
+                                                                    } catch (err) {
+                                                                        alert('Hata: ' + (err.response?.data?.error || err.message));
+                                                                    } finally {
+                                                                        setBulkCallRunning(false);
+                                                                    }
+                                                                } else {
+                                                                    setBulkCallRunning(true);
+                                                                    const total = eligibleContacts.length;
+                                                                    setBulkCallProgress({ called: 0, total, errors: 0 });
+                                                                    let errors = 0;
+                                                                    for (let i = 0; i < eligibleContacts.length; i++) {
+                                                                        const c = eligibleContacts[i];
+                                                                        try {
+                                                                            await retellAPI.makeCall(currentWorkspace.id, {
+                                                                                toNumber: c.resolvedPhone,
+                                                                                contactId: c.id,
+                                                                                contactName: c.name || 'Müşteri',
+                                                                                agentId: selectedAgentId
+                                                                            });
+                                                                        } catch (e) { errors++; }
+                                                                        setBulkCallProgress({ called: i + 1, total, errors });
+                                                                        if (i < eligibleContacts.length - 1) await new Promise(r => setTimeout(r, 3000));
+                                                                    }
+                                                                    setBulkCallRunning(false);
+                                                                    alert(`✅ ${total - errors} / ${total} kişi arandı.`);
+                                                                    setShowBulkCall(false);
+                                                                    setSelectedIds([]);
+                                                                    setAllSelectedContacts([]);
                                                                 }
-                                                                setBulkCallRunning(false);
-                                                                alert(`✅ ${total - errors} / ${total} kişi arandı.`);
-                                                                setShowBulkCall(false);
-                                                                setSelectedIds([]);
-                                                                setAllSelectedContacts([]);
                                                             }}>
-                                                                {bulkCallRunning ? <><Loader size={14} className="spin" /> Aranıyor...</> : <><PhoneCall size={14} /> Aramaları Başlat</>}
+                                                                {bulkCallRunning ? <><Loader size={14} className="spin" /> {createCampaignForBulk ? 'Kampanya Başlatılıyor...' : 'Aranıyor...'}</> : <><PhoneCall size={14} /> Aramaları Başlat</>}
                                                             </button>
                                                         </div>
                                                     </>

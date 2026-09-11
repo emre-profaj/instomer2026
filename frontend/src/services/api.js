@@ -939,3 +939,17 @@ export const mediaAPI = {
         });
     }
 };
+
+export const marketingV2API = {
+    getCampaigns: (workspaceId) => api.get(`/marketing-v2/${workspaceId}/campaigns`),
+    getCampaign: (workspaceId, id) => api.get(`/marketing-v2/${workspaceId}/campaigns/${id}`),
+    createCampaign: (workspaceId, data) => api.post(`/marketing-v2/${workspaceId}/campaigns`, data),
+    updateCampaign: (workspaceId, id, data) => api.put(`/marketing-v2/${workspaceId}/campaigns/${id}`, data),
+    deleteCampaign: (workspaceId, id) => api.delete(`/marketing-v2/${workspaceId}/campaigns/${id}`),
+
+    getGroups: (workspaceId, campaignId) => api.get(`/marketing-v2/${workspaceId}/campaigns/${campaignId}/groups`),
+    createGroup: (workspaceId, campaignId, data) => api.post(`/marketing-v2/${workspaceId}/campaigns/${campaignId}/groups`, data),
+    executeGroup: (workspaceId, groupId) => api.post(`/marketing-v2/${workspaceId}/groups/${groupId}/execute`),
+
+    quickBulkCampaign: (workspaceId, data) => api.post(`/marketing-v2/${workspaceId}/quick-bulk-campaign`, data)
+};

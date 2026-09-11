@@ -32,10 +32,11 @@ router.get('/:workspaceId/messages/:id/usage', marketingV2Controller.getMessageU
 router.post('/:workspaceId/groups/:groupId/messages', marketingV2Controller.addMessageToGroup);
 router.delete('/:workspaceId/groups/:groupId/messages/:messageId', marketingV2Controller.removeMessageFromGroup);
 
-// WIZARD & SYNC
+// WIZARD & SYNC & QUICK BULK
 router.post('/:workspaceId/preview-audience', marketingV2Controller.previewAudience);
 router.post('/:workspaceId/wizard-launch', marketingV2Controller.wizardLaunchCampaign);
 router.post('/:workspaceId/sync-past-data', marketingV2Controller.syncPastData);
+router.post('/:workspaceId/quick-bulk-campaign', marketingV2Controller.quickBulkCampaign);
 
 export default router;
 

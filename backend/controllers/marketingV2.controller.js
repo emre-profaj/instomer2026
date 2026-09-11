@@ -657,6 +657,10 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                 const msgTemplate = messages.find(m => m.channel === 'WHATSAPP');
                 if (!msgTemplate || !msgTemplate.templateName) throw new Error('WA mesaj şablonu bulunamadı');
 
+                const waTpl = await prisma.whatsappTemplate.findFirst({
+                    where: { name: msgTemplate.templateName, workspaceId }
+                }).catch(() => null);
+
                 for (const contact of contacts) {
                     const phone = contact.phone?.replace(/[\s\+\-\(\)]/g, '');
                     if (!phone) continue;
@@ -672,9 +676,38 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                             type: 'template',
                             template: {
                                 name: msgTemplate.templateName,
-                                language: { code: 'tr' }
+                                language: { code: waTpl?.language || 'tr' }
                             }
                         };
+
+                        const components = [];
+                        if (waTpl) {
+                            if (waTpl.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(waTpl.headerType)) {
+                                const mediaUrl = msgTemplate.mediaUrl || waTpl.headerContent;
+                                if (mediaUrl) {
+                                    components.push({
+                                        type: 'header',
+                                        parameters: [{
+                                            type: waTpl.headerType.toLowerCase(),
+                                            [waTpl.headerType.toLowerCase()]: { link: mediaUrl }
+                                        }]
+                                    });
+                                }
+                            }
+
+                            const placeholderCount = (waTpl.bodyText?.match(/\{\{\d+\}\}/g) || []).length;
+                            if (placeholderCount > 0) {
+                                const bodyParams = [{ type: 'text', text: contact.name || 'Müşteri' }];
+                                while (bodyParams.length < placeholderCount) {
+                                    bodyParams.push({ type: 'text', text: '' });
+                                }
+                                components.push({ type: 'body', parameters: bodyParams });
+                            }
+                        }
+
+                        if (components.length > 0) {
+                            payload.template.components = components;
+                        }
 
                         const response = await axios.post(apiUrl, payload, {
                             headers: { Authorization: `Bearer ${whatsappPhone.accessToken}`, 'Content-Type': 'application/json' }
@@ -761,12 +794,14 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                 }
             } else if (group.channel === 'AI_CALL') {
                 const msgTemplate = messages.find(m => m.channel === 'AI_CALL');
-                if (!msgTemplate || !msgTemplate.retellAgentId) throw new Error('AI ajan kimliği bulunamadı');
-
                 const workspace = await prisma.workspace.findUnique({
                     where: { id: workspaceId },
-                    select: { retellApiKey: true, retellFromNumber: true }
+                    select: { retellApiKey: true, retellAgentId: true, retellFromNumber: true }
                 });
+
+                const effectiveAgentId = msgTemplate?.retellAgentId || workspace?.retellAgentId;
+                if (!effectiveAgentId) throw new Error('AI sesli arama agent kimliği bulunamadı');
+
                 if (!workspace?.retellApiKey || !workspace?.retellFromNumber) {
                     throw new Error('Retell API anahtarı veya çıkış numarası yapılandırılmamış');
                 }
@@ -781,7 +816,7 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                         const callResponse = await client.call.createPhoneCall({
                             from_number: normalizePhone(workspace.retellFromNumber),
                             to_number: phone,
-                            override_agent_id: msgTemplate.retellAgentId,
+                            override_agent_id: effectiveAgentId,
                             metadata: {
                                 workspaceId,
                                 contactId: contact.id,
@@ -796,7 +831,7 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                                 workspace: { connect: { id: workspaceId } },
                                 contactId: contact.id,
                                 callId: callResponse.call_id,
-                                agentId: msgTemplate.retellAgentId,
+                                agentId: effectiveAgentId,
                                 fromNumber: workspace.retellFromNumber,
                                 toNumber: phone,
                                 direction: 'outbound',
@@ -866,8 +901,7 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                     throw new Error('NetGSM SMS entegrasyonu yapılandırılmamış');
                 }
 
-                for (const member of members) {
-                    const contact = member.contact;
+                for (const contact of contacts) {
                     const phone = contact?.phone;
                     if (!phone) continue;
 
@@ -940,8 +974,7 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                     throw new Error('Aktif bir e-posta kanalı (SMTP/Gmail) bulunamadı');
                 }
 
-                for (const member of members) {
-                    const contact = member.contact;
+                for (const contact of contacts) {
                     const email = contact?.email;
                     if (!email) continue;
 
@@ -1009,6 +1042,20 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                 where: { id: groupId },
                 data: { status: 'COMPLETED' }
             });
+
+            // If all groups in campaign are done, mark campaign completed
+            const incompleteGroups = await prisma.campaignGroup.count({
+                where: {
+                    campaignId: group.campaignId,
+                    status: { notIn: ['COMPLETED', 'FAILED'] }
+                }
+            });
+            if (incompleteGroups === 0) {
+                await prisma.marketingCampaign.update({
+                    where: { id: group.campaignId },
+                    data: { status: 'COMPLETED' }
+                }).catch(() => {});
+            }
 
         } catch (err) {
             console.error(`❌ [executeGroupSend] Background process failed:`, err);
@@ -1713,5 +1760,186 @@ export const syncPastData = async (req, res) => {
     } catch (error) {
         console.error('❌ [syncPastData]', error);
         res.status(500).json({ error: 'Geçmiş veriler eşitlenemedi' });
+    }
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// 9. QUICK BULK CAMPAIGN (AUTOMATIC CAMPAIGN & AD SET FROM CONTACTS SCREEN)
+// ══════════════════════════════════════════════════════════════════════════
+
+export const quickBulkCampaign = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const {
+            channel = 'WHATSAPP', // 'WHATSAPP' | 'AI_CALL' | 'EMAIL' | 'SMS'
+            campaignName,
+            contactIds = [],
+            templateName,
+            templateId,
+            variables = [],
+            headerMediaUrl,
+            agentId,
+            emailSubject,
+            emailBody,
+            emailChannelId,
+            smsText,
+            sendRate = 30
+        } = req.body;
+
+        if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
+            return res.status(400).json({ error: 'En az bir kişi seçilmelidir' });
+        }
+
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        const channelLabel = channel === 'WHATSAPP' ? 'WhatsApp' : channel === 'AI_CALL' ? 'AI Sesli Arama' : channel === 'EMAIL' ? 'E-posta' : 'SMS';
+        const defaultName = `Toplu ${channelLabel} - ${dateStr} ${timeStr}`;
+        const effectiveName = campaignName?.trim() || defaultName;
+
+        // 1. Fetch eligible contacts
+        let contacts = await prisma.contact.findMany({
+            where: {
+                id: { in: contactIds },
+                workspaceId,
+                isDeleted: false,
+                isArchived: false
+            }
+        });
+
+        if (channel === 'WHATSAPP' || channel === 'AI_CALL' || channel === 'SMS') {
+            contacts = contacts.filter(c => c.phone && c.phone.trim().length >= 7);
+        } else if (channel === 'EMAIL') {
+            contacts = contacts.filter(c => c.email && c.email.trim().length >= 3);
+        }
+
+        if (contacts.length === 0) {
+            return res.status(400).json({ error: 'Seçilen kişiler arasında bu kanal için geçerli iletişim bilgisine sahip kişi bulunamadı' });
+        }
+
+        // 2. Create target audience ContactGroup
+        const contactGroup = await prisma.contactGroup.create({
+            data: {
+                workspaceId,
+                name: `${effectiveName} Hedef Kitlesi`,
+                description: `Kişiler ekranından toplu ${channelLabel} işlemiyle oluşturuldu (${contacts.length} kişi)`,
+                icon: channel === 'WHATSAPP' ? '📱' : channel === 'AI_CALL' ? '📞' : channel === 'EMAIL' ? '📧' : '💬',
+                color: channel === 'WHATSAPP' ? '#25d366' : channel === 'AI_CALL' ? '#8b5cf6' : channel === 'EMAIL' ? '#2563eb' : '#f59e0b',
+                members: {
+                    create: contacts.map(c => ({ contactId: c.id }))
+                }
+            }
+        });
+
+        // 3. Create MarketingCampaign
+        const campaign = await prisma.marketingCampaign.create({
+            data: {
+                workspaceId,
+                name: effectiveName,
+                description: `Kişiler ekranından başlatılan hızlı ${channelLabel} gönderimi`,
+                status: 'ACTIVE',
+                type: 'MANUAL_BULK',
+                startDate: now
+            }
+        });
+
+        // 4. Create MarketingMessage
+        let marketingMessage;
+        if (channel === 'WHATSAPP') {
+            const waTpl = await prisma.whatsappTemplate.findFirst({
+                where: {
+                    OR: [
+                        templateId ? { id: templateId } : null,
+                        templateName ? { name: templateName } : null
+                    ].filter(Boolean),
+                    workspaceId
+                }
+            }).catch(() => null);
+
+            marketingMessage = await prisma.marketingMessage.create({
+                data: {
+                    workspaceId,
+                    name: `${effectiveName} - WhatsApp (${templateName || waTpl?.name || 'Şablon'})`,
+                    channel: 'WHATSAPP',
+                    templateId: waTpl?.id || null,
+                    templateName: templateName || waTpl?.name || 'genel_sablon',
+                    content: waTpl?.bodyText || '',
+                    mediaUrl: headerMediaUrl || waTpl?.headerContent || null
+                }
+            });
+        } else if (channel === 'AI_CALL') {
+            const ws = await prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { retellAgentId: true }
+            });
+            const effectiveAgentId = agentId || ws?.retellAgentId || null;
+
+            marketingMessage = await prisma.marketingMessage.create({
+                data: {
+                    workspaceId,
+                    name: `${effectiveName} - AI Sesli Arama`,
+                    channel: 'AI_CALL',
+                    retellAgentId: effectiveAgentId,
+                    content: `AI Arama Agent (${effectiveAgentId || 'Varsayılan'})`
+                }
+            });
+        } else if (channel === 'EMAIL') {
+            marketingMessage = await prisma.marketingMessage.create({
+                data: {
+                    workspaceId,
+                    name: `${effectiveName} - E-posta (${emailSubject || 'Konusuz'})`,
+                    channel: 'EMAIL',
+                    content: emailBody || '',
+                    emailSubject: emailSubject || '',
+                    emailBody: emailBody || ''
+                }
+            });
+        } else if (channel === 'SMS') {
+            marketingMessage = await prisma.marketingMessage.create({
+                data: {
+                    workspaceId,
+                    name: `${effectiveName} - SMS`,
+                    channel: 'SMS',
+                    content: smsText || ''
+                }
+            });
+        }
+
+        // 5. Create CampaignGroup (Reklam Grubu)
+        const group = await prisma.campaignGroup.create({
+            data: {
+                campaignId: campaign.id,
+                name: `${effectiveName} - ${channelLabel} Reklam Grubu`,
+                channel,
+                listId: contactGroup.id,
+                status: 'SENDING',
+                sendRate: parseInt(sendRate) || 30,
+                sentAt: now,
+                groupMessages: {
+                    create: {
+                        messageId: marketingMessage.id,
+                        order: 0
+                    }
+                }
+            }
+        });
+
+        // 6. Launch execution in background via executeGroupSendCore
+        executeGroupSendCore(workspaceId, group.id).catch(err => {
+            console.error(`❌ [quickBulkCampaign] Background execution error:`, err);
+        });
+
+        return res.json({
+            success: true,
+            campaign,
+            group,
+            contactGroupId: contactGroup.id,
+            totalEligible: contacts.length,
+            message: `"${effectiveName}" kampanyası ve "${group.name}" reklam grubu oluşturuldu. ${contacts.length} kişiye gönderim başlatıldı.`
+        });
+
+    } catch (error) {
+        console.error('❌ [quickBulkCampaign]', error);
+        return res.status(500).json({ error: error.message || 'Hızlı kampanya oluşturulamadı' });
     }
 };
