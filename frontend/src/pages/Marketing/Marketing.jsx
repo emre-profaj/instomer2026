@@ -6,9 +6,10 @@ import api from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
     BarChart2, Phone, Mail, Smartphone, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
-    Loader2, Sparkles, RefreshCw
+    Loader2, Sparkles, RefreshCw, Calendar, Filter, X
 } from 'lucide-react';
 import CampaignWizardModal from './CampaignWizardModal';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 import './Marketing.css';
 import '../KnowledgeBase/KnowledgeBase.css';
 
@@ -102,7 +103,10 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [showWizard, setShowWizard] = useState(false);
     const [syncingPast, setSyncingPast] = useState(false);
     const [campaignTypeFilter, setCampaignTypeFilter] = useState('MARKETING'); // 'ALL' | 'MARKETING' | 'AUTOMATION'
-    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'DRAFT'
+    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'DRAFT'
+    const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'custom'
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
 
     const getCampaignChannels = (c) => {
@@ -177,21 +181,66 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         }
     };
 
+    const activeDateRange = getDateRangeLogic(dateFilter, customStartDate, customEndDate);
+
     const filteredCampaigns = campaigns.filter(c => {
         if (campaignTypeFilter === 'MARKETING' && c.isAutomation) return false;
         if (campaignTypeFilter === 'AUTOMATION' && !c.isAutomation) return false;
-        if (statusFilter !== 'ALL' && c.status !== statusFilter) return false;
+
+        // Durum Filtresi (Aktif / Pasif / Tamamlandı / Taslak)
+        if (statusFilter === 'ACTIVE') {
+            if (c.status !== 'ACTIVE' && c.status !== 'SENDING') return false;
+        } else if (statusFilter === 'PAUSED') {
+            if (c.status !== 'PAUSED' && c.status !== 'INACTIVE') return false;
+        } else if (statusFilter !== 'ALL' && c.status !== statusFilter) {
+            return false;
+        }
+
+        // Arama Filtresi
         if (searchQuery.trim() && !c.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
+
+        // Tarih Filtresi
+        if (activeDateRange.startDate) {
+            const cStart = (c.startDate || c.createdAt || c.sentAt || '').split('T')[0];
+            const cEnd = (c.endDate || c.startDate || c.createdAt || c.sentAt || '').split('T')[0];
+            
+            if (activeDateRange.endDate) {
+                if (cStart > activeDateRange.endDate || (cEnd && cEnd < activeDateRange.startDate)) {
+                    return false;
+                }
+            } else {
+                if (cEnd < activeDateRange.startDate) return false;
+            }
+        }
         return true;
     });
+
+    const displayedStats = {
+        total: filteredCampaigns.length,
+        active: filteredCampaigns.filter(c => c.status === 'ACTIVE' || c.status === 'SENDING').length,
+        sent: filteredCampaigns.reduce((sum, c) => sum + (c.sentCount || 0), 0),
+        delivered: filteredCampaigns.reduce((sum, c) => sum + (c.deliveredCount || 0), 0),
+        read: filteredCampaigns.reduce((sum, c) => sum + (c.readCount || 0), 0)
+    };
+
+    const hasActiveFilters = statusFilter !== 'ALL' || dateFilter !== 'all' || searchQuery.trim() !== '' || campaignTypeFilter !== 'MARKETING';
+
+    const handleResetFilters = () => {
+        setStatusFilter('ALL');
+        setDateFilter('all');
+        setCustomStartDate('');
+        setCustomEndDate('');
+        setSearchQuery('');
+        setCampaignTypeFilter('MARKETING');
+    };
 
     return (
         <div className="mkt-analytics-wrap">
             <div className="mkt-stats-row">
-                <StatBig icon={<Megaphone size={20}/>} label="Toplam Kampanya" value={stats.total} color="#2563eb" />
-                <StatBig icon={<Play size={20}/>} label="Aktif" value={stats.active} color="#16a34a" />
-                <StatBig icon={<Send size={20}/>} label="Gönderilen / Arama" value={stats.sent} color="#8b5cf6" />
-                <StatBig icon={<CheckCircle size={20}/>} label="Teslim / Okunan" value={`${stats.delivered} / ${stats.read}`} color="#f59e0b" />
+                <StatBig icon={<Megaphone size={20}/>} label="Filtrelenen Kampanya" value={displayedStats.total} color="#2563eb" />
+                <StatBig icon={<Play size={20}/>} label="Aktif" value={displayedStats.active} color="#16a34a" />
+                <StatBig icon={<Send size={20}/>} label="Gönderilen / Arama" value={displayedStats.sent} color="#8b5cf6" />
+                <StatBig icon={<CheckCircle size={20}/>} label="Teslim / Okunan" value={`${displayedStats.delivered} / ${displayedStats.read}`} color="#f59e0b" />
             </div>
             
             <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -221,19 +270,69 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                         </button>
                     </div>
 
-                    {/* Durum Filtresi (Aktif, Tamamlandı, Pasif) */}
+                    {/* Durum Filtresi (Aktif / Pasif / Tamamlandı / Taslak) */}
                     <select
                         className="mkt-filter-select"
                         value={statusFilter}
                         onChange={e => setStatusFilter(e.target.value)}
-                        style={{ height: 38, fontSize: 13, borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontWeight: 500 }}
+                        style={{ height: 38, fontSize: 13, borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontWeight: 600, color: '#334155' }}
                     >
-                        <option value="ALL">Tüm Durumlar</option>
-                        <option value="ACTIVE">🟢 Aktif</option>
+                        <option value="ALL">⚪ Tüm Durumlar</option>
+                        <option value="ACTIVE">🟢 Sadece Aktif</option>
+                        <option value="PAUSED">⏸️ Sadece Pasif / Duraklatıldı</option>
                         <option value="COMPLETED">🏁 Tamamlandı</option>
-                        <option value="PAUSED">⏸️ Duraklatıldı / Pasif</option>
-                        <option value="DRAFT">⚪ Taslak</option>
+                        <option value="DRAFT">📝 Taslak</option>
                     </select>
+
+                    {/* Tarih Filtresi Dropdown */}
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Calendar size={14} style={{ position: 'absolute', left: 10, color: '#64748b', pointerEvents: 'none' }} />
+                        <select
+                            className="mkt-filter-select"
+                            value={dateFilter}
+                            onChange={e => setDateFilter(e.target.value)}
+                            style={{
+                                height: 38,
+                                fontSize: 13,
+                                borderRadius: 8,
+                                border: '1.5px solid #e2e8f0',
+                                background: '#fff',
+                                fontWeight: 600,
+                                color: '#334155',
+                                paddingLeft: 30,
+                                paddingRight: 10
+                            }}
+                        >
+                            <option value="all">📅 Tüm Zamanlar</option>
+                            <option value="today">Bugün</option>
+                            <option value="yesterday">Dün</option>
+                            <option value="thisWeek">Bu Hafta</option>
+                            <option value="lastWeek">Geçen Hafta</option>
+                            <option value="thisMonth">Bu Ay</option>
+                            <option value="lastMonth">Geçen Ay</option>
+                            <option value="thisYear">Bu Yıl</option>
+                            <option value="custom">📅 Özel Tarih Aralığı...</option>
+                        </select>
+                    </div>
+
+                    {/* Özel Tarih Seçiciler (dateFilter === 'custom') */}
+                    {dateFilter === 'custom' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', padding: '3px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1' }}>
+                            <input
+                                type="date"
+                                value={customStartDate}
+                                onChange={e => setCustomStartDate(e.target.value)}
+                                style={{ height: 30, fontSize: 12, border: 'none', background: 'transparent', outline: 'none', color: '#1e293b' }}
+                            />
+                            <span style={{ color: '#94a3af', fontSize: 12 }}>—</span>
+                            <input
+                                type="date"
+                                value={customEndDate}
+                                onChange={e => setCustomEndDate(e.target.value)}
+                                style={{ height: 30, fontSize: 12, border: 'none', background: 'transparent', outline: 'none', color: '#1e293b' }}
+                            />
+                        </div>
+                    )}
 
                     {/* Arama Kutusu */}
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -251,11 +350,35 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 border: '1.5px solid #e2e8f0',
                                 fontSize: 13,
                                 outline: 'none',
-                                width: 170,
+                                width: 160,
                                 background: '#fff'
                             }}
                         />
                     </div>
+
+                    {/* Filtreleri Sıfırla Butonu */}
+                    {hasActiveFilters && (
+                        <button
+                            onClick={handleResetFilters}
+                            style={{
+                                height: 36,
+                                padding: '0 10px',
+                                borderRadius: 8,
+                                border: '1px dashed #cbd5e1',
+                                background: '#f8fafc',
+                                fontSize: 12,
+                                fontWeight: 500,
+                                color: '#64748b',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4
+                            }}
+                            title="Tüm filtreleri sıfırla"
+                        >
+                            <X size={13} /> Sıfırla
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -295,6 +418,14 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             <div className="mkt-table-wrap" style={{ padding: 20 }}>
                 {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, fontSize: 13, color: '#64748b' }}>
+                            <span>Toplam <strong>{filteredCampaigns.length}</strong> kampanya listeleniyor</span>
+                            {dateFilter !== 'all' && activeDateRange.startDate && (
+                                <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, background: '#eff6ff', padding: '3px 10px', borderRadius: 6 }}>
+                                    📅 Filtre Tarihi: {activeDateRange.startDate} {activeDateRange.endDate ? `— ${activeDateRange.endDate}` : ''}
+                                </span>
+                            )}
+                        </div>
                         {filteredCampaigns.map(c => (
                             <div
                                 key={c.id}
