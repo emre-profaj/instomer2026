@@ -21,6 +21,12 @@ export const SECTOR_CONFIGS = {
 2. Seviye (Hizmet Grubu): Masaj Paketleri, Günlük Giriş, Özel Seanslar vb.
 3. Seviye (Hizmetler): Klasik Masaj, Bali Masajı, Medikal Cilt Bakımı, Gelin Hamamı vb.
 
+⚠️ KESİNLİKLE UYULMASI GEREKEN TEMEL TESİS VE GİRİŞ KURALI (GİRİŞ ÜCRETİ ZORUNLULUĞU):
+- Tesisimizde kese, köpük, masaj veya özel bakım hizmeti alabilmek için TESİS GİRİŞ ÜCRETİ (Türk hamamı, sauna, buhar odası, havuz vb. ıslak alan kullanımı) ödenmesi ZORUNLUDUR.
+- Giriş ücreti ödemeden tek başına kese-köpük veya tek başına masaj almak KESİNLİKLE MÜMKÜN DEĞİLDİR!
+- Müşteri "giriş ücreti ödemeden olur mu?", "giriş ücreti vermeden sadece kese köpük / masaj alabilir miyim?", "ayrı alabilir miyim?" gibi sorular sorduğunda ASLA "mümkündür / evet alabilirsiniz" DEME!
+- Net, nazik ve açıkça şunu belirt: Tesisimizdeki kese, köpük ve masaj gibi hizmetlerden yararlanabilmek için giriş ücreti ile birlikte hizmet bedelinin birlikte alınması gerekmektedir. Giriş ücreti ile hamam, sauna, buhar odası, havuz vb. tüm ıslak alan olanaklarımızdan da eksiksiz faydalanabilirsiniz.
+
 AI MÜŞTERİ YÖNLENDİRME VE SORU AKIŞI:
 - Müşteri genel bir talep veya soru ile geldiğinde ("Bilgi alabilir miyim?", "Fiyatlarınız nedir?", "Masaj var mı?"):
   1. Adım: Birden fazla şubemiz varsa ve şube belirtilmemişse hangi şubeyi ziyaret etmek istediğini sor.
@@ -91,12 +97,26 @@ AI MÜŞTERİ YÖNLENDİRME VE SORU AKIŞI:
 };
 
 /**
- * Sektör koduna göre AI için sistem talimatını döner
+ * Sektör koduna göre AI için sistem talimatını döner.
+ * industry tanımsız veya GENERAL ise, workspace içerisindeki anahtar kelimelerden otomatik tespit eder.
  * @param {string} industry 
+ * @param {string} [workspaceText] - Firma adı, açıklama, web sitesi gibi metinler
  * @returns {string}
  */
-export function getSectorPrompt(industry) {
-    const key = (industry || 'GENERAL').toUpperCase();
+export function getSectorPrompt(industry, workspaceText = '') {
+    let key = (industry || '').toUpperCase();
+    if (!key || key === 'GENERAL') {
+        const text = (workspaceText || '').toLowerCase();
+        if (text.includes('spa') || text.includes('hamam') || text.includes('masaj') || text.includes('kese') || text.includes('köpük') || text.includes('kopuk') || text.includes('sauna') || text.includes('wellness') || text.includes('fesspa')) {
+            key = 'SPA';
+        } else if (text.includes('klinik') || text.includes('hastane') || text.includes('doktor') || text.includes('hekim') || text.includes('tedavi') || text.includes('sağlık') || text.includes('saglik')) {
+            key = 'HEALTHCARE';
+        } else if (text.includes('inşaat') || text.includes('gayrimenkul') || text.includes('emlak') || text.includes('konut') || text.includes('proje')) {
+            key = 'REAL_ESTATE';
+        } else {
+            key = 'GENERAL';
+        }
+    }
     const config = SECTOR_CONFIGS[key] || SECTOR_CONFIGS.GENERAL;
     return config.qualificationFlow;
 }
