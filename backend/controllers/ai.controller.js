@@ -308,8 +308,14 @@ export const generateResponse = async (req, res) => {
         let systemPrompt = "You are a helpful customer support assistant. Reply in Turkish.";
         let documentContext = "";
 
-        // Get workspace-level knowledge base (company info + knowledge entries)
-        const workspaceKnowledge = await getWorkspaceKnowledgeContext(workspaceId);
+        // Get workspace-level knowledge base (company info + knowledge entries) and workspace metadata
+        const [workspaceKnowledge, currentWorkspace] = await Promise.all([
+            getWorkspaceKnowledgeContext(workspaceId),
+            prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { industry: true, companyName: true, companyDescription: true }
+            })
+        ]);
         if (workspaceKnowledge) {
             documentContext += workspaceKnowledge;
         }
@@ -380,6 +386,9 @@ ${documentContext || "Bilgi bankası boş."}
 6. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
 7. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş.
 8. **İSTİSNA, MUAFİYET VE GİRİŞ ÜCRETİ KURALI (ASLA KAFANDAN ONAY VERME)**: Müşteri şartları veya ücretleri esnetme (örn. "giriş ücreti ödemeden olur mu?", "ayrı alabilir miyim?", "ücretsiz mi?") sorduğunda, bilgi bankasında açıkça yazmıyorsa KESİNLİKLE "mümkündür / evet" şeklinde onay verme! Hamam/spa tesislerinde giriş ücreti ödenmeden tek başına kese-köpük veya masaj alınamaz, tesis giriş ücreti + hizmet bedeli birlikte zorunludur.
+9. **HAYALİ LİNK VE BAĞLANTI YASAĞI**: Bilgi bankasında veya sistem talimatında açıkça tam link/URL verilmemişse, ASLA kafandan markdown link (örn: [Fiyatlar](https://...)) veya uydurma internet adresi türetme.
+
+${getSectorPrompt(currentWorkspace?.industry, `${currentWorkspace?.companyName || ''} ${currentWorkspace?.companyDescription || ''} ${systemPrompt || ''} ${documentContext || ''}`)}
 
 ### ⭐ ANA SİSTEM TALİMATI (EN YÜKSEK ÖNCELİK) ⭐ ###
 Aşağıdaki talimat işletme sahibi tarafından yazılmıştır ve yukarıdaki varsayılan kurallarla çeliştiğinde BU TALİMAT GEÇERLİDİR. Her zaman önce bu talimata uy:
@@ -2063,6 +2072,7 @@ ${documentContext || "Knowledge base is empty."}
 11. **CRITICAL - LANGUAGE RULES**: NEVER use first-person language ("I", "I'm", "I think", "I'm not sure"). NEVER express uncertainty ("I'm not sure", "I don't know", "I believe"). Always speak on behalf of the establishment using "we/our" (e.g. "Our team will assist you"). If you don't have the answer, directly redirect to the website or email — never say you are unsure.
 12. **MULTI-BRANCH CLARIFICATION**: If your knowledge base or documents contain information for multiple separate branches/locations and the customer asks a general question without specifying their preferred branch (e.g. "Can I get more info?", "What are the prices?"), do NOT assume or dump information for only one branch. Instead, politely ask which branch they are interested in. Once the customer specifies the branch, provide the relevant details for that branch.
 13. **EXCEPTIONS, WAIVERS & ENTRANCE FEES**: Never grant waivers, free services, or unauthorized exceptions (e.g., "can I get service without entrance fee?") unless EXPLICITLY stated in the knowledge base. In spa/hamam facilities, entrance fee is mandatory to receive massage or scrub services.
+14. **NO FABRICATED LINKS**: Never invent markdown links or URLs (e.g. [Prices](https://...)) unless the exact URL is explicitly given in the knowledge base.
 
 ${getSectorPrompt(wsAppointmentCheck?.industry, `${wsAppointmentCheck?.companyName || ''} ${wsAppointmentCheck?.companyDescription || ''} ${activeBot.prompt || ''} ${documentContext || ''}`)}
 
@@ -2095,6 +2105,7 @@ ${documentContext || "Bilgi bankası boş."}
 11. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım", "düşünüyorum"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum", "tam olarak bilemiyorum", "şu an bilgi sahibi değilim"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş (örn. "Ekibimiz size yardımcı olacaktır"). Cevabını bilmediğin sorularda "emin değilim" DEME, doğrudan yetkiliye aktaracağını belirt.
 12. **ÇOKLU ŞUBE KURALI**: Eğer bilgi bankanızda veya dökümanlarınızda birden fazla ayrı şube/lokasyon bilgisi varsa ve müşteri belirli bir şube belirtmeden genel bir hizmet/fiyat sorduysa, doğrudan tek bir şubenin fiyatını vermek yerine müşteriye hangi şube için bilgi almak istediğini sor. Müşteri şubesini belirttikten sonra o şubenin detaylarını ver.
 13. **İSTİSNA, MUAFİYET VE GİRİŞ ÜCRETİ KURALI (ASLA KAFANDAN ONAY VERME)**: Müşteri "giriş ücreti ödemeden olur mu?", "şunu ödemeden sadece şunu alabilir miyim?", "ücretsiz mi?", "ayrı almam mümkün mü?", "indirim olur mu?" gibi şartları/ücretleri esnetme soruları sorduğunda: EĞER Bilgi Bankasında veya AI Prompt metninde bunun mümkün olduğu KELİMESİ KELİMESİNE AÇIKÇA YAZMIYORSA, KESİNLİKLE "mümkündür", "ayrı alabilirsiniz", "giriş ücreti ödemeden hizmet almanız mümkündür" GİBİ BİR ONAY VERME! Örneğin hamam/spa tesislerinde giriş ücreti ödenmeden tek başına kese-köpük veya tek başına masaj ALINAMAZ; tesis giriş ücreti + hizmet bedeli birlikte alınmak zorundadır.
+14. **HAYALİ LİNK VE BAĞLANTI YASAĞI**: Bilgi bankasında veya sistem talimatında açıkça tam link/URL verilmemişse, ASLA kafandan markdown link (örn: [Fiyatlar](https://...)) veya uydurma internet adresi türetme.
 
 ${getSectorPrompt(wsAppointmentCheck?.industry, `${wsAppointmentCheck?.companyName || ''} ${wsAppointmentCheck?.companyDescription || ''} ${activeBot.prompt || ''} ${documentContext || ''}`)}
 
