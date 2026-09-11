@@ -98,6 +98,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editItem, setEditItem] = useState(null);
+    const [campaignTypeFilter, setCampaignTypeFilter] = useState('ALL'); // 'ALL' | 'MARKETING' | 'AUTOMATION'
 
     const fetchCampaigns = useCallback(async () => {
         setLoading(true);
@@ -136,9 +137,15 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             await api.delete(`/marketing-v2/${wsId}/campaigns/${id}`);
             fetchCampaigns();
         } catch (e) {
-            alert('Silinemedi');
+            alert('Silinemedi: ' + (e.response?.data?.error || e.message));
         }
     };
+
+    const filteredCampaigns = campaigns.filter(c => {
+        if (campaignTypeFilter === 'MARKETING') return !c.isAutomation;
+        if (campaignTypeFilter === 'AUTOMATION') return c.isAutomation;
+        return true;
+    });
 
     return (
         <div className="mkt-analytics-wrap">
@@ -148,26 +155,60 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 <StatBig icon={<Send size={20}/>} label="Gönderilen" value={stats.sent} color="#8b5cf6" />
                 <StatBig icon={<CheckCircle size={20}/>} label="Teslim/Okunan" value={`${stats.delivered} / ${stats.read}`} color="#f59e0b" />
             </div>
-            <div className="mkt-analytics-bar">
-                <span style={{ fontSize: 13, color: '#6b7280' }}>Kampanyalarınızı buradan yönetin</span>
+            <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                        className={`mkt-filter-tab ${campaignTypeFilter === 'MARKETING' ? 'active' : ''}`}
+                        onClick={() => setCampaignTypeFilter('MARKETING')}
+                    >
+                        📢 Pazarlama ({campaigns.filter(c => !c.isAutomation).length})
+                    </button>
+                    <button
+                        className={`mkt-filter-tab ${campaignTypeFilter === 'AUTOMATION' ? 'active' : ''}`}
+                        onClick={() => setCampaignTypeFilter('AUTOMATION')}
+                    >
+                        🤖 Otomasyon Logları ({campaigns.filter(c => c.isAutomation).length})
+                    </button>
+                    <button
+                        className={`mkt-filter-tab ${campaignTypeFilter === 'ALL' ? 'active' : ''}`}
+                        onClick={() => setCampaignTypeFilter('ALL')}
+                    >
+                        Tümü ({campaigns.length})
+                    </button>
+                </div>
                 <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Kampanya</button>
             </div>
             
             <div className="mkt-table-wrap" style={{ padding: 20 }}>
                 {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
-                        {campaigns.map(c => (
-                            <div key={c.id} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, cursor: 'pointer', transition: 'box-shadow 0.2s' }} onClick={() => c.isLegacy ? alert(`Eski Kampanya Mesajları:\n${c.messagesLegacy?.map(m=>m.name || 'İsimsiz').join(', ') || 'Mesaj yok'}`) : onGoToGroups(c.id)} onMouseOver={e => e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)'} onMouseOut={e => e.currentTarget.style.boxShadow='none'}>
+                        {filteredCampaigns.map(c => (
+                            <div
+                                key={c.id}
+                                style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, cursor: 'pointer', transition: 'box-shadow 0.2s' }}
+                                onClick={() => {
+                                    if (c.isAutomation) {
+                                        alert(`Bu kayıt 'Karşılama' otomasyonu tarafından oluşturulan günlük rapordur.\n\nGönderilen: ${c.sentCount || 0} adet.`);
+                                    } else if (c.isLegacy) {
+                                        alert(`Eski Kampanya Mesajları:\n${c.messagesLegacy?.map(m=>m.name || 'İsimsiz').join(', ') || 'Mesaj yok'}`);
+                                    } else {
+                                        onGoToGroups(c.id);
+                                    }
+                                }}
+                                onMouseOver={e => e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,0.05)'}
+                                onMouseOut={e => e.currentTarget.style.boxShadow='none'}
+                            >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 16, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                         {c.name}
-                                        {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: 10 }}>📦 Eski</span>}
+                                        {c.isAutomation && <span style={{ fontSize: 11, background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>🤖 Otomasyon</span>}
+                                        {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>📦 Eski</span>}
                                     </div>
                                     <span style={{ padding: '4px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: c.status === 'ACTIVE' ? '#dcfce7' : '#f3f4f6', color: c.status === 'ACTIVE' ? '#166534' : '#4b5563' }}>
                                         {c.status}
                                     </span>
                                 </div>
-                                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>{c.description || 'Açıklama yok'}</div>
+                                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>{c.description || (c.isAutomation ? 'Günlük Karşılama Otomasyonu' : 'Açıklama yok')}</div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5563', marginBottom: 16 }}>
                                     <span>📅 {c.startDate ? new Date(c.startDate).toLocaleDateString() : '-'} - {c.endDate ? new Date(c.endDate).toLocaleDateString() : '-'}</span>
                                     <span>💰 {c.budget ? c.budget + ' TL' : '-'}</span>
@@ -182,7 +223,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}><Folder size={14}/> {c.isLegacy ? '-' : (c.groupCount || 0)} Grup</span>
+                                    <span style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}><Folder size={14}/> {c.isLegacy || c.isAutomation ? '-' : (c.groupCount || 0)} Grup</span>
                                     {!c.isLegacy && (
                                         <div style={{ display: 'flex', gap: 8 }} onClick={e => e.stopPropagation()}>
                                             <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }}><Edit2 size={14}/></button>
@@ -192,7 +233,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 </div>
                             </div>
                         ))}
-                        {campaigns.length === 0 && <div className="mkt-empty" style={{ gridColumn: '1 / -1' }}><p>Henüz kampanya yok.</p></div>}
+                        {filteredCampaigns.length === 0 && <div className="mkt-empty" style={{ gridColumn: '1 / -1' }}><p>Bu filtrede kampanya bulunamadı.</p></div>}
                     </div>
                 )}
             </div>
@@ -300,7 +341,7 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                 api.get(`/contact-groups/${wsId}/groups`),
                 api.get(`/marketing-v2/${wsId}/messages`)
             ]);
-            setAdSets(setsRes.data.adSets || []);
+            setAdSets(setsRes.data.adSets || setsRes.data.groups || []);
             setCampaigns(campRes.data.campaigns || []);
             setContactGroups(cgRes.data.groups || []);
             setMessages(msgRes.data.messages || []);
@@ -322,24 +363,30 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
             setShowForm(false);
             setEditItem(null);
             fetchData();
-        } catch (e) { alert('Hata'); }
+        } catch (e) {
+            alert('Hata: ' + (e.response?.data?.error || e.message));
+        }
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Emin misiniz?')) return;
+        if (!window.confirm('Bu reklam grubunu silmek istediğinize emin misiniz?')) return;
         try {
             await api.delete(`/marketing-v2/${wsId}/groups/${id}`);
             fetchData();
-        } catch (e) { alert('Silinemedi'); }
+        } catch (e) {
+            alert('Silinemedi: ' + (e.response?.data?.error || e.message));
+        }
     };
 
     const handleExecute = async (id) => {
         if (!window.confirm('Bu grubun gönderimini başlatmak istediğinize emin misiniz?')) return;
         try {
-            await api.post(`/marketing-v2/${wsId}/groups/${id}/execute`);
-            alert('Gönderim başlatıldı!');
+            const res = await api.post(`/marketing-v2/${wsId}/groups/${id}/execute`);
+            alert(res.data?.message || 'Gönderim başarıyla başlatıldı!');
             fetchData();
-        } catch (e) { alert('Başlatılamadı'); }
+        } catch (e) {
+            alert('Başlatılamadı: ' + (e.response?.data?.error || e.message));
+        }
     };
 
     const toggleExpand = (id) => {
@@ -491,16 +538,32 @@ function MessageFormModal({ wsId, initial, onClose, onSave }) {
 
     useEffect(() => {
         if (channel === 'WHATSAPP') {
-            api.get(`/whatsapp/${wsId}/templates`).then(r => setWaTemplates(r.data.templates || r.data || [])).catch(()=>setWaTemplates([]));
+            api.get(`/automations/${wsId}/templates`)
+                .then(r => setWaTemplates(r.data?.templates || r.data || []))
+                .catch(() => setWaTemplates([]));
         } else if (channel === 'AI_CALL') {
-            api.get(`/retell/${wsId}/agents`).then(r => setRetellAgents(r.data.agents || r.data || [])).catch(()=>setRetellAgents([]));
+            api.get(`/retell/${wsId}/agents`)
+                .then(r => setRetellAgents(r.data?.agents || r.data?.data || []))
+                .catch(() => setRetellAgents([]));
         }
     }, [wsId, channel]);
 
     const handleSave = async () => {
-        if (!name.trim()) return alert('Ad zorunlu');
+        if (!name.trim()) return alert('Mesaj adı zorunlu');
         setSaving(true);
-        await onSave({ name, channel, externalId, subject, bodyText });
+        const selectedTpl = waTemplates.find(t => t.id === externalId);
+        await onSave({
+            name,
+            channel,
+            externalId,
+            templateId: channel === 'WHATSAPP' ? externalId : null,
+            templateName: channel === 'WHATSAPP' ? (selectedTpl?.name || null) : null,
+            retellAgentId: channel === 'AI_CALL' ? externalId : null,
+            emailSubject: channel === 'EMAIL' ? subject : null,
+            emailBody: channel === 'EMAIL' ? bodyText : null,
+            subject,
+            bodyText
+        });
         setSaving(false);
     };
 
@@ -641,7 +704,7 @@ function MessagesTab({ wsId }) {
                                         </span>
                                     </td>
                                     <td style={{ fontSize: 12, color: '#4b5563', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {m.externalId || m.subject || '-'}
+                                        {m.templateName || m.externalId || m.emailSubject || m.subject || (m.content ? m.content.substring(0, 30) + '...' : '-')}
                                     </td>
                                     <td>
                                         <span style={{ fontSize: 12, color: '#6b7280' }}>{m.usageCount || 0} grupta kullanılıyor</span>

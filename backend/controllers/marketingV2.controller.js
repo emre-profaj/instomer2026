@@ -23,10 +23,12 @@ export const getCampaigns = async (req, res) => {
         });
 
         const mapped = campaigns.map(c => {
-            const isLegacy = c.groups.length === 0 && (c._count.recipients > 0 || c.messagesLegacy.length > 0 || c.templateId != null);
+            const isAutomation = c.type === 'AUTOMATION' || Boolean(c.automationId);
+            const isLegacy = !isAutomation && c.groups.length === 0 && (c._count.recipients > 0 || c.messagesLegacy.length > 0 || c.templateId != null);
             return {
                 ...c,
                 isLegacy,
+                isAutomation,
                 groupsCount: c._count.groups,
                 recipientsCount: c._count.recipients,
                 stats: {
@@ -134,7 +136,12 @@ export const deleteCampaign = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
 
-        await prisma.marketingCampaign.delete({
+        // Bağımlı kayıtları temizle
+        await prisma.marketingRecipient.deleteMany({ where: { campaignId: id } }).catch(() => {});
+        await prisma.campaignGroup.deleteMany({ where: { campaignId: id } }).catch(() => {});
+        await prisma.campaignMessage.deleteMany({ where: { campaignId: id } }).catch(() => {});
+
+        await prisma.marketingCampaign.deleteMany({
             where: { id, workspaceId }
         });
 
@@ -164,7 +171,7 @@ export const getAllGroups = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        res.json({ success: true, groups });
+        res.json({ success: true, groups, adSets: groups });
     } catch (error) {
         console.error('❌ [getAllGroups]', error);
         res.status(500).json({ error: 'Gruplar getirilemedi' });
@@ -184,7 +191,7 @@ export const getGroups = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        res.json({ success: true, groups });
+        res.json({ success: true, groups, adSets: groups });
     } catch (error) {
         console.error('❌ [getGroups]', error);
         res.status(500).json({ error: 'Gruplar getirilemedi' });
@@ -193,27 +200,44 @@ export const getGroups = async (req, res) => {
 
 export const createGroup = async (req, res) => {
     try {
-        const { workspaceId, campaignId } = req.params;
+        const { workspaceId } = req.params;
+        const targetCampaignId = req.params.campaignId || req.body.campaignId;
         const { name, channel, listId, segmentId, budget, sendRate, scheduledAt } = req.body;
+
+        if (!targetCampaignId) {
+            return res.status(400).json({ error: 'Kampanya seçilmelidir' });
+        }
+
+        const camp = await prisma.marketingCampaign.findFirst({
+            where: { id: targetCampaignId, workspaceId }
+        });
+        if (!camp) {
+            return res.status(404).json({ error: 'Geçersiz veya bulunamayan kampanya' });
+        }
 
         const group = await prisma.campaignGroup.create({
             data: {
-                campaignId,
+                campaignId: targetCampaignId,
                 name,
                 channel: channel || 'WHATSAPP',
-                listId,
-                segmentId,
-                budget,
-                sendRate: sendRate || 20,
+                listId: listId || null,
+                segmentId: segmentId || null,
+                budget: budget ? Number(budget) : null,
+                sendRate: sendRate ? Number(sendRate) : 20,
                 scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
                 status: 'DRAFT'
+            },
+            include: {
+                campaign: { select: { id: true, name: true } },
+                groupMessages: { include: { message: true } },
+                list: true
             }
         });
 
         res.json({ success: true, group });
     } catch (error) {
         console.error('❌ [createGroup]', error);
-        res.status(500).json({ error: 'Grup oluşturulamadı' });
+        res.status(500).json({ error: 'Grup oluşturulamadı: ' + error.message });
     }
 };
 
@@ -286,54 +310,75 @@ export const getMessages = async (req, res) => {
 export const createMessage = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, channel, templateId, templateName, content, retellAgentId, emailSubject, emailBody, mediaUrl } = req.body;
+        let { name, channel, templateId, templateName, content, retellAgentId, emailSubject, emailBody, mediaUrl, externalId, subject, bodyText } = req.body;
+
+        channel = channel || 'WHATSAPP';
+        if (!templateId && channel === 'WHATSAPP') templateId = externalId;
+        if (!retellAgentId && channel === 'AI_CALL') retellAgentId = externalId;
+        if (!emailSubject && subject) emailSubject = subject;
+        if (!emailBody && bodyText) emailBody = bodyText;
+
+        if (channel === 'WHATSAPP' && templateId && !templateName) {
+            const tpl = await prisma.whatsappTemplate.findFirst({ where: { id: templateId } });
+            if (tpl) templateName = tpl.name;
+        }
 
         const message = await prisma.marketingMessage.create({
             data: {
                 workspaceId,
                 name,
-                channel: channel || 'WHATSAPP',
-                templateId,
-                templateName,
-                content,
-                retellAgentId,
-                emailSubject,
-                emailBody,
-                mediaUrl
+                channel,
+                templateId: templateId || null,
+                templateName: templateName || null,
+                content: content || bodyText || null,
+                retellAgentId: retellAgentId || null,
+                emailSubject: emailSubject || null,
+                emailBody: emailBody || null,
+                mediaUrl: mediaUrl || null
             }
         });
 
         res.json({ success: true, message });
     } catch (error) {
         console.error('❌ [createMessage]', error);
-        res.status(500).json({ error: 'Mesaj oluşturulamadı' });
+        res.status(500).json({ error: 'Mesaj oluşturulamadı: ' + error.message });
     }
 };
 
 export const updateMessage = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, channel, templateId, templateName, content, retellAgentId, emailSubject, emailBody, mediaUrl } = req.body;
+        let { name, channel, templateId, templateName, content, retellAgentId, emailSubject, emailBody, mediaUrl, externalId, subject, bodyText } = req.body;
+
+        if (!templateId && channel === 'WHATSAPP') templateId = externalId;
+        if (!retellAgentId && channel === 'AI_CALL') retellAgentId = externalId;
+        if (!emailSubject && subject) emailSubject = subject;
+        if (!emailBody && bodyText) emailBody = bodyText;
+
+        if (channel === 'WHATSAPP' && templateId && !templateName) {
+            const tpl = await prisma.whatsappTemplate.findFirst({ where: { id: templateId } });
+            if (tpl) templateName = tpl.name;
+        }
 
         const message = await prisma.marketingMessage.update({
             where: { id, workspaceId },
             data: {
                 name,
                 channel,
-                templateId,
-                templateName,
-                content,
-                retellAgentId,
-                emailSubject,
-                emailBody,
-                mediaUrl
+                templateId: templateId || null,
+                templateName: templateName || null,
+                content: content || bodyText || null,
+                retellAgentId: retellAgentId || null,
+                emailSubject: emailSubject || null,
+                emailBody: emailBody || null,
+                mediaUrl: mediaUrl || null
             }
         });
 
         res.json({ success: true, message });
     } catch (error) {
         console.error('❌ [updateMessage]', error);
-        res.status(500).json({ error: 'Mesaj güncellenemedi' });
+        res.status(500).json({ error: 'Mesaj güncellenemedi: ' + error.message });
     }
 };
 

@@ -14,6 +14,7 @@ router.delete('/:workspaceId/campaigns/:id', marketingV2Controller.deleteCampaig
 
 // GROUPS (Ad Sets)
 router.get('/:workspaceId/groups', marketingV2Controller.getAllGroups);
+router.post('/:workspaceId/groups', marketingV2Controller.createGroup);
 router.get('/:workspaceId/campaigns/:campaignId/groups', marketingV2Controller.getGroups);
 router.post('/:workspaceId/campaigns/:campaignId/groups', marketingV2Controller.createGroup);
 router.put('/:workspaceId/groups/:groupId', marketingV2Controller.updateGroup);
