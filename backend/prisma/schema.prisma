@@ -66,7 +66,7 @@ model Company {
   aiSubscriptionType   String       @default("FREE") // FREE, BASIC, PRO, UNLIMITED
   aiSubscriptionEndsAt DateTime?
   // AI Model + Key (hesap varsayılanı — workspace override edebilir)
-  aiModel              String       @default("gemini-2.5-flash")
+  aiModel              String       @default("gemini-3.5-flash")
   aiApiKey             String?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt

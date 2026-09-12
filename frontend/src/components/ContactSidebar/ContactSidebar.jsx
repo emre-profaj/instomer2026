@@ -236,7 +236,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [contactConversations, setContactConversations] = useState([]);
     const [localConvOverride, setLocalConvOverride] = useState(null);
     const [attributions, setAttributions] = useState([]);
-    const [showHistoryDetails, setShowHistoryDetails] = useState(false);
 
     useEffect(() => {
         const fetchId = contactId || profile?.id;
@@ -2370,87 +2369,47 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 </div>
                                             </div>
 
-                                            {/* ── Kayıt, Güncelleme & Entegrasyon Geçmişi Çekmecesi ── */}
-                                            <div className="unified-meta-history-drawer" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 6, marginTop: 6 }}>
-                                                <div 
-                                                    onClick={() => setShowHistoryDetails(prev => !prev)}
-                                                    style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        justifyContent: 'space-between', 
-                                                        cursor: 'pointer', 
-                                                        padding: '4px 6px', 
-                                                        borderRadius: 6, 
-                                                        background: showHistoryDetails ? '#fef2f2' : '#f8fafc',
-                                                        border: '1px solid',
-                                                        borderColor: showHistoryDetails ? '#fecaca' : '#f1f5f9',
-                                                        fontSize: 10, 
-                                                        fontWeight: 600, 
-                                                        color: showHistoryDetails ? '#dc2626' : '#64748b',
-                                                        transition: 'all 0.15s ease'
-                                                    }}
-                                                    title="Kayıt ve senkronizasyon geçmişini göster/gizle"
-                                                >
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                                        <History size={12} style={{ color: showHistoryDetails ? '#dc2626' : '#94a3b8' }} />
-                                                        <span>Kayıt & Sistem Geçmişi</span>
-                                                        {profile.createdAt && (
-                                                            <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 9 }}>
-                                                                ({safeFormatDate(profile.createdAt)})
-                                                            </span>
-                                                        )}
+                                            {/* ── Kayıt, Güncelleme & Entegrasyon Geçmişi (Mevcut Çerçeve İçinde) ── */}
+                                            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 6, marginTop: 6, fontSize: 10, color: '#475569', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: '#94a3b8' }}>Oluşturulma:</span>
+                                                    <span style={{ fontWeight: 500 }}>
+                                                        {profile.createdAt ? safeFormatDateTime(profile.createdAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                        {' '}<strong style={{ color: '#dc2626', fontWeight: 600 }}>({getContactCreationSource(profile)})</strong>
                                                     </span>
-                                                    <ChevronDown size={12} style={{ transform: showHistoryDetails ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: showHistoryDetails ? '#dc2626' : '#94a3b8' }} />
                                                 </div>
-
-                                                {showHistoryDetails && (
-                                                    <div style={{ padding: '6px 8px', marginTop: 4, background: '#fafafa', borderRadius: 6, border: '1px solid #f1f5f9', fontSize: 10, color: '#475569', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                            <span style={{ color: '#94a3b8' }}>Oluşturulma:</span>
-                                                            <span style={{ fontWeight: 500 }}>
-                                                                {profile.createdAt ? safeFormatDateTime(profile.createdAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                            <span style={{ color: '#94a3b8' }}>Kayıt Kaynağı:</span>
-                                                            <span style={{ fontWeight: 600, color: '#dc2626' }}>
-                                                                {getContactCreationSource(profile)}
-                                                            </span>
-                                                        </div>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                            <span style={{ color: '#94a3b8' }}>Son Güncelleme:</span>
-                                                            <span style={{ fontWeight: 500 }}>
-                                                                {profile.updatedAt ? safeFormatDateTime(profile.updatedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                                                            </span>
-                                                        </div>
-                                                        {profile.lastContactedAt && (
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <span style={{ color: '#94a3b8' }}>Son İletişim:</span>
-                                                                <span style={{ fontWeight: 500 }}>
-                                                                    {safeFormatDateTime(profile.lastContactedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                                </span>
-                                                            </div>
-                                                        )}
-                                                        {/* Dış Entegrasyon (GymPro / Probel) Varsa */}
-                                                        {(() => {
-                                                            let tags = [];
-                                                            try { tags = typeof profile.tags === 'string' ? JSON.parse(profile.tags) : (profile.tags || []); } catch {}
-                                                            const isGympro = Array.isArray(tags) && tags.some(t => String(t).toLowerCase().includes('gympro'));
-                                                            const isProbel = Array.isArray(tags) && tags.some(t => String(t).toLowerCase().includes('probel'));
-                                                            if (isGympro || isProbel) {
-                                                                return (
-                                                                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                        <span style={{ color: '#dc2626', fontWeight: 600 }}>Son Entegrasyon:</span>
-                                                                        <span style={{ fontWeight: 600, color: '#1e293b' }}>
-                                                                            {isGympro ? 'GymPro Senkronu' : 'Probel HBYS'}
-                                                                        </span>
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })()}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ color: '#94a3b8' }}>Son Güncelleme:</span>
+                                                    <span style={{ fontWeight: 500 }}>
+                                                        {profile.updatedAt ? safeFormatDateTime(profile.updatedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                    </span>
+                                                </div>
+                                                {profile.lastContactedAt && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ color: '#94a3b8' }}>Son İletişim:</span>
+                                                        <span style={{ fontWeight: 500 }}>
+                                                            {safeFormatDateTime(profile.lastContactedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
                                                     </div>
                                                 )}
+                                                {/* Dış Entegrasyon (GymPro / Probel) Varsa */}
+                                                {(() => {
+                                                    let tags = [];
+                                                    try { tags = typeof profile.tags === 'string' ? JSON.parse(profile.tags) : (profile.tags || []); } catch {}
+                                                    const isGympro = Array.isArray(tags) && tags.some(t => String(t).toLowerCase().includes('gympro'));
+                                                    const isProbel = Array.isArray(tags) && tags.some(t => String(t).toLowerCase().includes('probel'));
+                                                    if (isGympro || isProbel) {
+                                                        return (
+                                                            <div style={{ marginTop: 1, paddingTop: 3, borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <span style={{ color: '#dc2626', fontWeight: 600 }}>Son Entegrasyon:</span>
+                                                                <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                                                    {isGympro ? 'GymPro Senkronu' : 'Probel HBYS'}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
                                             </div>
                                         </div>
                                     </div>

@@ -167,10 +167,10 @@ const getEffectiveAiModel = async (workspaceId) => {
             where: { id: workspaceId },
             select: { aiModel: true, company: { select: { aiModel: true } } }
         });
-        const model = workspace?.aiModel || workspace?.company?.aiModel || 'gemini-2.5-flash';
+        const model = workspace?.aiModel || workspace?.company?.aiModel || 'gemini-3.5-flash';
         return model;
     } catch {
-        return 'gemini-2.5-flash';
+        return 'gemini-3.5-flash';
     }
 };
 
@@ -2677,7 +2677,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
             }
 
             try {
-                const fallbackModel = effectiveModel === 'gemini-2.5-flash' ? 'gemini-2.0-flash' : 'gemini-2.5-flash';
+                const fallbackModel = effectiveModel === 'gemini-3.5-flash' ? 'gemini-2.0-flash' : 'gemini-3.5-flash';
                 console.log(`🔄 [AI] Falling back to ${fallbackModel}...`);
                 result = await tryGenerate(fallbackModel);
             } catch (fallbackError) {
