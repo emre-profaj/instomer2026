@@ -127,9 +127,30 @@ const AgentsSection = ({ workspaceId }) => {
     const loadBots = async () => {
         try {
             setLoading(true);
+            // Mesaj botları
             const res = await aiAPI.getBots(workspaceId);
             const rawBots = res.data?.bots ?? (Array.isArray(res.data) ? res.data : []);
-            setBots(Array.isArray(rawBots) ? rawBots : []);
+            const messageBots = (Array.isArray(rawBots) ? rawBots : []).map(b => ({ ...b, _isVoice: false }));
+
+            // Sesli arama agentları
+            let voiceAgents = [];
+            try {
+                const vRes = await retellAPI.getAgents(workspaceId);
+                const rawAgents = vRes.data?.agents ?? (Array.isArray(vRes.data) ? vRes.data : []);
+                voiceAgents = (Array.isArray(rawAgents) ? rawAgents : []).map(a => ({
+                    id: a.agent_id || a.id,
+                    name: a.agent_name || a.name || 'İsimsiz Agent',
+                    role: a.role || '',
+                    botType: 'VOICE',
+                    isActive: true,
+                    _isVoice: true,
+                    _retellData: a
+                }));
+            } catch (_) {
+                // Retell yapılandırılmamış olabilir, sessizce geç
+            }
+
+            setBots([...messageBots, ...voiceAgents]);
         } catch (err) {
             console.error('Error loading bots:', err);
             setBots([]);
@@ -155,10 +176,14 @@ const AgentsSection = ({ workspaceId }) => {
         }
     };
 
-    const handleDeleteBot = async (botId) => {
+    const handleDeleteBot = async (botId, isVoice = false) => {
         if (!confirm('Bu botu silmek istediğinize emin misiniz?')) return;
         try {
-            await aiAPI.deleteBot(workspaceId, botId);
+            if (isVoice) {
+                await retellAPI.deleteAgent(workspaceId, botId);
+            } else {
+                await aiAPI.deleteBot(workspaceId, botId);
+            }
             loadBots();
         } catch (err) {
             alert('Bot silinirken hata oluştu');
@@ -218,16 +243,18 @@ const AgentsSection = ({ workspaceId }) => {
                         >
                             <div style={{
                                 width: '36px', height: '36px', borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                background: bot._isVoice
+                                    ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                                    : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 color: 'white', fontWeight: 700, fontSize: '14px', flexShrink: 0
                             }}>
-                                {bot.botType === 'CALLS' ? '📞' : '🤖'}
+                                {bot._isVoice ? '📞' : bot.botType === 'CALLS' ? '📞' : '🤖'}
                             </div>
                             <div style={{ flex: 1 }}>
                                 <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{bot.name}</div>
                                 <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '2px' }}>
-                                    {bot.botType === 'CALLS' ? 'Arama Botu' : bot.botType === 'BOTH' ? 'Mesaj + Arama' : 'Mesaj Botu'}
+                                    {bot._isVoice ? 'AI Sesli Asistan' : bot.botType === 'CALLS' ? 'Arama Botu' : bot.botType === 'BOTH' ? 'Mesaj + Arama' : 'Mesaj Botu'}
                                     {bot.role && ` · ${bot.role}`}
                                 </div>
                             </div>
@@ -238,7 +265,7 @@ const AgentsSection = ({ workspaceId }) => {
                             <button
                                 className="btn btn-outline"
                                 style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteBot(bot.id); }}
+                                onClick={(e) => { e.stopPropagation(); handleDeleteBot(bot.id, bot._isVoice); }}
                             >Sil</button>
                         </div>
                     ))}
