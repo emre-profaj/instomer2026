@@ -386,29 +386,79 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [activeCaseInfo, setActiveCaseInfo] = useState(null); // { caseNumber, caseId, title } from CaseCards
     const [allCases, setAllCases] = useState([]); // all cases for this contact
 
-    // Deduplicate and filter out merged / duplicate cases
+    // Deduplicate and merge same-case records, but preserve truly different cases!
     const sanitizeCases = (rawList) => {
         if (!Array.isArray(rawList) || rawList.length === 0) return [];
-        // 1. Sadece aktif olanları veya birleştirilmemiş olanları al
-        const activeOnes = rawList.filter(c => c && c.status === 'ACTIVE' && !c.description?.includes('Birleştirildi'));
-        const baseList = activeOnes.length > 0 ? activeOnes : rawList.filter(c => !c.description?.includes('Birleştirildi'));
         
-        // 2. ID ve caseNumber bazında mükerrer kayıtları engelle
-        const seenIds = new Set();
-        const seenNumbers = new Set();
-        const result = [];
-        
-        for (const c of baseList) {
+        // 1. Manuel veya otomatik birleştirilmiş ("Birleştirildi") olanları ayıkla
+        const unmerged = rawList.filter(c => c && !c.description?.includes('Birleştirildi'));
+        const listToProcess = unmerged.length > 0 ? unmerged : rawList;
+
+        // 2. caseNumber (kısa ve tam) bazında grupla; aynı numaralı mükerrerleri BİRLEŞTİR, farklı numaralı olanları AYRI tut
+        const groupedByNumber = new Map();
+        const noNumberCases = [];
+
+        for (const c of listToProcess) {
             if (!c || !c.id) continue;
-            if (seenIds.has(c.id)) continue;
-            const cNum = c.caseNumber ? String(c.caseNumber).trim() : null;
-            if (cNum && seenNumbers.has(cNum)) continue; // aynı numaralı mükerrer case'i atla
-            
-            seenIds.add(c.id);
-            if (cNum) seenNumbers.add(cNum);
-            result.push(c);
+            const rawNum = c.caseNumber ? String(c.caseNumber).trim() : null;
+            const shortNum = rawNum ? (rawNum.includes('-') && rawNum.length > 8 ? rawNum.split('-').pop() : rawNum) : null;
+            const groupKey = shortNum ? shortNum.toLowerCase() : null;
+
+            if (!groupKey) {
+                noNumberCases.push(c);
+                continue;
+            }
+
+            if (!groupedByNumber.has(groupKey)) {
+                groupedByNumber.set(groupKey, { ...c, _allIds: [c.id] });
+            } else {
+                // AYNI CASE NUMARASINA SAHİP MÜKERRER KAYIT BULUNDU -> BİRLEŞTİR
+                const existing = groupedByNumber.get(groupKey);
+                existing._allIds = existing._allIds || [existing.id];
+                if (!existing._allIds.includes(c.id)) {
+                    existing._allIds.push(c.id);
+                }
+
+                // Konuşmaları birleştir
+                const existingConvs = existing.conversations || [];
+                const newConvs = c.conversations || [];
+                const convIdSet = new Set(existingConvs.map(cv => cv.id));
+                for (const cv of newConvs) {
+                    if (!convIdSet.has(cv.id)) {
+                        existingConvs.push(cv);
+                        convIdSet.add(cv.id);
+                    }
+                }
+                existing.conversations = existingConvs;
+
+                // Aktiviteleri birleştir
+                const existingActs = existing.activities || [];
+                const newActs = c.activities || [];
+                const actIdSet = new Set(existingActs.map(a => a.id));
+                for (const a of newActs) {
+                    if (!actIdSet.has(a.id)) {
+                        existingActs.push(a);
+                        actIdSet.add(a.id);
+                    }
+                }
+                existing.activities = existingActs;
+
+                // Başlık kontrolü: Eğer mevcudun başlığı generic ise ama yeni kaydın başlığı doluysa güncelle
+                const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', '-', '—', ''];
+                if ((!existing.title || GENERIC.includes(existing.title.trim())) && c.title && !GENERIC.includes(c.title.trim())) {
+                    existing.title = c.title;
+                }
+
+                // Eksik alanları tamamla
+                if (!existing.funnelStageId && c.funnelStageId) existing.funnelStageId = c.funnelStageId;
+                if (!existing.funnelType && c.funnelType) existing.funnelType = c.funnelType;
+                if (!existing.categoryId && c.categoryId) existing.categoryId = c.categoryId;
+                if (!existing.caseTypeId && c.caseTypeId) existing.caseTypeId = c.caseTypeId;
+                if (existing.status !== 'ACTIVE' && c.status === 'ACTIVE') existing.status = 'ACTIVE';
+            }
         }
-        return result;
+
+        return [...groupedByNumber.values(), ...noNumberCases];
     };
 
     const distinctCases = useMemo(() => sanitizeCases(allCases), [allCases]);
@@ -2659,18 +2709,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
                             {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
                             {(() => {
-                                // Aktif case belirleme (mevcut konuşmaya bağlı case, yoksa ilk case)
-                                const activeCase = (distinctCases.find(ac => ac.id === (activeCaseInfo?.caseId || conversationData?.caseId)))
-                                    || (distinctCases.length > 0 ? distinctCases[0] : null)
-                                    || (activeCaseInfo ? { ...activeCaseInfo, id: activeCaseInfo.caseId } : { id: 'default', title: 'Genel', caseNumber: '' });
-                                
-                                // Tek bir aktif case üzerinden render et (birden fazla case varsa sağ üstteki dropdown ile geçiş yapılır)
-                                const loopArray = [activeCase];
-                                return loopArray.map((c, index) => {
+                                // Müşterinin gerçekten farklı case'leri varsa (farklı caseNumber) hepsi alt alta açık olarak gösterilir.
+                                // Aynı numaralı mükerrer kayıtlar sanitizeCases içinde tekilleştirilmiş ve birleştirilmiştir.
+                                const casesToRender = distinctCases.length > 0
+                                    ? distinctCases
+                                    : (activeCaseInfo ? [{ ...activeCaseInfo, id: activeCaseInfo.caseId }] : [{ id: 'default', title: 'Genel', caseNumber: '' }]);
+
+                                return casesToRender.map((c, index) => {
                                     const isExpanded = expandedCases[c.id] !== false;
+                                    const matchingIds = new Set([c.id, ...(c._allIds || [])]);
                                     const caseTimeline = [...pastTimeline, ...plannedTimeline].filter(item => {
-                                        if (item.caseId === c.id) return true;
-                                        if (!item.caseId && (c.id === (activeCaseInfo?.caseId || activeCase?.id || 'default'))) return true;
+                                        if (item.caseId && matchingIds.has(item.caseId)) return true;
+                                        // caseId atanmamış olaylar (örneğin profil oluşturma) aktif konuşmaya bağlı case'e veya ilk karta dahil edilir
+                                        const isCurrentActive = matchingIds.has(activeCaseInfo?.caseId) || matchingIds.has(conversationData?.caseId) || index === 0;
+                                        if (!item.caseId && isCurrentActive) return true;
                                         return false;
                                     });
                                     return (
@@ -3004,7 +3056,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     members={members}
                                                     teams={teams}
                                                     conversationId={conversationId}
-                                                    activeCaseId={conversationData?.caseId || null}
+                                                    activeCaseId={(c && c.id !== 'default') ? c.id : (conversationData?.caseId || null)}
                                                     inline={true}
                                                     showOnly="stages"
                                                     onCaseInfo={(info) => setActiveCaseInfo(prev => {
@@ -4148,7 +4200,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     members={members}
                                                     teams={teams}
                                                     conversationId={conversationId}
-                                                    activeCaseId={conversationData?.caseId || null}
+                                                    activeCaseId={(c && c.id !== 'default') ? c.id : (conversationData?.caseId || null)}
                                                     inline={true}
                                                     showOnly="actions"
                                                     onCaseInfo={(info) => setActiveCaseInfo(prev => {
