@@ -425,6 +425,7 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                 agentConfigs[selectedAgentId] = {
                     ...agentConfig,
                     ...flags,
+                    immediateCall: agentConfig.fallbackDelayMinutes === 0,
                     fallbackToAi: true,
                     days,
                     callStart,
@@ -435,12 +436,18 @@ export function RetellAgentManager({ workspaceId, initialAgentId }) {
                 };
                 
                 await api.put(`/retell/${workspaceId}/settings`, {
-                    retellAutoCallTriggers: { ...triggers, agentConfigs }
+                    retellAutoCallTriggers: { ...triggers, agentConfigs },
+                    retellAutoCallEnabled: true,
+                    aiFallbackEnabled: true,
+                    retellMaxOverdueDays: agentConfig.maxOverdueDays || 7
                 });
                 
                 setWsSettings(prev => ({
                     ...prev,
-                    retellAutoCallTriggers: { ...triggers, agentConfigs }
+                    retellAutoCallTriggers: { ...triggers, agentConfigs },
+                    retellAutoCallEnabled: true,
+                    aiFallbackEnabled: true,
+                    retellMaxOverdueDays: agentConfig.maxOverdueDays || 7
                 }));
             }
             

@@ -4,7 +4,7 @@ import {
     Zap, Bot, Brain, ListTodo, GitBranch, Settings,
     Phone, Shield
 } from 'lucide-react';
-import { aiAPI, teamAPI, automationAPI } from '../../services/api';
+import { aiAPI, teamAPI, automationAPI, retellAPI } from '../../services/api';
 import BotModal from '../../components/Settings/BotModal';
 
 // Lazy import mevcut bileşenler

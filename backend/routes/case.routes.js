@@ -11,7 +11,8 @@ import {
     deleteCase,
     syncClosingStages,
     mergeCases,
-    splitCase
+    splitCase,
+    syncCaseTitles
 } from '../controllers/case.controller.js';
 
 const router = express.Router();
@@ -47,5 +48,8 @@ router.post('/:workspaceId/sync-closing-stages', requireWorkspaceAccess, syncClo
 // Case merge ve split
 router.post('/:workspaceId/merge', authenticateJWT, requireWorkspaceAccess, mergeCases);
 router.post('/:workspaceId/split', authenticateJWT, requireWorkspaceAccess, splitCase);
+
+// "Talep #..." başlıklarını konuşma konusundan düzelt (tek seferlik migration)
+router.post('/:workspaceId/sync-case-titles', requireWorkspaceAccess, syncCaseTitles);
 
 export default router;

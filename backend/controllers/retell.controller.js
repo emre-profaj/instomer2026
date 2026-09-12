@@ -1271,13 +1271,10 @@ async function checkOverdueAgentCalls() {
     try {
         const now = new Date();
 
-        // 1. Find workspaces with Retell configured + either retellAutoCallEnabled OR aiFallbackEnabled
-        //    retellAutoCallEnabled → eski triggerAutoCall sistemi
-        //    aiFallbackEnabled → SALES_PHONE_CALL toggle'ından gelen AI fallback
+        // 1. Find workspaces with Retell configured (API key + fromNumber)
         const workspaces = await prisma.workspace.findMany({
             where: {
                 retellApiKey: { not: null },
-                retellAgentId: { not: null, notIn: [''] },
                 retellFromNumber: { not: null, notIn: [''] }
             },
             select: {
@@ -1310,8 +1307,25 @@ async function checkOverdueAgentCalls() {
         const activeWorkspaces = workspaces;
         const activeWorkspaceIds = workspaceIds;
 
-        // Her workspace için max overdue tarihini hesapla (en eski tarihi kullan)
-        const oldestMaxOverdueDays = Math.max(...activeWorkspaces.map(w => w.retellMaxOverdueDays ?? 3));
+        // Her workspace ve ajan için max overdue gününü hesapla (en geniş tarihi kullan, varsayılan 7 gün)
+        const oldestMaxOverdueDays = Math.max(
+            ...activeWorkspaces.map(w => {
+                let maxDays = w.retellMaxOverdueDays ?? 7;
+                try {
+                    const triggers = typeof w.retellAutoCallTriggers === 'string' 
+                        ? JSON.parse(w.retellAutoCallTriggers || '{}') 
+                        : (w.retellAutoCallTriggers || {});
+                    const configs = triggers?.agentConfigs || {};
+                    for (const cfg of Object.values(configs)) {
+                        if (cfg.active !== false && cfg.maxOverdueDays && cfg.maxOverdueDays > maxDays) {
+                            maxDays = cfg.maxOverdueDays;
+                        }
+                    }
+                } catch (_) {}
+                return maxDays;
+            }),
+            7
+        );
         const maxOverdueCutoff = new Date(now.getTime() - oldestMaxOverdueDays * 24 * 60 * 60 * 1000);
 
         // Load team fallback settings for resolution
@@ -1329,15 +1343,19 @@ async function checkOverdueAgentCalls() {
 
             // Agent config delay (from UI card)
             const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
-            const agentCfgDelay = resolvedAgentId ? agentConfigs[resolvedAgentId]?.fallbackDelayMinutes : null;
+            const agentCfg = resolvedAgentId ? agentConfigs[resolvedAgentId] : null;
+            const agentCfgDelay = agentCfg?.fallbackDelayMinutes;
 
             // Enabled: activity.fallbackToAi > Agent Config > SALES_PHONE_CALL config > team > workspace
-            const agentCfgFallbackToAi = resolvedAgentId ? agentConfigs[resolvedAgentId]?.fallbackToAi : null;
+            const agentCfgFallbackToAi = agentCfg?.fallbackToAi;
+            const agentTaskScope = agentCfg?.taskScope;
             let enabled;
             if (activity.fallbackToAi !== undefined && activity.fallbackToAi !== null) {
                 enabled = activity.fallbackToAi;
             } else if (agentCfgFallbackToAi !== undefined && agentCfgFallbackToAi !== null) {
                 enabled = agentCfgFallbackToAi;
+            } else if (agentTaskScope === 'all' || agentCfg?.handleTeamFallback) {
+                enabled = true; // Ajan tüm görevleri devralacak şekilde ayarlı
             } else if (salesCfg.aiFallbackEnabled !== undefined) {
                 enabled = salesCfg.aiFallbackEnabled;
             } else if (team?.aiFallbackEnabled !== null && team?.aiFallbackEnabled !== undefined) {
@@ -1364,8 +1382,18 @@ async function checkOverdueAgentCalls() {
         };
 
         // ─── SCENARIO 1: Direct AI Assignment ──────────────────────
-        // Activity'ye açıkça aiAgentId atanmış → sadece retellAutoCallEnabled workspace'lerde
-        const retellEnabledIds = activeWorkspaces.filter(w => w.retellAutoCallEnabled).map(w => w.id);
+        // Otomatik arama / AI devralma açık olan workspace'ler (retellAutoCallEnabled, aiFallbackEnabled veya aktif agentConfigs olanlar)
+        const retellEnabledIds = activeWorkspaces.filter(w => {
+            if (w.retellAutoCallEnabled) return true;
+            if (w.aiFallbackEnabled) return true;
+            try {
+                const triggers = typeof w.retellAutoCallTriggers === 'string' 
+                    ? JSON.parse(w.retellAutoCallTriggers || '{}') 
+                    : (w.retellAutoCallTriggers || {});
+                const configs = triggers?.agentConfigs || {};
+                return Object.values(configs).some(cfg => cfg.active !== false && (cfg.taskScope === 'all' || cfg.handlePool || cfg.handleUnassigned || cfg.fallbackToAi));
+            } catch (_) { return false; }
+        }).map(w => w.id);
 
         const directAiActivities = retellEnabledIds.length > 0 ? await prisma.contactActivity.findMany({
             where: {
@@ -1382,8 +1410,7 @@ async function checkOverdueAgentCalls() {
         }) : [];
 
         // ─── SCENARIO 2: Pool / Sahipsiz Görevler ──
-        // SADECE retellAutoCallEnabled: true olan workspace'lerde çalışır.
-        // aiFallbackEnabled workspace'lerde POOL ÇALIŞMAZ — insana şans verilir.
+        // Havuzdaki veya atanmamış görevler (taskScope: all veya handlePool açık olan ajanlar için)
         const poolActivities = retellEnabledIds.length > 0 ? await prisma.contactActivity.findMany({
             where: {
                 workspaceId: { in: retellEnabledIds },
@@ -1673,25 +1700,24 @@ export const processScheduledCalls = async () => {
                     wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
                 }
 
-                // Agent config > Workspace default > hardcoded 2 saat
-                let timeoutHours = 2;
+                // Agent config > Workspace default > maxOverdueDays (varsayılan 7 gün)
+                let maxOverdueDays = 7;
                 try {
                     const wsTimeout = await prisma.workspace.findUnique({
                         where: { id: sc.workspaceId },
-                        select: { retellScheduledCallTimeoutHours: true, retellAutoCallTriggers: true }
+                        select: { retellScheduledCallTimeoutHours: true, retellAutoCallTriggers: true, retellMaxOverdueDays: true }
                     });
-                    // Önce agent config'den bak
                     const agentCfgs = wsTimeout?.retellAutoCallTriggers?.agentConfigs || {};
                     const agentCfg = sc.agentId ? agentCfgs[sc.agentId] : null;
-                    timeoutHours = agentCfg?.scheduledCallTimeoutHours
-                        ?? wsTimeout?.retellScheduledCallTimeoutHours
-                        ?? 2;
+                    maxOverdueDays = agentCfg?.maxOverdueDays 
+                        ?? wsTimeout?.retellMaxOverdueDays 
+                        ?? 7;
                 } catch (_) {}
-                const timeoutMs = timeoutHours * 60 * 60 * 1000;
+                const timeoutMs = maxOverdueDays * 24 * 60 * 60 * 1000;
 
                 if (overdueMs > timeoutMs && !wasScheduledOutsideBusinessHours) {
-                    await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: `Missed window (>${timeoutHours}h overdue)` } });
-                    console.log(`📅 [ScheduledCall] Auto-cancelled overdue call for ${sc.toNumber} (>${timeoutHours}h)`);
+                    await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: `Missed window (>${maxOverdueDays}d overdue)` } });
+                    console.log(`📅 [ScheduledCall] Auto-cancelled overdue call for ${sc.toNumber} (>${maxOverdueDays}d overdue)`);
                     continue;
                 } else if (overdueMs > timeoutMs && wasScheduledOutsideBusinessHours) {
                     console.log(`📅 [ScheduledCall] Overdue but was scheduled outside business hours — executing now for ${sc.toNumber}`);
@@ -1727,16 +1753,20 @@ export const processScheduledCalls = async () => {
                     }
                 }
 
-                // ─── DEDUP: Retry zinciri hariç, 24h içinde aranmışsa atla ────────
+                // ─── DEDUP: Retry zinciri hariç, son 24h içinde BAŞARILI görüşme yapılmışsa atla ────────
                 if (!sc.parentCallId) {
-                    // İlk çağrı (retry değil) → standart dedup uygula
                     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                    const recentCall = await prisma.retellCall.findFirst({
-                        where: { workspaceId: sc.workspaceId, toNumber: sc.toNumber, createdAt: { gte: since24h } }
+                    const recentSuccessfulCall = await prisma.retellCall.findFirst({
+                        where: { 
+                            workspaceId: sc.workspaceId, 
+                            toNumber: sc.toNumber, 
+                            callSuccessful: true,
+                            createdAt: { gte: since24h } 
+                        }
                     });
-                    if (recentCall) {
-                        await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Dedup: already called in last 24h' } });
-                        console.log(`📅 [ScheduledCall] Cancelled (dedup) for ${sc.toNumber} — already called`);
+                    if (recentSuccessfulCall) {
+                        await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Dedup: already had successful call in last 24h' } });
+                        console.log(`📅 [ScheduledCall] Cancelled (dedup) for ${sc.toNumber} — already had successful call`);
                         continue;
                     }
                 } else {

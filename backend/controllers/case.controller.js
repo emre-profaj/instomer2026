@@ -1273,3 +1273,48 @@ export const splitCase = async (req, res) => {
     res.status(500).json({ error: 'Case ayrıştırma hatası' });
   }
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// SYNC CASE TITLES — "Talep #..." başlıklarını konuşma konusundan düzelt
+// ────────────────────────────────────────────────────────────────────────────
+export const syncCaseTitles = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        // "Talep #" ile başlayan case'leri bul
+        const cases = await prisma.case.findMany({
+            where: {
+                workspaceId,
+                title: { startsWith: 'Talep #' }
+            },
+            select: {
+                id: true,
+                title: true,
+                conversations: {
+                    orderBy: { createdAt: 'asc' },
+                    take: 1,
+                    select: { aiTopic: true, title: true }
+                }
+            }
+        });
+
+        let updated = 0;
+        for (const c of cases) {
+            const conv = c.conversations[0];
+            const newTitle = conv?.aiTopic || conv?.title;
+            if (newTitle && newTitle.trim() && !newTitle.startsWith('Talep #')) {
+                await prisma.case.update({
+                    where: { id: c.id },
+                    data: { title: newTitle.trim() }
+                });
+                updated++;
+                console.log(`🔄 [SyncTitle] "${c.title}" → "${newTitle.trim()}"`);
+            }
+        }
+
+        res.json({ success: true, total: cases.length, updated });
+    } catch (error) {
+        console.error('SyncCaseTitles error:', error);
+        res.status(500).json({ error: 'Case başlıkları senkronize edilemedi' });
+    }
+};

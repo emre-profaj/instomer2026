@@ -821,28 +821,35 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
 
         // 10c. Ne aralık ne tek saat bulunamadıysa → default business hours
         if (!dueDate) {
-            // Business hours check (Agent config > Rule config > defaults)
-            const businessStart = agentConfigOverrides.businessHourStart ?? config.businessHourStart ?? 10;
-            const businessEnd = agentConfigOverrides.businessHourEnd ?? config.businessHourEnd ?? 21;
-            const now = new Date();
-            const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-            const hour = nowTR.getHours();
-            if (hour >= businessStart && hour < businessEnd) {
-                // Within business hours → delay from config
-                const delayMin = agentConfigOverrides.callDelayMinutes ?? config.callDelayMinutes ?? 15;
-                dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
+            const fallbackMin = agentConfigOverrides.fallbackDelayMinutes;
+            const isImmediate = fallbackMin === 0 || agentConfigOverrides.immediateCall === true;
+            if (isImmediate) {
+                dueDate = new Date();
+                console.log(`⏰ [RULE:SALES_PHONE_CALL] Hemen arama (immediateCall / fallbackDelay=0) → dueDate: ${dueDate.toISOString()}`);
             } else {
-                // Outside business hours → next day at businessStart:15
-                dueDate = new Date(now);
-                dueDate.setDate(dueDate.getDate() + 1); // Her zaman yarın
-                dueDate.setUTCHours(businessStart - 3, 15, 0, 0); // TR = UTC+3
-            }
+                // Business hours check (Agent config > Rule config > defaults)
+                const businessStart = agentConfigOverrides.businessHourStart ?? config.businessHourStart ?? 10;
+                const businessEnd = agentConfigOverrides.businessHourEnd ?? config.businessHourEnd ?? 21;
+                const now = new Date();
+                const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                const hour = nowTR.getHours();
+                if (hour >= businessStart && hour < businessEnd) {
+                    // Within business hours → delay from config
+                    const delayMin = fallbackMin ?? agentConfigOverrides.callDelayMinutes ?? config.callDelayMinutes ?? 15;
+                    dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
+                } else {
+                    // Outside business hours → next day at businessStart:15
+                    dueDate = new Date(now);
+                    dueDate.setDate(dueDate.getDate() + 1); // Her zaman yarın
+                    dueDate.setUTCHours(businessStart - 3, 15, 0, 0); // TR = UTC+3
+                }
 
-            // 🚨 Güvenlik: dueDate her zaman gelecekte olmalı
-            if (dueDate <= now) {
-                dueDate = new Date(now);
-                dueDate.setDate(dueDate.getDate() + 1);
-                dueDate.setUTCHours(businessStart - 3, 15, 0, 0);
+                // 🚨 Güvenlik: dueDate her zaman gelecekte olmalı
+                if (dueDate <= now) {
+                    dueDate = new Date(now);
+                    dueDate.setDate(dueDate.getDate() + 1);
+                    dueDate.setUTCHours(businessStart - 3, 15, 0, 0);
+                }
             }
         }
 
@@ -942,9 +949,10 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
                 assignedToId: inheritedAssigneeId,
+                aiAgentId: (resolvedAgentId && (agentConfigOverrides.fallbackDelayMinutes === 0 || agentConfigOverrides.immediateCall === true)) ? resolvedAgentId : undefined,
                 source: 'AUTOMATION',
-                fallbackToAi: agentFallbackToAi !== null ? agentFallbackToAi : undefined,
-                fallbackDelayMinutes: agentFallbackDelay !== null ? agentFallbackDelay : undefined,
+                fallbackToAi: agentFallbackToAi !== null ? agentFallbackToAi : true,
+                fallbackDelayMinutes: agentFallbackDelay !== null ? agentFallbackDelay : (agentConfigOverrides.fallbackDelayMinutes ?? 15),
                 ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
                 ...(inheritedAssigneeId ? {
                     assignedById: null,
@@ -1336,7 +1344,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 teamId: salesTeamId || null,
                 assignedToId: inheritedAssigneeId,
                 source: 'AUTOMATION',
-                fallbackToAi: config.aiFallbackEnabled ?? false,
+                fallbackToAi: config.aiFallbackEnabled ?? true,
                 fallbackDelayMinutes: config.aiFallbackDelayMinutes ?? 15,
                 aiFallbackTriggered: false,
                 ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
