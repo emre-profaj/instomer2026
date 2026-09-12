@@ -4,6 +4,8 @@ import {
     Zap, Bot, Brain, ListTodo, GitBranch, Settings,
     Phone, Shield
 } from 'lucide-react';
+import { aiAPI, teamAPI, automationAPI } from '../../services/api';
+import BotModal from '../../components/Settings/BotModal';
 
 // Lazy import mevcut bileşenler
 import Automations from '../Automations/Automations';
@@ -109,8 +111,6 @@ const OtomasyonlarHub = () => {
 // ──────────────────────────────────────────────
 // Agents Section — Bot listesi + yönetim
 // ──────────────────────────────────────────────
-import { aiAPI, teamAPI } from '../../services/api';
-import BotModal from '../../components/Settings/BotModal';
 
 const AgentsSection = ({ workspaceId }) => {
     const [bots, setBots] = React.useState([]);
@@ -128,8 +128,12 @@ const AgentsSection = ({ workspaceId }) => {
         try {
             setLoading(true);
             const res = await aiAPI.getBots(workspaceId);
-            setBots(res.data?.bots || res.data || []);
-        } catch (err) { console.error('Error loading bots:', err); }
+            const rawBots = res.data?.bots ?? (Array.isArray(res.data) ? res.data : []);
+            setBots(Array.isArray(rawBots) ? rawBots : []);
+        } catch (err) {
+            console.error('Error loading bots:', err);
+            setBots([]);
+        }
         finally { setLoading(false); }
     };
 
@@ -208,7 +212,7 @@ const AgentsSection = ({ workspaceId }) => {
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {bots.map(bot => (
+                    {Array.isArray(bots) && bots.map(bot => (
                         <div key={bot.id} className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
                             onClick={() => setBotModal({ isOpen: true, bot })}
                         >
@@ -259,7 +263,6 @@ const AgentsSection = ({ workspaceId }) => {
 // ──────────────────────────────────────────────
 // Task Manager Section — Otomatik görev kuralları
 // ──────────────────────────────────────────────
-import { automationAPI } from '../../services/api';
 
 const TaskManagerSection = ({ workspaceId }) => {
     const [rules, setRules] = React.useState([]);
@@ -273,20 +276,26 @@ const TaskManagerSection = ({ workspaceId }) => {
         try {
             setLoading(true);
             const res = await automationAPI.getAutomations(workspaceId);
-            const allRules = res.data?.automations || res.data || [];
+            const rawRules = res.data?.automations ?? (Array.isArray(res.data) ? res.data : []);
+            const allRules = Array.isArray(rawRules) ? rawRules : [];
             // Sadece görev/arama oluşturanları filtrele
             const taskRules = allRules.filter(r =>
-                r.action === 'CREATE_TASK' ||
-                r.action === 'SCHEDULE_CALL' ||
-                r.action === 'AUTO_CALL' ||
-                (r.selectedActions && (
-                    r.selectedActions.includes('CREATE_TASK') ||
-                    r.selectedActions.includes('SCHEDULE_CALL') ||
-                    r.selectedActions.includes('AUTO_CALL')
-                ))
+                r && (
+                    r.action === 'CREATE_TASK' ||
+                    r.action === 'SCHEDULE_CALL' ||
+                    r.action === 'AUTO_CALL' ||
+                    (r.selectedActions && Array.isArray(r.selectedActions) && (
+                        r.selectedActions.includes('CREATE_TASK') ||
+                        r.selectedActions.includes('SCHEDULE_CALL') ||
+                        r.selectedActions.includes('AUTO_CALL')
+                    ))
+                )
             );
             setRules(taskRules);
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(err);
+            setRules([]);
+        }
         finally { setLoading(false); }
     };
 
@@ -311,7 +320,7 @@ const TaskManagerSection = ({ workspaceId }) => {
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {rules.map(rule => (
+                    {Array.isArray(rules) && rules.map(rule => (
                         <div key={rule.id} className="card" style={{ padding: '14px 16px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>

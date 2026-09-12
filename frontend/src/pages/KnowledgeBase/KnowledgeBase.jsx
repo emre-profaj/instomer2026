@@ -230,7 +230,7 @@ const KnowledgeBase = () => {
     };
 
     const handleDeleteBranch = async (id, name) => {
-        if (!confirm(`"${name}" şubesini silmek istediğinize emin misiniz?`)) return;
+        if (!confirm(`"${name}" ${labels.branchSingle?.toLowerCase() || 'şube'} kaydını silmek istediğinize emin misiniz?`)) return;
         try {
             await appointmentConfigAPI.deleteLocation(currentWorkspace.id, id);
             loadBranches();
@@ -625,7 +625,7 @@ const KnowledgeBase = () => {
                         <Building2 size={16} /> Şirket Bilgileri
                     </button>
                     <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => handleSelectTab('branches')}>
-                        <MapPin size={16} /> Şubeler
+                        <MapPin size={16} /> {labels.branchesTab || 'Şubeler'}
                     </button>
                     <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => handleSelectTab('categories')}>
                         <Layers size={16} /> {labels.categoriesTab || 'Kategoriler'}
@@ -801,8 +801,8 @@ const KnowledgeBase = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
                         <MapPin size={24} style={{ color: 'var(--primary, #ef4444)' }} />
                         <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>Şubeler</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>Klinik şubelerinizi ve lokasyonlarınızı yönetin.</p>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>{labels.branchesTab || 'Şubeler'}</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>{labels.branchesDesc || 'Şubelerinizi ve lokasyonlarınızı yönetin.'}</p>
                         </div>
                     </div>
 
@@ -811,7 +811,7 @@ const KnowledgeBase = () => {
                             {branchesLoading ? (
                                 <div className="loading">Yükleniyor...</div>
                             ) : branches.length === 0 ? (
-                                <div className="empty-state">Henüz şube eklenmemiş.</div>
+                                <div className="empty-state">Henüz {labels.branchSingle?.toLowerCase() || 'şube'} eklenmemiş.</div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {branches.map(branch => (
@@ -824,8 +824,8 @@ const KnowledgeBase = () => {
                                                     border: selectedBranch?.id === branch.id ? '1px solid var(--primary, #ef4444)' : '1px solid var(--border-color, #e5e7eb)', 
                                                     display: 'flex', 
                                                     justifyContent: 'space-between', 
-                                                    alignItems: 'flex-start',
-                                                    cursor: 'pointer',
+                                                    alignItems: 'flex-start', 
+                                                    cursor: 'pointer', 
                                                     transition: 'all 0.15s ease'
                                                 }}
                                                 onClick={() => setSelectedBranch(selectedBranch?.id === branch.id ? null : branch)}
@@ -870,7 +870,7 @@ const KnowledgeBase = () => {
                                             
                                              {selectedBranch?.id === branch.id && (
                                                 <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', marginLeft: '16px' }}>
-                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu Şubedeki {labels.productsTab || 'Ürünler'}</h5>
+                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu {labels.branchSingle || 'Şube'}'deki {labels.productsTab || 'Ürünler'}</h5>
                                                     <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
                                                         {products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).length > 0 ? (
                                                             products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).map(p => (
@@ -881,7 +881,7 @@ const KnowledgeBase = () => {
                                                         )}
                                                     </ul>
 
-                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu Şubedeki Kaynaklar</h5>
+                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu {labels.branchSingle || 'Şube'}'deki Kaynaklar</h5>
                                                     <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
                                                         {resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id))).length > 0 ? (
                                                             resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id))).map(r => (
@@ -901,11 +901,11 @@ const KnowledgeBase = () => {
 
                         <div>
                             <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
-                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingBranch ? 'Şubeyi Düzenle' : 'Yeni Şube Ekle'}</h4>
+                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingBranch ? `${labels.branchSingle || 'Şube'} Düzenle` : (labels.newBranch || 'Yeni Şube Ekle')}</h4>
                                 
                                 <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Şube Adı *</label>
-                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder="Örn: Çiğli Hastane" />
+                                    <label>{labels.branchSingle || 'Şube'} Adı *</label>
+                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder={labels.branchPlaceholder || 'Örn: Merkez Şube'} />
                                 </div>
                                 <div className="form-group" style={{ marginBottom: '12px' }}>
                                     <label>Adres</label>

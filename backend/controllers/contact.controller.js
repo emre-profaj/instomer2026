@@ -1847,7 +1847,7 @@ export const getContactById = async (req, res) => {
 export const updateContact = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city, marketingOptOut, marketingOptOutAt, consentChannels, leadSource, leadSourceDetail } = req.body;
+        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city, marketingOptOut, marketingOptOutAt, consentChannels, leadSource, leadSourceDetail, birthDate } = req.body;
 
         // Verify contact belongs to this workspace (either directly or via conversation)
         const existing = await prisma.contact.findFirst({
@@ -1887,6 +1887,7 @@ export const updateContact = async (req, res) => {
         if (language !== undefined) updateData.language = language;
         if (country !== undefined) updateData.country = country;
         if (city !== undefined) updateData.city = city;
+        if (birthDate !== undefined) updateData.birthDate = birthDate ? new Date(birthDate) : null;
         if (tags !== undefined) {
             updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
         }

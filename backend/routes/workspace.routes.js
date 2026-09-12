@@ -35,7 +35,9 @@ import {
     getNetgsmConfig,
     updateNetgsmConfig,
     testNetgsmSms,
-    getNetgsmBalance
+    getNetgsmBalance,
+    getChannelPricing,
+    updateChannelPricing
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/roleAuth.js';
@@ -174,6 +176,10 @@ router.post('/:workspaceId/disao-crm/test', requireWorkspaceAccess, testDisaoCrm
 // ─── Admin: Evrensel taban seed ───────────────────────────────────
 router.post('/admin/seed-all', requireRole('admin'), seedAllWorkspaces);
 router.post('/:workspaceId/seed-defaults', requireWorkspaceAccess, seedSingleWorkspace);
+
+// ─── Kanal Fiyatlandırma ──────────────────────────────────
+router.get('/:workspaceId/channel-pricing', requireWorkspaceAccess, getChannelPricing);
+router.put('/:workspaceId/channel-pricing', requireWorkspaceAccess, updateChannelPricing);
 
 // ─── NetGSM SMS ───────────────────────────────────────────────────
 router.get('/:workspaceId/netgsm', requireWorkspaceAccess, getNetgsmConfig);

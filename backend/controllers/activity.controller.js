@@ -241,12 +241,18 @@ export const createActivity = async (req, res) => {
         }
 
         // ── Akıllı intent algılama: zamanlama anahtar kelimesi varsa otomatik planlama ──
-        // NOT: Tamamlanmış arama notları (call notes) için intent parser ÇALIŞTIRILMAZ
-        // çünkü bunlar geçmişe dönük kayıtlardır, gelecek planları değil.
+        // Tamamlanmış arama notlarında da çalışır — "haftaya salı saat 9 da ara" gibi
+        // gelecek planları içerebilir.
         let autoActivity = null;
-        if (newActivity.description && resolvedStatus !== 'COMPLETED') {
+        if (newActivity.description) {
             try {
-                const intent = parseCommentIntent(newActivity.description);
+                // Workspace timezone'unu al (intent parser doğru saat dilimiyle çalışsın)
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { timezone: true }
+                });
+                const tz = ws?.timezone || 'Europe/Istanbul';
+                const intent = parseCommentIntent(newActivity.description, tz);
                 if (intent.hasIntent) {
                     let assignToUserId = null;
                     let assignToTeamId = teamId || null;
@@ -423,6 +429,15 @@ export const createActivity = async (req, res) => {
                 console.error('⚠️ [CreateActivity] Entry rules hatası:', err.message)
             );
         }
+
+        // Lead skorunu güncelle (aktivite eklendi → puan değişmiş olabilir)
+        if (contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(contactId).catch(err =>
+                    console.error('⚠️ [CreateActivity] Score update hatası:', err.message)
+                );
+            });
+        }
     } catch (error) {
         console.error('Create Activity Error:', error);
         res.status(500).json({ error: 'Etkinlik oluşturulurken bir hata oluştu.' });
@@ -467,6 +482,7 @@ export const getContactTimeline = async (req, res) => {
                     lastMessageAt: true,
                     createdAt: true,
                     aiTopic: true,
+                    caseId: true,
                     messages: {
                         include: {
                             sender: { select: { name: true, role: true, teamMemberships: { include: { team: true } } } }
@@ -484,7 +500,8 @@ export const getContactTimeline = async (req, res) => {
             internalNotes = await prisma.internalNote.findMany({
                 where: { conversation: { contactId } },
                 include: {
-                    user: { select: { name: true, role: true, teamMemberships: { include: { team: true } } } }
+                    user: { select: { name: true, role: true, teamMemberships: { include: { team: true } } } },
+                    conversation: { select: { caseId: true } }
                 },
                 orderBy: { createdAt: 'desc' }
             });
@@ -563,6 +580,7 @@ export const getContactTimeline = async (req, res) => {
                 assignedById: act.assignedById,
                 assignedByType: act.assignedByType,
                 assignedByName: act.creator?.name,
+                caseId: act.caseId || null,
                 raw: act
             });
         });
@@ -621,6 +639,7 @@ export const getContactTimeline = async (req, res) => {
                 totalMessages,
                 recentMessages,
                 conversationId: conv.id,
+                caseId: conv.caseId || null,
                 labelName: `${totalMessages} mesaj`,
                 raw: { id: conv.id, channel: conv.channel }
             });
@@ -636,10 +655,11 @@ export const getContactTimeline = async (req, res) => {
                 id: `inote_${note.id}`,
                 sourceType: 'ACTIVITY',
                 type: 'NOTE',
-                title: 'Not',
+                title: 'Dahili Not',
                 content: note.content,
                 date: note.createdAt,
                 labelName,
+                caseId: note.conversation?.caseId || null,
                 raw: note
             });
         });
@@ -1004,6 +1024,15 @@ export const completeActivity = async (req, res) => {
             } catch (autoErr) {
                 console.error('⚠️ [CompleteActivity] Call automation error:', autoErr.message);
             }
+        }
+
+        // Lead skorunu güncelle (aktivite tamamlandı → başarılı arama, ziyaret vb. puan etkiler)
+        if (existing.contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(existing.contactId).catch(err =>
+                    console.error('⚠️ [CompleteActivity] Score update hatası:', err.message)
+                );
+            });
         }
     } catch (error) {
         console.error('Complete Activity Error:', error);

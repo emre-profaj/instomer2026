@@ -603,9 +603,10 @@ const AdminDashboard = () => {
                                         marginTop: '8px', padding: '8px', background: isSelected ? '#ede9fe' : '#f8fafc',
                                         borderRadius: '6px', fontSize: '0.73rem', display: 'flex', flexDirection: 'column', gap: '3px'
                                     }}>
-                                        <div><strong>1. Kademe:</strong> {sec.categoriesTab}</div>
-                                        <div><strong>2. Kademe:</strong> {sec.productGroupsTab}</div>
-                                        <div><strong>3. Kademe:</strong> {sec.productsTab}</div>
+                                        <div><strong>Şubeler:</strong> {sec.branchesTab}</div>
+                                        <div><strong>Kategoriler:</strong> {sec.categoriesTab}</div>
+                                        <div><strong>Ürün Grubu:</strong> {sec.productGroupsTab}</div>
+                                        <div><strong>Ürün:</strong> {sec.productsTab}</div>
                                     </div>
                                 </div>
                             );

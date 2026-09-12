@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI, aiAPI, appointmentConfigAPI, marketingV2API } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
+import { activityAPI } from '../../services/activity.api';
 import * as XLSX from 'xlsx';
 import {
     User,
@@ -54,7 +55,9 @@ import {
     List,
     FileText,
     ShoppingCart,
-    Sparkles
+    Sparkles,
+    ChevronUp,
+    Globe
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -101,7 +104,9 @@ const Customers = () => {
     const location = useLocation();
     const { t } = useTranslation();
 
-    const [viewMode, setViewMode] = useState('list'); // 'list' | 'pipeline'
+    const [viewMode, setViewMode] = useState('list'); // 'list' | 'card' | 'pipeline'
+    const [expandedCards, setExpandedCards] = useState(new Set()); // card view: expanded contact ids
+    const [quickNotes, setQuickNotes] = useState({}); // card view: { contactId: noteText }
 
     // Filtre state'leri (sayfa yenilendiğinde sessionStorage'dan okunur) ---
     const FILTER_STORAGE_KEY = `customers_filters_${currentWorkspace?.id || 'default'}`;
@@ -1766,6 +1771,149 @@ const Customers = () => {
         return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     };
 
+    // ── Card View Helpers ──
+    const toggleCardExpanded = (contactId) => {
+        setExpandedCards(prev => {
+            const next = new Set(prev);
+            if (next.has(contactId)) next.delete(contactId);
+            else next.add(contactId);
+            return next;
+        });
+    };
+
+    const timeAgo = (dateString) => {
+        if (!dateString) return null;
+        const now = new Date();
+        const d = new Date(dateString);
+        const diffMs = now - d;
+        const diffMin = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMin / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffMin < 1) return 'Şimdi';
+        if (diffMin < 60) return `${diffMin}dk önce`;
+        if (diffHours < 24) return `${diffHours}sa önce`;
+        if (diffDays === 0) return 'Bugün';
+        if (diffDays === 1) return 'Dün';
+        if (diffDays < 7) return `${diffDays}g önce`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}hf önce`;
+        return `${Math.floor(diffDays / 30)}ay önce`;
+    };
+
+    const daysSince = (dateString) => {
+        if (!dateString) return null;
+        const now = new Date();
+        const d = new Date(dateString);
+        return Math.floor((now - d) / 86400000);
+    };
+
+    const handleQuickNoteSave = async (contactId) => {
+        const text = quickNotes[contactId];
+        if (!text || !text.trim()) return;
+        const target = quickNotes[`${contactId}_target`] || 'contact';
+        const payload = {
+            type: 'NOTE',
+            description: text.trim(),
+            workspaceId: currentWorkspace?.id
+        };
+        if (target !== 'contact') {
+            payload.caseId = target;
+        }
+        try {
+            await activityAPI.createActivity(contactId, payload);
+            setQuickNotes(prev => ({ ...prev, [contactId]: '', [`${contactId}_target`]: 'contact' }));
+            loadContacts();
+        } catch (err) {
+            console.error('Not kaydedilemedi:', err);
+        }
+    };
+
+    const getCardSourceInfo = (contact) => {
+        if (contact.facebookId) return { icon: '📘', label: 'Facebook', color: '#1877f2' };
+        if (contact.instagramId) return { icon: '📸', label: 'Instagram', color: '#e1306c' };
+        if (contact.whatsappId) return { icon: '💬', label: 'WhatsApp', color: '#25d366' };
+        if (contact.source === 'WEBFORM' || contact.source === 'WEB') return { icon: '🌐', label: 'Web', color: '#64748b' };
+        if (contact.source === 'MANUAL') return { icon: '✍️', label: 'Manuel', color: '#94a3b8' };
+        return { icon: '📥', label: contact.source || '—', color: '#94a3b8' };
+    };
+
+    const getContactAllCases = (contact) => {
+        const cases = contact.cases || [];
+        const sorted = [...cases].sort((a, b) => {
+            if (a.status === 'ACTIVE' && b.status !== 'ACTIVE') return -1;
+            if (b.status === 'ACTIVE' && a.status !== 'ACTIVE') return 1;
+            return new Date(b.updatedAt) - new Date(a.updatedAt);
+        });
+        return sorted;
+    };
+
+    const getPrimaryCase = (contact) => {
+        const cases = getContactAllCases(contact);
+        return cases[0] || null;
+    };
+
+    const getCaseTouchInfo = (contact, caseObj) => {
+        if (!caseObj) return { text: 'Hiç dokunulmadı', color: '#dc2626', bg: '#fef2f2' };
+        const acts = (contact.activities || []).filter(a =>
+            (a.caseId === caseObj.id) || (!a.caseId)
+        );
+        const lastCall = acts.filter(a => a.type === 'CALL' || a.type === 'REMINDER').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        if (!lastCall) return { text: 'Hiç aranmadı', color: '#dc2626', bg: '#fef2f2' };
+        const days = daysSince(lastCall.createdAt);
+        if (days === 0) return { text: 'Bugün arandı', color: '#15803d', bg: '#f0fdf4' };
+        if (days === 1) return { text: 'Dün arandı', color: '#15803d', bg: '#f0fdf4' };
+        if (days <= 3) return { text: `${days}g önce arandı`, color: '#15803d', bg: '#f0fdf4' };
+        if (days <= 7) return { text: `${days}g önce arandı`, color: '#d97706', bg: '#fffbeb' };
+        return { text: `${days}g dokunulmadı`, color: '#dc2626', bg: '#fef2f2' };
+    };
+
+    const getCardAvatarColor = (contact) => {
+        const colors = [
+            'linear-gradient(135deg, #ef4444, #dc2626)',
+            'linear-gradient(135deg, #3b82f6, #2563eb)',
+            'linear-gradient(135deg, #10b981, #059669)',
+            'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+            'linear-gradient(135deg, #f97316, #ea580c)',
+            'linear-gradient(135deg, #ec4899, #db2777)',
+            'linear-gradient(135deg, #14b8a6, #0d9488)',
+        ];
+        const id = contact.id || '';
+        const hash = id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        return colors[hash % colors.length];
+    };
+
+    const getCardInitials = (contact) => {
+        const name = getDisplayName(contact);
+        const parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        return name.slice(0, 2).toUpperCase();
+    };
+
+    const getCaseStageInfo = (caseObj) => {
+        if (!caseObj) return null;
+        if (caseObj.status === 'WON') return { text: '✓ Kazanıldı', bg: '#d1fae5', color: '#065f46' };
+        if (caseObj.status === 'LOST') return { text: '✗ Kaybedildi', bg: '#fef2f2', color: '#dc2626' };
+        if (caseObj.status === 'CLOSED') return { text: 'Kapandı', bg: '#f1f5f9', color: '#64748b' };
+        const stageId = caseObj.funnelStageId;
+        if (!stageId) return { text: 'Belirsiz', bg: '#f1f5f9', color: '#64748b' };
+        let foundStage = null;
+        for (const f of availableFunnels) {
+            const s = (f.stages || []).find(st => (st.id || st.value) === stageId);
+            if (s) { foundStage = s; break; }
+        }
+        if (foundStage) return { text: foundStage.name, bg: (foundStage.color || '#6366f1') + '18', color: foundStage.color || '#6366f1' };
+        return { text: 'Aşama', bg: '#ede9fe', color: '#7c3aed' };
+    };
+
+    const getOverallTouchDays = (contact) => {
+        const lastMsg = contact.lastMessageAt ? daysSince(contact.lastMessageAt) : null;
+        const acts = contact.activities || [];
+        const lastCallAct = acts.filter(a => a.type === 'CALL' || a.type === 'REMINDER').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        const lastCallDays = lastCallAct ? daysSince(lastCallAct.createdAt) : null;
+        const minDays = [lastMsg, lastCallDays].filter(d => d !== null);
+        if (minDays.length === 0) return null;
+        return Math.min(...minDays);
+    };
+
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
     };
@@ -2508,35 +2656,248 @@ const Customers = () => {
                             >
                                 <Plus size={14} />
                             </button>
-                            <button
-                                className={`inbox-view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
-                                onClick={() => setViewMode(v => v === 'list' ? 'pipeline' : 'list')}
-                                title={viewMode === 'list' ? 'Pipeline Görünümüne Geç' : 'Liste Görünümüne Geç'}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '36px',
-                                    height: '36px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #cbd5e1',
-                                    background: viewMode === 'pipeline' ? '#eef2ff' : '#ffffff',
-                                    color: viewMode === 'pipeline' ? '#4f46e5' : '#64748b',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                    marginLeft: '8px'
-                                }}
-                            >
-                                {viewMode === 'list'
-                                    ? <KanbanSquare size={16} />
-                                    : <List size={16} />}
-                            </button>
+                            <div className="cust-view-switch">
+                                {[
+                                    { key: 'list', icon: <List size={14} />, label: 'Tablo' },
+                                    { key: 'card', icon: <KanbanSquare size={14} />, label: 'Kart' },
+                                    { key: 'pipeline', icon: <BarChart3 size={14} />, label: 'Pipeline' }
+                                ].map(v => (
+                                    <button
+                                        key={v.key}
+                                        className={`cust-view-switch-btn ${viewMode === v.key ? 'active' : ''}`}
+                                        onClick={() => setViewMode(v.key)}
+                                        title={v.label}
+                                    >
+                                        {v.icon}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
                     {viewMode === 'pipeline' && (
                         <div style={{ flex: 1, height: 'calc(100vh - 80px)', overflow: 'hidden' }}>
                             <PipelineView />
+                        </div>
+                    )}
+
+                    {/* ═══ CARD VIEW ═══ */}
+                    {viewMode === 'card' && (
+                        <div className="cust-card-list-wrapper">
+                            {loading ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+                                    <Loader size={24} className="spin" style={{ color: '#94a3b8' }} />
+                                </div>
+                            ) : filteredContacts.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>Kişi bulunamadı</div>
+                            ) : (
+                                <div className="cust-card-list">
+                                    {filteredContacts.map(contact => {
+                                        const isExpanded = expandedCards.has(contact.id);
+                                        const allCases = getContactAllCases(contact);
+                                        const primaryCase = getPrimaryCase(contact);
+                                        const caseCount = allCases.length;
+                                        const stageInfo = getCaseStageInfo(primaryCase);
+                                        const touchInfo = getCaseTouchInfo(contact, primaryCase);
+                                        const source = getCardSourceInfo(contact);
+                                        const phone = getContactPrimaryPhone(contact);
+                                        const email = contact.email || contact.emails?.[0] || null;
+                                        const company = contact.company || contact.companyName || null;
+                                        const displayName = getDisplayName(contact);
+                                        const touchDays = getOverallTouchDays(contact);
+                                        const lastMsgAgo = timeAgo(contact.lastMessageAt);
+                                        const createdShort = contact.createdAt
+                                            ? new Date(contact.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+                                            : null;
+
+                                        return (
+                                            <div
+                                                key={contact.id}
+                                                className={`cust-card ${isExpanded ? 'cust-card--open' : ''} ${selectedContacts.includes(contact.id) ? 'cust-card--selected' : ''}`}
+                                            >
+                                                {/* ── COLLAPSED PART ── */}
+                                                <div className="cust-card__collapsed" onClick={() => toggleCardExpanded(contact.id)}>
+                                                    {/* Row 1: Identity */}
+                                                    <div className="cust-card__id-row">
+                                                        <div className="cust-card__avatar" style={{ background: getCardAvatarColor(contact) }}>
+                                                            {getCardInitials(contact)}
+                                                            <span className="cust-card__src-dot" style={{ background: source.color }} title={source.label}>
+                                                                {source.icon}
+                                                            </span>
+                                                        </div>
+                                                        <div className="cust-card__id-info">
+                                                            <div className="cust-card__name">{displayName}</div>
+                                                            <div className="cust-card__details">
+                                                                {phone && <span className="cust-card__phone">{phone}</span>}
+                                                                {email && <><span className="cust-card__sep">·</span><span className="cust-card__email">{email}</span></>}
+                                                                {company && <><span className="cust-card__sep">·</span><span className="cust-card__company">🏢 {company}</span></>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="cust-card__id-right">
+                                                            {caseCount > 1 && <span className="cust-card__case-badge">{caseCount} Case</span>}
+                                                            <span className={`cust-card__expand-icon ${isExpanded ? 'cust-card__expand-icon--open' : ''}`}>
+                                                                <ChevronDown size={14} />
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Row 2: Primary Case */}
+                                                    {primaryCase ? (
+                                                        <div className="cust-card__primary-case">
+                                                            <span className="cust-card__pc-title">{primaryCase.title || 'Case'}</span>
+                                                            {stageInfo && (
+                                                                <span className="cust-card__pc-stage" style={{ background: stageInfo.bg, color: stageInfo.color }}>{stageInfo.text}</span>
+                                                            )}
+                                                            <span className="cust-card__pc-score" style={{
+                                                                background: (primaryCase.leadScore || 0) >= 30 ? '#ef4444' : (primaryCase.leadScore || 0) >= 20 ? '#f59e0b' : (primaryCase.leadScore || 0) >= 10 ? '#10b981' : '#94a3b8'
+                                                            }}>{primaryCase.leadScore || 0}</span>
+                                                            <span className="cust-card__pc-touch" style={{ color: touchInfo.color }}>
+                                                                <span className="cust-card__dot" style={{ background: touchInfo.color }}></span>
+                                                                {touchInfo.text}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="cust-card__no-case">📋 Case yok</div>
+                                                    )}
+
+                                                    {/* Row 2.5: Last Note — visible without expanding */}
+                                                    {contact.lastNote && (
+                                                        <div className="cust-card__top-note">
+                                                            <span className="cust-card__top-note-icon">📌</span>
+                                                            <span className="cust-card__top-note-text">{contact.lastNote}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Row 3: Time + Quick buttons */}
+                                                    <div className="cust-card__footer">
+                                                        <div className="cust-card__time-chips">
+                                                            {createdShort && <span className="cust-card__tc">📥 <strong>{createdShort}</strong></span>}
+                                                            {lastMsgAgo && (
+                                                                <span className={`cust-card__tc ${(daysSince(contact.lastMessageAt) || 999) > 7 ? 'cust-card__tc--danger' : (daysSince(contact.lastMessageAt) || 999) > 3 ? 'cust-card__tc--warn' : 'cust-card__tc--ok'}`}>
+                                                                    💬 <strong>{lastMsgAgo}</strong>
+                                                                </span>
+                                                            )}
+                                                            {!lastMsgAgo && <span className="cust-card__tc cust-card__tc--danger">💬 <strong>Hiç yazılmadı</strong></span>}
+                                                            {touchDays !== null ? (
+                                                                <span className={`cust-card__tc ${touchDays > 7 ? 'cust-card__tc--danger' : touchDays > 3 ? 'cust-card__tc--warn' : 'cust-card__tc--ok'}`}>
+                                                                    ⏱️ <strong>{touchDays === 0 ? 'Bugün' : touchDays === 1 ? 'Dün' : `${touchDays}g dokunulmadı`}</strong>
+                                                                </span>
+                                                            ) : (
+                                                                <span className="cust-card__tc cust-card__tc--danger">🚨 <strong>Hiç dokunulmadı</strong></span>
+                                                            )}
+                                                        </div>
+                                                        <div className="cust-card__quick-btns" onClick={e => e.stopPropagation()}>
+                                                            <button className="cust-card__qb" title="AI Ara" onClick={() => { if (phone) { /* TODO: AI call */ } }}>🤖</button>
+                                                            <button className="cust-card__qb" title="Planla">📅</button>
+                                                            <button className="cust-card__qb" title="Not" onClick={() => { setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: 'contact' })); toggleCardExpanded(contact.id); }}>📝</button>
+                                                            <button className="cust-card__qb cust-card__qb--primary" title="WhatsApp" onClick={() => { if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank'); }}>💬</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* ── EXPANDED PART ── */}
+                                                {isExpanded && (
+                                                    <div className="cust-card__expanded" onClick={e => e.stopPropagation()}>
+                                                        {/* All Cases */}
+                                                        {caseCount > 0 && (
+                                                            <div className="cust-card__exp-cases">
+                                                                <div className="cust-card__exp-label">Tüm Case'ler</div>
+                                                                {allCases.map(c => {
+                                                                    const cStage = getCaseStageInfo(c);
+                                                                    const cTouch = getCaseTouchInfo(contact, c);
+                                                                    const isWon = c.status === 'WON';
+                                                                    const isLost = c.status === 'LOST';
+                                                                    const isClosed = c.status === 'CLOSED';
+                                                                    const caseAgent = c.assignedTo?.name || c.assignedToName || members.find(m => m.userId === c.assignedToId)?.user?.name || null;
+                                                                    const caseDateStr = c.createdAt ? new Date(c.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) : '';
+                                                                    return (
+                                                                        <div key={c.id} className={`cust-card__exp-case ${c.status === 'ACTIVE' ? 'cust-card__exp-case--active' : ''} ${isWon ? 'cust-card__exp-case--won' : ''} ${isLost || isClosed ? 'cust-card__exp-case--lost' : ''}`}>
+                                                                            <span className="cust-card__ec-dot" style={{ background: c.status === 'ACTIVE' ? '#10b981' : isWon ? '#f59e0b' : isLost ? '#ef4444' : '#94a3b8' }}></span>
+                                                                            <div className="cust-card__ec-body">
+                                                                                <div className="cust-card__ec-title">{c.title || `Case #${c.caseNumber || ''}`}</div>
+                                                                                <div className="cust-card__ec-sub">
+                                                                                    {c.caseNumber && <span>CSE-{c.caseNumber}</span>}
+                                                                                    {caseAgent && <span>👤 {caseAgent}</span>}
+                                                                                    {caseDateStr && <span>📅 {caseDateStr}'den beri</span>}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="cust-card__ec-right">
+                                                                                {c.status === 'ACTIVE' && (
+                                                                                    <span className="cust-card__ec-touch" style={{ background: cTouch.bg, color: cTouch.color }}>{cTouch.text}</span>
+                                                                                )}
+                                                                                {cStage && <span className="cust-card__ec-stage" style={{ background: cStage.bg, color: cStage.color }}>{cStage.text}</span>}
+                                                                                <span className="cust-card__ec-score" style={{
+                                                                                    background: (c.leadScore || 0) >= 30 ? '#ef4444' : (c.leadScore || 0) >= 20 ? '#f59e0b' : (c.leadScore || 0) >= 10 ? '#10b981' : '#94a3b8'
+                                                                                }}>{c.leadScore || 0}</span>
+                                                                                <button className="cust-card__ec-note-btn" title="Bu case'e not ekle" onClick={() => setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id }))}>📝</button>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Contact Details */}
+                                                        <div className="cust-card__exp-contact">
+                                                            <div className="cust-card__exp-label">İletişim Bilgileri</div>
+                                                            <div className="cust-card__exp-fields">
+                                                                {phone && <div className="cust-card__ef"><span className="cust-card__ef-label">📱 Tel:</span><span className="cust-card__ef-value">{phone}</span></div>}
+                                                                {email && <div className="cust-card__ef"><span className="cust-card__ef-label">📧 Mail:</span><span className="cust-card__ef-value">{email}</span></div>}
+                                                                {company && <div className="cust-card__ef"><span className="cust-card__ef-label">🏢 Firma:</span><span className="cust-card__ef-value">{company}</span></div>}
+                                                                {contact.city && <div className="cust-card__ef"><span className="cust-card__ef-label">📍 Şehir:</span><span className="cust-card__ef-value">{contact.city}</span></div>}
+                                                                <div className="cust-card__ef"><span className="cust-card__ef-label">🌐 Kaynak:</span><span className="cust-card__ef-value">{source.icon} {source.label}</span></div>
+                                                                {contact.createdAt && <div className="cust-card__ef"><span className="cust-card__ef-label">🗓️ Geldi:</span><span className="cust-card__ef-value">{new Date(contact.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Quick Note */}
+                                                        <div className="cust-card__exp-note">
+                                                            {(() => {
+                                                                const noteTarget = quickNotes[`${contact.id}_target`] || 'contact';
+                                                                const targetCase = noteTarget !== 'contact' ? allCases.find(c => c.id === noteTarget) : null;
+                                                                const targetLabel = targetCase ? `📋 ${targetCase.title || `Case #${targetCase.caseNumber || ''}`}` : '👤 Kişiye';
+                                                                return (
+                                                                    <>
+                                                                        <div className="cust-card__note-target-row">
+                                                                            <span className="cust-card__exp-label" style={{ marginBottom: 0 }}>Not Ekle</span>
+                                                                            <span className={`cust-card__note-tag ${targetCase ? 'cust-card__note-tag--case' : ''}`} onClick={() => { if (targetCase) setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: 'contact' })); }}>
+                                                                                {targetLabel}
+                                                                                {targetCase && <span style={{ marginLeft: 4, cursor: 'pointer' }}>✕</span>}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="cust-card__note-input-row">
+                                                                            <input
+                                                                                type="text"
+                                                                                className="cust-card__note-input"
+                                                                                placeholder={targetCase ? `${targetCase.title || 'Case'} için not...` : 'Kişiye not ekle... (ör: yarın ara, fiyat sordu)'}
+                                                                                value={quickNotes[contact.id] || ''}
+                                                                                onChange={e => setQuickNotes(prev => ({ ...prev, [contact.id]: e.target.value }))}
+                                                                                onKeyDown={e => { if (e.key === 'Enter') handleQuickNoteSave(contact.id); }}
+                                                                            />
+                                                                            <button className="cust-card__note-save" onClick={() => handleQuickNoteSave(contact.id)}>
+                                                                                <Save size={13} /> Kaydet
+                                                                            </button>
+                                                                        </div>
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+
+                                                        {/* More Actions */}
+                                                        <div className="cust-card__exp-actions">
+                                                            <button className="cust-card__ea cust-card__ea--green" onClick={() => { /* TODO: AI call */ }}>🤖 AI Ara</button>
+                                                            <button className="cust-card__ea" onClick={() => { /* TODO: schedule */ }}>📅 Arama Planla</button>
+                                                            <button className="cust-card__ea cust-card__ea--wa" onClick={() => { if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank'); }}>💬 WhatsApp Yaz</button>
+                                                            {email && <button className="cust-card__ea cust-card__ea--blue" onClick={() => window.open(`mailto:${email}`)}>📧 E-posta Gönder</button>}
+                                                            <button className="cust-card__ea" onClick={() => navigate(`/contacts/${contact.id}`)}>👁️ Detay Gör</button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
                     

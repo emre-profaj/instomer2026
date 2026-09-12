@@ -1020,6 +1020,68 @@ export const seedSingleWorkspace = async (req, res) => {
     }
 };
 
+// ─── Kanal Fiyatlandırma ────────────────────────────────────
+const DEFAULT_CHANNEL_PRICING = {
+    WHATSAPP: { baseCost: 0.0415, multiplier: 1, label: 'WhatsApp' },
+    SMS:      { baseCost: 0.01,   multiplier: 1, label: 'SMS' },
+    EMAIL:    { baseCost: 0.003,  multiplier: 1, label: 'E-posta' },
+    AI_CALL:  { baseCost: 0.25,   multiplier: 1, label: 'AI Sesli Arama' },
+};
+
+export const getChannelPricing = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { channelPricing: true }
+        });
+        const pricing = workspace?.channelPricing || DEFAULT_CHANNEL_PRICING;
+        // Merge defaults for any missing channels
+        const merged = { ...DEFAULT_CHANNEL_PRICING };
+        Object.keys(pricing).forEach(ch => {
+            merged[ch] = { ...(merged[ch] || {}), ...pricing[ch] };
+        });
+        res.json({ pricing: merged });
+    } catch (error) {
+        res.status(500).json({ error: 'Fiyatlandırma alınamadı', details: error.message });
+    }
+};
+
+export const updateChannelPricing = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { pricing } = req.body;
+
+        if (!pricing || typeof pricing !== 'object') {
+            return res.status(400).json({ error: 'pricing objesi gerekli' });
+        }
+
+        // Validate & sanitize
+        const sanitized = {};
+        const validChannels = ['WHATSAPP', 'SMS', 'EMAIL', 'AI_CALL'];
+        for (const ch of validChannels) {
+            if (pricing[ch]) {
+                sanitized[ch] = {
+                    baseCost: Math.max(0, parseFloat(pricing[ch].baseCost) || DEFAULT_CHANNEL_PRICING[ch].baseCost),
+                    multiplier: Math.max(0, parseFloat(pricing[ch].multiplier) || 1),
+                    label: pricing[ch].label || DEFAULT_CHANNEL_PRICING[ch].label,
+                };
+            } else {
+                sanitized[ch] = { ...DEFAULT_CHANNEL_PRICING[ch] };
+            }
+        }
+
+        await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { channelPricing: sanitized }
+        });
+
+        res.json({ pricing: sanitized, message: 'Fiyatlandırma güncellendi' });
+    } catch (error) {
+        res.status(500).json({ error: 'Fiyatlandırma güncellenemedi', details: error.message });
+    }
+};
+
 // ─── NetGSM SMS Config ────────────────────────────────────
 export const getNetgsmConfig = async (req, res) => {
     try {

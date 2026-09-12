@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI, productAPI } from '../../services/api';
@@ -71,6 +71,46 @@ const Quotes = () => {
     const [datePreset, setDatePreset] = useState('THIS_MONTH');
     const [customDateFrom, setCustomDateFrom] = useState('');
     const [customDateTo, setCustomDateTo] = useState('');
+
+    // Resizable panel width (default 450px, saved in localStorage)
+    const [panelWidth, setPanelWidth] = useState(() => {
+        const saved = localStorage.getItem('sales-panel-width');
+        return saved ? Math.max(360, Math.min(650, parseInt(saved, 10))) : 450;
+    });
+    const [showRightSidebar, setShowRightSidebar] = useState(true);
+    const layoutRef = useRef(null);
+    const isDraggingRef = useRef(false);
+
+    const handleMouseDown = (e) => {
+        e.preventDefault();
+        isDraggingRef.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const handleMouseMove = (moveEvent) => {
+            if (!isDraggingRef.current) return;
+            const containerLeft = layoutRef.current?.getBoundingClientRect().left || 0;
+            const newWidth = Math.max(360, Math.min(650, moveEvent.clientX - containerLeft));
+            setPanelWidth(newWidth);
+        };
+
+        const handleMouseUp = () => {
+            if (isDraggingRef.current) {
+                isDraggingRef.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+                setPanelWidth((curr) => {
+                    localStorage.setItem('sales-panel-width', curr);
+                    return curr;
+                });
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
 
     // Form state
     const [formData, setFormData] = useState({
@@ -350,9 +390,9 @@ const Quotes = () => {
     } : null;
 
     return (
-        <div className="sales-inbox-layout">
+        <div className="sales-inbox-layout" ref={layoutRef}>
             {/* ── LEFT PANEL: Filters + Quote List ── */}
-            <div className="sales-list-panel">
+            <div className="sales-list-panel" style={{ width: `${panelWidth}px` }}>
                 {/* Panel Header */}
                 <div className="sales-list-panel-header">
                     <div className="sales-list-panel-title">
@@ -371,7 +411,7 @@ const Quotes = () => {
                         <Search size={16} />
                         <input
                             type="text"
-                            placeholder="Teklif ara..."
+                            placeholder="Teklif, müşteri veya protokol ara..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -469,31 +509,45 @@ const Quotes = () => {
                         filteredDeals.map(deal => (
                             <div
                                 key={deal.id}
-                                className={`sales-list-card ${selectedDeal?.id === deal.id ? 'selected' : ''} ${deal.status.toLowerCase()}`}
+                                className={`sales-list-card ${selectedDeal?.id === deal.id ? 'selected' : ''} ${(deal.status || '').toLowerCase()}`}
                                 onClick={() => setSelectedDeal(deal)}
                             >
                                 <div className="sales-list-card-top">
                                     <span className="sales-list-card-number">{deal.quoteNumber}</span>
-                                    <span className={`sales-list-card-badge ${deal.status.toLowerCase()}`}>
+                                    <span className={`sales-list-card-badge ${(deal.status || '').toLowerCase()}`}>
                                         {deal.status === 'OPEN' ? 'Açık' : deal.status === 'WON' ? 'Tamamlandı' : 'İptal'}
                                     </span>
                                 </div>
-                                <div className="sales-list-card-title">{deal.title}</div>
-                                <div className="sales-list-card-customer">{deal.contact?.name || deal.contact?.fullName}</div>
-                                <div className="sales-list-card-bottom">
-                                    <span className="sales-list-card-amount">{formatCurrency(deal.amount, deal.currency)}</span>
-                                    <span className="sales-list-card-date">{new Date(deal.createdAt).toLocaleDateString('tr-TR')}</span>
-                                </div>
-                                {deal.assignedTo && (
-                                    <div className="sales-list-card-agent">
-                                        <User size={11} /> {deal.assignedTo.name}
+                                {deal.protocolNo && (
+                                    <div className="sales-list-card-protocol">
+                                        📁 Protokol: {deal.protocolNo}
                                     </div>
                                 )}
+                                <div className="sales-list-card-title">{deal.title}</div>
+                                <div className="sales-list-card-customer">👤 {deal.contact?.name || deal.contact?.fullName}</div>
+                                <div className="sales-list-card-bottom">
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <span className="sales-list-card-amount">{formatCurrency(deal.amount, deal.currency)}</span>
+                                        {deal.assignedTo && (
+                                            <span className="sales-list-card-agent">
+                                                <User size={11} /> {deal.assignedTo.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className="sales-list-card-date">{new Date(deal.createdAt).toLocaleDateString('tr-TR')}</span>
+                                </div>
                             </div>
                         ))
                     )}
                 </div>
             </div>
+
+            {/* Sürüklenebilir Kenarlık */}
+            <div
+                className="sales-resizer"
+                onMouseDown={handleMouseDown}
+                title="Genişliği ayarlamak için sürükleyin"
+            />
 
             {/* ── MIDDLE PANEL: Detail ── */}
             <div className="sales-detail-panel">
@@ -507,6 +561,16 @@ const Quotes = () => {
                                     <h2>{selectedDeal.title}</h2>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <button
+                                        type="button"
+                                        className="btn-outline btn-sm"
+                                        style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        onClick={() => setShowRightSidebar(!showRightSidebar)}
+                                        title={showRightSidebar ? 'Kişi Panelini Gizle' : 'Kişi Panelini Göster'}
+                                    >
+                                        <User size={13} />
+                                        {showRightSidebar ? 'Kişiyi Gizle ❯' : '❮ Kişiyi Göster'}
+                                    </button>
                                     <span className={`deal-status ${selectedDeal.status.toLowerCase()}`}>
                                         {selectedDeal.status === 'OPEN' ? 'Açık' : selectedDeal.status === 'WON' ? 'Kazanıldı' : 'Kaybedildi'}
                                     </span>
@@ -630,13 +694,13 @@ const Quotes = () => {
             </div>
 
             {/* ── RIGHT PANEL: ContactSidebar ── */}
-            {selectedDeal && sidebarProfile && (
+            {showRightSidebar && selectedDeal && sidebarProfile && (
                 <div className="sales-sidebar-panel">
                     <ContactSidebar
                         externalProfile={sidebarProfile}
                         isOpen={true}
                         readOnly={true}
-                        onClose={() => setSelectedDeal(null)}
+                        onClose={() => setShowRightSidebar(false)}
                     />
                 </div>
             )}

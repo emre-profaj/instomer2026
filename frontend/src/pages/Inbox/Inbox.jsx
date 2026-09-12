@@ -1148,6 +1148,22 @@ const Inbox = () => {
         return () => window.removeEventListener('case_title_updated', handler);
     }, []);
 
+    // Sidebar'dan eklenen dahili notu anında mesaj akışına ekle
+    useEffect(() => {
+        const handleInternalNoteAdded = (e) => {
+            const { conversationId: convId, note } = e.detail || {};
+            if (!convId || !note) return;
+            if (selectedItem?.id === convId) {
+                setMessages(prev => {
+                    if (prev.some(m => m.id && note.id && m.id === note.id)) return prev;
+                    return [...prev, note];
+                });
+            }
+        };
+        window.addEventListener('internal_note_added', handleInternalNoteAdded);
+        return () => window.removeEventListener('internal_note_added', handleInternalNoteAdded);
+    }, [selectedItem?.id]);
+
     // Case updated from sidebar — sync status/assignment/funnel to conversation header
     useEffect(() => {
         const handleCaseUpdated = (e) => {
@@ -2861,6 +2877,7 @@ const Inbox = () => {
                     isFromContact: false
                 };
                 setMessages([...messages, newNote]);
+                window.dispatchEvent(new CustomEvent('refresh_timeline'));
 
                 // 🤖 Otomatik aksiyonlar varsa bildir
                 const aa = response.data.autoActivity;

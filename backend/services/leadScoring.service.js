@@ -180,6 +180,38 @@ export async function calculateLeadScore(contactId) {
       breakdown.successfulCalls = callScore;
     }
 
+    // Başarısız / açılmayan aramalar → ilk 2 normal, 3.'den sonra puan düşür
+    const failedCalls = contact.activities.filter(a => a.type === 'CALL' && a.callSuccessful === false);
+    if (failedCalls.length > 2) {
+      const failPenalty = Math.min((failedCalls.length - 2) * 5, 20);
+      score -= failPenalty;
+      breakdown.failedCalls = -failPenalty;
+    }
+
+    // Ziyaret yapıldı → güçlü niyet sinyali
+    const visits = contact.activities.filter(a => a.type === 'VISIT' && a.status === 'COMPLETED');
+    if (visits.length > 0) {
+      const visitScore = Math.min(visits.length * 15, 25);
+      score += visitScore;
+      breakdown.completedVisits = visitScore;
+    }
+
+    // Toplantı yapıldı
+    const meetings = contact.activities.filter(a => a.type === 'MEETING' && a.status === 'COMPLETED');
+    if (meetings.length > 0) {
+      const meetingScore = Math.min(meetings.length * 12, 20);
+      score += meetingScore;
+      breakdown.completedMeetings = meetingScore;
+    }
+
+    // Tamamlanmış görevler (takip yapıldığını gösterir)
+    const completedTasks = contact.activities.filter(a => a.type === 'TASK' && a.status === 'COMPLETED');
+    if (completedTasks.length > 0) {
+      const taskScore = Math.min(completedTasks.length * 3, 9);
+      score += taskScore;
+      breakdown.completedTasks = taskScore;
+    }
+
     const proposals = contact.activities.filter(a => a.type === 'PROPOSAL');
     if (proposals.length > 0) {
       score += 10;
@@ -385,6 +417,38 @@ export async function calculateCaseScore(caseId) {
       const callScore = Math.min(completedCalls.length * 5, 15);
       score += callScore;
       breakdown.successfulCalls = callScore;
+    }
+
+    // Başarısız / açılmayan aramalar → ilk 2 normal, 3.'den sonra puan düşür
+    const failedCalls = caseData.activities.filter(a => a.type === 'CALL' && a.callSuccessful === false);
+    if (failedCalls.length > 2) {
+      const failPenalty = Math.min((failedCalls.length - 2) * 5, 20);
+      score -= failPenalty;
+      breakdown.failedCalls = -failPenalty;
+    }
+
+    // Ziyaret yapıldı
+    const visits = caseData.activities.filter(a => a.type === 'VISIT' && a.status === 'COMPLETED');
+    if (visits.length > 0) {
+      const visitScore = Math.min(visits.length * 15, 25);
+      score += visitScore;
+      breakdown.completedVisits = visitScore;
+    }
+
+    // Toplantı yapıldı
+    const meetings = caseData.activities.filter(a => a.type === 'MEETING' && a.status === 'COMPLETED');
+    if (meetings.length > 0) {
+      const meetingScore = Math.min(meetings.length * 12, 20);
+      score += meetingScore;
+      breakdown.completedMeetings = meetingScore;
+    }
+
+    // Tamamlanmış görevler
+    const completedTasks = caseData.activities.filter(a => a.type === 'TASK' && a.status === 'COMPLETED');
+    if (completedTasks.length > 0) {
+      const taskScore = Math.min(completedTasks.length * 3, 9);
+      score += taskScore;
+      breakdown.completedTasks = taskScore;
     }
 
     const proposals = caseData.activities.filter(a => a.type === 'PROPOSAL');

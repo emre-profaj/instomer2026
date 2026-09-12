@@ -97,16 +97,11 @@ function CampaignFormModal({ initial, onSave, onClose }) {
 
 function CampaignsTab({ wsId, onGoToGroups }) {
     const [campaigns, setCampaigns] = useState([]);
-    const [stats, setStats] = useState({ total: 0, active: 0, sent: 0, delivered: 0, read: 0 });
+    const [editItem, setEditItem] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
-    const [syncingPast, setSyncingPast] = useState(false);
-    const [campaignTypeFilter, setCampaignTypeFilter] = useState('MARKETING'); // 'ALL' | 'MARKETING' | 'AUTOMATION'
-    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'DRAFT'
-    const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'custom'
-    const [customStartDate, setCustomStartDate] = useState('');
-    const [customEndDate, setCustomEndDate] = useState('');
+    const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'MANUAL' | 'AUTO'
     const [searchQuery, setSearchQuery] = useState('');
 
     const getCampaignChannels = (c) => {
@@ -123,12 +118,13 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         return Array.from(chs);
     };
 
+    const isAutoCampaign = (c) => c.isAutomation || c.campaignType === 'AUTO' || c.campaignType === 'DYNAMIC' || c.campaignType === 'TRIGGERED';
+
     const fetchCampaigns = useCallback(async () => {
         setLoading(true);
         try {
             const res = await api.get(`/marketing-v2/${wsId}/campaigns`);
             setCampaigns(res.data.campaigns || []);
-            setStats(res.data.stats || { total: 0, active: 0, sent: 0, delivered: 0, read: 0 });
         } catch (e) {
             console.error(e);
             setCampaigns([]);
@@ -137,24 +133,6 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     }, [wsId]);
 
     useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
-
-    const handleSyncPastData = async () => {
-        if (!window.confirm('Sistemdeki tüm geçmiş Meta WhatsApp şablonları ve AI sesli aramaları taranarak "Genel & Geçmiş Gönderimler (Arşiv)" kampanyası altında toplanacaktır.\n\nDevam etmek istiyor musunuz?')) return;
-        setSyncingPast(true);
-        try {
-            const res = await api.post(`/marketing-v2/${wsId}/sync-past-data`);
-            if (res.data?.success) {
-                const s = res.data.synced;
-                const legacyMsg = s?.legacyUpdatedCount ? `• Reklam Grubu Eklenen Eski Kampanya: ${s.legacyUpdatedCount} adet\n` : '';
-                alert(`✅ Geçmiş Veriler Eşitlendi!\n\n${legacyMsg}• WhatsApp Şablonları: ${s?.whatsappCount || 0} adet (Teslim: ${s?.whatsappDelivered || 0}, Okunan: ${s?.whatsappRead || 0})\n• AI Sesli Aramaları: ${s?.retellCallsCount || 0} adet (Başarılı: ${s?.retellCallsSuccessful || 0})\n\nRaporlar ve üst istatistik çubuğu güncellendi.`);
-                fetchCampaigns();
-            }
-        } catch (err) {
-            alert('Senkronizasyon hatası: ' + (err.response?.data?.error || err.message));
-        } finally {
-            setSyncingPast(false);
-        }
-    };
 
     const handleSave = async (data) => {
         try {
@@ -181,388 +159,261 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         }
     };
 
-    const activeDateRange = getDateRangeLogic(dateFilter, customStartDate, customEndDate);
-
     const filteredCampaigns = campaigns.filter(c => {
-        if (campaignTypeFilter === 'MARKETING' && c.isAutomation) return false;
-        if (campaignTypeFilter === 'AUTOMATION' && !c.isAutomation) return false;
-
-        // Durum Filtresi (Aktif / Pasif / Tamamlandı / Taslak)
-        if (statusFilter === 'ACTIVE') {
-            if (c.status !== 'ACTIVE' && c.status !== 'SENDING') return false;
-        } else if (statusFilter === 'PAUSED') {
-            if (c.status !== 'PAUSED' && c.status !== 'INACTIVE') return false;
-        } else if (statusFilter !== 'ALL' && c.status !== statusFilter) {
-            return false;
-        }
+        // Tip Filtresi: Manuel vs Otomatik
+        if (typeFilter === 'MANUAL' && isAutoCampaign(c)) return false;
+        if (typeFilter === 'AUTO' && !isAutoCampaign(c)) return false;
 
         // Arama Filtresi
         if (searchQuery.trim() && !c.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
-
-        // Tarih Filtresi
-        if (activeDateRange.startDate) {
-            const cStart = (c.startDate || c.createdAt || c.sentAt || '').split('T')[0];
-            const cEnd = (c.endDate || c.startDate || c.createdAt || c.sentAt || '').split('T')[0];
-            
-            if (activeDateRange.endDate) {
-                if (cStart > activeDateRange.endDate || (cEnd && cEnd < activeDateRange.startDate)) {
-                    return false;
-                }
-            } else {
-                if (cEnd < activeDateRange.startDate) return false;
-            }
-        }
         return true;
     });
 
-    const displayedStats = {
-        total: filteredCampaigns.length,
-        active: filteredCampaigns.filter(c => c.status === 'ACTIVE' || c.status === 'SENDING').length,
-        sent: filteredCampaigns.reduce((sum, c) => sum + (c.sentCount || 0), 0),
-        delivered: filteredCampaigns.reduce((sum, c) => sum + (c.deliveredCount || 0), 0),
-        read: filteredCampaigns.reduce((sum, c) => sum + (c.readCount || 0), 0)
+    const getStatusBadge = (c) => {
+        const s = c.status;
+        if (s === 'ACTIVE' || s === 'SENDING') return { label: '🟢 Aktif', bg: '#dcfce7', color: '#15803d' };
+        if (s === 'COMPLETED') return { label: 'Tamamlandı', bg: '#f1f5f9', color: '#64748b' };
+        if (s === 'PAUSED' || s === 'INACTIVE') return { label: 'Pasif', bg: '#f3f4f6', color: '#6b7280' };
+        if (s === 'DRAFT') return { label: 'Taslak', bg: '#fefce8', color: '#a16207' };
+        return { label: s || 'Taslak', bg: '#fefce8', color: '#a16207' };
     };
 
-    const hasActiveFilters = statusFilter !== 'ALL' || dateFilter !== 'all' || searchQuery.trim() !== '' || campaignTypeFilter !== 'MARKETING';
+    const getDateDisplay = (c) => {
+        if (isAutoCampaign(c)) {
+            const lastSent = c.lastSentAt || c.updatedAt;
+            return lastSent ? `Süresiz · Son: ${new Date(lastSent).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}` : 'Süresiz';
+        }
+        if (c.startDate) {
+            const start = new Date(c.startDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+            const end = c.endDate ? new Date(c.endDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+            return end ? `${start} — ${end}` : start;
+        }
+        if (c.createdAt) return new Date(c.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+        return '—';
+    };
 
-    const handleResetFilters = () => {
-        setStatusFilter('ALL');
-        setDateFilter('all');
-        setCustomStartDate('');
-        setCustomEndDate('');
-        setSearchQuery('');
-        setCampaignTypeFilter('MARKETING');
+    const getSentCount = (c) => c.isLegacy ? (c.sentCount || 0) : (c.stats?.sent || c.sentCount || 0);
+    const getDeliveredCount = (c) => c.isLegacy ? (c.deliveredCount || 0) : (c.stats?.delivered || c.deliveredCount || 0);
+    const getReadCount = (c) => c.isLegacy ? (c.readCount || 0) : (c.stats?.read || c.readCount || 0);
+
+    // Kanal bazlı birim fiyatlar — backend'den dinamik çekilir
+    const DEFAULT_PRICES = { WHATSAPP: 0.0415, SMS: 0.01, EMAIL: 0.003, AI_CALL: 0.25 };
+    const [channelPrices, setChannelPrices] = useState(DEFAULT_PRICES);
+
+    useEffect(() => {
+        if (!wsId) return;
+        import('../../services/api').then(({ workspaceAPI }) => {
+            workspaceAPI.getChannelPricing(wsId)
+                .then(res => {
+                    const p = res.data?.pricing;
+                    if (p) {
+                        setChannelPrices({
+                            WHATSAPP: (parseFloat(p.WHATSAPP?.baseCost) || 0) * (parseFloat(p.WHATSAPP?.multiplier) || 1),
+                            SMS: (parseFloat(p.SMS?.baseCost) || 0) * (parseFloat(p.SMS?.multiplier) || 1),
+                            EMAIL: (parseFloat(p.EMAIL?.baseCost) || 0) * (parseFloat(p.EMAIL?.multiplier) || 1),
+                            AI_CALL: (parseFloat(p.AI_CALL?.baseCost) || 0) * (parseFloat(p.AI_CALL?.multiplier) || 1),
+                        });
+                    }
+                })
+                .catch(() => {});
+        });
+    }, [wsId]);
+
+    const getCampaignCost = (c) => {
+        let total = 0;
+        if (c.groups && c.groups.length > 0) {
+            c.groups.forEach(g => {
+                const sent = g.sentCount || 0;
+                const ch = g.channel || 'WHATSAPP';
+                const price = channelPrices[ch] || 0;
+                total += sent * price;
+            });
+        } else {
+            // Legacy kampanyalar — grup yok, toplam sentCount × varsayılan kanal fiyatı
+            const sent = getSentCount(c);
+            const channels = getCampaignChannels(c);
+            if (channels.length > 0) {
+                const price = channelPrices[channels[0]] || channelPrices.WHATSAPP;
+                total = sent * price;
+            }
+        }
+        return total;
+    };
+
+    const CHANNEL_BADGE = {
+        WHATSAPP: { icon: <MessageSquare size={11} />, label: 'WhatsApp', bg: '#dcfce7', color: '#15803d' },
+        AI_CALL: { icon: <Phone size={11} />, label: 'AI Arama', bg: '#e0e7ff', color: '#3730a3' },
+        SMS: { icon: <Smartphone size={11} />, label: 'SMS', bg: '#f3e8ff', color: '#7e22ce' },
+        EMAIL: { icon: <Mail size={11} />, label: 'E-posta', bg: '#fef3c7', color: '#b45309' },
     };
 
     return (
-        <div className="mkt-analytics-wrap">
-            <div className="mkt-stats-row">
-                <StatBig icon={<Megaphone size={20}/>} label="Filtrelenen Kampanya" value={displayedStats.total} color="#2563eb" />
-                <StatBig icon={<Play size={20}/>} label="Aktif" value={displayedStats.active} color="#16a34a" />
-                <StatBig icon={<Send size={20}/>} label="Gönderilen / Arama" value={displayedStats.sent} color="#8b5cf6" />
-                <StatBig icon={<CheckCircle size={20}/>} label="Teslim / Okunan" value={`${displayedStats.delivered} / ${displayedStats.read}`} color="#f59e0b" />
+        <div style={{ padding: '24px 28px' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>Kampanyalar</h2>
+                <button
+                    className="mkt-btn-primary"
+                    onClick={() => setShowWizard(true)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                    <Plus size={15} />
+                    <span>Yeni Kampanya</span>
+                </button>
             </div>
-            
-            <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {/* Pazarlama vs Otomasyon sekmeleri */}
-                    <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 10 }}>
-                        <button
-                            className={`mkt-filter-tab ${campaignTypeFilter === 'MARKETING' ? 'active' : ''}`}
-                            onClick={() => setCampaignTypeFilter('MARKETING')}
-                            style={{ borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}
-                        >
-                            📢 Pazarlama ({campaigns.filter(c => !c.isAutomation).length})
-                        </button>
-                        <button
-                            className={`mkt-filter-tab ${campaignTypeFilter === 'AUTOMATION' ? 'active' : ''}`}
-                            onClick={() => setCampaignTypeFilter('AUTOMATION')}
-                            style={{ borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}
-                        >
-                            🤖 Otomasyon Logları ({campaigns.filter(c => c.isAutomation).length})
-                        </button>
-                        <button
-                            className={`mkt-filter-tab ${campaignTypeFilter === 'ALL' ? 'active' : ''}`}
-                            onClick={() => setCampaignTypeFilter('ALL')}
-                            style={{ borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 600 }}
-                        >
-                            Tümü ({campaigns.length})
-                        </button>
-                    </div>
 
-                    {/* Durum Filtresi (Aktif / Pasif / Tamamlandı / Taslak) */}
-                    <select
-                        className="mkt-filter-select"
-                        value={statusFilter}
-                        onChange={e => setStatusFilter(e.target.value)}
-                        style={{ height: 38, fontSize: 13, borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', fontWeight: 600, color: '#334155' }}
-                    >
-                        <option value="ALL">⚪ Tüm Durumlar</option>
-                        <option value="ACTIVE">🟢 Sadece Aktif</option>
-                        <option value="PAUSED">⏸️ Sadece Pasif / Duraklatıldı</option>
-                        <option value="COMPLETED">🏁 Tamamlandı</option>
-                        <option value="DRAFT">📝 Taslak</option>
-                    </select>
-
-                    {/* Tarih Filtresi Dropdown */}
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <Calendar size={14} style={{ position: 'absolute', left: 10, color: '#64748b', pointerEvents: 'none' }} />
-                        <select
-                            className="mkt-filter-select"
-                            value={dateFilter}
-                            onChange={e => setDateFilter(e.target.value)}
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
+                    {[
+                        { key: 'ALL', label: 'Tümü' },
+                        { key: 'MANUAL', label: 'Manuel' },
+                        { key: 'AUTO', label: 'Otomatik' },
+                    ].map(f => (
+                        <button
+                            key={f.key}
+                            onClick={() => setTypeFilter(f.key)}
                             style={{
-                                height: 38,
-                                fontSize: 13,
-                                borderRadius: 8,
-                                border: '1.5px solid #e2e8f0',
-                                background: '#fff',
-                                fontWeight: 600,
-                                color: '#334155',
-                                paddingLeft: 30,
-                                paddingRight: 10
-                            }}
-                        >
-                            <option value="all">📅 Tüm Zamanlar</option>
-                            <option value="today">Bugün</option>
-                            <option value="yesterday">Dün</option>
-                            <option value="thisWeek">Bu Hafta</option>
-                            <option value="lastWeek">Geçen Hafta</option>
-                            <option value="thisMonth">Bu Ay</option>
-                            <option value="lastMonth">Geçen Ay</option>
-                            <option value="thisYear">Bu Yıl</option>
-                            <option value="custom">📅 Özel Tarih Aralığı...</option>
-                        </select>
-                    </div>
-
-                    {/* Özel Tarih Seçiciler (dateFilter === 'custom') */}
-                    {dateFilter === 'custom' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', padding: '3px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1' }}>
-                            <input
-                                type="date"
-                                value={customStartDate}
-                                onChange={e => setCustomStartDate(e.target.value)}
-                                style={{ height: 30, fontSize: 12, border: 'none', background: 'transparent', outline: 'none', color: '#1e293b' }}
-                            />
-                            <span style={{ color: '#94a3af', fontSize: 12 }}>—</span>
-                            <input
-                                type="date"
-                                value={customEndDate}
-                                onChange={e => setCustomEndDate(e.target.value)}
-                                style={{ height: 30, fontSize: 12, border: 'none', background: 'transparent', outline: 'none', color: '#1e293b' }}
-                            />
-                        </div>
-                    )}
-
-                    {/* Arama Kutusu */}
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                        <Search size={15} style={{ position: 'absolute', left: 10, color: '#94a3b8' }} />
-                        <input
-                            type="text"
-                            placeholder="Kampanya ara..."
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            style={{
-                                paddingLeft: 32,
-                                paddingRight: 12,
-                                height: 38,
-                                borderRadius: 8,
-                                border: '1.5px solid #e2e8f0',
-                                fontSize: 13,
-                                outline: 'none',
-                                width: 160,
-                                background: '#fff'
-                            }}
-                        />
-                    </div>
-
-                    {/* Filtreleri Sıfırla Butonu */}
-                    {hasActiveFilters && (
-                        <button
-                            onClick={handleResetFilters}
-                            style={{
-                                height: 36,
-                                padding: '0 10px',
-                                borderRadius: 8,
-                                border: '1px dashed #cbd5e1',
-                                background: '#f8fafc',
+                                padding: '6px 14px',
+                                border: 'none',
+                                borderRadius: 6,
                                 fontSize: 12,
-                                fontWeight: 500,
-                                color: '#64748b',
+                                fontWeight: 600,
                                 cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4
+                                background: typeFilter === f.key ? '#fff' : 'transparent',
+                                color: typeFilter === f.key ? '#1e293b' : '#64748b',
+                                boxShadow: typeFilter === f.key ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                             }}
-                            title="Tüm filtreleri sıfırla"
                         >
-                            <X size={13} /> Sıfırla
+                            {f.label}
                         </button>
-                    )}
+                    ))}
                 </div>
-
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <button
-                        className="mkt-btn-outline"
-                        onClick={() => fetchCampaigns()}
-                        disabled={loading}
-                        title="Kampanyaları ve gönderim istatistiklerini yenile"
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Search size={14} style={{ position: 'absolute', left: 10, color: '#94a3b8' }} />
+                    <input
+                        type="text"
+                        placeholder="Ara..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
                         style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '8px 14px',
-                            borderRadius: 8,
-                            fontSize: 13,
-                            fontWeight: 600,
-                            border: '1.5px solid #d1d5db',
-                            background: '#fff',
-                            color: '#374151',
-                            cursor: 'pointer'
+                            paddingLeft: 30,
+                            paddingRight: 12,
+                            height: 33,
+                            borderRadius: 7,
+                            border: '1px solid #e2e8f0',
+                            fontSize: 12,
+                            outline: 'none',
+                            width: 160,
+                            background: '#fff'
                         }}
-                    >
-                        <RefreshCw size={15} className={loading ? 'mkt-spin' : ''} />
-                        <span>Yenile</span>
-                    </button>
-                    <button
-                        className="mkt-btn-primary"
-                        onClick={() => setShowWizard(true)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    >
-                        <Sparkles size={16} />
-                        <span>+ Yeni Kampanya</span>
-                    </button>
+                    />
                 </div>
             </div>
-            
-            <div className="mkt-table-wrap" style={{ padding: 20 }}>
-                {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, fontSize: 13, color: '#64748b' }}>
-                            <span>Toplam <strong>{filteredCampaigns.length}</strong> kampanya listeleniyor</span>
-                            {dateFilter !== 'all' && activeDateRange.startDate && (
-                                <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, background: '#eff6ff', padding: '3px 10px', borderRadius: 6 }}>
-                                    📅 Filtre Tarihi: {activeDateRange.startDate} {activeDateRange.endDate ? `— ${activeDateRange.endDate}` : ''}
-                                </span>
-                            )}
-                        </div>
-                        {filteredCampaigns.map(c => (
+
+            {/* Campaign List */}
+            {loading ? (
+                <div className="mkt-loading">Yükleniyor...</div>
+            ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filteredCampaigns.map(c => {
+                        const statusBadge = getStatusBadge(c);
+                        const channels = getCampaignChannels(c);
+                        const sent = getSentCount(c);
+                        const delivered = getDeliveredCount(c);
+                        const read = getReadCount(c);
+                        const isAuto = isAutoCampaign(c);
+                        const cost = getCampaignCost(c);
+
+                        return (
                             <div
                                 key={c.id}
                                 style={{
                                     background: '#fff',
                                     borderRadius: 12,
-                                    border: '1px solid #e2e8f0',
-                                    padding: '18px 22px',
+                                    border: '1px solid #e5e7eb',
+                                    padding: '16px 20px',
                                     cursor: 'pointer',
-                                    transition: 'all 0.2s ease',
+                                    transition: 'all 0.15s',
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    gap: 12
+                                    gap: 10,
                                 }}
                                 onClick={() => {
                                     if (c.isAutomation) {
-                                        alert(`Bu kayıt 'Karşılama' otomasyonu tarafından oluşturulan günlük rapordur.\n\nGönderilen: ${c.sentCount || 0} adet.`);
+                                        alert(`Bu kayıt otomasyon tarafından oluşturulan rapordur.\n\nGönderilen: ${sent} adet.`);
                                     } else if (c.isLegacy) {
-                                        alert(`Eski Kampanya Mesajları:\n${c.messagesLegacy?.map(m=>m.name || 'İsimsiz').join(', ') || 'Mesaj yok'}`);
+                                        alert(`Eski Kampanya Mesajları:\n${c.messagesLegacy?.map(m => m.name || 'İsimsiz').join(', ') || 'Mesaj yok'}`);
                                     } else {
                                         onGoToGroups(c.id);
                                     }
                                 }}
-                                onMouseOver={e => {
-                                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.06)';
-                                    e.currentTarget.style.borderColor = '#cbd5e1';
-                                }}
-                                onMouseOut={e => {
-                                    e.currentTarget.style.boxShadow = 'none';
-                                    e.currentTarget.style.borderColor = '#e2e8f0';
-                                }}
+                                onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                                onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
                             >
-                                {/* Üst Satır: Başlık, Kanal Rozetleri, Durum & İşlemler */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                        <span style={{ fontWeight: 700, fontSize: 16, color: '#0f172a' }}>{c.name}</span>
-                                        
-                                        {/* Kanal Rozetleri */}
-                                        {getCampaignChannels(c).map(ch => {
-                                            if (ch === 'WHATSAPP') return (
-                                                <span key={ch} style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                    <MessageSquare size={12} /> WhatsApp
-                                                </span>
-                                            );
-                                            if (ch === 'AI_CALL') return (
-                                                <span key={ch} style={{ fontSize: 11, background: '#e0e7ff', color: '#3730a3', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                    <Phone size={12} /> AI Sesli Arama
-                                                </span>
-                                            );
-                                            if (ch === 'SMS') return (
-                                                <span key={ch} style={{ fontSize: 11, background: '#f3e8ff', color: '#7e22ce', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                    <Smartphone size={12} /> SMS
-                                                </span>
-                                            );
-                                            if (ch === 'EMAIL') return (
-                                                <span key={ch} style={{ fontSize: 11, background: '#fef3c7', color: '#b45309', padding: '3px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                    <Mail size={12} /> E-posta
-                                                </span>
-                                            );
-                                            return null;
-                                        })}
-
-                                        {/* Tip Rozetleri */}
-                                        {c.isArchive && <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>🏛️ Geçmiş Kampanya</span>}
-                                        {c.isAutomation && <span style={{ fontSize: 11, background: '#ede9fe', color: '#6d28d9', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>🤖 Otomasyon</span>}
-                                        {c.isLegacy && <span style={{ fontSize: 11, background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>📦 Eski</span>}
+                                {/* Üst Satır: İsim + Kanallar + Durum */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isAuto ? '#f59e0b' : '#94a3b8', flexShrink: 0 }} title={isAuto ? 'Otomatik' : 'Manuel'} />
+                                        <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
+                                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                            {channels.map(ch => {
+                                                const badge = CHANNEL_BADGE[ch];
+                                                if (!badge) return null;
+                                                return (
+                                                    <span key={ch} style={{ fontSize: 10, background: badge.bg, color: badge.color, padding: '2px 8px', borderRadius: 5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+                                                        {badge.icon} {badge.label}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-
-                                    {/* Durum & Hızlı Aksiyonlar */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{
-                                            padding: '4px 10px',
-                                            borderRadius: 12,
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            background: c.status === 'ACTIVE' ? '#dcfce7' : c.status === 'COMPLETED' ? '#e0f2fe' : '#f3f4f6',
-                                            color: c.status === 'ACTIVE' ? '#15803d' : c.status === 'COMPLETED' ? '#0369a1' : '#4b5563'
-                                        }}>
-                                            {c.status === 'ACTIVE' ? '🟢 Aktif' : c.status === 'COMPLETED' ? '🏁 Tamamlandı' : c.status === 'PAUSED' ? '⏸️ Duraklatıldı' : '⚪ ' + (c.status || 'Taslak')}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: statusBadge.bg, color: statusBadge.color }}>
+                                            {statusBadge.label}
                                         </span>
                                         {!c.isLegacy && !c.isArchive && (
-                                            <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                                                <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }} title="Düzenle"><Edit2 size={14}/></button>
-                                                <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)} title="Sil"><Trash2 size={14}/></button>
+                                            <div style={{ display: 'flex', gap: 3 }} onClick={e => e.stopPropagation()}>
+                                                <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }} title="Düzenle"><Edit2 size={13}/></button>
+                                                <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)} title="Sil"><Trash2 size={13}/></button>
                                             </div>
                                         )}
+                                        <ChevronRight size={16} style={{ color: '#cbd5e1' }} />
                                     </div>
                                 </div>
 
-                                {/* Orta Satır: Açıklama, Tarihler, Bütçe, Reklam Grupları */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, fontSize: 13, color: '#64748b' }}>
-                                    <div>{c.description || (c.isAutomation ? 'Günlük Karşılama Otomasyonu' : 'Açıklama yok')}</div>
-                                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 12, color: '#475569' }}>
-                                        <span>📅 {c.startDate ? new Date(c.startDate).toLocaleDateString('tr-TR') : '-'} — {c.endDate ? new Date(c.endDate).toLocaleDateString('tr-TR') : '-'}</span>
-                                        {c.budget ? <span style={{ fontWeight: 600 }}>💰 {c.budget} TL</span> : null}
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                            <Folder size={14} color="#6366f1" />
-                                            <strong style={{ color: '#1e293b' }}>{c.isLegacy || c.isAutomation ? '1' : (c.groupsCount || c.groups?.length || 0)}</strong> Reklam Grubu
-                                        </span>
+                                {/* Alt Satır: Açıklama + Tarih + İstatistikler */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, fontSize: 12, color: '#64748b' }}>
+                                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#94a3b8' }}>
+                                        {c.description || (c.isAutomation ? 'Sistem otomasyonu' : 'Açıklama yok')}
                                     </div>
-                                </div>
-
-                                {/* Alt Satır: İlerleme Çubuğu ve KPI Metrikleri */}
-                                <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-                                    <div style={{ flex: 1, minWidth: 200 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 5 }}>
-                                            <span>İlerleme: {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0} Gönderim</span>
-                                            <span>
-                                                {Math.round((((c.isLegacy ? c.readCount : c.stats?.read) || 0) / ((c.isLegacy ? (c.sentCount || 1) : (c.stats?.sent || 1)) || 1)) * 100)}%
-                                            </span>
-                                        </div>
-                                        <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
-                                            <div style={{
-                                                width: `${Math.min(100, (((c.isLegacy ? c.readCount : c.stats?.read) || 0) / ((c.isLegacy ? (c.sentCount || 1) : (c.stats?.sent || 1)) || 1)) * 100)}%`,
-                                                background: '#10b981'
-                                            }} />
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#475569' }}>
-                                        <span><strong>Gönderilen:</strong> {c.isLegacy ? c.sentCount || 0 : c.stats?.sent || 0}</span>
-                                        <span><strong>Teslimat:</strong> {c.isLegacy ? c.deliveredCount || 0 : c.stats?.delivered || 0}</span>
-                                        <span><strong>Okunan / Başarılı:</strong> <strong style={{ color: '#16a34a' }}>{c.isLegacy ? c.readCount || 0 : c.stats?.read || 0}</strong></span>
-                                        {(c.isLegacy ? c.failedCount : c.stats?.failed) > 0 && (
-                                            <span style={{ color: '#dc2626' }}><strong>Hata:</strong> {c.isLegacy ? c.failedCount : c.stats?.failed}</span>
+                                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0, color: '#64748b' }}>
+                                        <span style={{ color: '#94a3b8', fontSize: 11 }}>{getDateDisplay(c)}</span>
+                                        {sent > 0 && (
+                                            <>
+                                                <span style={{ width: 1, height: 14, background: '#e5e7eb' }} />
+                                                <span>Gönderilen <strong style={{ color: '#334155' }}>{sent}</strong></span>
+                                                <span>Teslim <strong style={{ color: '#334155' }}>{delivered}</strong></span>
+                                                <span>Okunan <strong style={{ color: '#16a34a' }}>{read}</strong></span>
+                                                {cost > 0 && (
+                                                    <>
+                                                        <span style={{ width: 1, height: 14, background: '#e5e7eb' }} />
+                                                        <span style={{ fontWeight: 700, color: '#ec4899' }}>💰 ${cost.toFixed(2)}</span>
+                                                    </>
+                                                )}
+                                            </>
                                         )}
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#2563eb', fontSize: 12, fontWeight: 600 }}>
-                                        <span>Detayları İncele</span>
-                                        <ChevronRight size={14} />
+                                        {sent === 0 && <span style={{ color: '#cbd5e1' }}>—</span>}
                                     </div>
                                 </div>
                             </div>
-                        ))}
-                        {filteredCampaigns.length === 0 && <div className="mkt-empty"><p>Bu filtrede kampanya bulunamadı.</p></div>}
-                    </div>
-                )}
-            </div>
+                        );
+                    })}
+                    {filteredCampaigns.length === 0 && (
+                        <div className="mkt-empty"><p>Kampanya bulunamadı.</p></div>
+                    )}
+                </div>
+            )}
 
             {/* Campaign Wizard Modal */}
             {showWizard && (
@@ -577,7 +428,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 />
             )}
 
-            {/* Basic Campaign Edit Modal (for editing existing campaigns) */}
+            {/* Basic Campaign Edit Modal */}
             {showForm && (
                 <CampaignFormModal initial={editItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />
             )}

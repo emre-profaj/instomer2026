@@ -1,12 +1,46 @@
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI, workspaceAPI } from '../../services/api';
 import {
     Search, TrendingUp, FileText, X, Trash2, Receipt,
-    Download, Plus, AlertCircle, CheckCircle, Clock, CreditCard
+    Download, Plus, AlertCircle, CheckCircle, Clock, CreditCard,
+    User, Calendar, Edit2
 } from 'lucide-react';
+import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import './Sales.css';
+
+// Helper: compute date range from preset
+const getDateRange = (preset) => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (preset) {
+        case 'TODAY':
+            return { from: startOfDay, to: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1) };
+        case 'YESTERDAY': {
+            const yStart = new Date(startOfDay); yStart.setDate(yStart.getDate() - 1);
+            const yEnd = new Date(yStart); yEnd.setHours(23, 59, 59, 999);
+            return { from: yStart, to: yEnd };
+        }
+        case 'THIS_WEEK': {
+            const day = now.getDay();
+            const diffToMonday = day === 0 ? 6 : day - 1;
+            const monday = new Date(startOfDay);
+            monday.setDate(monday.getDate() - diffToMonday);
+            const sunday = new Date(monday);
+            sunday.setDate(sunday.getDate() + 6);
+            sunday.setHours(23, 59, 59, 999);
+            return { from: monday, to: sunday };
+        }
+        case 'THIS_MONTH': {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            return { from: firstDay, to: lastDay };
+        }
+        default:
+            return { from: null, to: null };
+    }
+};
 
 const Invoices = () => {
     const { t } = useTranslation();
@@ -28,10 +62,56 @@ const Invoices = () => {
     });
     const [settingsSaving, setSettingsSaving] = useState(false);
 
+    // Filters
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [datePreset, setDatePreset] = useState('THIS_MONTH');
+    const [customDateFrom, setCustomDateFrom] = useState('');
+    const [customDateTo, setCustomDateTo] = useState('');
+
     // Payment modal
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentForm, setPaymentForm] = useState({ paidAmount: '', paymentDate: new Date().toISOString().split('T')[0], notes: '' });
     const [paymentLoading, setPaymentLoading] = useState(false);
+
+    // Resizable panel width (default 450px, saved in localStorage)
+    const [panelWidth, setPanelWidth] = useState(() => {
+        const saved = localStorage.getItem('sales-panel-width');
+        return saved ? Math.max(360, Math.min(650, parseInt(saved, 10))) : 450;
+    });
+    const [showRightSidebar, setShowRightSidebar] = useState(true);
+    const layoutRef = useRef(null);
+    const isDraggingRef = useRef(false);
+
+    const handleMouseDown = (e) => {
+        e.preventDefault();
+        isDraggingRef.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const handleMouseMove = (moveEvent) => {
+            if (!isDraggingRef.current) return;
+            const containerLeft = layoutRef.current?.getBoundingClientRect().left || 0;
+            const newWidth = Math.max(360, Math.min(650, moveEvent.clientX - containerLeft));
+            setPanelWidth(newWidth);
+        };
+
+        const handleMouseUp = () => {
+            if (isDraggingRef.current) {
+                isDraggingRef.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+                setPanelWidth((curr) => {
+                    localStorage.setItem('sales-panel-width', curr);
+                    return curr;
+                });
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
 
     // Form state
     const [formData, setFormData] = useState({
@@ -123,10 +203,10 @@ const Invoices = () => {
     const handleLogoUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const formData = new window.FormData();
-        formData.append('logo', file);
+        const formPayload = new window.FormData();
+        formPayload.append('logo', file);
         try {
-            const response = await workspaceAPI.uploadCompanyLogo(currentWorkspace.id, formData);
+            const response = await workspaceAPI.uploadCompanyLogo(currentWorkspace.id, formPayload);
             const info = response.data.companyInfo;
             setCompanyInfo(prev => ({ ...prev, companyLogo: info.companyLogo }));
             alert('✅ Logo yüklendi.');
@@ -139,7 +219,7 @@ const Invoices = () => {
     const handleCreateInvoice = async (e) => {
         e.preventDefault();
         try {
-            const baseAmount = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
+            const baseAmt = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
             const productsWithTotal = formData.products.map(p => ({
                 ...p,
                 total: p.quantity * p.unitPrice
@@ -147,7 +227,7 @@ const Invoices = () => {
 
             await dealAPI.create(currentWorkspace.id, {
                 ...formData,
-                amount: baseAmount,
+                amount: baseAmt,
                 products: productsWithTotal,
                 stage: 'INVOICE',
                 vatRate: parseFloat(formData.vatRate) || 0,
@@ -168,14 +248,14 @@ const Invoices = () => {
         e.preventDefault();
         if (!editingDeal) return;
         try {
-            const baseAmount = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
+            const baseAmt = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
             const productsWithTotal = formData.products.map(p => ({
                 ...p,
                 total: p.quantity * p.unitPrice
             }));
             const updated = await dealAPI.update(currentWorkspace.id, editingDeal.id, {
                 ...formData,
-                amount: baseAmount,
+                amount: baseAmt,
                 products: productsWithTotal,
                 vatRate: parseFloat(formData.vatRate) || 0,
                 dueDate: formData.dueDate || null
@@ -185,7 +265,6 @@ const Invoices = () => {
             resetForm();
             fetchDeals();
             fetchStats();
-            // Refresh selectedDeal if it was the one edited
             if (selectedDeal?.id === editingDeal.id) {
                 setSelectedDeal(updated.data?.deal || null);
             }
@@ -230,7 +309,6 @@ const Invoices = () => {
             await dealAPI.update(currentWorkspace.id, dealId, { status });
             fetchDeals();
             fetchStats();
-            // Update selected deal too
             setSelectedDeal(prev => prev?.id === dealId ? { ...prev, status, effectiveStatus: status } : prev);
         } catch (error) {
             console.error('Failed to update status:', error);
@@ -270,8 +348,8 @@ const Invoices = () => {
         const printWindow = window.open('', '_blank');
         const products = deal.products || [];
         const base = deal.amount;
-        const vatAmount = base * ((deal.vatRate || 0) / 100) / (1 + (deal.vatRate || 0) / 100);
-        const subtotal = base - vatAmount;
+        const vatVal = base * ((deal.vatRate || 0) / 100) / (1 + (deal.vatRate || 0) / 100);
+        const subtotal = base - vatVal;
         const apiBase = import.meta.env.VITE_API_URL?.startsWith('http') 
             ? import.meta.env.VITE_API_URL 
             : window.location.origin + '/api';
@@ -361,7 +439,7 @@ const Invoices = () => {
   <div class="totals">
     ${deal.vatRate > 0 ? `
     <div class="total-row"><span>Ara Toplam:</span><span>${formatCurrency(subtotal, deal.currency)}</span></div>
-    <div class="total-row"><span>KDV (%${deal.vatRate}):</span><span>${formatCurrency(vatAmount, deal.currency)}</span></div>
+    <div class="total-row"><span>KDV (%${deal.vatRate}):</span><span>${formatCurrency(vatVal, deal.currency)}</span></div>
     ` : ''}
     <div class="total-row total-final"><span>GENEL TOPLAM:</span><span>${formatCurrency(base, deal.currency)}</span></div>
     ${deal.paidAmount > 0 ? `<div class="total-row" style="color:#10b981"><span>Ödenen:</span><span>${formatCurrency(deal.paidAmount, deal.currency)}</span></div>` : ''}
@@ -418,118 +496,195 @@ const Invoices = () => {
 
     const getStatusBadge = (deal) => {
         const eff = getEffectiveStatus(deal);
-        if (eff === 'WON') return <span className="deal-status won"><CheckCircle size={12} /> Ödendi</span>;
-        if (eff === 'OVERDUE') return <span className="deal-status overdue"><AlertCircle size={12} /> Gecikmiş</span>;
-        if (eff === 'LOST') return <span className="deal-status lost"><X size={12} /> İptal</span>;
-        return <span className="deal-status open"><Clock size={12} /> Bekliyor</span>;
+        if (eff === 'WON') return <span className="sales-list-card-badge won"><CheckCircle size={11} /> Ödendi</span>;
+        if (eff === 'OVERDUE') return <span className="sales-list-card-badge overdue"><AlertCircle size={11} /> Gecikmiş</span>;
+        if (eff === 'LOST') return <span className="sales-list-card-badge lost"><X size={11} /> İptal</span>;
+        return <span className="sales-list-card-badge open"><Clock size={11} /> Bekliyor</span>;
     };
 
     const baseAmount = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
     const vatAmount = baseAmount * ((formData.vatRate || 0) / 100);
     const totalWithVat = baseAmount + vatAmount;
 
-    const filteredDeals = deals.filter(deal =>
-        deal.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        deal.contact?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        deal.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredDeals = deals.filter(deal => {
+        // Search
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            const matches =
+                deal.title?.toLowerCase().includes(q) ||
+                deal.contact?.name?.toLowerCase().includes(q) ||
+                deal.contact?.fullName?.toLowerCase().includes(q) ||
+                deal.invoiceNumber?.toLowerCase().includes(q) ||
+                (deal.protocolNo && String(deal.protocolNo).toLowerCase().includes(q));
+            if (!matches) return false;
+        }
 
-    const invoiceStats = stats?.stageStats?.find(s => s.stage === 'INVOICE') || { count: 0, totalAmount: 0 };
+        // Status
+        const eff = getEffectiveStatus(deal);
+        if (statusFilter !== 'ALL') {
+            if (statusFilter === 'OVERDUE') {
+                if (eff !== 'OVERDUE') return false;
+            } else if (eff !== statusFilter) {
+                return false;
+            }
+        }
+
+        // Date
+        const dealDate = new Date(deal.createdAt || deal.invoiceCreatedAt);
+        if (datePreset === 'CUSTOM') {
+            if (customDateFrom && dealDate < new Date(customDateFrom)) return false;
+            if (customDateTo) {
+                const to = new Date(customDateTo);
+                to.setHours(23, 59, 59, 999);
+                if (dealDate > to) return false;
+            }
+        } else if (datePreset !== 'ALL') {
+            const { from, to } = getDateRange(datePreset);
+            if (from && dealDate < from) return false;
+            if (to && dealDate > to) return false;
+        }
+
+        return true;
+    });
+
+    const filteredStats = {
+        count: filteredDeals.length,
+        totalAmount: filteredDeals.reduce((sum, d) => sum + (d.amount || 0), 0),
+        paidTotal: filteredDeals.reduce((sum, d) => sum + (d.paidAmount || (d.status === 'WON' ? d.amount : 0) || 0), 0),
+        overdueCount: filteredDeals.filter(d => getEffectiveStatus(d) === 'OVERDUE').length
+    };
+
+    // Build externalProfile for ContactSidebar
+    const sidebarProfile = selectedDeal?.contact ? {
+        id: selectedDeal.contact.id,
+        name: selectedDeal.contact.name || selectedDeal.contact.fullName,
+        fullName: selectedDeal.contact.fullName || selectedDeal.contact.name,
+        phone: selectedDeal.contact.phone,
+        email: selectedDeal.contact.email,
+        company: selectedDeal.contact.company,
+        tags: selectedDeal.contact.tags || [],
+        avatar: selectedDeal.contact.avatar || selectedDeal.contact.profilePic,
+    } : null;
 
     return (
-        <div className="sales-page">
-            {/* Header */}
-            <div className="sales-header">
-                <div className="sales-header-left">
-                    <h1>Faturalar</h1>
-                    <span className="sales-count">{invoiceStats.count} fatura</span>
-                </div>
-                <div className="sales-header-right">
-                    <button className="btn-primary" onClick={() => setShowForm(true)}>
-                        <Plus size={18} />
-                        Yeni Fatura
-                    </button>
-                </div>
-            </div>
+        <div className="sales-inbox-layout" ref={layoutRef}>
+            {/* ── LEFT PANEL: Invoices List ── */}
+            <div className="sales-list-panel" style={{ width: `${panelWidth}px` }}>
+                <div className="sales-list-panel-header">
+                    <div className="sales-list-panel-header-row">
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <button
+                                type="button"
+                                className={`sales-date-preset-btn ${activeTab === 'invoices' ? 'active' : ''}`}
+                                style={{ fontWeight: 600, fontSize: '13px', padding: '5px 12px' }}
+                                onClick={() => setActiveTab('invoices')}
+                            >
+                                Faturalar <span className="sales-count" style={{ marginLeft: 4 }}>{filteredStats.count}</span>
+                            </button>
+                            <button
+                                type="button"
+                                className={`sales-date-preset-btn ${activeTab === 'settings' ? 'active' : ''}`}
+                                style={{ fontWeight: 600, fontSize: '13px', padding: '5px 12px' }}
+                                onClick={() => setActiveTab('settings')}
+                            >
+                                ⚙️ Ayarlar
+                            </button>
+                        </div>
+                        {activeTab === 'invoices' && (
+                            <button className="btn-primary btn-sm" onClick={() => { resetForm(); setShowForm(true); }}>
+                                <Plus size={15} /> Yeni
+                            </button>
+                        )}
+                    </div>
 
-            {/* Tab Bar */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #e5e7eb', paddingBottom: 0 }}>
-                <button
-                    onClick={() => setActiveTab('invoices')}
-                    style={{ padding: '8px 18px', background: 'none', border: 'none', borderBottom: activeTab === 'invoices' ? '2px solid #3b82f6' : '2px solid transparent', fontWeight: activeTab === 'invoices' ? 700 : 400, color: activeTab === 'invoices' ? '#3b82f6' : '#6b7280', cursor: 'pointer', marginBottom: -2 }}
-                >
-                    Faturalar
-                </button>
-                <button
-                    onClick={() => setActiveTab('settings')}
-                    style={{ padding: '8px 18px', background: 'none', border: 'none', borderBottom: activeTab === 'settings' ? '2px solid #3b82f6' : '2px solid transparent', fontWeight: activeTab === 'settings' ? 700 : 400, color: activeTab === 'settings' ? '#3b82f6' : '#6b7280', cursor: 'pointer', marginBottom: -2 }}
-                >
-                    ⚙️ Fatura Ayarları
-                </button>
-            </div>
-            {activeTab === 'invoices' && (
-            <>
-            <div className="sales-stats">
-                <div className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6' }}>
-                        <Receipt size={20} />
+                    {/* Search */}
+                    <div className="sales-list-panel-search">
+                        <Search size={15} />
+                        <input
+                            type="text"
+                            placeholder="Fatura, müşteri veya numara ara..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
                     </div>
-                    <div className="stat-info">
-                        <span className="stat-value">{invoiceStats.count}</span>
-                        <span className="stat-label">Toplam Fatura</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>
-                        <CheckCircle size={20} />
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-value">{formatCurrency(stats?.paidTotal || 0)}</span>
-                        <span className="stat-label">Tahsil Edilen</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                        <AlertCircle size={20} />
-                    </div>
-                    <div className="stat-info">
-                        <span className="stat-value">{stats?.overdueCount || 0}</span>
-                        <span className="stat-label">Gecikmiş Fatura</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-icon amount"><TrendingUp size={20} /></div>
-                    <div className="stat-info">
-                        <span className="stat-value">{formatCurrency(invoiceStats.totalAmount)}</span>
-                        <span className="stat-label">Toplam Tutar</span>
-                    </div>
-                </div>
-            </div>
 
-            {/* Search */}
-            <div className="sales-toolbar">
-                <div className="search-box">
-                    <Search size={18} />
-                    <input
-                        type="text"
-                        placeholder="Fatura, müşteri veya numara ara..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
-            </div>
+                    {/* Filters */}
+                    <div className="sales-list-panel-filters">
+                        <div className="sales-list-panel-filter-row">
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                            >
+                                <option value="ALL">Tüm Durumlar</option>
+                                <option value="OPEN">Bekliyor</option>
+                                <option value="WON">Ödendi</option>
+                                <option value="OVERDUE">Gecikmiş</option>
+                                <option value="LOST">İptal</option>
+                            </select>
+                        </div>
+                        <div className="sales-date-presets">
+                            {[
+                                { key: 'ALL', label: 'Tümü' },
+                                { key: 'TODAY', label: 'Bugün' },
+                                { key: 'YESTERDAY', label: 'Dün' },
+                                { key: 'THIS_WEEK', label: 'Bu Hafta' },
+                                { key: 'THIS_MONTH', label: 'Bu Ay' },
+                                { key: 'CUSTOM', label: 'Özel' },
+                            ].map(p => (
+                                <button
+                                    key={p.key}
+                                    className={`sales-date-preset-btn ${datePreset === p.key ? 'active' : ''}`}
+                                    onClick={() => { setDatePreset(p.key); if (p.key !== 'CUSTOM') { setCustomDateFrom(''); setCustomDateTo(''); } }}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
+                        {datePreset === 'CUSTOM' && (
+                            <div className="sales-custom-date-row">
+                                <input
+                                    type="date"
+                                    value={customDateFrom}
+                                    onChange={(e) => setCustomDateFrom(e.target.value)}
+                                    className="sales-filter-date"
+                                />
+                                <span className="sales-date-sep">—</span>
+                                <input
+                                    type="date"
+                                    value={customDateTo}
+                                    onChange={(e) => setCustomDateTo(e.target.value)}
+                                    className="sales-filter-date"
+                                />
+                            </div>
+                        )}
 
-            {/* Content */}
-            <div className="sales-content">
-                {/* Deals List */}
-                <div className="deals-list">
+                        {/* Stats Row */}
+                        <div className="sales-list-stats">
+                            <div className="sales-list-stat">
+                                <span className="sls-value">{filteredStats.count}</span>
+                                <span className="sls-label">FATURA</span>
+                            </div>
+                            <div className="sales-list-stat">
+                                <span className="sls-value">{formatCurrency(filteredStats.totalAmount)}</span>
+                                <span className="sls-label">TOPLAM</span>
+                            </div>
+                            <div className="sales-list-stat">
+                                <span className="sls-value" style={{ color: '#10b981' }}>{formatCurrency(filteredStats.paidTotal)}</span>
+                                <span className="sls-label">TAHSİLAT</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Invoices List Body */}
+                <div className="sales-list-panel-body">
                     {loading ? (
                         <div className="loading-state">Yükleniyor...</div>
                     ) : filteredDeals.length === 0 ? (
                         <div className="empty-state">
-                            <Receipt size={48} />
+                            <Receipt size={40} />
                             <h3>Henüz fatura yok</h3>
-                            <p>Yeni fatura oluşturmak için "Yeni Fatura" butonuna tıklayın</p>
+                            <p>Yeni fatura oluşturmak için "Yeni" butonuna tıklayın</p>
                         </div>
                     ) : (
                         filteredDeals.map(deal => {
@@ -537,32 +692,50 @@ const Invoices = () => {
                             return (
                                 <div
                                     key={deal.id}
-                                    className={`deal-card ${selectedDeal?.id === deal.id ? 'selected' : ''} ${eff.toLowerCase()}`}
-                                    onClick={() => setSelectedDeal(deal)}
+                                    className={`sales-list-card ${selectedDeal?.id === deal.id && activeTab === 'invoices' ? 'selected' : ''} ${eff.toLowerCase()}`}
+                                    onClick={() => { setSelectedDeal(deal); setActiveTab('invoices'); }}
                                 >
-                                    <div className="deal-card-header">
-                                        <span className="deal-number">{deal.invoiceNumber}</span>
+                                    <div className="sales-list-card-top">
+                                        <span className="sales-list-card-number">{deal.invoiceNumber}</span>
                                         {getStatusBadge(deal)}
                                     </div>
-                                    <h3 className="deal-title">{deal.title}</h3>
-                                    <p className="deal-contact">{deal.contact?.name || deal.contact?.fullName}</p>
-                                    <div className="deal-footer">
-                                        <span className="deal-amount">{formatCurrency(deal.amount, deal.currency)}</span>
-                                        {deal.dueDate && (
-                                            <span className={`deal-due-date ${eff === 'OVERDUE' ? 'overdue' : ''}`}>
-                                                {eff === 'OVERDUE' ? '⚠️' : '📅'} {new Date(deal.dueDate).toLocaleDateString('tr-TR')}
-                                            </span>
-                                        )}
+                                    {deal.protocolNo && (
+                                        <div className="sales-list-card-protocol">
+                                            📁 Protokol: {deal.protocolNo}
+                                        </div>
+                                    )}
+                                    <div className="sales-list-card-title">{deal.title}</div>
+                                    <div className="sales-list-card-customer">👤 {deal.contact?.name || deal.contact?.fullName || '-'}</div>
+                                    <div className="sales-list-card-bottom">
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <span className="sales-list-card-amount">{formatCurrency(deal.amount, deal.currency)}</span>
+                                            {deal.assignedTo && (
+                                                <span className="sales-list-card-agent">
+                                                    <User size={11} /> {deal.assignedTo.name}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="sales-list-card-date">
+                                            {deal.dueDate ? (
+                                                <span className={eff === 'OVERDUE' ? 'text-danger' : ''} style={{ fontSize: '11px', fontWeight: eff === 'OVERDUE' ? 600 : 400 }}>
+                                                    {eff === 'OVERDUE' ? '⚠️ ' : 'Son: '}{new Date(deal.dueDate).toLocaleDateString('tr-TR')}
+                                                </span>
+                                            ) : (
+                                                new Date(deal.createdAt || deal.invoiceCreatedAt).toLocaleDateString('tr-TR')
+                                            )}
+                                        </span>
                                     </div>
                                     {deal.paidAmount > 0 && deal.status !== 'WON' && (
-                                        <div className="deal-partial-payment">
+                                        <div className="deal-partial-payment" style={{ marginTop: 6 }}>
                                             <div className="payment-progress">
                                                 <div
                                                     className="payment-bar"
                                                     style={{ width: `${Math.min(100, (deal.paidAmount / deal.amount) * 100)}%` }}
                                                 />
                                             </div>
-                                            <span>{formatCurrency(deal.paidAmount)} / {formatCurrency(deal.amount)}</span>
+                                            <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>
+                                                {formatCurrency(deal.paidAmount, deal.currency)} / {formatCurrency(deal.amount, deal.currency)}
+                                            </span>
                                         </div>
                                     )}
                                 </div>
@@ -570,15 +743,145 @@ const Invoices = () => {
                         })
                     )}
                 </div>
+            </div>
 
-                {/* Detail Panel */}
-                {selectedDeal && (
-                    <div className="deal-detail-panel">
-                        <div className="detail-header">
-                            <h2>{selectedDeal.title}</h2>
-                            <button className="btn-icon" onClick={() => setSelectedDeal(null)}>
+            {/* Sürüklenebilir Kenarlık */}
+            <div
+                className="sales-resizer"
+                onMouseDown={handleMouseDown}
+                title="Genişliği ayarlamak için sürükleyin"
+            />
+
+            {/* ── MIDDLE PANEL: Invoice Detail OR Settings ── */}
+            <div className="sales-detail-panel">
+                {activeTab === 'settings' ? (
+                    <div className="sales-detail-card" style={{ maxWidth: 640 }}>
+                        <div className="detail-header" style={{ marginBottom: 20 }}>
+                            <div>
+                                <h2 style={{ fontSize: '18px' }}>⚙️ Fatura Şirket Bilgileri</h2>
+                                <p style={{ color: '#6b7280', fontSize: '13px', margin: '4px 0 0' }}>Bu bilgiler fatura PDF'lerinde ve yazdırma şablonlarında görünür.</p>
+                            </div>
+                            <button className="btn-icon" onClick={() => setActiveTab('invoices')}>
                                 <X size={20} />
                             </button>
+                        </div>
+
+                        {/* Logo Upload */}
+                        <div className="form-group" style={{ marginBottom: 20 }}>
+                            <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>Firma Logosu</label>
+                            {companyInfo?.companyLogo && (
+                                <div style={{ marginBottom: 8 }}>
+                                    <img
+                                        src={`${import.meta.env.VITE_API_URL || ''}${companyInfo.companyLogo}`}
+                                        alt="Logo"
+                                        style={{ maxHeight: 70, maxWidth: 200, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 6, padding: 4 }}
+                                    />
+                                </div>
+                            )}
+                            <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ fontSize: 13 }} />
+                            <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>PNG, JPG, SVG (maks 5MB)</p>
+                        </div>
+
+                        <form onSubmit={handleSaveSettings}>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Firma Adı</label>
+                                    <input
+                                        type="text"
+                                        value={settingsForm.companyName}
+                                        onChange={e => setSettingsForm({ ...settingsForm, companyName: e.target.value })}
+                                        placeholder="Örn: Acme Ltd. Şti."
+                                    />
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label>Adres</label>
+                                <textarea
+                                    rows={2}
+                                    value={settingsForm.companyAddress}
+                                    onChange={e => setSettingsForm({ ...settingsForm, companyAddress: e.target.value })}
+                                    placeholder="Sokak, Mahalle, İlçe / İl"
+                                />
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Telefon</label>
+                                    <input
+                                        type="text"
+                                        value={settingsForm.companyPhone}
+                                        onChange={e => setSettingsForm({ ...settingsForm, companyPhone: e.target.value })}
+                                        placeholder="+90 xxx xxx xx xx"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>E-posta</label>
+                                    <input
+                                        type="email"
+                                        value={settingsForm.companyEmail}
+                                        onChange={e => setSettingsForm({ ...settingsForm, companyEmail: e.target.value })}
+                                        placeholder="info@firma.com"
+                                    />
+                                </div>
+                            </div>
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>Vergi Dairesi</label>
+                                    <input
+                                        type="text"
+                                        value={settingsForm.invoiceTaxOffice}
+                                        onChange={e => setSettingsForm({ ...settingsForm, invoiceTaxOffice: e.target.value })}
+                                        placeholder="Örn: Kadıköy VD"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Vergi Numarası</label>
+                                    <input
+                                        type="text"
+                                        value={settingsForm.invoiceTaxNumber}
+                                        onChange={e => setSettingsForm({ ...settingsForm, invoiceTaxNumber: e.target.value })}
+                                        placeholder="1234567890"
+                                    />
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label>IBAN</label>
+                                <input
+                                    type="text"
+                                    value={settingsForm.invoiceIban}
+                                    onChange={e => setSettingsForm({ ...settingsForm, invoiceIban: e.target.value })}
+                                    placeholder="TR00 0000 0000 0000 0000 0000 00"
+                                />
+                            </div>
+                            <div className="form-actions" style={{ marginTop: 24 }}>
+                                <button type="submit" className="btn-primary" disabled={settingsSaving}>
+                                    {settingsSaving ? 'Kaydediliyor...' : '✅ Kaydet'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                ) : selectedDeal ? (
+                    <div className="sales-detail-card">
+                        <div className="detail-header">
+                            <div>
+                                <span className="deal-number" style={{ marginBottom: 4, display: 'block' }}>{selectedDeal.invoiceNumber}</span>
+                                <h2>{selectedDeal.title}</h2>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <button
+                                    type="button"
+                                    className="btn-outline btn-sm"
+                                    style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    onClick={() => setShowRightSidebar(!showRightSidebar)}
+                                    title={showRightSidebar ? 'Kişi Panelini Gizle' : 'Kişi Panelini Göster'}
+                                >
+                                    <User size={13} />
+                                    {showRightSidebar ? 'Kişiyi Gizle ❯' : '❮ Kişiyi Göster'}
+                                </button>
+                                {getStatusBadge(selectedDeal)}
+                                <button className="btn-icon" onClick={() => setSelectedDeal(null)}>
+                                    <X size={20} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="detail-info">
@@ -588,7 +891,7 @@ const Invoices = () => {
                             </div>
                             <div className="info-row">
                                 <span className="label">Müşteri:</span>
-                                <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName}</span>
+                                <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName || '-'}</span>
                             </div>
                             <div className="info-row">
                                 <span className="label">Toplam:</span>
@@ -662,7 +965,7 @@ const Invoices = () => {
                                 </button>
                             )}
                             <button className="btn-secondary" onClick={() => openEditForm(selectedDeal)}>
-                                ✏️ Düzenle
+                                <Edit2 size={15} /> Düzenle
                             </button>
                             <button className="btn-secondary" onClick={() => handlePrint(selectedDeal)}>
                                 <Download size={16} />
@@ -674,8 +977,21 @@ const Invoices = () => {
                             </button>
                         </div>
                     </div>
+                ) : (
+                    <div className="sales-detail-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 350, textAlign: 'center', color: '#64748b' }}>
+                        <Receipt size={48} style={{ color: '#94a3b8', marginBottom: 16 }} />
+                        <h3 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>Fatura Seçilmedi</h3>
+                        <p style={{ margin: 0, fontSize: '14px', maxWidth: 320 }}>Detayları görüntülemek, ödeme kaydetmek veya yazdırmak için listeden bir fatura seçin.</p>
+                    </div>
                 )}
             </div>
+
+            {/* ── RIGHT PANEL: Customer Sidebar ── */}
+            {showRightSidebar && sidebarProfile && (
+                <div className="sales-sidebar-panel">
+                    <ContactSidebar externalProfile={sidebarProfile} />
+                </div>
+            )}
 
             {/* Payment Modal */}
             {showPaymentModal && (
@@ -698,7 +1014,7 @@ const Invoices = () => {
                                     placeholder={`Maks: ${selectedDeal?.amount}`}
                                     required
                                 />
-                                <small style={{ color: '#6b7280' }}>
+                                <small style={{ color: '#6b7280', display: 'block', marginTop: 4 }}>
                                     Toplam: {formatCurrency(selectedDeal?.amount, selectedDeal?.currency)} |
                                     Kalan: {formatCurrency((selectedDeal?.amount || 0) - (selectedDeal?.paidAmount || 0), selectedDeal?.currency)}
                                 </small>
@@ -737,7 +1053,7 @@ const Invoices = () => {
                 <div className="modal-overlay" onClick={() => { setShowForm(false); setEditingDeal(null); resetForm(); }}>
                     <div className="modal-content deal-form" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>{editingDeal ? '✏️ Faturası Düzenle' : 'Yeni Fatura Oluştur'}</h2>
+                            <h2>{editingDeal ? '✏️ Faturayı Düzenle' : 'Yeni Fatura Oluştur'}</h2>
                             <button className="btn-icon" onClick={() => { setShowForm(false); setEditingDeal(null); resetForm(); }}><X size={20} /></button>
                         </div>
 
@@ -872,70 +1188,6 @@ const Invoices = () => {
                             </div>
                         </form>
                     </div>
-                </div>
-            )}
-            </>
-            )}
-
-            {/* ======================== SETTINGS TAB ======================== */}
-            {activeTab === 'settings' && (
-                <div style={{ maxWidth: 600 }}>
-                    <h3 style={{ marginBottom: 20, color: '#1f2937' }}>Fatura Şirket Bilgileri</h3>
-                    <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 20 }}>Bu bilgiler fatura PDF\'lerinde görünür.</p>
-
-                    {/* Logo Upload */}
-                    <div className="form-group" style={{ marginBottom: 20 }}>
-                        <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>Firma Logosu</label>
-                        {companyInfo?.companyLogo && (
-                            <div style={{ marginBottom: 8 }}>
-                                <img src={`${import.meta.env.VITE_API_URL || ''}${companyInfo.companyLogo}`} alt="Logo" style={{ maxHeight: 70, maxWidth: 200, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 6, padding: 4 }} />
-                            </div>
-                        )}
-                        <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ fontSize: 13 }} />
-                        <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>PNG, JPG, SVG (maks 5MB)</p>
-                    </div>
-
-                    <form onSubmit={handleSaveSettings}>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Firma Adı</label>
-                                <input type="text" value={settingsForm.companyName} onChange={e => setSettingsForm({...settingsForm, companyName: e.target.value})} placeholder="Örn: Acme Ltd. Şti." />
-                            </div>
-                        </div>
-                        <div className="form-group">
-                            <label>Adres</label>
-                            <textarea rows={2} value={settingsForm.companyAddress} onChange={e => setSettingsForm({...settingsForm, companyAddress: e.target.value})} placeholder="Sokak, Mahalle, İlçe / İl" />
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Telefon</label>
-                                <input type="text" value={settingsForm.companyPhone} onChange={e => setSettingsForm({...settingsForm, companyPhone: e.target.value})} placeholder="+90 xxx xxx xx xx" />
-                            </div>
-                            <div className="form-group">
-                                <label>E-posta</label>
-                                <input type="email" value={settingsForm.companyEmail} onChange={e => setSettingsForm({...settingsForm, companyEmail: e.target.value})} placeholder="info@firma.com" />
-                            </div>
-                        </div>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Vergi Dairesi</label>
-                                <input type="text" value={settingsForm.invoiceTaxOffice} onChange={e => setSettingsForm({...settingsForm, invoiceTaxOffice: e.target.value})} placeholder="Örn: Kadıköy VD" />
-                            </div>
-                            <div className="form-group">
-                                <label>Vergi Numarası</label>
-                                <input type="text" value={settingsForm.invoiceTaxNumber} onChange={e => setSettingsForm({...settingsForm, invoiceTaxNumber: e.target.value})} placeholder="1234567890" />
-                            </div>
-                        </div>
-                        <div className="form-group">
-                            <label>IBAN</label>
-                            <input type="text" value={settingsForm.invoiceIban} onChange={e => setSettingsForm({...settingsForm, invoiceIban: e.target.value})} placeholder="TR00 0000 0000 0000 0000 0000 00" />
-                        </div>
-                        <div className="form-actions" style={{ marginTop: 24 }}>
-                            <button type="submit" className="btn-primary" disabled={settingsSaving}>
-                                {settingsSaving ? 'Kaydediliyor...' : '✅ Kaydet'}
-                            </button>
-                        </div>
-                    </form>
                 </div>
             )}
         </div>

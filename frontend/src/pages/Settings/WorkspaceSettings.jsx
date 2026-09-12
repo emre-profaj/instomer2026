@@ -79,6 +79,152 @@ const ApptSchedulePanel = ({ schedule, setSchedule, saving, onSave, saved }) => 
 );
 
 /* ────────────────────────────────────────────────
+   Kanal Fiyatlandırma Paneli
+───────────────────────────────────────────────── */
+const CHANNEL_ICONS = { WHATSAPP: '💬', SMS: '📱', EMAIL: '✉️', AI_CALL: '📞' };
+const CHANNEL_COLORS = { WHATSAPP: '#25D366', SMS: '#7c3aed', EMAIL: '#f59e0b', AI_CALL: '#6366f1' };
+
+const ChannelPricingPanel = ({ workspaceId }) => {
+    const [pricing, setPricing] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+        if (!workspaceId) return;
+        import('../../services/api').then(({ workspaceAPI }) => {
+            workspaceAPI.getChannelPricing(workspaceId)
+                .then(res => setPricing(res.data?.pricing || null))
+                .catch(() => {});
+        });
+    }, [workspaceId]);
+
+    const handleSave = async () => {
+        if (!pricing) return;
+        setSaving(true);
+        try {
+            const { workspaceAPI } = await import('../../services/api');
+            await workspaceAPI.updateChannelPricing(workspaceId, pricing);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        } catch (err) {
+            console.error('Pricing update error:', err);
+            alert('Fiyatlandırma kaydedilemedi');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const updateChannel = (ch, field, value) => {
+        setPricing(prev => ({
+            ...prev,
+            [ch]: { ...prev[ch], [field]: value }
+        }));
+    };
+
+    if (!pricing) return null;
+
+    return (
+        <div style={{ marginTop: 20, padding: '20px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div>
+                    <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1f2937' }}>
+                        💰 Kanal Fiyatlandırma
+                    </label>
+                    <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                        Her kanal için maliyet ve çarpan belirleyin. Müşteri Fiyatı = Maliyet × Çarpan
+                    </p>
+                </div>
+                <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    style={{
+                        padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600,
+                        background: saved ? '#dcfce7' : '#4f46e5', color: saved ? '#15803d' : '#fff',
+                        cursor: saving ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 5
+                    }}
+                >
+                    {saving ? <><Loader2 size={13} className="spin" /> Kaydediliyor...</>
+                        : saved ? <><Check size={13} /> Kaydedildi!</>
+                        : <><Save size={13} /> Kaydet</>}
+                </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                {['WHATSAPP', 'SMS', 'EMAIL', 'AI_CALL'].map(ch => {
+                    const p = pricing[ch];
+                    if (!p) return null;
+                    const customerPrice = ((parseFloat(p.baseCost) || 0) * (parseFloat(p.multiplier) || 1));
+                    return (
+                        <div key={ch} style={{
+                            padding: '14px 16px', borderRadius: 10, border: '1px solid #f1f5f9',
+                            background: '#fafbfc',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                <span style={{
+                                    width: 30, height: 30, borderRadius: 8,
+                                    background: CHANNEL_COLORS[ch] + '18',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 16
+                                }}>
+                                    {CHANNEL_ICONS[ch]}
+                                </span>
+                                <span style={{ fontWeight: 700, fontSize: 13, color: '#1f2937' }}>{p.label}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 3 }}>
+                                        Maliyet (USD)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        min="0"
+                                        value={p.baseCost}
+                                        onChange={e => updateChannel(ch, 'baseCost', e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '7px 10px', borderRadius: 7,
+                                            border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600,
+                                            outline: 'none', background: '#fff'
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ width: 80 }}>
+                                    <label style={{ fontSize: 10, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 3 }}>
+                                        Çarpan (×)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        value={p.multiplier}
+                                        onChange={e => updateChannel(ch, 'multiplier', e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '7px 10px', borderRadius: 7,
+                                            border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600,
+                                            outline: 'none', background: '#fff'
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{
+                                padding: '6px 10px', borderRadius: 7,
+                                background: CHANNEL_COLORS[ch] + '12',
+                                fontSize: 12, fontWeight: 700, color: CHANNEL_COLORS[ch],
+                                textAlign: 'center'
+                            }}>
+                                Müşteri Fiyatı: ${customerPrice.toFixed(4)} / mesaj
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+/* ────────────────────────────────────────────────
    Retell Arama Saatleri Paneli  (sadece schedule)
 ───────────────────────────────────────────────── */
 const RetellSchedulePanel = ({ schedule, setSchedule, autoCallEnabled, setAutoCallEnabled, agents, agentId, setAgentId, loadingAgents, onRefreshAgents, saving, onSave, saved }) => {
@@ -247,6 +393,10 @@ const WorkspaceSettings = () => {
     const [leadScoringTemplate, setLeadScoringTemplate] = useState('default');
     const [leadScoringSaving, setLeadScoringSaving] = useState(false);
 
+    // Saat Dilimi
+    const [timezone, setTimezone] = useState('Europe/Istanbul');
+    const [timezoneSaving, setTimezoneSaving] = useState(false);
+
     useEffect(() => {
         if (!currentWorkspace?.id) return;
         // Workspace
@@ -260,6 +410,7 @@ const WorkspaceSettings = () => {
                     if (ws?.salesEnabled !== undefined) setSalesEnabled(ws.salesEnabled);
                     if (ws?.agentDataVisibility) setAgentDataVisibility(ws.agentDataVisibility);
                     if (ws?.leadScoringTemplate) setLeadScoringTemplate(ws.leadScoringTemplate);
+                    if (ws?.timezone) setTimezone(ws.timezone);
                 })
                 .catch(() => {});
         });
@@ -608,6 +759,59 @@ const WorkspaceSettings = () => {
                                 Lead puanlama algoritmalarının ağırlıklarını belirler.
                             </p>
                         </div>
+
+                        {/* Saat Dilimi */}
+                        <div style={{ marginTop: 18 }}>
+                            <label style={{ fontWeight: 600, fontSize: 14, color: '#1e293b' }}>
+                                🌍 Saat Dilimi
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                                <select
+                                    value={timezone}
+                                    onChange={async (e) => {
+                                        const newTz = e.target.value;
+                                        setTimezone(newTz);
+                                        setTimezoneSaving(true);
+                                        try {
+                                            const { default: api } = await import('../../services/api');
+                                            await api.patch(`/workspaces/${currentWorkspace.id}`, { timezone: newTz });
+                                        } catch {}
+                                        setTimezoneSaving(false);
+                                    }}
+                                    style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }}
+                                >
+                                    <optgroup label="Türkiye">
+                                        <option value="Europe/Istanbul">İstanbul (UTC+3)</option>
+                                    </optgroup>
+                                    <optgroup label="Avrupa">
+                                        <option value="Europe/London">Londra (UTC+0/+1)</option>
+                                        <option value="Europe/Berlin">Berlin / Paris (UTC+1/+2)</option>
+                                        <option value="Europe/Athens">Atina / Doğu Avrupa (UTC+2/+3)</option>
+                                        <option value="Europe/Moscow">Moskova (UTC+3)</option>
+                                    </optgroup>
+                                    <optgroup label="Amerika">
+                                        <option value="America/New_York">New York (UTC-5/-4)</option>
+                                        <option value="America/Chicago">Chicago (UTC-6/-5)</option>
+                                        <option value="America/Denver">Denver (UTC-7/-6)</option>
+                                        <option value="America/Los_Angeles">Los Angeles (UTC-8/-7)</option>
+                                    </optgroup>
+                                    <optgroup label="Asya / Pasifik">
+                                        <option value="Asia/Dubai">Dubai (UTC+4)</option>
+                                        <option value="Asia/Kolkata">Hindistan (UTC+5:30)</option>
+                                        <option value="Asia/Shanghai">Çin / Hong Kong (UTC+8)</option>
+                                        <option value="Asia/Tokyo">Tokyo (UTC+9)</option>
+                                        <option value="Australia/Sydney">Sidney (UTC+10/+11)</option>
+                                    </optgroup>
+                                </select>
+                                {timezoneSaving && <span style={{ fontSize: 12, color: '#94a3b8' }}>Kaydediliyor…</span>}
+                            </div>
+                            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                                Arama planlama, not tarih algılama ve otomatik aktiviteler bu saat dilimine göre çalışır.
+                            </p>
+                        </div>
+
+                        {/* Kanal Fiyatlandırma Paneli */}
+                        <ChannelPricingPanel workspaceId={currentWorkspace?.id} />
 
                     </div>
 

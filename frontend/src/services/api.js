@@ -927,10 +927,10 @@ export const caseAPI = {
         api.post(`/contact-cases/${workspaceId}/sync-closing-stages${dryRun ? '?dryRun=true' : ''}`),
     // Case birleştirme
     merge: (workspaceId, data) =>
-        api.post(`/cases/${workspaceId}/merge`, data),
+        api.post(`/contact-cases/${workspaceId}/merge`, data),
     // Case ayırma
     split: (workspaceId, data) =>
-        api.post(`/cases/${workspaceId}/split`, data)
+        api.post(`/contact-cases/${workspaceId}/split`, data)
 };
 
 export const mediaAPI = {

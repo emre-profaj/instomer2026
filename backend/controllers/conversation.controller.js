@@ -2232,7 +2232,13 @@ export const addInternalNote = async (req, res) => {
         // ── 2. Akıllı intent algılama — otomatik aktivite planlama ──
         let autoActivity = null;
         try {
-            const intent = parseCommentIntent(content);
+            // Workspace timezone'unu al
+            const wsForTz = await prisma.workspace.findUnique({
+                where: { id: conversation.workspaceId },
+                select: { timezone: true }
+            });
+            const tz = wsForTz?.timezone || 'Europe/Istanbul';
+            const intent = parseCommentIntent(content, tz);
             if (intent.hasIntent && conversation?.contactId) {
                 // @mention varsa → ekip veya kişi çözümle
                 let assignToUserId = null;

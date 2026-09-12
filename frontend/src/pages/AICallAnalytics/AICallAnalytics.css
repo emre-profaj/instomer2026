@@ -379,8 +379,8 @@
 
 .aicall-thead {
     display: grid;
-    /* Checkbox(40px), Tarih(12%), Arayan(12%), Aranan(12%), Süre(8%), Durum(11%), Duygu(8%), Başarılı(7%), Maliyet(8%), Detay(9%) */
-    grid-template-columns: 40px 1.2fr 1.2fr 1.2fr 0.8fr 1.1fr 0.8fr 0.7fr 0.8fr 0.9fr;
+    /* Checkbox(40px), Tarih, Yön, Arayan, Aranan, Süre, Durum, Duygu, Başarılı, Maliyet, Detay */
+    grid-template-columns: 40px 1.1fr 0.7fr 1.1fr 1.1fr 0.7fr 1fr 0.7fr 0.6fr 0.7fr 0.7fr;
     border-bottom: 2px solid var(--border-color);
 }
 
@@ -401,7 +401,7 @@
 
 .aicall-row {
     display: grid;
-    grid-template-columns: 40px 1.2fr 1.2fr 1.2fr 0.8fr 1.1fr 0.8fr 0.7fr 0.8fr 0.9fr;
+    grid-template-columns: 40px 1.1fr 0.7fr 1.1fr 1.1fr 0.7fr 1fr 0.7fr 0.6fr 0.7fr 0.7fr;
     border-bottom: 1px solid var(--border-light);
     transition: background-color 0.2s;
     align-items: center;

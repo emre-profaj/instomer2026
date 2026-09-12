@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase, Building2, Bot } from 'lucide-react';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Globe, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase, Building2, Bot, RefreshCw, Cake, FileSpreadsheet, Database } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI, productAPI, appointmentConfigAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import { activityAPI } from '../../services/activity.api';
@@ -25,62 +25,152 @@ const normalizePhone = (phone) => {
     return cleaned;
 };
 
-// Safe date helpers to prevent RangeError: Invalid time value
+// Güvenli Tarih Formatlama Fonksiyonu (Crash Önleyici)
 const safeFormatDate = (dateVal, options) => {
-    if (!dateVal) return '';
+    if (!dateVal) return '-';
     try {
         const d = new Date(dateVal);
-        if (isNaN(d.getTime())) return '';
-        return d.toLocaleDateString('tr-TR', options);
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleDateString('tr-TR', options || { day: '2-digit', month: '2-digit', year: 'numeric' });
     } catch {
-        return '';
+        return '-';
     }
 };
 
 const safeFormatDateTime = (dateVal, options) => {
-    if (!dateVal) return '';
+    if (!dateVal) return '-';
     try {
         const d = new Date(dateVal);
-        if (isNaN(d.getTime())) return '';
-        return d.toLocaleString('tr-TR', options);
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleString('tr-TR', options || { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch {
-        return '';
+        return '-';
     }
 };
 
+const getContactCreationSourceInfo = (c) => {
+    if (!c) return { label: 'Bilinmiyor', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', icon: '❓' };
+
+    // Direct channel sources
+    if (c.source === 'WHATSAPP' || c.whatsappId) {
+        return { label: 'WhatsApp', color: '#15803d', bg: '#dcfce7', border: '#86efac', icon: '💬' };
+    }
+    if (c.source === 'INSTAGRAM' || c.instagramId || c.instagramUsername) {
+        return { label: 'Instagram DM', color: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', icon: '📸' };
+    }
+    if (c.source === 'FACEBOOK' || c.facebookId) {
+        return { label: 'Facebook', color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', icon: '📘' };
+    }
+    if (c.source === 'WEBCHAT' || c.source === 'WIDGET') {
+        return { label: 'Web Canlı Destek', color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', icon: '🌐' };
+    }
+    if (c.source === 'FORM') {
+        return { label: 'Web Formu', color: '#b45309', bg: '#fefce8', border: '#fde047', icon: '📝' };
+    }
+    if (c.source === 'CALL' || c.source === 'INBOUND_CALL') {
+        return { label: 'Gelen Telefon', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0', icon: '📞' };
+    }
+    if (c.source === 'OUTBOUND_CALL') {
+        return { label: 'Giden Arama', color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd', icon: '📞' };
+    }
+    if (c.leadSource) {
+        const map = {
+            INBOUND: { label: 'Gelen Arama', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0', icon: '📞' },
+            SOCIAL_MEDIA: { label: 'Sosyal Medya', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: '📱' },
+            FACEBOOK: { label: 'Facebook Reklamı', color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', icon: '📘' },
+            INSTAGRAM: { label: 'Instagram Reklamı', color: '#be185d', bg: '#fdf2f8', border: '#fbcfe8', icon: '📸' },
+            GOOGLE: { label: 'Google Arama/Ads', color: '#ea580c', bg: '#fff7ed', border: '#fed7aa', icon: '🔍' },
+            REFERRAL: { label: 'Tavsiye / Referans', color: '#4338ca', bg: '#e0e7ff', border: '#c7d2fe', icon: '🤝' },
+            WEBSITE: { label: 'Web Sitesi', color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', icon: '🌐' },
+            WALK_IN: { label: 'Yüz Yüze Başvuru', color: '#374151', bg: '#f3f4f6', border: '#e5e7eb', icon: '🚶' },
+            EVENT: { label: 'Etkinlik / Fuar', color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff', icon: '🎪' },
+            OTHER: { label: 'Diğer', color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', icon: '📍' }
+        };
+        if (map[c.leadSource]) return map[c.leadSource];
+    }
+    if (c.source === 'MANUAL') {
+        return { label: 'Manuel Eklendi', color: '#475569', bg: '#f8fafc', border: '#e2e8f0', icon: '✍️' };
+    }
+    if (c.source === 'GYMPRO') {
+        return { label: 'GymPro', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: '⚡' };
+    }
+    if (c.source === 'PROBEL') {
+        return { label: 'Probel HBYS', color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', icon: '⚡' };
+    }
+    if (c.source === 'IMPORT') {
+        return { label: 'İçe Aktarım', color: '#0d9488', bg: '#f0fdfa', border: '#99f6e4', icon: '📁' };
+    }
+    return { label: c.source || 'Sistem Kaydı', color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0', icon: 'ℹ️' };
+};
+
 const getContactCreationSource = (c) => {
-    if (!c) return 'Bilinmiyor';
+    return getContactCreationSourceInfo(c).label;
+};
+
+// Harici sistemlerle aktif senkronizasyon (GymPro, Probel, API vb.)
+const getContactSyncInfo = (c) => {
+    if (!c) return null;
     let safeTags = c.tags;
     if (typeof safeTags === 'string') {
         try { safeTags = JSON.parse(safeTags); } catch { safeTags = []; }
     }
     if (Array.isArray(safeTags)) {
-        if (safeTags.some(t => String(t).toLowerCase().includes('gympro'))) return 'GymPro Senkronu';
-        if (safeTags.some(t => String(t).toLowerCase().includes('probel'))) return 'Probel HBYS';
-        if (safeTags.some(t => String(t).toLowerCase().includes('excel') || String(t).toLowerCase().includes('import'))) return 'Excel İçe Aktarımı';
+        if (safeTags.some(t => String(t).toLowerCase().includes('gympro'))) {
+            return { isSynced: true, provider: 'GymPro', label: 'GymPro', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' };
+        }
+        if (safeTags.some(t => String(t).toLowerCase().includes('probel'))) {
+            return { isSynced: true, provider: 'Probel', label: 'Probel HBYS', color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' };
+        }
     }
-    if (c.importGroup) return `Excel Aktarımı (${c.importGroup})`;
-    if (c.source === 'WHATSAPP' || c.whatsappId) return 'WhatsApp Gelen Mesaj';
-    if (c.source === 'INSTAGRAM' || c.instagramId) return 'Instagram DM';
-    if (c.source === 'FACEBOOK' || c.facebookId) return 'Facebook';
-    if (c.source === 'FORM') return 'Web Formu';
-    if (c.source === 'API') return 'API Entegrasyonu';
-    if (c.source === 'MANUAL') return 'Manuel Eklendi';
-    if (c.leadSource) {
-        const map = {
-            INBOUND: 'Gelen Arama',
-            SOCIAL_MEDIA: 'Sosyal Medya',
-            FACEBOOK: 'Facebook Reklamı',
-            INSTAGRAM: 'Instagram Reklamı',
-            GOOGLE: 'Google Arama/Ads',
-            REFERRAL: 'Tavsiye / Referans',
-            WEBSITE: 'Web Sitesi',
-            WALK_IN: 'Yüz Yüze Başvuru',
-            EVENT: 'Etkinlik / Fuar'
+    if (c.source === 'GYMPRO') {
+        return { isSynced: true, provider: 'GymPro', label: 'GymPro', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' };
+    }
+    if (c.source === 'PROBEL') {
+        return { isSynced: true, provider: 'Probel', label: 'Probel HBYS', color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' };
+    }
+    if (c.source === 'API') {
+        return { isSynced: true, provider: 'API', label: 'API Entegrasyonu', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' };
+    }
+    return null;
+};
+
+// Dosya / Toplu İçe Aktarım (Excel, CSV, importGroup)
+const getContactImportInfo = (c) => {
+    if (!c) return null;
+    let safeTags = c.tags;
+    if (typeof safeTags === 'string') {
+        try { safeTags = JSON.parse(safeTags); } catch { safeTags = []; }
+    }
+    const importTag = Array.isArray(safeTags) ? safeTags.find(t => {
+        const s = String(t).toLowerCase();
+        return s.includes('excel') || s.includes('import') || s.includes('.xlsx') || s.includes('.csv');
+    }) : null;
+
+    if (c.importGroup) {
+        return {
+            isImported: true,
+            provider: 'Excel / CSV',
+            groupName: c.importGroup,
+            label: c.importGroup,
+            fullLabel: `Excel (${c.importGroup})`,
+            color: '#0d9488',
+            bg: '#f0fdfa',
+            border: '#99f6e4'
         };
-        return map[c.leadSource] || c.leadSource;
     }
-    return c.source || 'Sistem Kaydı';
+    if (c.source === 'IMPORT' || importTag) {
+        return {
+            isImported: true,
+            provider: 'Excel / CSV',
+            groupName: importTag || null,
+            label: importTag ? `${importTag}` : 'Excel Aktarımı',
+            fullLabel: importTag ? `Excel (${importTag})` : 'Excel İçe Aktarımı',
+            color: '#0d9488',
+            bg: '#f0fdfa',
+            border: '#99f6e4'
+        };
+    }
+    return null;
 };
 
 // Kategori seçenekleri
@@ -295,6 +385,33 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [funnelStage, setFunnelStage] = useState(null); // { name, color } of the current funnel stage
     const [activeCaseInfo, setActiveCaseInfo] = useState(null); // { caseNumber, caseId, title } from CaseCards
     const [allCases, setAllCases] = useState([]); // all cases for this contact
+
+    // Deduplicate and filter out merged / duplicate cases
+    const sanitizeCases = (rawList) => {
+        if (!Array.isArray(rawList) || rawList.length === 0) return [];
+        // 1. Sadece aktif olanları veya birleştirilmemiş olanları al
+        const activeOnes = rawList.filter(c => c && c.status === 'ACTIVE' && !c.description?.includes('Birleştirildi'));
+        const baseList = activeOnes.length > 0 ? activeOnes : rawList.filter(c => !c.description?.includes('Birleştirildi'));
+        
+        // 2. ID ve caseNumber bazında mükerrer kayıtları engelle
+        const seenIds = new Set();
+        const seenNumbers = new Set();
+        const result = [];
+        
+        for (const c of baseList) {
+            if (!c || !c.id) continue;
+            if (seenIds.has(c.id)) continue;
+            const cNum = c.caseNumber ? String(c.caseNumber).trim() : null;
+            if (cNum && seenNumbers.has(cNum)) continue; // aynı numaralı mükerrer case'i atla
+            
+            seenIds.add(c.id);
+            if (cNum) seenNumbers.add(cNum);
+            result.push(c);
+        }
+        return result;
+    };
+
+    const distinctCases = useMemo(() => sanitizeCases(allCases), [allCases]);
     const [caseIdOpenCaseId, setCaseIdOpenCaseId] = useState(null);
     const [showNewCaseInline, setShowNewCaseInline] = useState(false);
     const [newCaseTitle, setNewCaseTitle] = useState('');
@@ -336,6 +453,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [selectedRetellTemplateId, setSelectedRetellTemplateId] = useState(null);
     const [retellCallTemplates, setRetellCallTemplates] = useState([]);
+
+    // Case Timeline Quick Action & Internal Note states
+    const [caseActionMenuOpenId, setCaseActionMenuOpenId] = useState(null);
+    const [showInternalNoteModal, setShowInternalNoteModal] = useState(false);
+    const [internalNoteContent, setInternalNoteContent] = useState('');
+    const [internalNoteCaseId, setInternalNoteCaseId] = useState(null);
+    const [savingInternalNote, setSavingInternalNote] = useState(false);
 
     // AI Sesli Arama Modalı Açıcı (Hatasız ve güvenli veri yükleme)
     const handleOpenAiCall = (phoneToCall) => {
@@ -864,7 +988,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     }, [currentWorkspace?.id]);
 
     // Aktivite modalını konuşmanın mevcut atamasıyla aç
-    const openActivityModal = (type) => {
+    const openActivityModal = (type, targetCaseId = null) => {
         const effectiveConv = activeConv;
         const defaultAssigneeId = effectiveConv?.assignedToId || '';
         const defaultTeamId = effectiveConv?.teamIds
@@ -879,7 +1003,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             assignedToId: defaultAssigneeId,
             teamId: defaultTeamId,
             funnelStageId: defaultStageId,
-            caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '')
+            caseId: targetCaseId || activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '')
         });
         setCallCompleted(true);
         setNoteCallSuccess(null);
@@ -901,6 +1025,101 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
         setShowActivityModal(true);
     };
+
+    const openInternalNoteModal = (targetCaseId = null) => {
+        setInternalNoteCaseId(targetCaseId || activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : null));
+        setInternalNoteContent('');
+        setShowInternalNoteModal(true);
+    };
+
+    const handleSaveInternalNote = async () => {
+        if (!internalNoteContent.trim()) return;
+        setSavingInternalNote(true);
+        try {
+            const noteText = internalNoteContent.trim();
+            const activeTargetCaseId = internalNoteCaseId || activeCaseInfo?.id || conversationData?.caseId || (allCases?.length > 0 ? allCases[0].id : null);
+
+            // 1. If conversation exists, post to conversation so it appears in the chat box
+            let noteMsg = null;
+            if (conversationId && currentWorkspace?.id) {
+                try {
+                    const res = await conversationAPI.addNote(currentWorkspace.id, conversationId, {
+                        content: noteText,
+                        isCallNote: false
+                    });
+                    noteMsg = res.data?.note;
+                    window.dispatchEvent(new CustomEvent('internal_note_added', {
+                        detail: {
+                            conversationId,
+                            note: {
+                                ...noteMsg,
+                                isInternalNote: true,
+                                messageType: 'NOTE',
+                                sender: user,
+                                isFromContact: false
+                            }
+                        }
+                    }));
+                } catch (convErr) {
+                    console.warn('Conversation note add error:', convErr);
+                }
+            } else if (profile?.id && currentWorkspace?.id) {
+                // 2. If no active conversation, save activity linked to this case
+                try {
+                    await activityAPI.createActivity(profile.id, {
+                        workspaceId: currentWorkspace.id,
+                        type: 'NOTE',
+                        title: 'Dahili Not',
+                        description: noteText,
+                        status: 'COMPLETED',
+                        completedAt: new Date().toISOString(),
+                        caseId: activeTargetCaseId || null,
+                        assignedToId: user?.id || null
+                    });
+                } catch (actErr) {
+                    console.warn('Activity note create error:', actErr);
+                }
+            }
+
+            // 3. Refresh timeline
+            if (profile?.id) {
+                fetchTimeline(profile.id);
+            }
+
+            window.dispatchEvent(new CustomEvent('activity_saved'));
+            if (onActivitySaved) onActivitySaved();
+
+            setShowInternalNoteModal(false);
+            setInternalNoteContent('');
+            setInternalNoteCaseId(null);
+        } catch (err) {
+            console.error('Error saving internal note:', err);
+            alert('Not kaydedilirken hata oluştu.');
+        } finally {
+            setSavingInternalNote(false);
+        }
+    };
+
+    useEffect(() => {
+        const handleRefresh = () => {
+            if (profile?.id) {
+                fetchTimeline(profile.id);
+            }
+        };
+        window.addEventListener('refresh_timeline', handleRefresh);
+        window.addEventListener('internal_note_added', handleRefresh);
+        return () => {
+            window.removeEventListener('refresh_timeline', handleRefresh);
+            window.removeEventListener('internal_note_added', handleRefresh);
+        };
+    }, [profile?.id]);
+
+    useEffect(() => {
+        if (!caseActionMenuOpenId) return;
+        const closeMenu = () => setCaseActionMenuOpenId(null);
+        window.addEventListener('click', closeMenu);
+        return () => window.removeEventListener('click', closeMenu);
+    }, [caseActionMenuOpenId]);
 
     const openQuoteFormHandler = () => {
         setQuoteFormData(p => ({ ...p, caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '') }));
@@ -1155,7 +1374,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             case 'TASK': return <Check size={14} />;
             case 'MEETING': return <Calendar size={14} />;
             case 'VISIT': return <MapPin size={14} />;
-            case 'REMINDER': return <PhoneCall size={14} />;
+            case 'REMINDER': return <Bell size={14} />;
             case 'PROPOSAL': return <FileText size={14} />;
             case 'ORDER': return <TrendingUp size={14} />;
             case 'INVOICE': return <FileText size={14} />;
@@ -1176,7 +1395,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             case 'TASK': return 'Görev';
             case 'MEETING': return 'Görüşme';
             case 'VISIT': return 'Ziyaret';
-            case 'REMINDER': return 'Arama';
+            case 'REMINDER': return 'Hatırlatıcı';
             case 'PROPOSAL': return 'Teklif';
             case 'ORDER': return 'Sipariş';
             case 'INVOICE': return 'Fatura';
@@ -1883,6 +2102,58 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         ) : (
                                             !readOnly && <button onClick={() => setIsEditingCompany(true)} style={{ fontSize: 10, color: '#94a3b8', background: 'none', border: '1px dashed #d1d5db', borderRadius: 12, padding: '1px 8px', cursor: 'pointer' }}>+ Firma</button>
                                         )}
+                                        {/* Senkronizasyon veya İçe Aktarım Rozeti (Yukarıda) */}
+                                        {(() => {
+                                            const sync = getContactSyncInfo(profile);
+                                            const imp = getContactImportInfo(profile);
+                                            if (sync) {
+                                                return (
+                                                    <span
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: 4,
+                                                            fontSize: 10.5,
+                                                            fontWeight: 600,
+                                                            color: sync.color,
+                                                            background: sync.bg,
+                                                            border: `1px solid ${sync.border}`,
+                                                            borderRadius: 12,
+                                                            padding: '1px 8px',
+                                                            cursor: 'default'
+                                                        }}
+                                                        title={`Bu kişi ${sync.provider} sistemi ile senkronizedir.`}
+                                                    >
+                                                        <RefreshCw size={10} style={{ animation: 'spin 8s linear infinite' }} />
+                                                        <span>Senkron: {sync.label}</span>
+                                                    </span>
+                                                );
+                                            }
+                                            if (imp) {
+                                                return (
+                                                    <span
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: 4,
+                                                            fontSize: 10.5,
+                                                            fontWeight: 600,
+                                                            color: imp.color,
+                                                            background: imp.bg,
+                                                            border: `1px solid ${imp.border}`,
+                                                            borderRadius: 12,
+                                                            padding: '1px 8px',
+                                                            cursor: 'default'
+                                                        }}
+                                                        title={`Bu kişi ${imp.fullLabel} ile içe aktarılmıştır.`}
+                                                    >
+                                                        <FileSpreadsheet size={10} />
+                                                        <span>İçe Aktarım: {imp.label}</span>
+                                                    </span>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                     </div>
                                     <div className="unified-details">
                                         <div className="unified-contact-box">
@@ -2354,62 +2625,30 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <option value="nl">🇳🇱 Nederlands</option>
                                                     </select>
                                                 </div>
-                                                <div className="unified-loc-item">
+                                                <div className="unified-loc-item" title={profile.birthDate ? `Doğum Tarihi: ${safeFormatDate(profile.birthDate)}` : 'Doğum Tarihi Ekle'}>
+                                                    <Cake size={11} style={{ color: profile.birthDate ? '#e11d48' : '#9ca3af', flexShrink: 0 }} />
                                                     <input
                                                         type="date"
                                                         className="unified-loc-input"
                                                         value={profile.birthDate ? profile.birthDate.substring(0, 10) : ''}
-                                                        onChange={(e) => {
-                                                            setProfile(prev => ({ ...prev, birthDate: e.target.value || null }));
-                                                            handleUpdateProfile({ birthDate: e.target.value ? new Date(e.target.value).toISOString() : null });
+                                                        onChange={async (e) => {
+                                                            const val = e.target.value;
+                                                            const iso = val ? new Date(val).toISOString() : null;
+                                                            setProfile(prev => ({ ...prev, birthDate: iso }));
+                                                            await handleUpdateProfile({ birthDate: iso });
                                                         }}
-                                                        title="Doğum Tarihi"
-                                                        style={{ fontSize: '10px' }}
+                                                        style={{ fontSize: 11, cursor: 'pointer' }}
                                                     />
+                                                    {profile.birthDate && (() => {
+                                                        const birthYear = new Date(profile.birthDate).getFullYear();
+                                                        const age = new Date().getFullYear() - birthYear;
+                                                        return !isNaN(age) && age > 0 && age < 120 ? (
+                                                            <span style={{ fontSize: '9.5px', color: '#e11d48', fontWeight: 600, background: '#fff1f2', padding: '0 3px', borderRadius: '3px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                                {age}y
+                                                            </span>
+                                                        ) : null;
+                                                    })()}
                                                 </div>
-                                            </div>
-
-                                            {/* ── Kayıt, Güncelleme & Entegrasyon Geçmişi (Mevcut Çerçeve İçinde) ── */}
-                                            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 6, marginTop: 6, fontSize: 10, color: '#475569', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: '#94a3b8' }}>Oluşturulma:</span>
-                                                    <span style={{ fontWeight: 500 }}>
-                                                        {profile.createdAt ? safeFormatDateTime(profile.createdAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                                                        {' '}<strong style={{ color: '#dc2626', fontWeight: 600 }}>({getContactCreationSource(profile)})</strong>
-                                                    </span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ color: '#94a3b8' }}>Son Güncelleme:</span>
-                                                    <span style={{ fontWeight: 500 }}>
-                                                        {profile.updatedAt ? safeFormatDateTime(profile.updatedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                                                    </span>
-                                                </div>
-                                                {profile.lastContactedAt && (
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ color: '#94a3b8' }}>Son İletişim:</span>
-                                                        <span style={{ fontWeight: 500 }}>
-                                                            {safeFormatDateTime(profile.lastContactedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                {/* Dış Entegrasyon (GymPro / Probel) Varsa */}
-                                                {(() => {
-                                                    let tags = [];
-                                                    try { tags = typeof profile.tags === 'string' ? JSON.parse(profile.tags) : (profile.tags || []); } catch {}
-                                                    const isGympro = Array.isArray(tags) && tags.some(t => String(t).toLowerCase().includes('gympro'));
-                                                    const isProbel = Array.isArray(tags) && tags.some(t => String(t).toLowerCase().includes('probel'));
-                                                    if (isGympro || isProbel) {
-                                                        return (
-                                                            <div style={{ marginTop: 1, paddingTop: 3, borderTop: '1px dashed #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <span style={{ color: '#dc2626', fontWeight: 600 }}>Son Entegrasyon:</span>
-                                                                <span style={{ fontWeight: 600, color: '#1e293b' }}>
-                                                                    {isGympro ? 'GymPro Senkronu' : 'Probel HBYS'}
-                                                                </span>
-                                                            </div>
-                                                        );
-                                                    }
-                                                    return null;
-                                                })()}
                                             </div>
                                         </div>
                                     </div>
@@ -2420,13 +2659,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
                             {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
                             {(() => {
-                                const casesToRender = allCases.length > 0 ? allCases : (activeCaseInfo ? [{...activeCaseInfo, id: activeCaseInfo.caseId}] : []);
-                                const loopArray = casesToRender.length > 0 ? casesToRender : [{ id: 'default', title: 'Genel', caseNumber: '' }];
+                                // Aktif case belirleme (mevcut konuşmaya bağlı case, yoksa ilk case)
+                                const activeCase = (distinctCases.find(ac => ac.id === (activeCaseInfo?.caseId || conversationData?.caseId)))
+                                    || (distinctCases.length > 0 ? distinctCases[0] : null)
+                                    || (activeCaseInfo ? { ...activeCaseInfo, id: activeCaseInfo.caseId } : { id: 'default', title: 'Genel', caseNumber: '' });
+                                
+                                // Tek bir aktif case üzerinden render et (birden fazla case varsa sağ üstteki dropdown ile geçiş yapılır)
+                                const loopArray = [activeCase];
                                 return loopArray.map((c, index) => {
                                     const isExpanded = expandedCases[c.id] !== false;
                                     const caseTimeline = [...pastTimeline, ...plannedTimeline].filter(item => {
                                         if (item.caseId === c.id) return true;
-                                        if (!item.caseId && (c.id === (activeCaseInfo?.caseId || loopArray[0].id))) return true;
+                                        if (!item.caseId && (c.id === (activeCaseInfo?.caseId || activeCase?.id || 'default'))) return true;
                                         return false;
                                     });
                                     return (
@@ -2438,7 +2682,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             {/* Konu Başlığı */}
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                             {(() => {
-                                                const caseInfo = activeCaseInfo;
+                                                const caseInfo = (c && c.id !== 'default') ? c : activeCaseInfo;
                                                 if (!caseInfo && c.id === 'default') {
                                                     const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || c?.title || '';
                                                     if (!convTopic) return null;
@@ -2464,15 +2708,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     <input
                                                         type="text"
                                                         value={displayTitle}
-                                                        onChange={(e) => setActiveCaseInfo(prev => ({ ...prev, title: e.target.value, _userEdited: true }))}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setActiveCaseInfo(prev => ({ ...prev, title: val, _userEdited: true }));
+                                                            setAllCases(prev => prev.map(ac => ac.id === c.id ? { ...ac, title: val, _userEdited: true } : ac));
+                                                        }}
                                                         onBlur={async (e) => {
                                                             const newTitle = e.target.value.trim();
                                                             if (!newTitle || newTitle === caseInfo._savedTitle) return;
                                                             try {
-                                                                await caseAPI.update(currentWorkspace.id, caseInfo.caseId, { title: newTitle });
+                                                                await caseAPI.update(currentWorkspace.id, c.id || caseInfo.caseId, { title: newTitle });
                                                                 setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle, _userEdited: false }));
+                                                                setAllCases(prev => prev.map(ac => ac.id === c.id ? { ...ac, title: newTitle, _savedTitle: newTitle, _userEdited: false } : ac));
                                                                 window.dispatchEvent(new CustomEvent('case_title_updated', {
-                                                                    detail: { caseId: caseInfo.caseId, title: newTitle, conversationId }
+                                                                    detail: { caseId: c.id || caseInfo.caseId, title: newTitle, conversationId }
                                                                 }));
                                                             } catch (err) { console.error('Title update error:', err); }
                                                         }}
@@ -2512,13 +2761,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     }}
                                                     onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#1e293b'; }}
                                                     onMouseLeave={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-                                                    title={activeCaseInfo?.caseNumber || c?.caseNumber || 'Case Seç'}
+                                                    title={c?.caseNumber || activeCaseInfo?.caseNumber || 'Case Seç'}
                                                 >
                                                     <Briefcase size={9} style={{ opacity: 0.7 }} />
                                                     <span>{(() => {
-                                                        const rawNum = activeCaseInfo?.caseNumber || c?.caseNumber || 'Case';
+                                                        const rawNum = c?.caseNumber || activeCaseInfo?.caseNumber || 'Case';
                                                         return (rawNum.includes('-') && rawNum.length > 8) ? rawNum.split('-').pop() : rawNum;
                                                     })()}</span>
+                                                    {distinctCases?.length > 1 && (
+                                                        <span style={{
+                                                            fontSize: '0.55rem',
+                                                            background: '#eff6ff',
+                                                            color: '#2563eb',
+                                                            padding: '1px 5px',
+                                                            borderRadius: '999px',
+                                                            fontWeight: 700,
+                                                            marginLeft: 2
+                                                        }}>
+                                                            {distinctCases.length} Case
+                                                        </span>
+                                                    )}
                                                     <ChevronDown size={7} style={{
                                                         transition: 'transform 0.2s',
                                                         transform: caseIdOpenCaseId === c.id ? 'rotate(180deg)' : 'none',
@@ -2534,17 +2796,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             position: 'absolute', top: '100%', right: 0, zIndex: 9999,
                                                             background: '#fff', border: '1px solid #e5e7eb',
                                                             borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                                                            minWidth: 240, marginTop: 4, overflow: 'hidden',
-                                                            maxHeight: 300, overflowY: 'auto'
+                                                            minWidth: 250, marginTop: 4, overflow: 'hidden',
+                                                            maxHeight: 320, overflowY: 'auto'
                                                         }}
                                                         onClick={e => e.stopPropagation()}
                                                     >
-                                                        <div style={{ padding: '8px 12px 4px', fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                                            Case Seç
+                                                        <div style={{ padding: '8px 12px 4px', fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                            <span>Müşteri Case'leri</span>
+                                                            {distinctCases.length > 1 && (
+                                                                <span style={{ fontSize: '0.6rem', background: '#eff6ff', color: '#2563eb', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>
+                                                                    Toplam {distinctCases.length}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        {allCases.map(cc => {
+                                                        {distinctCases.map(cc => {
                                                             const statusInfo = { ACTIVE: '🟢', CLOSED: '🔴', WON: '🏆', LOST: '❌' };
-                                                            const isActiveCase = cc.id === (activeCaseInfo?.caseId || conversationData?.caseId);
+                                                            const isActiveCase = cc.id === (activeCaseInfo?.caseId || conversationData?.caseId || c.id);
                                                             return (
                                                                 <div
                                                                     key={cc.id}
@@ -2552,7 +2819,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         try {
                                                                             const { default: api } = await import('../../services/api');
                                                                             await api.put(`/conversations/${currentWorkspace.id}/${conversationId}/link-case`, { caseId: cc.id });
-                                                                            setActiveCaseInfo(prev => ({ ...prev, caseId: cc.id, branchId: cc.branchId || null, branch: cc.branch || null }));
+                                                                            setActiveCaseInfo(prev => ({
+                                                                                ...prev,
+                                                                                ...cc,
+                                                                                caseId: cc.id,
+                                                                                branchId: cc.branchId || null,
+                                                                                branch: cc.branch || null,
+                                                                                _savedTitle: cc.title,
+                                                                                _userEdited: false
+                                                                            }));
                                                                             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                         } catch (err) { console.error(err); }
                                                                         setCaseIdOpenCaseId(null);
@@ -2568,12 +2843,54 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     onMouseLeave={e => { e.currentTarget.style.background = isActiveCase ? '#f5f3ff' : 'transparent'; }}
                                                                 >
                                                                     <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{statusInfo[cc.status] || '⚪'}</span>
-                                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#a1a1aa', flexShrink: 0 }}>{cc?.caseNumber}</span>
+                                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#6366f1', fontWeight: 600, flexShrink: 0 }}>#{cc?.caseNumber}</span>
                                                                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cc.title || '—'}</span>
-                                                                    {isActiveCase && <span style={{ fontSize: '0.65rem', color: '#7c3aed', marginLeft: 'auto' }}>✓</span>}
+                                                                    {isActiveCase && <span style={{ fontSize: '0.65rem', color: '#7c3aed', marginLeft: 'auto', fontWeight: 700 }}>✓ Aktif</span>}
                                                                 </div>
                                                             );
                                                         })}
+                                                        {distinctCases.length > 1 && (
+                                                            <div style={{ borderTop: '1px solid #f1f5f9', padding: '4px 6px' }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={async () => {
+                                                                        if (!window.confirm(`${distinctCases.length} farklı case tek bir Case (#${activeCase?.caseNumber || c?.caseNumber}) altında birleştirilsin mi?\n\nTüm konuşmalar ve aktiviteler bu aktif case'e aktarılacaktır.`)) return;
+                                                                        try {
+                                                                            const { default: api } = await import('../../services/api');
+                                                                            const targetId = activeCase.id || c.id;
+                                                                            const sourceIds = distinctCases.filter(dc => dc.id !== targetId).map(dc => dc.id);
+                                                                            await api.post(`/contact-cases/${currentWorkspace.id}/merge`, {
+                                                                                sourceCaseId: sourceIds[0],
+                                                                                caseIds: [targetId, ...sourceIds],
+                                                                                targetCaseId: targetId
+                                                                            });
+                                                                            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                        } catch (err) {
+                                                                            console.error(err);
+                                                                            alert('Birleştirme sırasında hata oluştu.');
+                                                                        }
+                                                                        setCaseIdOpenCaseId(null);
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        padding: '6px 10px',
+                                                                        fontSize: '0.68rem',
+                                                                        fontWeight: 600,
+                                                                        color: '#2563eb',
+                                                                        background: '#eff6ff',
+                                                                        border: '1px solid #bfdbfe',
+                                                                        borderRadius: 6,
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        gap: 5
+                                                                    }}
+                                                                >
+                                                                    <span>🔗 Tüm Case'leri Bu Case ile Birleştir</span>
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                         <div style={{ borderTop: '1px solid #f1f5f9', padding: '4px 0' }}>
                                                             {!showNewCaseInline ? (
                                                                 <div
@@ -2699,7 +3016,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         }
                                                         return { ...prev, ...info, _savedTitle: info.title };
                                                     })}
-                                                    onCasesLoaded={(cases) => setAllCases(cases)}
+                                                    onCasesLoaded={(cases) => setAllCases(sanitizeCases(cases))}
                                                     onStageChanged={({ funnelType, funnelStageId, stageName, stageColor }) => {
                                                         setFunnelStage({ id: funnelStageId, name: stageName, color: stageColor || '#6366f1' });
                                                         setLocalConvOverride(prev => ({
@@ -3843,7 +4160,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         }
                                                         return { ...prev, ...info, _savedTitle: info.title };
                                                     })}
-                                                    onCasesLoaded={(cases) => setAllCases(cases)}
+                                                    onCasesLoaded={(cases) => setAllCases(sanitizeCases(cases))}
                                                 />
                                             </div>
                                         )}
@@ -4073,15 +4390,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
                                         // 8.5 AI Aramaları — CALL milestone'a birleştirildi, ayrı entry yok
 
-                                        // 9. Planlanmış aramalar (gelecek)
-                                        const plannedCalls = plannedTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.status === 'PLANNED');
+                                        // 9. Planlanmış aramalar (gelecek) - CALL
+                                        const plannedCalls = plannedTimeline.filter(i => i.type === 'CALL' && i.status === 'PLANNED');
                                         if (plannedCalls.length > 0) {
                                             const nextCall = plannedCalls.sort((a, b) => new Date(a.dueDate || a.date) - new Date(b.dueDate || b.date))[0];
                                             const callDate = new Date(nextCall.dueDate || nextCall.date);
                                             const isOverdue = callDate < new Date();
                                             const hasCompletedCall = completedCalls.length > 0;
                                             milestones.push({
-                                                icon: isOverdue ? '⚠️' : '🔔',
+                                                icon: isOverdue ? '⚠️' : '📞',
                                                 label: isOverdue ? 'Gecikmiş Arama' : 'Planlanan Arama',
                                                 detail: (() => {
                                                     const parts = [];
@@ -4095,7 +4412,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     return parts.length > 0 ? parts.join('  •  ') : null;
                                                 })(),
                                                 date: callDate,
-                                                color: isOverdue ? '#dc2626' : '#f87171',
+                                                color: isOverdue ? '#dc2626' : '#3b82f6',
                                                 done: false,
                                                 overdue: isOverdue && !hasCompletedCall,
                                                 _type: 'PLANNED_CALL',
@@ -4103,19 +4420,40 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             });
                                         }
 
+                                        // 9.2 Planlanmış Hatırlatıcılar (gelecek) - REMINDER
+                                        const plannedReminders = plannedTimeline.filter(i => (i.type === 'REMINDER' || i.type === 'TASK') && i.status === 'PLANNED');
+                                        if (plannedReminders.length > 0) {
+                                            const nextRem = plannedReminders.sort((a, b) => new Date(a.dueDate || a.date) - new Date(b.dueDate || b.date))[0];
+                                            const remDate = new Date(nextRem.dueDate || nextRem.date);
+                                            const isOverdue = remDate < new Date();
+                                            milestones.push({
+                                                icon: isOverdue ? '⚠️' : '🔔',
+                                                label: isOverdue ? 'Gecikmiş Hatırlatıcı' : 'Planlanan Hatırlatıcı',
+                                                detail: nextRem.title || nextRem.content || null,
+                                                date: remDate,
+                                                color: isOverdue ? '#dc2626' : '#f59e0b',
+                                                done: false,
+                                                overdue: isOverdue,
+                                                _type: 'PLANNED_REMINDER',
+                                                _sourceItems: plannedReminders
+                                            });
+                                        }
+
                                         // 9.5 Notlar
                                         const noteItems = allTimeline.filter(i => i.type === 'NOTE' && i.sourceType === 'ACTIVITY');
                                         noteItems.forEach(note => {
-                                            const noteContent = (note.content || '').replace(/<[^>]*>/g, '').substring(0, 60);
+                                            const noteContent = (note.content || '').replace(/<[^>]*>/g, '');
+                                            const isCallNote = noteContent.startsWith('📞 Görüşme Notu:');
+                                            const displayContent = isCallNote ? noteContent.replace('📞 Görüşme Notu:', '').trim() : noteContent;
                                             milestones.push({
-                                                icon: '📝',
-                                                label: 'Not Eklendi',
+                                                icon: isCallNote ? '📞' : '📝',
+                                                label: isCallNote ? 'Arama Notu' : (note.title === 'Dahili Not' || note.id?.startsWith('inote_') ? 'Dahili Not' : 'Not Eklendi'),
                                                 detail: [
                                                     note.labelName && note.labelName !== 'Kişi Notu' ? `${note.labelName}` : null,
-                                                    noteContent || null
+                                                    displayContent ? (displayContent.length > 80 ? displayContent.substring(0, 80) + '...' : displayContent) : null
                                                 ].filter(Boolean).join(' — ') || null,
                                                 date: new Date(note.date),
-                                                color: '#16a34a',
+                                                color: isCallNote ? '#10b981' : '#f59e0b',
                                                 done: true,
                                                 _type: 'NOTE',
                                                 _sourceItems: [note],
@@ -4219,7 +4557,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             'PROPOSAL': 9,
                                             'ORDER': 10,
                                             'DEAL': 11,
-                                            'PLANNED_CALL': 99  // Planlananlar en sona
+                                            'PLANNED_CALL': 99,     // Planlananlar en sona
+                                            'PLANNED_REMINDER': 99
                                         };
                                         milestones.sort((a, b) => {
                                             const timeDiff = (a.date || 0) - (b.date || 0);
@@ -4282,9 +4621,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         AI
                                                                     </span>
                                                                 )}
-                                                                {idx < milestones.length - 1 && (
-                                                                    <div className="journey-line" style={{ background: m.done ? m.color : '#e2e8f0' }} />
-                                                                )}
+                                                                <div className="journey-line" style={{ background: m.done ? m.color : '#e2e8f0' }} />
                                                             </div>
                                                             <div className="journey-content">
                                                                 <div className="journey-label">
@@ -4306,6 +4643,228 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         </div>
                                                         );
                                                     })}
+
+                                                    {/* '+' Hızlı Aksiyon & Popover Menü (Option A) */}
+                                                    <div className="journey-step journey-action-step" style={{ position: 'relative', marginTop: 3, paddingBottom: 6 }}>
+                                                        <div className="journey-line-wrapper" style={{ position: 'relative' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setCaseActionMenuOpenId(caseActionMenuOpenId === c.id ? null : c.id);
+                                                                }}
+                                                                title="İşlem Ekle / Planla"
+                                                                style={{
+                                                                    width: 20,
+                                                                    height: 20,
+                                                                    borderRadius: '50%',
+                                                                    border: '2px dashed #6366f1',
+                                                                    background: '#eef2ff',
+                                                                    color: '#4f46e5',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: 12,
+                                                                    fontWeight: 700,
+                                                                    cursor: 'pointer',
+                                                                    boxShadow: '0 0 0 3px #fff',
+                                                                    zIndex: 2,
+                                                                    padding: 0,
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                        <div className="journey-content" style={{ position: 'relative' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setCaseActionMenuOpenId(caseActionMenuOpenId === c.id ? null : c.id);
+                                                                }}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 5,
+                                                                    padding: '4px 10px',
+                                                                    fontSize: '0.73rem',
+                                                                    fontWeight: 600,
+                                                                    color: '#4f46e5',
+                                                                    background: '#eef2ff',
+                                                                    border: '1px solid #c7d2fe',
+                                                                    borderRadius: 8,
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                <span style={{ fontWeight: 800 }}>+</span>
+                                                                <span>Arama Notu / Planla...</span>
+                                                                <ChevronDown size={12} style={{ transform: caseActionMenuOpenId === c.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+                                                            </button>
+
+                                                            {/* Dropdown Popover */}
+                                                            {caseActionMenuOpenId === c.id && (
+                                                                <div
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        top: '100%',
+                                                                        left: 0,
+                                                                        marginTop: 6,
+                                                                        padding: 6,
+                                                                        background: '#fff',
+                                                                        border: '1px solid #e2e8f0',
+                                                                        borderRadius: 12,
+                                                                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                                                                        width: 220,
+                                                                        zIndex: 50
+                                                                    }}
+                                                                >
+                                                                    {/* 🌟 Vurgulu: Dahili Not Ekle */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setCaseActionMenuOpenId(null);
+                                                                            openInternalNoteModal(c.id);
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            textAlign: 'left',
+                                                                            padding: '8px 10px',
+                                                                            borderRadius: 8,
+                                                                            background: '#fef3c7',
+                                                                            color: '#92400e',
+                                                                            border: '1px solid #fde68a',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: 8,
+                                                                            marginBottom: 4,
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                    >
+                                                                        <span style={{ width: 22, height: 22, borderRadius: 6, background: '#fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>📝</span>
+                                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                                            <div style={{ fontWeight: 700, fontSize: '0.74rem' }}>Dahili Not Ekle</div>
+                                                                            <div style={{ fontSize: '0.64rem', color: '#b45309' }}>Timeline & Sohbete ekler</div>
+                                                                        </div>
+                                                                    </button>
+
+                                                                    {/* Arama Notu */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setCaseActionMenuOpenId(null);
+                                                                            openActivityModal('NOTE', c.id);
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            textAlign: 'left',
+                                                                            padding: '6px 8px',
+                                                                            borderRadius: 6,
+                                                                            border: 'none',
+                                                                            background: 'transparent',
+                                                                            color: '#334155',
+                                                                            fontSize: '0.74rem',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: 8,
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                                    >
+                                                                        <span style={{ width: 20, height: 20, borderRadius: 5, background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>📞</span>
+                                                                        <span style={{ fontWeight: 500 }}>Arama Notu Gir</span>
+                                                                    </button>
+
+                                                                    {/* Arama Planla */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setCaseActionMenuOpenId(null);
+                                                                            openActivityModal('CALL', c.id);
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            textAlign: 'left',
+                                                                            padding: '6px 8px',
+                                                                            borderRadius: 6,
+                                                                            border: 'none',
+                                                                            background: 'transparent',
+                                                                            color: '#334155',
+                                                                            fontSize: '0.74rem',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: 8,
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                                    >
+                                                                        <span style={{ width: 20, height: 20, borderRadius: 5, background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>📞</span>
+                                                                        <span style={{ fontWeight: 500 }}>Arama Planla</span>
+                                                                    </button>
+
+                                                                    {/* Görüşme Planla */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setCaseActionMenuOpenId(null);
+                                                                            openActivityModal('MEETING', c.id);
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            textAlign: 'left',
+                                                                            padding: '6px 8px',
+                                                                            borderRadius: 6,
+                                                                            border: 'none',
+                                                                            background: 'transparent',
+                                                                            color: '#334155',
+                                                                            fontSize: '0.74rem',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: 8,
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                                    >
+                                                                        <span style={{ width: 20, height: 20, borderRadius: 5, background: '#f5f3ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>📅</span>
+                                                                        <span style={{ fontWeight: 500 }}>Görüşme / Randevu Planla</span>
+                                                                    </button>
+
+                                                                    {/* Hatırlatıcı */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setCaseActionMenuOpenId(null);
+                                                                            openActivityModal('REMINDER', c.id);
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            textAlign: 'left',
+                                                                            padding: '6px 8px',
+                                                                            borderRadius: 6,
+                                                                            border: 'none',
+                                                                            background: 'transparent',
+                                                                            color: '#334155',
+                                                                            fontSize: '0.74rem',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: 8,
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                                    >
+                                                                        <span style={{ width: 20, height: 20, borderRadius: 5, background: '#fff7ed', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>🔔</span>
+                                                                        <span style={{ fontWeight: 500 }}>Hatırlatıcı Ekle</span>
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </>
                                         );
@@ -4952,7 +5511,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     style={{ borderColor: !activityForm.caseId ? '#fca5a5' : '#e5e7eb', marginBottom: '4px' }}
                                                 >
                                                     <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                                    {(Array.isArray(allCases) ? allCases : []).map(c => (
+                                                    {(Array.isArray(distinctCases) ? distinctCases : []).map(c => (
                                                         <option key={c.id} value={c.id}>
                                                             {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
                                                         </option>
@@ -5167,6 +5726,111 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </div>
                             )}
 
+                            {/* Dahili Not Modalı (Option A & Timeline) */}
+                            {showInternalNoteModal && (
+                                <div className="reminder-modal-overlay" onClick={() => setShowInternalNoteModal(false)}>
+                                    <div className="reminder-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+                                        <div className="reminder-modal-header" style={{ borderBottom: '1px solid #fef3c7', background: '#fffbeb' }}>
+                                            <span style={{ fontSize: '1.2rem' }}>📝</span>
+                                            <h3 style={{ color: '#92400e', margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>Dahili Not Ekle</h3>
+                                            <button className="reminder-modal-close" onClick={() => setShowInternalNoteModal(false)}>
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+                                        <div className="reminder-modal-body" style={{ padding: '16px 20px' }}>
+                                            {/* Case Seçimi (Varsa birden fazla case arasından seçilebilir) */}
+                                            {Array.isArray(distinctCases) && distinctCases.length > 1 && (
+                                                <div className="reminder-form-group" style={{ marginBottom: 12 }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#4b5563' }}><Briefcase size={13} /> İlgili Case</label>
+                                                    <select
+                                                        value={internalNoteCaseId || ''}
+                                                        onChange={e => setInternalNoteCaseId(e.target.value)}
+                                                        style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.8rem' }}
+                                                    >
+                                                        {distinctCases.map(c => (
+                                                            <option key={c.id} value={c.id}>
+                                                                {c.caseNumber ? `#${c.caseNumber} - ` : ''}{c.title || 'Case'}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            <div className="reminder-form-group" style={{ marginBottom: 8 }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400e' }}>
+                                                        İç Not İçeriği <span style={{ color: '#ef4444' }}>*</span>
+                                                    </label>
+                                                    <span style={{ fontSize: '0.68rem', color: '#b45309', background: '#fef3c7', padding: '2px 6px', borderRadius: 4 }}>
+                                                        Müşteri görmez (Sadece ekip)
+                                                    </span>
+                                                </div>
+                                                <textarea
+                                                    value={internalNoteContent}
+                                                    onChange={e => setInternalNoteContent(e.target.value)}
+                                                    placeholder="Örn: Bu adamın babası çok iyi, yarın ara..."
+                                                    rows={4}
+                                                    autoFocus
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '10px 12px',
+                                                        borderRadius: 10,
+                                                        border: '1.5px solid #fde68a',
+                                                        background: '#fffdf5',
+                                                        fontSize: '0.85rem',
+                                                        lineHeight: 1.45,
+                                                        outline: 'none',
+                                                        boxSizing: 'border-box'
+                                                    }}
+                                                    onKeyDown={e => {
+                                                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            handleSaveInternalNote();
+                                                        }
+                                                    }}
+                                                />
+                                                <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: 4 }}>
+                                                    İpucu: <strong>Cmd+Enter</strong> veya <strong>Ctrl+Enter</strong> ile hızlı kaydedebilirsiniz.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="reminder-modal-footer" style={{ borderTop: '1px solid #f3f4f6', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                            <button
+                                                type="button"
+                                                className="reminder-btn-cancel"
+                                                onClick={() => setShowInternalNoteModal(false)}
+                                                disabled={savingInternalNote}
+                                            >
+                                                İptal
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="reminder-btn-save"
+                                                onClick={handleSaveInternalNote}
+                                                disabled={savingInternalNote || !internalNoteContent.trim()}
+                                                style={{
+                                                    background: '#f59e0b',
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    padding: '8px 16px',
+                                                    borderRadius: 8,
+                                                    fontWeight: 600,
+                                                    fontSize: '0.82rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    cursor: savingInternalNote || !internalNoteContent.trim() ? 'not-allowed' : 'pointer',
+                                                    opacity: savingInternalNote || !internalNoteContent.trim() ? 0.6 : 1
+                                                }}
+                                            >
+                                                {savingInternalNote ? <Loader className="spin" size={15} /> : <Save size={15} />}
+                                                <span>Kaydet & Sohbete Ekle</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* TAMAMLAMA MODALI */}
                             {completingActivity && (
                                 <div className="reminder-modal-overlay" onClick={() => setCompletingActivity(null)}>
@@ -5357,6 +6021,177 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 );
                             })()}
 
+                            {/* ── Kayıt & Sistem Bilgileri (Eklenme Tarihi, Kaynak, Güncelleme, Sync, Import) ── */}
+                            <div style={{ margin: '8px 0', padding: '12px 14px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span>📋</span>
+                                        <span>Kayıt & Sistem Bilgileri</span>
+                                    </div>
+                                    {profile?.id && (
+                                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500 }}>
+                                            ID: #{profile.id.slice(0, 8)}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {/* 1. Ne Zaman Eklendiği */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', fontWeight: 500 }}>
+                                            <Calendar size={13} color="#64748b" />
+                                            <span>Ne Zaman Eklendi</span>
+                                        </div>
+                                        <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '12px' }}>
+                                            {profile?.createdAt ? safeFormatDateTime(profile.createdAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                        </span>
+                                    </div>
+
+                                    {/* 2. Nereden Eklendiği (Kaynak) */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', fontWeight: 500 }}>
+                                            <MapPin size={13} color="#64748b" />
+                                            <span>Nereden Eklendi</span>
+                                        </div>
+                                        {(() => {
+                                            const src = getContactCreationSourceInfo(profile);
+                                            return (
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 600,
+                                                        color: src.color,
+                                                        background: src.bg,
+                                                        border: `1px solid ${src.border}`,
+                                                        padding: '1.5px 7px',
+                                                        borderRadius: '5px'
+                                                    }}>
+                                                        <span>{src.icon}</span>
+                                                        <span>{src.label}</span>
+                                                    </span>
+                                                    {profile?.leadSourceDetail && (
+                                                        <span style={{ fontSize: '10px', color: '#64748b', fontStyle: 'italic', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={profile.leadSourceDetail}>
+                                                            {profile.leadSourceDetail}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    {/* 3. Son Güncelleme */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', fontWeight: 500 }}>
+                                            <Clock size={13} color="#64748b" />
+                                            <span>Son Güncelleme</span>
+                                        </div>
+                                        <span style={{ color: '#475569', fontSize: '11.5px', fontWeight: 500 }}>
+                                            {profile?.updatedAt ? safeFormatDateTime(profile.updatedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                        </span>
+                                    </div>
+
+                                    {/* 4. Sync İse Nereden Sync (Senkronizasyon) */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', fontWeight: 500 }}>
+                                            <RefreshCw size={13} color="#64748b" />
+                                            <span>Senkronizasyon (Sync)</span>
+                                        </div>
+                                        {(() => {
+                                            const sync = getContactSyncInfo(profile);
+                                            if (sync) {
+                                                return (
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        padding: '2px 7px',
+                                                        borderRadius: '5px',
+                                                        background: sync.bg,
+                                                        color: sync.color,
+                                                        border: `1px solid ${sync.border}`,
+                                                        fontSize: '11px',
+                                                        fontWeight: 700
+                                                    }}>
+                                                        <RefreshCw size={10} style={{ animation: 'spin 8s linear infinite' }} />
+                                                        <span>{sync.label} (Aktif)</span>
+                                                    </span>
+                                                );
+                                            }
+                                            return (
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    color: '#94a3b8',
+                                                    background: '#f1f5f9',
+                                                    padding: '2px 7px',
+                                                    borderRadius: '5px',
+                                                    fontWeight: 500
+                                                }}>
+                                                    Senkronize Değil
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    {/* 5. Import İse Nereden Import (İçe Aktarım) */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', fontWeight: 500 }}>
+                                            <FileSpreadsheet size={13} color="#64748b" />
+                                            <span>İçe Aktarım (Import)</span>
+                                        </div>
+                                        {(() => {
+                                            const imp = getContactImportInfo(profile);
+                                            if (imp) {
+                                                return (
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        padding: '2px 7px',
+                                                        borderRadius: '5px',
+                                                        background: imp.bg,
+                                                        color: imp.color,
+                                                        border: `1px solid ${imp.border}`,
+                                                        fontSize: '11px',
+                                                        fontWeight: 700
+                                                    }} title={imp.groupName ? `Grup/Dosya: ${imp.groupName}` : 'Excel Aktarımı'}>
+                                                        <FileSpreadsheet size={10} />
+                                                        <span>{imp.fullLabel}</span>
+                                                    </span>
+                                                );
+                                            }
+                                            return (
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    color: '#94a3b8',
+                                                    background: '#f1f5f9',
+                                                    padding: '2px 7px',
+                                                    borderRadius: '5px',
+                                                    fontWeight: 500
+                                                }}>
+                                                    İçe Aktarılmadı
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    {/* Son İletişim (varsa) */}
+                                    {profile?.lastContactedAt && (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                                                <MessageSquare size={12} color="#94a3b8" />
+                                                <span>Son İletişim</span>
+                                            </div>
+                                            <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 500 }}>
+                                                {safeFormatDateTime(profile.lastContactedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Active Deals Section */}
                             <div style={{
                                 background: '#f8fafc',
@@ -5511,26 +6346,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 {/* ═══ STICKY FOOTER — Aktivite & Satış Butonları ═══ */}
                 {profile && (
                     <div className="sidebar-action-footer">
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px', marginBottom: 4 }}>
-                            <button
-                                className="activity-btn"
-                                style={{
-                                    padding: '6px 3px',
-                                    minHeight: 48,
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '3px',
-                                    background: '#f5f3ff',
-                                    border: '1px solid #ddd6fe'
-                                }}
-                                onClick={() => handleOpenAiCall(profile?.phone)}
-                                title="AI Sesli Arama Başlat"
-                            >
-                                <Bot size={15} style={{ color: '#7c3aed' }} />
-                                <span style={{ fontSize: '0.55rem', color: '#6d28d9', fontWeight: 600, textAlign: 'center', lineHeight: 1.1 }}>AI Ara</span>
-                            </button>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: 4 }}>
                             <button className="activity-btn" style={{ padding: '6px 3px', minHeight: 48, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px' }} onClick={() => openActivityModal('NOTE')}>
                                 <span style={{ position: 'relative', display: 'inline-flex', width: 24, height: 20, alignItems: 'center', justifyContent: 'center' }}>
                                     <PhoneCall size={15} style={{ color: '#374151' }} />
@@ -5795,7 +6611,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !quoteFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                                     >
                                         <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                        {allCases.map(c => (
+                                        {distinctCases.map(c => (
                                             <option key={c.id} value={c.id}>
                                                 {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
                                             </option>
@@ -5934,13 +6750,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             </div>
 
                             {/* İlgili Case */}
-                            {allCases?.length > 0 && (
+                            {distinctCases?.length > 0 && (
                                 <div className="form-group">
                                     <label>İlgili Case</label>
                                     <select value={orderFormData.caseId}
                                         onChange={e => setOrderFormData(prev => ({ ...prev, caseId: e.target.value }))}>
                                         <option value="">Case seçiniz (opsiyonel)</option>
-                                        {allCases.map(c => (
+                                        {distinctCases.map(c => (
                                             <option key={c.id} value={c.id}>
                                                 {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
                                             </option>
@@ -6168,7 +6984,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !invoiceFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                                     >
                                         <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                        {allCases.map(c => (
+                                        {distinctCases.map(c => (
                                             <option key={c.id} value={c.id}>
                                                 {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
                                             </option>

@@ -1010,7 +1010,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                     background: '#fff', fontSize: '0.84rem', color: '#334155', cursor: 'pointer'
                                 }}
                             >
-                                <option value="">Tüm Şubeler</option>
+                                <option value="">{labels.allBranches || 'Tüm Şubeler'}</option>
                                 {branches.map(b => (
                                     <option key={b.id} value={b.id}>{b.name}</option>
                                 ))}
@@ -1131,8 +1131,8 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                             if (displayedCategories.length === 0) {
                                 return (
                                     <div style={{ textAlign: 'center', padding: '50px 24px', background: '#fff', borderRadius: '12px', border: '1px dashed #cbd5e1', margin: '24px' }}>
-                                        <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>Bu şubeye bağlı {labels.categorySingle.toLowerCase()} bulunamadı</h4>
-                                        <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: '#64748b' }}>Seçili şube filtresine uygun {labels.categorySingle.toLowerCase()} bulunmuyor.</p>
+                                        <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>Bu {labels.branchSingle?.toLowerCase() || 'şube'}ye bağlı {labels.categorySingle.toLowerCase()} bulunamadı</h4>
+                                        <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: '#64748b' }}>Seçili {labels.branchSingle?.toLowerCase() || 'şube'} filtresine uygun {labels.categorySingle.toLowerCase()} bulunmuyor.</p>
                                         <button
                                             onClick={() => setBranchFilter('')}
                                             style={{
@@ -1160,7 +1160,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                 />
                                             </th>
                                             <th style={{ padding: '10px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Şube</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.branchSingle || 'Şube'}</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
                                             <th style={{ padding: '10px 16px', textAlign: 'right', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>İşlemler</th>
                                         </tr>
@@ -1208,7 +1208,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                                 display: 'inline-block', padding: '3px 8px', borderRadius: '6px',
                                                                 background: '#f1f5f9', color: '#64748b', fontSize: '0.76rem', fontWeight: 500
                                                             }}>
-                                                                Tüm Şubeler
+                                                                {labels.allBranches || 'Tüm Şubeler'}
                                                             </span>
                                                         ) : (
                                                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
@@ -1516,7 +1516,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                         {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
                     <select value={branchFilter} onChange={e => { setBranchFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-                        <option value="">Tüm Şubeler</option>
+                        <option value="">{labels.allBranches || 'Tüm Şubeler'}</option>
                         {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                     {(search || groupFilter || categoryFilter || branchFilter) && (
@@ -1737,12 +1737,12 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                 title="Tümünü Seç / Kaldır"
                                             />
                                         </th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.productName}</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.productName}</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.groupSingle}</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Birim</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Şube</th>
+                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.branchSingle || 'Şube'}</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fiyat</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İndirimli</th>
                                         <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 1</th>
@@ -1804,7 +1804,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                             if (!p.productBranches || p.productBranches.length === 0) {
                                                 return (
                                                     <span style={{ fontSize: '0.72rem', color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
-                                                        Tüm Şubeler
+                                                        {labels.allBranches || 'Tüm Şubeler'}
                                                     </span>
                                                 );
                                             }
@@ -1812,11 +1812,11 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                             if (available.length === 0) {
                                                 return (
                                                     <span style={{ fontSize: '0.72rem', color: '#ef4444', background: '#fef2f2', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
-                                                        Şube Yok
+                                                        {labels.branchSingle ? `${labels.branchSingle} Yok` : 'Şube Yok'}
                                                     </span>
                                                 );
                                             }
-                                            const names = available.map(pb => pb.branch?.name || branches.find(b => b.id === pb.branchId)?.name || 'Şube').join(', ');
+                                            const names = available.map(pb => pb.branch?.name || branches.find(b => b.id === pb.branchId)?.name || (labels.branchSingle || 'Şube')).join(', ');
                                             const hasCustomPrice = available.some(pb => pb.price !== null && pb.price !== undefined);
                                             return (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -2006,10 +2006,10 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                 <div style={{ position: 'relative' }} ref={branchDropdownRef}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                         <label style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: '#334155' }}>
-                                            Bağlı Şube
+                                            Bağlı {labels.branchSingle || 'Şube'}
                                         </label>
                                         <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                                            Bilgi Bankası Şubeleri
+                                            Bilgi Bankası {labels.branchesTab || 'Şubeleri'}
                                         </span>
                                     </div>
 
@@ -2028,7 +2028,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', flex: 1, paddingRight: '8px' }}>
                                             {(!categoryForm.branchIds || categoryForm.branchIds.length === 0) ? (
                                                 <span style={{ fontSize: '0.86rem', color: '#475569' }}>
-                                                    Tüm Şubeler (Genel)
+                                                    {labels.allBranches || 'Tüm Şubeler'} (Genel)
                                                 </span>
                                             ) : (
                                                 categoryForm.branchIds.map(bId => {
@@ -2125,7 +2125,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                         readOnly
                                                         style={{ accentColor: '#6366f1', cursor: 'pointer', pointerEvents: 'none' }}
                                                     />
-                                                    <span>Tüm Şubeler (Genel)</span>
+                                                    <span>{labels.allBranches || 'Tüm Şubeler'} (Genel)</span>
                                                 </div>
                                                 {(!categoryForm.branchIds || categoryForm.branchIds.length === 0) && (
                                                     <Check size={15} color="#6366f1" />
@@ -2170,7 +2170,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
 
                                             {branches.length === 0 && (
                                                 <div style={{ padding: '10px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '0.78rem' }}>
-                                                    Kayıtlı şube bulunamadı. Bilgi Bankası &gt; Şubeler sekmesinden ekleyebilirsiniz.
+                                                    Kayıtlı {labels.branchSingle?.toLowerCase() || 'şube'} bulunamadı. Bilgi Bankası &gt; {labels.branchesTab || 'Şubeler'} sekmesinden ekleyebilirsiniz.
                                                 </div>
                                             )}
                                         </div>
@@ -2698,10 +2698,10 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                             <div style={{ marginBottom: '20px', padding: '14px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                                 <div style={{ marginBottom: '10px' }}>
                                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '2px' }}>
-                                        Şube Bulunurluğu & Fiyat Yönetimi
+                                        {labels.branchSingle || 'Şube'} Bulunurluğu & Fiyat Yönetimi
                                     </label>
                                     <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                        Ürünün hangi şubelerde satılacağını ve şubeye özel fiyatını belirleyin
+                                        {labels.productSingle || 'Ürün'}ün hangi {labels.branchesTab?.toLowerCase() || 'şubelerde'} sunulacağını ve {labels.branchSingle?.toLowerCase() || 'şubeye'} özel fiyatını belirleyin
                                     </span>
                                 </div>
 
@@ -2718,7 +2718,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                             cursor: 'pointer', textAlign: 'center'
                                         }}
                                     >
-                                        Tüm Şubelerde Geçerli
+                                        {labels.allBranches || 'Tüm Şubeler'}de Geçerli
                                     </button>
                                     <button
                                         type="button"
@@ -2743,7 +2743,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                             cursor: 'pointer', textAlign: 'center'
                                         }}
                                     >
-                                        Şubeye Göre Özelleştir
+                                        {labels.branchSingle || 'Şube'}ye Göre Özelleştir
                                     </button>
                                 </div>
 
@@ -2751,7 +2751,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                     <div style={{ marginTop: '10px' }}>
                                         {branches.length === 0 ? (
                                             <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic', padding: '8px 0' }}>
-                                                Tanımlı şube bulunmuyor (Ayarlar menüsünden şube ekleyebilirsiniz).
+                                                Tanımlı {labels.branchSingle?.toLowerCase() || 'şube'} bulunmuyor (Bilgi Bankası &gt; {labels.branchesTab || 'Şubeler'} sekmesinden ekleyebilirsiniz).
                                             </div>
                                         ) : (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2780,7 +2780,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                                 color: pb.isAvailable ? '#1e293b' : '#94a3b8',
                                                                 textDecoration: pb.isAvailable ? 'none' : 'line-through'
                                                             }}>
-                                                                {pb.branchName || branches.find(b => b.id === pb.branchId)?.name || 'Şube'}
+                                                                {pb.branchName || branches.find(b => b.id === pb.branchId)?.name || (labels.branchSingle || 'Şube')}
                                                             </span>
                                                         </label>
 
@@ -2810,7 +2810,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                             </div>
                                                         ) : (
                                                             <span style={{ fontSize: '0.72rem', color: '#ef4444', background: '#fef2f2', padding: '2px 8px', borderRadius: '4px' }}>
-                                                                Bu şubede yok
+                                                                Bu {labels.branchSingle?.toLowerCase() || 'şube'}de yok
                                                             </span>
                                                         )}
                                                     </div>
