@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, companyAPI } from '../../services/api';
+import { workspaceAPI, companyAPI, billingAPI } from '../../services/api';
 import AIIntegrationSettings from '../../components/Settings/AIIntegrationSettings';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import FlowTest from '../FlowTest/FlowTest';
-import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, GitBranch, MessageSquare } from 'lucide-react';
+import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, GitBranch, MessageSquare, CreditCard } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import './Settings.css';
 
@@ -110,6 +110,170 @@ const NetGSMSettings = ({ workspaceId }) => {
                     <button className="btn btn-sm btn-secondary" onClick={handleBalance}>💰 Bakiye Sorgula</button>
                     {balance !== null && <span style={{ fontSize: '0.85rem', color: '#666' }}>Bakiye: <strong>{balance}</strong> SMS</span>}
                 </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── Faturalandırma Alt Bileşeni ─────────────────────
+const BillingTab = () => {
+    const [billingData, setBillingData] = useState(null);
+    const [usage, setUsage] = useState(null);
+    const [invoices, setInvoices] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedCompanyId, setSelectedCompanyId] = useState(null);
+
+    useEffect(() => {
+        loadBilling();
+    }, []);
+
+    useEffect(() => {
+        if (selectedCompanyId) {
+            loadUsage(selectedCompanyId);
+            loadInvoices(selectedCompanyId);
+        }
+    }, [selectedCompanyId]);
+
+    const loadBilling = async () => {
+        try {
+            const res = await billingAPI.getMyBilling();
+            setBillingData(res.data);
+            if (res.data.companies?.length > 0) {
+                setSelectedCompanyId(res.data.companies[0].id);
+            }
+        } catch { } finally { setLoading(false); }
+    };
+
+    const loadUsage = async (cId) => {
+        try {
+            const res = await billingAPI.getMyUsage(cId);
+            setUsage(res.data);
+        } catch { }
+    };
+
+    const loadInvoices = async (cId) => {
+        try {
+            const res = await billingAPI.getMyInvoices(cId);
+            setInvoices(res.data.invoices || []);
+        } catch { }
+    };
+
+    const typeLabels = {
+        AI_CHAT: '🤖 AI Yazışma',
+        AI_CALL: '☎️ AI Arama',
+        WHATSAPP_TEMPLATE: '📨 WhatsApp',
+        SMS: '💬 SMS',
+        EMAIL: '📧 E-posta'
+    };
+
+    const statusLabels = {
+        DRAFT: { text: 'Taslak', color: '#6b7280' },
+        SENT: { text: 'Gönderildi', color: '#f59e0b' },
+        PAID: { text: 'Ödendi', color: '#10b981' },
+        OVERDUE: { text: 'Gecikmiş', color: '#ef4444' },
+        CANCELLED: { text: 'İptal', color: '#6b7280' }
+    };
+
+    if (loading) return <div style={{ padding: 24, textAlign: 'center' }}>Yükleniyor...</div>;
+
+    if (!billingData?.companies?.length) {
+        return (
+            <div style={{ padding: 24, textAlign: 'center', color: '#6b7280' }}>
+                <CreditCard size={48} style={{ margin: '0 auto 12px', display: 'block', opacity: 0.4 }} />
+                <p>Henüz faturalandırma bilgisi bulunmuyor.</p>
+            </div>
+        );
+    }
+
+    const company = billingData.companies.find(c => c.id === selectedCompanyId) || billingData.companies[0];
+    const billing = company?.billing;
+
+    return (
+        <div className="settings-section">
+            {/* Firma seçici (birden fazla firma varsa) */}
+            {billingData.companies.length > 1 && (
+                <div style={{ marginBottom: 16 }}>
+                    <select value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.9rem' }}>
+                        {billingData.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                </div>
+            )}
+
+            {/* Paket & Bakiye */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+                <div style={{ padding: 20, background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>📦 Mevcut Plan</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{billing?.plan?.name || 'Plan atanmamış'}</div>
+                    {billing?.plan?.monthlyPrice > 0 && <div style={{ fontSize: '0.85rem', color: '#6366f1' }}>${billing.plan.monthlyPrice}/ay</div>}
+                </div>
+                <div style={{ padding: 20, background: billing?.creditBalance > 10 ? '#f0fdf4' : billing?.creditBalance > 0 ? '#fffbeb' : '#fef2f2', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>💎 Bakiye</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>${(billing?.creditBalance || 0).toFixed(2)}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{billing?.billingType === 'PREPAID' ? 'Ön ödemeli' : 'Son ödemeli'}</div>
+                </div>
+                <div style={{ padding: 20, background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>📊 Bu Ay Toplam</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>${(usage?.total || 0).toFixed(2)}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{usage?.period || ''}</div>
+                </div>
+            </div>
+
+            {/* Bu Ayki Kullanım */}
+            {usage?.usageByType?.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 12 }}>📊 Bu Ayki Kullanım</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Tür</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Adet</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Tutar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {usage.usageByType.map((u, i) => (
+                                <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '8px 12px' }}>{typeLabels[u.type] || u.type}</td>
+                                    <td style={{ textAlign: 'right', padding: '8px 12px' }}>{u._count?.toLocaleString()}</td>
+                                    <td style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 500 }}>${(u._sum?.priceUsd || 0).toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Fatura Geçmişi */}
+            <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 12 }}>🧾 Fatura Geçmişi</h3>
+                {invoices.length === 0 ? (
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Henüz fatura bulunmuyor.</p>
+                ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Fatura No</th>
+                                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Dönem</th>
+                                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Tutar</th>
+                                <th style={{ textAlign: 'center', padding: '8px 12px' }}>Durum</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {invoices.map(inv => (
+                                <tr key={inv.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{inv.invoiceNumber}</td>
+                                    <td style={{ padding: '8px 12px' }}>{inv.period}</td>
+                                    <td style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 500 }}>${inv.totalAmount?.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'center', padding: '8px 12px' }}>
+                                        <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: '0.8rem', background: statusLabels[inv.status]?.color + '20', color: statusLabels[inv.status]?.color }}>
+                                            {statusLabels[inv.status]?.text || inv.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     );
@@ -234,6 +398,9 @@ const Settings = () => {
                 <button className={`tab-btn ${activeTab === 'sms' ? 'active' : ''}`} onClick={() => setActiveTab('sms')}>
                     <MessageSquare size={16} /> SMS (NetGSM)
                 </button>
+                <button className={`tab-btn ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>
+                    <CreditCard size={16} /> Faturalandırma
+                </button>
                 {user?.role === 'SUPER_ADMIN' && (
                     <button className={`tab-btn ${activeTab === 'flow-test' ? 'active' : ''}`} onClick={() => setActiveTab('flow-test')}>
                         <GitBranch size={16} /> Akış Test
@@ -322,6 +489,10 @@ const Settings = () => {
                 )}
                 {activeTab === 'ai' && <AIIntegrationSettings />}
                 {activeTab === 'sms' && <NetGSMSettings workspaceId={currentWorkspace.id} />}
+                {activeTab === 'billing' && (
+                    <BillingTab />
+                )}
+
                 {activeTab === 'flow-test' && user?.role === 'SUPER_ADMIN' && (
                     <div style={{ margin: '-24px', height: 'calc(100vh - 180px)', minHeight: '650px' }}>
                         <FlowTest />

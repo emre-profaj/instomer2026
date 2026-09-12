@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { recordUsage } from './usageTracking.service.js';
 
 // =============================================
 // MERKEZİ AI HELPER SERVİSİ
@@ -109,6 +110,19 @@ async function logUsage(workspaceId, companyId, service, model, usage, conversat
                 conversationId: conversationId || null,
             }
         });
+
+        // Faturalandırma: UsageRecord kaydı
+        if (companyId && costUsd > 0) {
+            recordUsage({
+                companyId,
+                workspaceId,
+                type: 'AI_CHAT',
+                quantity: totalTokens,
+                unit: 'token',
+                costUsd,
+                metadata: { model, service, conversationId }
+            });
+        }
     } catch (err) {
         console.error('⚠️ AI usage log kaydedilemedi:', err.message);
     }

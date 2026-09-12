@@ -96,6 +96,7 @@ import unsubscribeRoutes from './routes/unsubscribe.routes.js';
 import disaoCrmRoutes from './routes/disaoCrm.routes.js';
 import mediaRoutes from './routes/media.routes.js';
 import systemAnnouncementRoutes from './routes/systemAnnouncement.routes.js';
+import billingRoutes from './routes/billing.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -255,6 +256,7 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/disao-crm', disaoCrmRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/system', systemAnnouncementRoutes);
+app.use('/api/billing', billingRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
@@ -644,6 +646,28 @@ if (isMasterInstance) {
       }
     }
   }, 5 * 60 * 1000);
+
+  // ====== Aylık Fatura Oluşturma Cron ======
+  // Her ayın 1'inde önceki ayın faturasını oluştur
+  let lastInvoiceRunMonth = -1;
+  setInterval(async () => {
+    const now = new Date();
+    if (now.getDate() === 1 && now.getHours() >= 10 && lastInvoiceRunMonth !== now.getMonth()) {
+      lastInvoiceRunMonth = now.getMonth();
+      try {
+        const { generateMonthlyInvoice } = await import('./services/usageTracking.service.js');
+        const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const period = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+        const billings = await prisma.companyBilling.findMany({ select: { companyId: true } });
+        console.log(`🧾 [InvoiceCron] Generating invoices for ${period} (${billings.length} companies)`);
+        for (const b of billings) {
+          await generateMonthlyInvoice(b.companyId, period);
+        }
+      } catch (err) {
+        console.error('❌ [InvoiceCron] Error:', err.message);
+      }
+    }
+  }, 30 * 60 * 1000); // Her 30 dakikada kontrol
 
   // KB → Retell otomatik startup sync
   import('./controllers/knowledgebase.controller.js').then(({ bulkSyncAllToRetell: startupKbSync }) => {

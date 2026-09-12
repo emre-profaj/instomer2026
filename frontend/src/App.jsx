@@ -68,6 +68,7 @@ import AdminSettings from './pages/Admin/AdminSettings';
 import AdminActivityLog from './pages/Admin/AdminActivityLog';
 import AdminFlowTemplates from './pages/Admin/AdminFlowTemplates';
 import AdminMessages from './pages/Admin/AdminMessages';
+import AdminBilling from './pages/Admin/AdminBilling';
 
 function CalendarRedirect() {
   const location = useLocation();
@@ -95,6 +96,7 @@ function App() {
               <Route path="activity-log" element={<AdminActivityLog />} />
               <Route path="flow-templates" element={<AdminFlowTemplates />} />
               <Route path="messages" element={<AdminMessages />} />
+              <Route path="billing" element={<AdminBilling />} />
               <Route path="company/:companyId" element={<AdminDashboard />} />
               <Route path="company/:companyId/workspace/:workspaceId" element={<AdminDashboard />} />
               <Route path="workspace/:workspaceId" element={<AdminDashboard />} />

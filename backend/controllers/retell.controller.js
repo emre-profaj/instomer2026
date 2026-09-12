@@ -3084,6 +3084,26 @@ async function handleCallEnded(call) {
                     ...(call.start_timestamp ? { createdAt: new Date(call.start_timestamp) } : {})
                 }
             });
+
+            // Faturalandırma: Arama tüketim kaydı
+            const callCostUsd = (call.call_cost?.combined_cost ?? 0) / 100;
+            if (callCostUsd > 0 && callRecord.workspaceId) {
+                try {
+                    const { recordUsage, getWorkspaceCompanyId } = await import('../services/usageTracking.service.js');
+                    const cId = await getWorkspaceCompanyId(callRecord.workspaceId);
+                    if (cId) {
+                        await recordUsage({
+                            companyId: cId,
+                            workspaceId: callRecord.workspaceId,
+                            type: 'AI_CALL',
+                            quantity: Math.ceil(duration / 60),
+                            unit: 'minute',
+                            costUsd: callCostUsd,
+                            metadata: { callId: call.call_id, duration, endedReason: call.disconnection_reason }
+                        });
+                    }
+                } catch (e) { console.error('⚠️ Call usage record error:', e.message); }
+            }
         } else {
             // No existing record — CREATE one (e.g. inbound call where call_started webhook was missed)
             console.log(`📞 [Retell] call_ended: no existing record for ${call.call_id}, creating new record`);

@@ -187,7 +187,10 @@ export const workspaceAPI = {
     getNetgsmConfig: (workspaceId) => api.get(`/workspaces/${workspaceId}/netgsm`),
     updateNetgsmConfig: (workspaceId, data) => api.put(`/workspaces/${workspaceId}/netgsm`, data),
     testNetgsmSms: (workspaceId, phone) => api.post(`/workspaces/${workspaceId}/netgsm/test`, { phone }),
-    getNetgsmBalance: (workspaceId) => api.get(`/workspaces/${workspaceId}/netgsm/balance`)
+    getNetgsmBalance: (workspaceId) => api.get(`/workspaces/${workspaceId}/netgsm/balance`),
+    // Kanal Fiyatlandırma
+    getChannelPricing: (workspaceId) => api.get(`/workspaces/${workspaceId}/channel-pricing`),
+    updateChannelPricing: (workspaceId, pricing) => api.put(`/workspaces/${workspaceId}/channel-pricing`, { pricing })
 };
 
 // Facebook API
@@ -952,4 +955,26 @@ export const marketingV2API = {
     executeGroup: (workspaceId, groupId) => api.post(`/marketing-v2/${workspaceId}/groups/${groupId}/execute`),
 
     quickBulkCampaign: (workspaceId, data) => api.post(`/marketing-v2/${workspaceId}/quick-bulk-campaign`, data)
+};
+
+// ==================== BILLING API ====================
+export const billingAPI = {
+    // Admin
+    getOverview: () => api.get('/billing/admin/overview'),
+    getPlans: () => api.get('/billing/admin/plans'),
+    createPlan: (data) => api.post('/billing/admin/plans', data),
+    updatePlan: (id, data) => api.put(`/billing/admin/plans/${id}`, data),
+    deletePlan: (id) => api.delete(`/billing/admin/plans/${id}`),
+    getCompanies: () => api.get('/billing/admin/companies'),
+    getCompanyDetail: (companyId) => api.get(`/billing/admin/companies/${companyId}`),
+    updateCompanyBilling: (companyId, data) => api.put(`/billing/admin/companies/${companyId}`, data),
+    addCredit: (companyId, data) => api.post(`/billing/admin/companies/${companyId}/credit`, data),
+    createInvoice: (companyId, data) => api.post(`/billing/admin/companies/${companyId}/invoice`, data),
+    updateInvoice: (id, data) => api.put(`/billing/admin/invoices/${id}`, data),
+    createPayment: (data) => api.post('/billing/admin/payments', data),
+    // Müşteri
+    getMyBilling: () => api.get('/billing/my'),
+    getMyUsage: (companyId, period) => api.get(`/billing/my/usage?companyId=${companyId}${period ? `&period=${period}` : ''}`),
+    getMyInvoices: (companyId) => api.get(`/billing/my/invoices?companyId=${companyId}`),
+    getMyPayments: (companyId) => api.get(`/billing/my/payments?companyId=${companyId}`)
 };

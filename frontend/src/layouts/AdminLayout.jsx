@@ -15,7 +15,8 @@ import {
     Search,
     History,
     GitBranch,
-    MessageSquare
+    MessageSquare,
+    CreditCard
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -95,6 +96,11 @@ const AdminLayout = () => {
             path: '/admin/flow-templates',
             icon: <GitBranch size={20} />,
             label: 'Akış Şablonları'
+        },
+        {
+            path: '/admin/billing',
+            icon: <CreditCard size={20} />,
+            label: 'Faturalandırma'
         }
     ];
 

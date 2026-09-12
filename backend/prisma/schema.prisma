@@ -72,6 +72,7 @@ model Company {
   updatedAt            DateTime     @updatedAt
   workspaces           Workspace[]
   aiUsageLogs          AIUsageLog[]
+  billing              CompanyBilling?
 
   @@index([ownerId])
   @@map("companies")
@@ -218,6 +219,13 @@ model Workspace {
   SmsTemplate         SmsTemplate[]
   RetellTemplate      RetellTemplate[]
   ScheduledMessage    ScheduledMessage[]
+
+  // Kanal Fiyatlandırma { whatsapp: { baseCost, multiplier }, sms: {...}, email: {...}, aiCall: {...} }
+  channelPricing Json?
+
+  // Workspace saat dilimi — IANA timezone (ör: "Europe/Istanbul", "America/New_York")
+  // null = "Europe/Istanbul" (UTC+3) — mevcut müşteriler için geriye uyumlu
+  timezone String?
 
   // NetGSM SMS entegrasyonu
   // { username, password, msgHeader, enabled }
@@ -2633,4 +2641,111 @@ model AIUsageLog {
   @@index([workspaceId, createdAt])
   @@index([companyId, service])
   @@map("ai_usage_logs")
+}
+
+// ========== FATURALANDIRMA MODÜLLERİ ==========
+
+// Paket tanımları (Admin tarafından oluşturulur)
+model BillingPlan {
+  id                String   @id @default(cuid())
+  name              String           // "Temel Paket", "AI Pro"
+  description       String?  @db.Text
+  monthlyPrice      Float    @default(0)     // Sabit aylık ücret (USD)
+  includedAiCredits Float    @default(0)     // Dahil AI kredisi (USD)
+  includedCallMins  Int      @default(0)     // Dahil arama dakikası
+  costMultiplier    Float    @default(2.0)   // Maliyet çarpanı
+  features          String?  @db.Text        // JSON: dahil özellikler listesi
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  companies         CompanyBilling[]
+
+  @@map("billing_plans")
+}
+
+// Şirket fatura bilgileri (Company bazlı)
+model CompanyBilling {
+  id              String       @id @default(cuid())
+  companyId       String       @unique
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  planId          String?
+  plan            BillingPlan? @relation(fields: [planId], references: [id])
+  creditBalance   Float        @default(0)     // Kalan kredi (USD)
+  billingType     String       @default("POSTPAID") // PREPAID | POSTPAID
+  costMultiplier  Float        @default(2.0)   // Özel çarpan (plan override)
+  billingEmail    String?
+  billingName     String?
+  taxNumber       String?
+  taxOffice       String?
+  notes           String?      @db.Text
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  invoices        Invoice[]
+  payments        Payment[]
+
+  @@index([companyId])
+  @@map("company_billings")
+}
+
+// Tüketim kayıtları (otomatik oluşturulur)
+model UsageRecord {
+  id            String    @id @default(cuid())
+  companyId     String
+  workspaceId   String
+  type          String    // AI_CHAT | AI_CALL | WHATSAPP_TEMPLATE | SMS | EMAIL
+  quantity      Float     @default(0)   // Miktar (token, dakika, adet)
+  unit          String    @default("unit") // token | minute | message
+  costUsd       Float     @default(0)   // Gerçek maliyet
+  priceUsd      Float     @default(0)   // Müşteri fiyatı (costUsd × çarpan)
+  metadata      String?   @db.Text      // JSON: model, service, callId vb.
+  invoiceId     String?
+  invoice       Invoice?  @relation(fields: [invoiceId], references: [id])
+  createdAt     DateTime  @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([invoiceId])
+  @@map("usage_records")
+}
+
+// Faturalar
+model Invoice {
+  id               String         @id @default(cuid())
+  companyBillingId  String
+  companyBilling    CompanyBilling @relation(fields: [companyBillingId], references: [id], onDelete: Cascade)
+  invoiceNumber     String         @unique        // INS-2026-001
+  period            String                        // "2026-09"
+  subtotal          Float          @default(0)
+  planAmount        Float          @default(0)    // Sabit paket ücreti
+  usageAmount       Float          @default(0)    // Kullanım toplamı
+  totalAmount       Float          @default(0)    // Genel toplam
+  paidAmount        Float          @default(0)    // Ödenen tutar
+  status            String         @default("DRAFT") // DRAFT | SENT | PAID | OVERDUE | CANCELLED
+  dueDate           DateTime?
+  notes             String?        @db.Text
+  items             String?        @db.Text       // JSON: fatura kalemleri
+  usageRecords      UsageRecord[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([companyBillingId])
+  @@index([status])
+  @@map("invoices")
+}
+
+// Ödeme kayıtları
+model Payment {
+  id               String         @id @default(cuid())
+  companyBillingId  String
+  companyBilling    CompanyBilling @relation(fields: [companyBillingId], references: [id], onDelete: Cascade)
+  amount            Float                         // Ödeme tutarı (USD)
+  method            String         @default("BANK_TRANSFER") // BANK_TRANSFER | CREDIT_CARD | CASH
+  reference         String?                       // Dekont no, açıklama
+  invoiceId         String?                       // Bağlı fatura ID
+  notes             String?
+  createdAt         DateTime       @default(now())
+
+  @@index([companyBillingId])
+  @@map("payments")
 }
