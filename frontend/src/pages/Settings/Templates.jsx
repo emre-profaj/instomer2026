@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from '../../services/template.api';
-import api, { automationAPI, contactAPI, whatsappAPI } from '../../services/api';
+import api, { automationAPI, contactAPI, whatsappAPI, retellAPI } from '../../services/api';
 import {
     Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle2, Clock, XCircle, Globe, Search, X,
@@ -17,7 +17,7 @@ const Templates = () => {
 
     const [activeTab, setActiveTab] = useState('WHATSAPP');
     const [loading, setLoading] = useState(false);
-    const [tabCounts, setTabCounts] = useState({ WHATSAPP: 0, EMAIL: 0, SMS: 0, QUICK_REPLY: 0 });
+    const [tabCounts, setTabCounts] = useState({ WHATSAPP: 0, EMAIL: 0, SMS: 0, QUICK_REPLY: 0, AI_CALL: 0 });
 
     // Search and filter states
     const [searchQuery, setSearchQuery] = useState('');
@@ -54,6 +54,13 @@ const Templates = () => {
     const [templateVariables, setTemplateVariables] = useState([]);
     const [sending, setSending] = useState(false);
 
+    // --- Retell AI Call templates state ---
+    const [callTemplates, setCallTemplates] = useState([]);
+    const [retellAgents, setRetellAgents] = useState([]);
+    const [showCallForm, setShowCallForm] = useState(false);
+    const [editingCall, setEditingCall] = useState(null);
+    const [callForm, setCallForm] = useState({ name: '', description: '', agentId: '', beginMessage: '', promptSuffix: '', isActive: true });
+
     useEffect(() => {
         if (workspaceId) {
             fetchAllCounts();
@@ -70,11 +77,12 @@ const Templates = () => {
     const fetchAllCounts = async () => {
         if (!workspaceId) return;
         try {
-            const [waRes, emailRes, smsRes, qrRes] = await Promise.allSettled([
+            const [waRes, emailRes, smsRes, qrRes, callRes] = await Promise.allSettled([
                 automationAPI.getTemplates(workspaceId),
                 getTemplates(workspaceId, 'EMAIL'),
                 getTemplates(workspaceId, 'SMS'),
-                getTemplates(workspaceId, 'QUICK_REPLY')
+                getTemplates(workspaceId, 'QUICK_REPLY'),
+                retellAPI.getTemplates(workspaceId)
             ]);
 
             const getCount = (res, isWa = false) => {
@@ -86,17 +94,31 @@ const Templates = () => {
                     if (Array.isArray(val.templates)) return val.templates.length;
                     return 0;
                 }
+                if (Array.isArray(val.data?.templates)) return val.data.templates.length;
                 if (Array.isArray(val.data)) return val.data.length;
                 if (Array.isArray(val)) return val.length;
                 return 0;
             };
 
+            // Retell templates'ı state'e kaydet
+            if (callRes.status === 'fulfilled') {
+                const tpls = callRes.value.data?.templates || callRes.value.data || [];
+                setCallTemplates(Array.isArray(tpls) ? tpls : []);
+            }
+
             setTabCounts({
                 WHATSAPP: getCount(waRes, true),
                 EMAIL: getCount(emailRes),
                 SMS: getCount(smsRes),
-                QUICK_REPLY: getCount(qrRes)
+                QUICK_REPLY: getCount(qrRes),
+                AI_CALL: getCount(callRes)
             });
+
+            // Agent listesini yükle
+            try {
+                const agRes = await retellAPI.getAgents(workspaceId);
+                setRetellAgents(agRes.data?.agents || agRes.data || []);
+            } catch { }
         } catch (err) {
             console.error('Error fetching template counts:', err);
         }
@@ -435,6 +457,7 @@ const Templates = () => {
 
     const tabConfig = [
         { id: 'WHATSAPP', label: 'WhatsApp', icon: <Smartphone size={16} />, count: tabCounts.WHATSAPP },
+        { id: 'AI_CALL', label: 'AI Arama', icon: <PhoneCall size={16} />, count: tabCounts.AI_CALL },
         { id: 'EMAIL', label: 'E-Posta', icon: <Mail size={16} />, count: tabCounts.EMAIL },
         { id: 'SMS', label: 'SMS', icon: <MessageSquare size={16} />, count: tabCounts.SMS },
         { id: 'QUICK_REPLY', label: 'Hızlı Yanıtlar', icon: <Zap size={16} />, count: tabCounts.QUICK_REPLY },
@@ -455,7 +478,7 @@ const Templates = () => {
                                 {currentWorkspace?.name || 'Workspace'}
                             </span>
                         </div>
-                        <p>E-posta, SMS, WhatsApp Meta ve Hızlı Yanıt şablonlarınızı tek panelden yönetin ve test edin.</p>
+                        <p>WhatsApp, AI Arama, E-posta, SMS ve Hızlı Yanıt şablonlarınızı tek panelden yönetin.</p>
                     </div>
                 </div>
 
@@ -478,6 +501,10 @@ const Templates = () => {
                                 resetTemplateForm();
                                 setEditingTemplate(null);
                                 setShowTemplateModal(true);
+                            } else if (activeTab === 'AI_CALL') {
+                                setCallForm({ name: '', description: '', agentId: '', beginMessage: '', promptSuffix: '', isActive: true });
+                                setEditingCall(null);
+                                setShowCallForm(true);
                             } else {
                                 setEditId(null);
                                 setFormData({ name: '', subject: '', bodyText: '', bodyHtml: '', shortcut: '', message: '' });
@@ -488,6 +515,7 @@ const Templates = () => {
                     >
                         <Plus size={16} />
                         {activeTab === 'WHATSAPP' ? 'Yeni WhatsApp Şablonu' :
+                         activeTab === 'AI_CALL' ? 'Yeni Arama Şablonu' :
                          activeTab === 'EMAIL' ? 'Yeni E-Posta Şablonu' :
                          activeTab === 'SMS' ? 'Yeni SMS Şablonu' : 'Yeni Hızlı Yanıt'}
                     </button>
@@ -524,6 +552,7 @@ const Templates = () => {
                         type="text"
                         placeholder={
                             activeTab === 'WHATSAPP' ? 'Şablon adı, Meta ID veya içerik ara...' :
+                            activeTab === 'AI_CALL' ? 'Arama şablonu adı veya prompt ara...' :
                             activeTab === 'QUICK_REPLY' ? 'Kısayol (/merhaba) veya mesaj ara...' :
                             'Şablon adı, konu veya metin ara...'
                         }
@@ -737,8 +766,148 @@ const Templates = () => {
                         )
                     )}
 
+
+                    {/* ==================== AI CALL Templates Grid ==================== */}
+                    {activeTab === 'AI_CALL' && (
+                        <div>
+                            {/* Form */}
+                            {showCallForm && (
+                                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: '#334155' }}>
+                                        {editingCall ? '✏️ Şablon Düzenle' : '📞 Yeni Arama Şablonu'}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                                        <div>
+                                            <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>Şablon Adı *</label>
+                                            <input value={callForm.name} onChange={e => setCallForm(f => ({ ...f, name: e.target.value }))}
+                                                placeholder="Ör: Hoşgeldin Araması"
+                                                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                                        </div>
+                                        <div>
+                                            <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>AI Agent *</label>
+                                            <select value={callForm.agentId} onChange={e => setCallForm(f => ({ ...f, agentId: e.target.value }))}
+                                                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, background: '#fff' }}>
+                                                <option value="">Agent seçin...</option>
+                                                {retellAgents.map(ag => (
+                                                    <option key={ag.agent_id} value={ag.agent_id}>
+                                                        {ag.agent_name || ag.agent_id}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>Açıklama</label>
+                                        <input value={callForm.description} onChange={e => setCallForm(f => ({ ...f, description: e.target.value }))}
+                                            placeholder="Bu şablon ne için kullanılıyor?"
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }} />
+                                    </div>
+                                    <div style={{ marginBottom: 12 }}>
+                                        <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>
+                                            🎙️ Açılış Mesajı <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Agent'ın ilk söyleyeceği cümle)</span>
+                                        </label>
+                                        <textarea value={callForm.beginMessage} onChange={e => setCallForm(f => ({ ...f, beginMessage: e.target.value }))}
+                                            rows={2} placeholder="Ör: Merhaba {{customer_name}}, ben Instomer'dan arıyorum. Hoş geldiniz demek istedik!"
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical' }} />
+                                    </div>
+                                    <div style={{ marginBottom: 14 }}>
+                                        <label style={{ fontSize: 12, color: '#64748b', display: 'block', marginBottom: 4, fontWeight: 600 }}>
+                                            🧠 Konuşma Promptu <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Agent'a verilen ek talimatlar)</span>
+                                        </label>
+                                        <textarea value={callForm.promptSuffix} onChange={e => setCallForm(f => ({ ...f, promptSuffix: e.target.value }))}
+                                            rows={4} placeholder="Ör: Bu bir hoşgeldin aramasıdır. Müşteriyi karşıla, kendini tanıt, hizmetlerimiz hakkında kısa bilgi ver. Samimi ve sıcak ol."
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, resize: 'vertical' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <button onClick={async () => {
+                                            if (!callForm.name || !callForm.agentId) return alert('Şablon adı ve Agent seçimi zorunludur');
+                                            try {
+                                                if (editingCall) {
+                                                    await retellAPI.updateTemplate(workspaceId, editingCall.id, callForm);
+                                                } else {
+                                                    await retellAPI.createTemplate(workspaceId, callForm);
+                                                }
+                                                setShowCallForm(false); setEditingCall(null);
+                                                setCallForm({ name: '', description: '', agentId: '', beginMessage: '', promptSuffix: '', isActive: true });
+                                                fetchAllCounts();
+                                            } catch (e) { console.error(e); alert('Kaydetme hatası'); }
+                                        }}
+                                            className="tpl-btn tpl-btn-primary" style={{ fontSize: 13 }}>
+                                            <CheckCircle2 size={14} /> {editingCall ? 'Güncelle' : 'Kaydet'}
+                                        </button>
+                                        <button onClick={() => { setShowCallForm(false); setEditingCall(null); }}
+                                            className="tpl-btn tpl-btn-secondary" style={{ fontSize: 13 }}>
+                                            İptal
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Template List */}
+                            {callTemplates.length === 0 && !showCallForm ? (
+                                <div className="tpl-empty-box">
+                                    <div className="tpl-empty-icon-circle">
+                                        <PhoneCall size={32} />
+                                    </div>
+                                    <h3>Henüz Arama Şablonu Yok</h3>
+                                    <p>AI agent'ınız için senaryo bazlı arama şablonları oluşturun.<br/>Ör: Hoşgeldin araması, randevu teyidi, borç hatırlatma.</p>
+                                </div>
+                            ) : (
+                                <div className="tpl-grid">
+                                    {callTemplates
+                                        .filter(t => !searchQuery || t.name?.toLowerCase().includes(searchQuery.toLowerCase()) || t.promptSuffix?.toLowerCase().includes(searchQuery.toLowerCase()))
+                                        .map(tpl => (
+                                        <div key={tpl.id} className="tpl-card" style={{ borderLeft: `4px solid ${tpl.isActive ? '#6366f1' : '#d1d5db'}` }}>
+                                            <div className="tpl-card-header">
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <span style={{ fontSize: 22 }}>📞</span>
+                                                    <div>
+                                                        <h3 className="tpl-card-name">{tpl.name}</h3>
+                                                        {tpl.description && <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0' }}>{tpl.description}</p>}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 4 }}>
+                                                    <button onClick={() => {
+                                                        setCallForm({ name: tpl.name, description: tpl.description || '', agentId: tpl.agentId, beginMessage: tpl.beginMessage || '', promptSuffix: tpl.promptSuffix || '', isActive: tpl.isActive });
+                                                        setEditingCall(tpl); setShowCallForm(true);
+                                                    }} className="tpl-icon-btn" title="Düzenle"><Edit2 size={14} /></button>
+                                                    <button onClick={async () => {
+                                                        if (!window.confirm('Bu şablonu silmek istediğinize emin misiniz?')) return;
+                                                        try { await retellAPI.deleteTemplate(workspaceId, tpl.id); fetchAllCounts(); } catch(e) { console.error(e); }
+                                                    }} className="tpl-icon-btn tpl-icon-btn-danger" title="Sil"><Trash2 size={14} /></button>
+                                                </div>
+                                            </div>
+                                            <div className="tpl-card-body">
+                                                {tpl.beginMessage && (
+                                                    <div style={{ marginBottom: 8 }}>
+                                                        <div style={{ fontSize: 10, fontWeight: 600, color: '#6366f1', marginBottom: 2 }}>🎙️ AÇILIŞ</div>
+                                                        <p style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', margin: 0 }}>"{tpl.beginMessage.substring(0, 120)}{tpl.beginMessage.length > 120 ? '...' : ''}"</p>
+                                                    </div>
+                                                )}
+                                                {tpl.promptSuffix && (
+                                                    <div>
+                                                        <div style={{ fontSize: 10, fontWeight: 600, color: '#10b981', marginBottom: 2 }}>🧠 PROMPT</div>
+                                                        <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>{tpl.promptSuffix.substring(0, 150)}{tpl.promptSuffix.length > 150 ? '...' : ''}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="tpl-card-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>
+                                                    {retellAgents.find(a => a.agent_id === tpl.agentId)?.agent_name || tpl.agentId?.substring(0, 16) + '...'}
+                                                </span>
+                                                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: tpl.isActive ? '#dcfce7' : '#f1f5f9', color: tpl.isActive ? '#166534' : '#64748b' }}>
+                                                    {tpl.isActive ? 'Aktif' : 'Pasif'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* ==================== Simple Tabs (EMAIL, SMS, QUICK_REPLY) Grid ==================== */}
-                    {activeTab !== 'WHATSAPP' && (
+                    {activeTab !== 'WHATSAPP' && activeTab !== 'AI_CALL' && (
                         filteredSimpleTemplates.length === 0 ? (
                             <div className="tpl-empty-box">
                                 <div className="tpl-empty-icon-circle">
