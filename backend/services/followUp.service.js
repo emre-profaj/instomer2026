@@ -19,6 +19,8 @@
  */
 
 import prisma from '../lib/prisma.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { emitToWorkspace } from '../socket.js';
 
 // Default 5-step reminder configuration
 const DEFAULT_REMINDER_STEPS = [
@@ -238,21 +240,21 @@ export const processSmartReminders = async () => {
         // - Has a bot assigned (directly or via channel)
         // - reminderCount < 5
         // - Has lastBotMessageAt (bot has interacted)
-        // Time window: Only consider conversations where bot messaged within last 48h
-        // This prevents ancient stale conversations from filling the batch limit
-        const cutoffDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+        // Time window: Son 14 gün içindeki konuşmaları al (Kademe 4 gibi 4 günlük gecikmeleri de yakalayabilmek için)
+        const cutoffDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
         
         const conversations = await prisma.conversation.findMany({
             where: {
                 OR: [
                     { assignedBotId: { not: null } },
                     { facebookPage: { assignedBotId: { not: null } } },
+                    { facebookPage: { instagramBotId: { not: null } } },
                     { emailChannel: { assignedBotId: { not: null } } },
                     { whatsappPhoneNumber: { assignedBotId: { not: null } } },
-                    { botEnabled: true } // Also catch conversations where botEnabled is set directly
+                    { botEnabled: true }
                 ],
                 botEnabled: true, // CRITICAL: Only send reminders if bot is active
-                lastBotMessageAt: { not: null, gte: cutoffDate },
+                lastBotMessageAt: { not: null, gte: cutoffDate, lte: new Date(now.getTime() - 60 * 1000) },
                 reminderCount: { lt: 5 },
                 status: 'OPEN',
                 channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL', 'WIDGET'] }
@@ -260,12 +262,12 @@ export const processSmartReminders = async () => {
             include: {
                 assignedBot: true,
                 contact: true,
-                facebookPage: { include: { assignedBot: true } },
+                facebookPage: { include: { assignedBot: true, instagramBot: true } },
                 whatsappPhoneNumber: { include: { assignedBot: true } },
                 emailChannel: { include: { assignedBot: true } }
             },
-            orderBy: { lastBotMessageAt: 'desc' }, // Process most recent first
-            take: 20 // Batch limit: Process up to 20 conversations per minute
+            orderBy: { lastBotMessageAt: 'asc' }, // Bekleme süresi en önce dolmuş olanlara öncelik ver
+            take: 50 // Her dakika 50 adede kadar kontrol et
         });
 
         if (conversations.length === 0) return;
@@ -273,11 +275,19 @@ export const processSmartReminders = async () => {
         let sent = 0, skipped = { qualified_lead: 0, customer_responded: 0, planned_activity: 0, planned_appointment: 0, no_bot: 0, no_step: 0, time_not_elapsed: 0 };
 
         for (const conversation of conversations) {
-            // Get bot from conversation or channel
+            // Get bot from conversation or channel (Instagram botu dahil)
             let bot = conversation.assignedBot;
+            if (!bot && conversation.channel === 'INSTAGRAM' && conversation.facebookPage?.instagramBot) {
+                bot = conversation.facebookPage.instagramBot;
+            }
             if (!bot && conversation.facebookPage?.assignedBot) bot = conversation.facebookPage.assignedBot;
             if (!bot && conversation.emailChannel?.assignedBot) bot = conversation.emailChannel.assignedBot;
             if (!bot && conversation.whatsappPhoneNumber?.assignedBot) bot = conversation.whatsappPhoneNumber.assignedBot;
+            if (!bot && conversation.workspaceId) {
+                bot = await prisma.aIBot.findFirst({
+                    where: { workspaceId: conversation.workspaceId, isDefault: true }
+                }).catch(() => null);
+            }
 
             if (!bot) { skipped.no_bot++; continue; }
 
@@ -303,25 +313,24 @@ export const processSmartReminders = async () => {
             const stepNumber = nextStep.stepIndex + 1;
             const message = await generateReminderMessage(conversation, bot, stepNumber, nextStep.delayMinutes);
 
-            // Atomic update to prevent duplicates
-            const updated = await prisma.conversation.updateMany({
-                where: {
-                    id: conversation.id,
-                    reminderCount: conversation.reminderCount // Optimistic lock
-                },
-                data: {
-                    reminderCount: nextStep.stepIndex + 1,
-                    lastReminderAt: now
-                }
-            });
+            // Mesajı kanala gönder (ve gerekiyorsa çapraz kanaldan ilet)
+            const wasSent = await sendFollowUpMessage(conversation, message, `reminder-${stepNumber}`);
 
-            if (updated.count > 0) {
-                await sendFollowUpMessage(conversation, message, `reminder-${stepNumber}`);
+            if (wasSent) {
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: {
+                        reminderCount: nextStep.stepIndex + 1,
+                        lastReminderAt: now
+                    }
+                });
                 console.log(`📩 [SmartReminder] Step ${stepNumber} sent → conv ${conversation.id} (bot: ${bot.name}, delay: ${nextStep.delayMinutes}m, contact: ${conversation.contact?.name || 'N/A'})`);
                 sent++;
 
                 // Rate limit: 200ms between sends
                 await new Promise(resolve => setTimeout(resolve, 200));
+            } else {
+                console.warn(`⚠️ [SmartReminder] Step ${stepNumber} could not be delivered for conv ${conversation.id}`);
             }
         }
 
@@ -338,75 +347,182 @@ export const processSmartReminders = async () => {
 };
 
 /**
- * Send follow-up message based on channel
+ * Send follow-up message based on channel with cross-channel fallback (Instagram -> WhatsApp)
  */
 const sendFollowUpMessage = async (conversation, message, type) => {
-    const { channel, contact, facebookPage, whatsappPhoneNumber, emailChannel } = conversation;
+    const { channel, contact, facebookPage, whatsappPhoneNumber, emailChannel, workspaceId } = conversation;
     let messageSent = false;
+    let sentChannel = channel;
     let waMessageId = null;
+    let fbMessageId = null;
 
-    const whatsappId = contact?.whatsappId || contact?.phone;
+    // Contact telefon numarasını normalize et (905... formatı, Meta API için + olmadan)
+    const rawPhone = contact?.whatsappId || contact?.phone;
+    let cleanPhone = null;
+    if (rawPhone) {
+        const normalized = normalizePhone(rawPhone);
+        cleanPhone = normalized ? normalized.replace('+', '').trim() : null;
+    }
+
+    // Aktif WhatsApp kanalını bul (varsa conversation'dan, yoksa workspace'in aktif numarasından)
+    let activeWaNumber = whatsappPhoneNumber;
+    if (!activeWaNumber && workspaceId) {
+        try {
+            activeWaNumber = await prisma.whatsappPhoneNumber.findFirst({
+                where: { workspaceId, isConnected: true }
+            });
+        } catch (e) {
+            console.error('⚠️ [SmartReminder] Failed to find active WhatsApp number:', e.message);
+        }
+    }
 
     try {
-        if (channel === 'WHATSAPP' && whatsappPhoneNumber && whatsappId) {
-            const axios = (await import('axios')).default;
+        const axios = (await import('axios')).default;
 
-            const response = await axios.post(
-                `https://graph.facebook.com/v21.0/${whatsappPhoneNumber.phoneNumberId}/messages`,
-                {
-                    messaging_product: 'whatsapp',
-                    to: whatsappId,
-                    type: 'text',
-                    text: { body: message }
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${whatsappPhoneNumber.accessToken}`,
-                        'Content-Type': 'application/json'
+        // ── 1. WHATSAPP KANALI ──
+        if (channel === 'WHATSAPP') {
+            if (activeWaNumber && cleanPhone) {
+                try {
+                    const response = await axios.post(
+                        `https://graph.facebook.com/v21.0/${activeWaNumber.phoneNumberId}/messages`,
+                        {
+                            messaging_product: 'whatsapp',
+                            to: cleanPhone,
+                            type: 'text',
+                            text: { body: message }
+                        },
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${activeWaNumber.accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+                    waMessageId = response.data?.messages?.[0]?.id;
+                    messageSent = true;
+                    sentChannel = 'WHATSAPP';
+                } catch (waErr) {
+                    const errorCode = waErr.response?.data?.error?.code;
+                    const errorSubcode = waErr.response?.data?.error?.error_subcode;
+                    if (errorCode === 131047 || (errorCode === 10 && errorSubcode === 2018278)) {
+                        console.warn(`⏳ [SmartReminder] WhatsApp 24h window closed for contact ${cleanPhone} (Conv: ${conversation.id})`);
+                    } else {
+                        console.error(`❌ [SmartReminder] WhatsApp send error:`, waErr.response?.data || waErr.message);
                     }
                 }
-            );
-
-            waMessageId = response.data?.messages?.[0]?.id;
-            messageSent = true;
-
-        } else if ((channel === 'FACEBOOK' || channel === 'INSTAGRAM') && facebookPage) {
-            const axios = (await import('axios')).default;
-            const recipientId = channel === 'INSTAGRAM' ? contact.instagramId : contact.facebookId;
-
-            if (!facebookPage.pageAccessToken) return;
-
-            if (recipientId && facebookPage.pageAccessToken) {
-                await axios.post(
-                    `https://graph.facebook.com/v21.0/me/messages`,
-                    {
-                        recipient: { id: String(recipientId) },
-                        message: { text: message }
-                    },
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${facebookPage.pageAccessToken}`,
-                            'Content-Type': 'application/json'
-                        }
-                    }
-                );
-                messageSent = true;
+            } else {
+                console.warn(`⚠️ [SmartReminder] WhatsApp cannot send: activeWaNumber=${!!activeWaNumber}, cleanPhone=${cleanPhone || 'NONE'}`);
             }
-        } else if (channel === 'EMAIL' && emailChannel && contact?.email) {
+        }
+
+        // ── 2. INSTAGRAM / FACEBOOK KANALI ──
+        else if (channel === 'FACEBOOK' || channel === 'INSTAGRAM') {
+            const recipientId = channel === 'INSTAGRAM' ? contact?.instagramId : contact?.facebookId;
+
+            // Önce Instagram / Facebook DM üzerinden göndermeyi dene
+            if (facebookPage?.pageAccessToken && recipientId) {
+                try {
+                    const response = await axios.post(
+                        `https://graph.facebook.com/v21.0/me/messages`,
+                        {
+                            recipient: { id: String(recipientId) },
+                            message: { text: message }
+                        },
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${facebookPage.pageAccessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+                    fbMessageId = response.data?.message_id;
+                    messageSent = true;
+                    sentChannel = channel;
+                } catch (igErr) {
+                    const errorCode = igErr.response?.data?.error?.code;
+                    console.warn(`⚠️ [SmartReminder] ${channel} DM send failed (code: ${errorCode}):`, igErr.response?.data?.error?.message || igErr.message);
+                }
+            }
+
+            // 🌟 ÇAPRAZ KANAL (CROSS-CHANNEL FALLBACK):
+            // Eğer Instagram DM gönderimi başarısız olduysa (24 saat penceresi kapandıysa)
+            // VEYA DM açılamadıysa ama müşterinin telefon numarası varsa, WhatsApp üzerinden hatırlatmayı ulaştır!
+            if (!messageSent && activeWaNumber && cleanPhone) {
+                console.log(`🔄 [SmartReminder] ${channel} DM unavailable, attempting cross-channel WhatsApp reminder for ${cleanPhone}...`);
+                try {
+                    const response = await axios.post(
+                        `https://graph.facebook.com/v21.0/${activeWaNumber.phoneNumberId}/messages`,
+                        {
+                            messaging_product: 'whatsapp',
+                            to: cleanPhone,
+                            type: 'text',
+                            text: { body: message }
+                        },
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${activeWaNumber.accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+                    waMessageId = response.data?.messages?.[0]?.id;
+                    messageSent = true;
+                    sentChannel = 'WHATSAPP';
+                    console.log(`✅ [SmartReminder] Successfully delivered ${channel} reminder via WhatsApp to ${cleanPhone}`);
+                } catch (waFallbackErr) {
+                    console.error(`❌ [SmartReminder] WhatsApp cross-channel fallback failed:`, waFallbackErr.response?.data || waFallbackErr.message);
+                }
+            }
+        }
+
+        // ── 3. EMAIL KANALI ──
+        else if (channel === 'EMAIL' && emailChannel && contact?.email) {
             const { sendEmailViaChannel } = await import('./emailSender.service.js');
             const subject = 'Hatırlatma';
             await sendEmailViaChannel(emailChannel.id, contact.email, subject, message);
             messageSent = true;
+            sentChannel = 'EMAIL';
         }
 
-        // Save message to DB if sent
+        // ── 4. WEB WIDGET KANALI ──
+        else if (channel === 'WIDGET') {
+            if (activeWaNumber && cleanPhone) {
+                try {
+                    const response = await axios.post(
+                        `https://graph.facebook.com/v21.0/${activeWaNumber.phoneNumberId}/messages`,
+                        {
+                            messaging_product: 'whatsapp',
+                            to: cleanPhone,
+                            type: 'text',
+                            text: { body: message }
+                        },
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${activeWaNumber.accessToken}`,
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+                    waMessageId = response.data?.messages?.[0]?.id;
+                    messageSent = true;
+                    sentChannel = 'WHATSAPP';
+                } catch (wErr) {
+                    console.error('❌ [SmartReminder] Widget WhatsApp reminder failed:', wErr.response?.data || wErr.message);
+                }
+            }
+        }
+
+        // Save message to DB if sent + emit socket event to workspace
         if (messageSent) {
-            await prisma.message.create({
+            const createdMsg = await prisma.message.create({
                 data: {
                     content: message,
                     conversationId: conversation.id,
                     isFromContact: false,
-                    whatsappMessageId: waMessageId || null
+                    messageType: sentChannel === 'WHATSAPP' ? 'WHATSAPP' : 'TEXT',
+                    whatsappMessageId: waMessageId || null,
+                    facebookMessageId: fbMessageId || null,
+                    status: 'SENT'
                 }
             });
 
@@ -417,17 +533,22 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                     lastBotMessageAt: new Date()
                 }
             });
+
+            // Socket yayını: Paneldeki kullanıcılar mesajı anında canlı olarak görsün
+            try {
+                emitToWorkspace(conversation.workspaceId, 'new_message', {
+                    workspaceId: conversation.workspaceId,
+                    conversationId: conversation.id,
+                    message: createdMsg,
+                    channel: sentChannel
+                });
+            } catch (sErr) {
+                console.error('⚠️ [SmartReminder] Socket emit failed:', sErr.message);
+            }
         }
 
         return messageSent;
     } catch (error) {
-        const errorCode = error.response?.data?.error?.code;
-        const errorSubcode = error.response?.data?.error?.error_subcode;
-
-        // Silently skip known Facebook/WhatsApp errors
-        if (errorCode === 10 && errorSubcode === 2018278) return false; // 24h window expired
-        if (errorCode === 551 && errorSubcode === 1545041) return false; // User unreachable
-
         console.error(`❌ [SmartReminder] Failed to send ${type}:`, error.response?.data || error.message);
         return false;
     }

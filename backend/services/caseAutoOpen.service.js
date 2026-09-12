@@ -29,12 +29,15 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
   
   const nextNumber = await generateCaseNumber(workspaceId);
   
+  // Konuşma bilgilerini al (title + caseType)
+  let conversationTitle = null;
   let caseTypeId = null;
   try {
       const conv = await prisma.conversation.findUnique({
           where: { id: conversationId },
-          select: { topicCategoryId: true }
+          select: { title: true, topicCategoryId: true }
       });
+      conversationTitle = conv?.title || null;
       if (conv?.topicCategoryId) {
           const tc = await prisma.topicCategory.findUnique({
               where: { id: conv.topicCategoryId },
@@ -49,7 +52,7 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
       workspaceId,
       contactId,
       caseNumber: nextNumber,
-      title: `Talep #${nextNumber}`,
+      title: conversationTitle || `Talep #${nextNumber}`,
       status: 'ACTIVE',
       priority: 'NORMAL',
       conversations: { connect: { id: conversationId } },
