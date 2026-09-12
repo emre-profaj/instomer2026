@@ -85,7 +85,7 @@ const Sidebar = () => {
         { path: '/channels', icon: Radio, label: 'Kanallar ve Yönlendirme' },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
-        { path: '/templates', icon: FileSignature, label: 'Şablonlar (Mesaj/E-posta)' },
+        { path: '/templates', icon: FileSignature, label: 'Şablonlar' },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
         { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' },
