@@ -984,6 +984,17 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 if (conv?.caseId) {
                     const caseUpdateData = {};
 
+                    // Case başlığını konuşma konusundan güncelle (otomatik oluşturulan "Talep #xxx" ise)
+                    if (extractedData?.topic && extractedData.topic !== 'null') {
+                        const existingCase = await prisma.case.findUnique({
+                            where: { id: conv.caseId },
+                            select: { title: true }
+                        });
+                        if (existingCase?.title?.startsWith('Talep #')) {
+                            caseUpdateData.title = extractedData.topic;
+                        }
+                    }
+
                     // Vaka tipini güncelle (FIRSAT, SIKAYET, RANDEVU, DESTEK, IS_BASVURUSU, GENEL)
                     if (classification) {
                         caseUpdateData.type = classification;

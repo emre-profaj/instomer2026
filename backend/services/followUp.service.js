@@ -201,6 +201,20 @@ async function shouldSkipReminder(conversation) {
         if (customerMessage) {
             return 'customer_responded';
         }
+
+        // Guard 2b: Has an agent/staff replied manually after the bot?
+        const staffMessage = await prisma.message.findFirst({
+            where: {
+                conversationId: conversation.id,
+                isFromContact: false,
+                isInternal: false,
+                senderId: { not: null },
+                createdAt: { gt: conversation.lastBotMessageAt }
+            }
+        });
+        if (staffMessage) {
+            return 'agent_responded';
+        }
     }
     
     // Guard 3: Is there a scheduled appointment for this contact?
@@ -267,12 +281,12 @@ export const processSmartReminders = async () => {
                 emailChannel: { include: { assignedBot: true } }
             },
             orderBy: { lastBotMessageAt: 'asc' }, // Bekleme süresi en önce dolmuş olanlara öncelik ver
-            take: 50 // Her dakika 50 adede kadar kontrol et
+            take: 100 // Her dakika 100 adede kadar kontrol et (tüm workspaceler için adil dağılım)
         });
 
         if (conversations.length === 0) return;
 
-        let sent = 0, skipped = { qualified_lead: 0, customer_responded: 0, planned_activity: 0, planned_appointment: 0, no_bot: 0, no_step: 0, time_not_elapsed: 0 };
+        let sent = 0, skipped = { qualified_lead: 0, customer_responded: 0, agent_responded: 0, planned_activity: 0, planned_appointment: 0, no_bot: 0, no_step: 0, time_not_elapsed: 0 };
 
         for (const conversation of conversations) {
             // Get bot from conversation or channel (Instagram botu dahil)
@@ -289,14 +303,30 @@ export const processSmartReminders = async () => {
                 }).catch(() => null);
             }
 
-            if (!bot) { skipped.no_bot++; continue; }
+            if (!bot) {
+                // Bot bulunamadıysa kuyruğu sürekli meşgul etmemesi için sayacı sonlandır
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { reminderCount: 5 }
+                }).catch(() => null);
+                skipped.no_bot++;
+                continue;
+            }
 
             // Parse reminder config
             const steps = parseReminderSteps(bot);
             
             // Find next enabled step
             const nextStep = findNextStep(steps, conversation.reminderCount);
-            if (!nextStep) { skipped.no_step++; continue; }
+            if (!nextStep) {
+                // Bot için aktif başka adım kalmadı, sayacı 5 yaparak kuyruğu diğer workspacelere aç
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { reminderCount: 5 }
+                }).catch(() => null);
+                skipped.no_step++;
+                continue;
+            }
 
             // Check if enough time has elapsed
             const delayMs = nextStep.delayMinutes * 60 * 1000;
@@ -305,18 +335,26 @@ export const processSmartReminders = async () => {
             
             if (now < threshold) { skipped.time_not_elapsed++; continue; }
 
-            // Smart guard checks
+            // Smart guard checks (müşteri yazdı mı, temsilci yazdı mı, nitelikli lead mi, randevu var mı)
             const skipReason = await shouldSkipReminder(conversation);
-            if (skipReason) { skipped[skipReason] = (skipped[skipReason] || 0) + 1; continue; }
+            if (skipReason) {
+                // Bu döngüyü sonlandır (müşteri veya bot tekrar yazdığında sayaç sıfırlanır)
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { reminderCount: 5 }
+                }).catch(() => null);
+                skipped[skipReason] = (skipped[skipReason] || 0) + 1;
+                continue;
+            }
 
             // Generate AI message
             const stepNumber = nextStep.stepIndex + 1;
             const message = await generateReminderMessage(conversation, bot, stepNumber, nextStep.delayMinutes);
 
             // Mesajı kanala gönder (ve gerekiyorsa çapraz kanaldan ilet)
-            const wasSent = await sendFollowUpMessage(conversation, message, `reminder-${stepNumber}`);
+            const result = await sendFollowUpMessage(conversation, message, `reminder-${stepNumber}`);
 
-            if (wasSent) {
+            if (result?.success) {
                 await prisma.conversation.update({
                     where: { id: conversation.id },
                     data: {
@@ -330,7 +368,19 @@ export const processSmartReminders = async () => {
                 // Rate limit: 200ms between sends
                 await new Promise(resolve => setTimeout(resolve, 200));
             } else {
-                console.warn(`⚠️ [SmartReminder] Step ${stepNumber} could not be delivered for conv ${conversation.id}`);
+                if (result?.windowExpired) {
+                    console.warn(`⏳ [SmartReminder] 24h window closed for conv ${conversation.id}, completing reminder sequence.`);
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { reminderCount: 5, lastReminderAt: now }
+                    }).catch(() => null);
+                } else {
+                    console.warn(`⚠️ [SmartReminder] Step ${stepNumber} could not be delivered for conv ${conversation.id}, advancing step.`);
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { reminderCount: nextStep.stepIndex + 1, lastReminderAt: now }
+                    }).catch(() => null);
+                }
             }
         }
 
@@ -352,6 +402,7 @@ export const processSmartReminders = async () => {
 const sendFollowUpMessage = async (conversation, message, type) => {
     const { channel, contact, facebookPage, whatsappPhoneNumber, emailChannel, workspaceId } = conversation;
     let messageSent = false;
+    let isWindowExpired = false;
     let sentChannel = channel;
     let waMessageId = null;
     let fbMessageId = null;
@@ -405,6 +456,7 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                     const errorCode = waErr.response?.data?.error?.code;
                     const errorSubcode = waErr.response?.data?.error?.error_subcode;
                     if (errorCode === 131047 || (errorCode === 10 && errorSubcode === 2018278)) {
+                        isWindowExpired = true;
                         console.warn(`⏳ [SmartReminder] WhatsApp 24h window closed for contact ${cleanPhone} (Conv: ${conversation.id})`);
                     } else {
                         console.error(`❌ [SmartReminder] WhatsApp send error:`, waErr.response?.data || waErr.message);
@@ -440,6 +492,10 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                     sentChannel = channel;
                 } catch (igErr) {
                     const errorCode = igErr.response?.data?.error?.code;
+                    const errorSubcode = igErr.response?.data?.error?.error_subcode;
+                    if (errorCode === 10 && errorSubcode === 2018278) {
+                        isWindowExpired = true;
+                    }
                     console.warn(`⚠️ [SmartReminder] ${channel} DM send failed (code: ${errorCode}):`, igErr.response?.data?.error?.message || igErr.message);
                 }
             }
@@ -470,6 +526,11 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                     sentChannel = 'WHATSAPP';
                     console.log(`✅ [SmartReminder] Successfully delivered ${channel} reminder via WhatsApp to ${cleanPhone}`);
                 } catch (waFallbackErr) {
+                    const fbCode = waFallbackErr.response?.data?.error?.code;
+                    const fbSubcode = waFallbackErr.response?.data?.error?.error_subcode;
+                    if (fbCode === 131047 || (fbCode === 10 && fbSubcode === 2018278)) {
+                        isWindowExpired = true;
+                    }
                     console.error(`❌ [SmartReminder] WhatsApp cross-channel fallback failed:`, waFallbackErr.response?.data || waFallbackErr.message);
                 }
             }
@@ -547,10 +608,10 @@ const sendFollowUpMessage = async (conversation, message, type) => {
             }
         }
 
-        return messageSent;
+        return { success: messageSent, windowExpired: !messageSent && isWindowExpired };
     } catch (error) {
         console.error(`❌ [SmartReminder] Failed to send ${type}:`, error.response?.data || error.message);
-        return false;
+        return { success: false, windowExpired: false };
     }
 };
 
