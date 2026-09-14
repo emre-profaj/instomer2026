@@ -60,6 +60,8 @@ import RealEstateCampaigns from './pages/RealEstate/RealEstateCampaigns';
 import Marketing from './pages/Marketing/Marketing';
 import AppNotes from './pages/AppNotes/AppNotes';
 import FlowTest from './pages/FlowTest/FlowTest';
+import SettingsHub from './pages/Settings/SettingsHub';
+import SetupWizard from './pages/Settings/SetupWizard';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -118,21 +120,26 @@ function App() {
               <Route path="emails" element={<Navigate to="/inbox" replace />} />
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
-              <Route path="channels" element={<Channels />} />
-              <Route path="classifier" element={<Navigate to="/channels" replace />} />
+              <Route path="channels" element={<Navigate to="/ayarlar?tab=kanallar" replace />} />
+              <Route path="classifier" element={<Navigate to="/ayarlar?tab=kanallar" replace />} />
 
 
-              <Route path="teams" element={<Users />} />
-              <Route path="users" element={<Navigate to="/teams" replace />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="firm-settings" element={<FirmSettings />} />
-              <Route path="workspace-settings" element={<WorkspaceSettings />} />
-              <Route path="topic-categories" element={<Navigate to="/casetypes" replace />} />
-              <Route path="casetypes" element={<CaseTypesAndTopics />} />
-              <Route path="templates" element={<Templates />} />
-              <Route path="integrations" element={<Integrations />} />
+              <Route path="teams" element={<Navigate to="/ayarlar?tab=takimlar" replace />} />
+              <Route path="users" element={<Navigate to="/ayarlar?tab=takimlar" replace />} />
+              <Route path="settings" element={<Navigate to="/ayarlar" replace />} />
+              <Route path="firm-settings" element={<Navigate to="/ayarlar?tab=firma" replace />} />
+              <Route path="workspace-settings" element={<Navigate to="/ayarlar?tab=firma" replace />} />
+              <Route path="topic-categories" element={<Navigate to="/ayarlar?tab=kategoriler" replace />} />
+              <Route path="casetypes" element={<Navigate to="/ayarlar?tab=kategoriler" replace />} />
+              <Route path="templates" element={<Navigate to="/ayarlar?tab=sablonlar" replace />} />
+              <Route path="integrations" element={<Navigate to="/ayarlar?tab=entegrasyonlar" replace />} />
               <Route path="knowledge-base" element={<Navigate to="/base" replace />} />
               <Route path="base" element={<KnowledgeBase />} />
+
+              {/* Unified Settings */}
+              <Route path="ayarlar" element={<SettingsHub />} />
+              <Route path="ayarlar/wizard" element={<SetupWizard />} />
+
               <Route path="general-report" element={<CeoReport />} />
               <Route path="general-report/general" element={<GeneralReport />} />
               <Route path="general-report/team" element={<TeamReport />} />
@@ -151,15 +158,15 @@ function App() {
 
               <Route path="automations-hub" element={<OtomasyonlarHub />} />
               <Route path="automations" element={<Navigate to="/automations-hub" replace />} />
-              <Route path="notification-settings" element={<NotificationSettings />} />
+              <Route path="notification-settings" element={<Navigate to="/ayarlar?tab=bildirimler" replace />} />
               {/* Functions route removed - merged into Integrations */}
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />
               <Route path="orders" element={<Orders />} />
               <Route path="invoices" element={<Invoices />} />
-              <Route path="products" element={<Products />} />
+              <Route path="products" element={<Navigate to="/ayarlar?tab=urunler" replace />} />
               <Route path="pipeline" element={<Navigate to="/inbox" replace />} />
-              <Route path="funnels" element={<Funnels />} />
+              <Route path="funnels" element={<Navigate to="/ayarlar?tab=akislar" replace />} />
               <Route path="real-estate" element={<RealEstateAdmin />} />
               <Route path="real-estate/wizard" element={<RealEstateWizard />} />
               <Route path="real-estate/offers" element={<RealEstateOffers />} />

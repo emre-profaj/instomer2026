@@ -81,28 +81,16 @@ const Sidebar = () => {
         { path: '/general-report/analysis', icon: BarChart3, label: 'Analiz' }
     ];
 
-    const settingsSubItems = [
-        { path: '/channels', icon: Radio, label: 'Kanallar ve Yönlendirme' },
-        { path: '/funnels', icon: Kanban, label: 'Akışlar' },
-        { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
-        { path: '/templates', icon: FileSignature, label: 'Şablonlar' },
-        { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
-        { path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
-        { path: '/notification-settings', icon: Bell, label: 'Bildirim Ayarları' },
-        { path: '/app-notes', icon: BookOpen, label: 'Changelog & Fikirler' },
-        // ...(user?.role === 'SUPER_ADMIN' ? [{ path: '/flow-test', icon: GitBranch, label: 'Akış Test' }] : [])
-    ];
+    const settingsSubItems = []; // Moved to unified /ayarlar page
 
     const isSettingsPath = (path) => {
         if (!path) return false;
-        if (settingsSubItems.some(item => path === item.path || path.startsWith(item.path + '/'))) return true;
-        const settingsRoutes = [
-            '/settings', '/channels', '/channels2', '/classifier', '/funnels',
-            '/casetypes', '/topic-categories', '/templates', '/teams', '/users',
-            '/assistants', '/integrations', '/notification-settings', '/app-notes',
-            '/flow-test', '/firm-settings', '/workspace-settings'
-        ];
-        return settingsRoutes.some(p => path === p || path.startsWith(p + '/'));
+        return path === '/ayarlar' || path.startsWith('/ayarlar/') ||
+            ['/settings', '/channels', '/channels2', '/classifier', '/funnels',
+             '/casetypes', '/topic-categories', '/templates', '/teams', '/users',
+             '/assistants', '/integrations', '/notification-settings', '/app-notes',
+             '/flow-test', '/firm-settings', '/workspace-settings'
+            ].some(p => path === p || path.startsWith(p + '/'));
     };
 
     const salesSubItems = [
@@ -458,52 +446,18 @@ const Sidebar = () => {
                                 </div>
                             )}
 
-                            {/* Base & Otomasyonlar */}
-                            <Link
-                                to="/base"
-                                className={`sidebar-nav-item ${location.pathname === '/base' ? 'active' : ''}`}
-                                title="Base"
-                            >
-                                <Building2 size={20} className="nav-icon" />
-                                {!isCollapsed && <span>Base</span>}
-                            </Link>
-                            <Link
-                                to="/automations-hub"
-                                className={`sidebar-nav-item ${location.pathname === '/automations-hub' ? 'active' : ''}`}
-                                title="Otomasyonlar"
-                            >
-                                <Zap size={20} className="nav-icon" />
-                                {!isCollapsed && <span>Otomasyonlar</span>}
-                            </Link>
 
-                            {/* Settings */}
+
+                            {/* Settings — tek link */}
                             {(workspaceRole === 'OWNER' || user?.role === 'SUPER_ADMIN') && (
-                                <div className="nav-category">
-                                    <button
-                                        className={`nav-category-header ${isSettingsPath(location.pathname) ? 'active' : ''}`}
-                                        onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsRealEstateOpen(false); setIsAnalyticsOpen(false); }}
-                                        title={t('settings.title')}
-                                    >
-                                        <Settings size={20} className="nav-icon" />
-                                        {!isCollapsed && <span>Ayarlar</span>}
-                                        {!isCollapsed && <ChevronDown size={16} className={`category-arrow ${isSettingsOpen ? 'open' : ''}`} />}
-                                    </button>
-                                    {isSettingsOpen && !isCollapsed && (
-                                        <div className="nav-submenu">
-                                            {settingsSubItems.map(item => {
-                                                const isItemActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path + '/'));
-                                                return (
-                                                    <Link key={item.path} to={item.path}
-                                                        className={`sidebar-nav-item submenu-item ${isItemActive ? 'active' : ''}`}
-                                                    >
-                                                        <item.icon size={18} className="nav-icon" />
-                                                        <span style={{ flex: 1 }}>{item.label}</span>
-                                                    </Link>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
+                                <Link
+                                    to="/ayarlar"
+                                    className={`sidebar-nav-item ${isSettingsPath(location.pathname) ? 'active' : ''}`}
+                                    title="Ayarlar"
+                                >
+                                    <Settings size={20} className="nav-icon" />
+                                    {!isCollapsed && <span>Ayarlar</span>}
+                                </Link>
                             )}
 
                             {/* Admin */}
