@@ -14,6 +14,7 @@ const Funnels = lazy(() => import('../../pages/Funnels/Funnels'));
 const Teams = lazy(() => import('../../pages/Teams/Teams'));
 const Products = lazy(() => import('../../pages/Sales/Products'));
 const KnowledgeBase = lazy(() => import('../../pages/KnowledgeBase/KnowledgeBase'));
+const FirmSettings = lazy(() => import('./FirmSettings'));
 const OtomasyonlarHub = lazy(() => import('../../pages/Automations/OtomasyonlarHub'));
 
 // AI icon parallelogram
@@ -123,20 +124,14 @@ const SettingsHub = () => {
                             </div>
                         </div>
                         <Suspense fallback={<Loading />}>
-                            <WorkspaceSettings />
+                            <KnowledgeBase />
                         </Suspense>
                     </div>
                 );
             case 'subeler':
                 return (
                     <Suspense fallback={<Loading />}>
-                        <WorkspaceSettings />
-                    </Suspense>
-                );
-            case 'kategoriler':
-                return (
-                    <Suspense fallback={<Loading />}>
-                        <CaseTypesAndTopics />
+                        <FirmSettings />
                     </Suspense>
                 );
             case 'urunler':
