@@ -474,21 +474,19 @@ export const getFunnels = async (req, res) => {
                 });
             }
 
-            // ── 5) AUTO-SEED: eksik default akışları oluştur ──
+            // ── 5) AUTO-SEED: eksik default akışları oluştur (sadece hiç akış yoksa) ──
             const didCreate = await ensureDefaultFunnels(workspaceId, funnels);
 
-            // ── 6) Eksik aşamaları ekle ──
-            let didAddStages = false;
-            for (const funnel of funnels) {
-                const added = await ensureCorrectStages(funnel);
-                if (added) didAddStages = true;
-            }
+            // ── 6) Eksik aşamaları ekle (KALDIRILDI) ──
+            // NOT: Kullanıcı aşamaları sildiğinde veya değiştirdiğinde, ensureCorrectStages silinen
+            // aşamaları tekrar DB'ye ekleyerek kullanıcının değişikliklerini eziyordu.
+            // Bu nedenle kaldırıldı; kullanıcı özelleştirmeleri kalıcıdır.
 
             // ── 7) Stage sıralamasını koru (kullanıcı özelleştirmelerini ezme) ──
             // didReorder kaldırıldı - kullanıcı sıralaması korunmalı
 
             // ── 8) Son hali yükle ──
-            if (didCreate || didAddStages || didRenameFunnels || didDedup) {
+            if (didCreate || didRenameFunnels || didDedup) {
                 funnels = await prisma.funnel.findMany({
                     where: { workspaceId },
                     orderBy: { order: 'asc' },
@@ -698,6 +696,56 @@ export const updateFunnel = async (req, res) => {
             ...(funnelType !== undefined && { funnelType })
         };
 
+        // Eğer stages dizisi gönderilmişse aşamaları senkronize et (ekle, güncelle, sil)
+        if (Array.isArray(req.body.stages)) {
+            const currentDbStages = await prisma.funnelStage.findMany({ where: { funnelId } });
+            const submittedStageIds = req.body.stages
+                .map(s => (typeof s === 'object' ? s.id : null))
+                .filter(id => id && !String(id).startsWith('temp_'));
+
+            // Gönderilen listede olmayan mevcut stage'leri güvenle sil
+            const stagesToDelete = currentDbStages.filter(s => !submittedStageIds.includes(s.id));
+            for (const st of stagesToDelete) {
+                await prisma.conversation.updateMany({ where: { funnelStageId: st.id }, data: { funnelStageId: null } });
+                await prisma.contact.updateMany({ where: { funnelStageId: st.id }, data: { funnelStageId: null } });
+                await prisma.channelRouting.updateMany({ where: { funnelStageId: st.id }, data: { funnelStageId: null } }).catch(() => {});
+                await prisma.funnelStage.delete({ where: { id: st.id } });
+            }
+
+            // Sırayla güncelle veya yeni oluştur
+            for (let i = 0; i < req.body.stages.length; i++) {
+                const s = req.body.stages[i];
+                const stageName = typeof s === 'string' ? s.trim() : (s.name || '').trim();
+                if (!stageName) continue;
+                const stageColor = s.color || '#3b82f6';
+                const stageOrder = s.order !== undefined ? s.order : i;
+
+                if (s.id && !String(s.id).startsWith('temp_') && submittedStageIds.includes(s.id)) {
+                    await prisma.funnelStage.update({
+                        where: { id: s.id },
+                        data: {
+                            name: stageName,
+                            color: stageColor,
+                            order: stageOrder,
+                            ...(s.isClosing !== undefined ? { isClosing: s.isClosing } : {}),
+                            ...(s.statusType !== undefined ? { statusType: s.statusType } : {})
+                        }
+                    });
+                } else {
+                    await prisma.funnelStage.create({
+                        data: {
+                            funnelId,
+                            name: stageName,
+                            color: stageColor,
+                            order: stageOrder,
+                            isClosing: s.isClosing || false,
+                            statusType: s.statusType || null
+                        }
+                    });
+                }
+            }
+        }
+
         let funnel;
         try {
             funnel = await prisma.funnel.update({
@@ -830,6 +878,18 @@ export const deleteStage = async (req, res) => {
             where: { funnelStageId: stageId },
             data: { funnelStageId: null }
         });
+
+        // Clear funnelStageId from contacts using this stage
+        await prisma.contact.updateMany({
+            where: { funnelStageId: stageId },
+            data: { funnelStageId: null }
+        });
+
+        // Clear channel routings using this stage
+        await prisma.channelRouting.updateMany({
+            where: { funnelStageId: stageId },
+            data: { funnelStageId: null }
+        }).catch(() => {});
 
         await prisma.funnelStage.delete({ where: { id: stageId } });
         res.json({ success: true });

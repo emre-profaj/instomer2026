@@ -896,62 +896,41 @@ const SetupWizard = () => {
     try {
       const wsId = currentWorkspace.id;
 
-      // 1. Update funnel basic info
-      await funnelAPI.update(wsId, editingFunnelId, {
+      // Send atomic update with stages
+      const payload = {
         name: editFunnelData.name.trim(),
-        color: editFunnelData.color || '#3b82f6'
-      });
+        color: editFunnelData.color || '#3b82f6',
+        stages: validStages.map((st, idx) => ({
+          id: (st.id && !String(st.id).startsWith('temp_')) ? st.id : undefined,
+          name: st.name.trim(),
+          color: st.color || '#3b82f6',
+          order: idx
+        }))
+      };
 
-      // 2. Delete removed stages
-      if (Array.isArray(editFunnelData.deletedStageIds)) {
-        for (const stageId of editFunnelData.deletedStageIds) {
-          try {
-            await funnelAPI.deleteStage(wsId, editingFunnelId, stageId);
-          } catch (delErr) {
-            console.warn('Delete stage warning:', stageId, delErr);
+      const res = await funnelAPI.update(wsId, editingFunnelId, payload);
+      const updated = res.data?.funnel || res.data;
+
+      if (updated && updated.id) {
+        setFunnels(prev => prev.map(f => f.id === editingFunnelId ? updated : f));
+      } else {
+        setFunnels(prev => prev.map(f => {
+          if (f.id === editingFunnelId) {
+            return {
+              ...f,
+              name: editFunnelData.name.trim(),
+              color: editFunnelData.color || '#3b82f6',
+              stages: validStages.map((st, idx) => ({ ...st, order: idx }))
+            };
           }
-        }
+          return f;
+        }));
       }
 
-      // 3. Update existing stages & Create new stages
-      const finalStages = [];
-      for (let i = 0; i < validStages.length; i++) {
-        const st = validStages[i];
-        if (st.isNew) {
-          const createRes = await funnelAPI.createStage(wsId, editingFunnelId, {
-            name: st.name.trim(),
-            color: st.color || '#3b82f6',
-            order: i
-          });
-          const created = createRes.data?.stage || createRes.data;
-          finalStages.push(created || { id: st.id, name: st.name.trim(), color: st.color || '#3b82f6', order: i });
-        } else {
-          await funnelAPI.updateStage(wsId, editingFunnelId, st.id, {
-            name: st.name.trim(),
-            color: st.color || '#3b82f6',
-            order: i
-          });
-          finalStages.push({ ...st, name: st.name.trim(), color: st.color || '#3b82f6', order: i });
-        }
-      }
-
-      // Update state
-      setFunnels(prev => prev.map(f => {
-        if (f.id === editingFunnelId) {
-          return {
-            ...f,
-            name: editFunnelData.name.trim(),
-            color: editFunnelData.color || '#3b82f6',
-            stages: finalStages
-          };
-        }
-        return f;
-      }));
-
-      // Background re-fetch to ensure complete sync with database
+      // Re-fetch to ensure complete sync with database
       funnelAPI.getAll(wsId)
-        .then(res => {
-          const raw = res.data?.funnels || res.data;
+        .then(resAll => {
+          const raw = resAll.data?.funnels || resAll.data;
           if (Array.isArray(raw)) setFunnels(raw);
         })
         .catch(() => {});
