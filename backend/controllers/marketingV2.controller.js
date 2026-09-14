@@ -1927,7 +1927,9 @@ export const quickBulkCampaign = async (req, res) => {
         // 6. Launch execution in background via executeGroupSendCore
         executeGroupSendCore(workspaceId, group.id).catch(err => {
             console.error(`❌ [quickBulkCampaign] Background execution error:`, err);
-        });\n\n        return res.json({
+        });
+
+        return res.json({
             success: true,
             campaign,
             group,
