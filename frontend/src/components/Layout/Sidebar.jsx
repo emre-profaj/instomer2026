@@ -81,12 +81,28 @@ const Sidebar = () => {
         { path: '/general-report/analysis', icon: BarChart3, label: 'Analiz' }
     ];
 
-    const settingsSubItems = []; // Moved to unified /ayarlar page
+    const settingsSubItems = [
+        // BASE
+        { group: 'BASE', path: '/workspace-settings', icon: Building2, label: 'Firma & Bilgi Bankası' },
+        { group: 'BASE', path: '/casetypes', icon: Layers, label: 'Kategoriler' },
+        { group: 'BASE', path: '/products', icon: Package, label: 'Ürünler' },
+        { group: 'BASE', path: '/templates', icon: FileSignature, label: 'Şablonlar' },
+        { group: 'BASE', path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
+        // AKIŞ & SÜREÇ
+        { group: 'AKIŞ & SÜREÇ', path: '/funnels', icon: Kanban, label: 'Akışlar & Vaka Tipleri' },
+        { group: 'AKIŞ & SÜREÇ', path: '/channels', icon: Radio, label: 'Kanallar & Yönlendirme' },
+        // TAKIM & EKİP
+        { group: 'TAKIM & EKİP', path: '/teams', icon: Users, label: 'Takımlar' },
+        { group: 'TAKIM & EKİP', path: '/ai-agents', icon: Sparkles, label: 'AI Agentlar' },
+        // OTOMASYON
+        { group: 'OTOMASYON', path: '/automations-hub', icon: Zap, label: 'Otomasyonlar' },
+        { group: 'OTOMASYON', path: '/notification-settings', icon: Bell, label: 'Bildirimler' },
+    ];
 
     const isSettingsPath = (path) => {
         if (!path) return false;
-        return path === '/ayarlar' || path.startsWith('/ayarlar/') ||
-            ['/settings', '/channels', '/channels2', '/classifier', '/funnels',
+        if (settingsSubItems.some(item => path === item.path || path.startsWith(item.path + '/'))) return true;
+        return ['/settings', '/channels', '/channels2', '/classifier', '/funnels',
              '/casetypes', '/topic-categories', '/templates', '/teams', '/users',
              '/assistants', '/integrations', '/notification-settings', '/app-notes',
              '/flow-test', '/firm-settings', '/workspace-settings'
@@ -448,16 +464,54 @@ const Sidebar = () => {
 
 
 
-                            {/* Settings — tek link */}
+                            {/* Settings — gruplu alt menü */}
                             {(workspaceRole === 'OWNER' || user?.role === 'SUPER_ADMIN') && (
-                                <Link
-                                    to="/ayarlar"
-                                    className={`sidebar-nav-item ${isSettingsPath(location.pathname) ? 'active' : ''}`}
-                                    title="Ayarlar"
-                                >
-                                    <Settings size={20} className="nav-icon" />
-                                    {!isCollapsed && <span>Ayarlar</span>}
-                                </Link>
+                                <div className="nav-category">
+                                    <button
+                                        className={`nav-category-header ${isSettingsPath(location.pathname) ? 'active' : ''}`}
+                                        onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsRealEstateOpen(false); setIsAnalyticsOpen(false); }}
+                                        title="Ayarlar"
+                                    >
+                                        <Settings size={20} className="nav-icon" />
+                                        {!isCollapsed && <span>Ayarlar</span>}
+                                        {!isCollapsed && <ChevronDown size={16} className={`category-arrow ${isSettingsOpen ? 'open' : ''}`} />}
+                                    </button>
+                                    {isSettingsOpen && !isCollapsed && (
+                                        <div className="nav-submenu">
+                                            {(() => {
+                                                let lastGroup = null;
+                                                return settingsSubItems.map(item => {
+                                                    const isItemActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path + '/'));
+                                                    const showGroupLabel = item.group !== lastGroup;
+                                                    lastGroup = item.group;
+                                                    return (
+                                                        <div key={item.path}>
+                                                            {showGroupLabel && (
+                                                                <div style={{
+                                                                    fontSize: '9px',
+                                                                    fontWeight: 700,
+                                                                    color: '#94a3b8',
+                                                                    textTransform: 'uppercase',
+                                                                    letterSpacing: '0.8px',
+                                                                    padding: '8px 12px 3px',
+                                                                    marginTop: lastGroup === settingsSubItems[0]?.group ? 0 : '2px'
+                                                                }}>
+                                                                    {item.group}
+                                                                </div>
+                                                            )}
+                                                            <Link to={item.path}
+                                                                className={`sidebar-nav-item submenu-item ${isItemActive ? 'active' : ''}`}
+                                                            >
+                                                                <item.icon size={18} className="nav-icon" />
+                                                                <span style={{ flex: 1 }}>{item.label}</span>
+                                                            </Link>
+                                                        </div>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
                             )}
 
                             {/* Admin */}
