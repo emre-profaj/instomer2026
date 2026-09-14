@@ -3109,19 +3109,18 @@ function formatDoctorDisplayName(rawName) {
                                 {/* Görüşme Tipi */}
                                 <div className="apt-section">
                                     <span className="apt-section-label">Görüşme Tipi</span>
-                                    <div className="apt-meeting-type-pills">
-                                        {MEETING_TYPES.map(type => (
-                                            <button
-                                                key={type.value}
-                                                type="button"
-                                                className={`apt-meeting-type-btn ${formData.meetingType === type.value ? 'active' : ''}`}
-                                                style={formData.meetingType === type.value ? { background: type.color, borderColor: type.color, color: '#fff' } : {}}
-                                                onClick={() => setFormData(prev => ({ ...prev, meetingType: type.value, procedure: type.value }))}
-                                            >
-                                                <span className="apt-mt-icon">{type.icon}</span>
-                                                <span>{type.label}</span>
-                                            </button>
-                                        ))}
+                                    <div className="apt-select-field-wrapper">
+                                        <select
+                                            className="apt-meeting-type-select"
+                                            value={formData.meetingType || 'YUZ_YUZE'}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, meetingType: e.target.value, procedure: e.target.value }))}
+                                        >
+                                            {MEETING_TYPES.map(type => (
+                                                <option key={type.value} value={type.value}>
+                                                    {type.icon} {type.label}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 

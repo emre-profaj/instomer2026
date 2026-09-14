@@ -140,25 +140,17 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                     {actionType === 'MEETING' && (
                         <div className="qam-field">
                             <label className="qam-field-label">Görüşme Tipi</label>
-                            <div className="qam-choice-row" style={{ flexWrap: 'wrap', gap: 6 }}>
-                                {[
-                                    { value: 'YUZ_YUZE', label: 'Yüz Yüze',        icon: '🤝' },
-                                    { value: 'ONLINE',   label: 'Online / Video',  icon: '💻' },
-                                    { value: 'TELEFON',  label: 'Telefon',         icon: '📞' },
-                                    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: '🏥' },
-                                    { value: 'DIGER',    label: 'Diğer',           icon: '📋' },
-                                ].map(t => (
-                                    <button
-                                        key={t.value}
-                                        type="button"
-                                        className={`qam-choice ${meetingType === t.value ? 'selected' : ''}`}
-                                        onClick={() => setMeetingType(t.value)}
-                                        style={{ flex: '1 1 auto', minWidth: '100px' }}
-                                    >
-                                        <span>{t.icon}</span> {t.label}
-                                    </button>
-                                ))}
-                            </div>
+                            <select
+                                className="qam-input"
+                                value={meetingType}
+                                onChange={e => setMeetingType(e.target.value)}
+                            >
+                                <option value="YUZ_YUZE">🤝 Yüz Yüze</option>
+                                <option value="ONLINE">💻 Online / Video</option>
+                                <option value="TELEFON">📞 Telefon</option>
+                                <option value="KLINIK">🏥 Muayene / Klinik</option>
+                                <option value="DIGER">📋 Diğer</option>
+                            </select>
                         </div>
                     )}
 
