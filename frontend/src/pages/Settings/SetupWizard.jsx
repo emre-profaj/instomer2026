@@ -116,41 +116,65 @@ const SetupWizard = () => {
 
     // Load KB
     setKbLoading(true);
-    knowledgeBaseAPI.getAll(wsId)
-      .then(res => setKbEntries(res.data?.entries || res.data || []))
-      .catch(err => console.error('KB Load error:', err))
-      .finally(() => setKbLoading(false));
+    if (typeof knowledgeBaseAPI?.getAll === 'function') {
+      knowledgeBaseAPI.getAll(wsId)
+        .then(res => setKbEntries(res.data?.entries || res.data || []))
+        .catch(err => console.error('KB Load error:', err))
+        .finally(() => setKbLoading(false));
+    } else {
+      setKbLoading(false);
+    }
 
     // Load Branches
     setBranchesLoading(true);
-    appointmentConfigAPI.getLocations(wsId)
-      .then(res => setBranches(res.data?.locations || res.data || []))
-      .catch(err => console.error('Branches Load error:', err))
-      .finally(() => setBranchesLoading(false));
+    if (typeof appointmentConfigAPI?.getLocations === 'function') {
+      appointmentConfigAPI.getLocations(wsId)
+        .then(res => setBranches(res.data?.locations || res.data || []))
+        .catch(err => console.error('Branches Load error:', err))
+        .finally(() => setBranchesLoading(false));
+    } else {
+      setBranchesLoading(false);
+    }
 
     // Load Categories
     setCategoriesLoading(true);
-    getTopicCategories(wsId)
-      .then(res => setCategories(res.data || []))
-      .catch(err => console.error('Categories Load error:', err))
-      .finally(() => setCategoriesLoading(false));
+    if (typeof getTopicCategories === 'function') {
+      getTopicCategories(wsId)
+        .then(res => setCategories(res.data || []))
+        .catch(err => console.error('Categories Load error:', err))
+        .finally(() => setCategoriesLoading(false));
+    } else {
+      setCategoriesLoading(false);
+    }
 
     // Load Products
     setProductsLoading(true);
-    productAPI.getAll(wsId)
-      .then(res => setProducts(res.data?.products || res.data || []))
-      .catch(err => console.error('Products Load error:', err))
-      .finally(() => setProductsLoading(false));
+    if (typeof productAPI?.getAll === 'function') {
+      productAPI.getAll(wsId)
+        .then(res => setProducts(res.data?.products || res.data || []))
+        .catch(err => console.error('Products Load error:', err))
+        .finally(() => setProductsLoading(false));
+    } else {
+      setProductsLoading(false);
+    }
 
     // Load Funnels
-    funnelAPI.getAll(wsId)
-      .then(res => setFunnels(res.data || []))
-      .catch(err => console.error('Funnels Load error:', err));
+    if (typeof funnelAPI?.getAll === 'function') {
+      funnelAPI.getAll(wsId)
+        .then(res => setFunnels(res.data || []))
+        .catch(err => console.error('Funnels Load error:', err));
+    }
 
     // Load Teams
-    teamAPI.getAll(wsId)
-      .then(res => setTeams(res.data || []))
-      .catch(err => console.error('Teams Load error:', err));
+    if (typeof teamAPI?.getWorkspaceTeams === 'function') {
+      teamAPI.getWorkspaceTeams(wsId)
+        .then(res => setTeams(res.data || []))
+        .catch(err => console.error('Teams Load error:', err));
+    } else if (typeof teamAPI?.getAll === 'function') {
+      teamAPI.getAll(wsId)
+        .then(res => setTeams(res.data || []))
+        .catch(err => console.error('Teams Load error:', err));
+    }
 
   }, [currentWorkspace?.id]);
 

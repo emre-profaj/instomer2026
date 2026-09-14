@@ -454,6 +454,7 @@ export const emailAPI = {
 };
 
 export const teamAPI = {
+    getAll: (workspaceId) => api.get(`/teams/${workspaceId}`),
     create: (workspaceId, data) => api.post(`/teams/${workspaceId}`, data),
     getWorkspaceTeams: (workspaceId) => api.get(`/teams/${workspaceId}`),
     update: (workspaceId, teamId, data) => api.put(`/teams/${workspaceId}/${teamId}`, data),
