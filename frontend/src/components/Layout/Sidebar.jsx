@@ -85,7 +85,6 @@ const Sidebar = () => {
         // BASE
         { group: 'BASE', path: '/firm-settings', icon: Building2, label: 'Firma & Bilgi Bankası' },
         { group: 'BASE', path: '/base', icon: MapPin, label: 'Şubeler' },
-        { group: 'BASE', path: '/casetypes', icon: Layers, label: 'Kategoriler' },
         { group: 'BASE', path: '/products', icon: Package, label: 'Ürünler' },
         { group: 'BASE', path: '/templates', icon: FileSignature, label: 'Şablonlar' },
         { group: 'BASE', path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },

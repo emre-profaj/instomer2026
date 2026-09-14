@@ -127,8 +127,8 @@ function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="firm-settings" element={<FirmSettings />} />
               <Route path="workspace-settings" element={<WorkspaceSettings />} />
-              <Route path="topic-categories" element={<Navigate to="/casetypes" replace />} />
-              <Route path="casetypes" element={<CaseTypesAndTopics />} />
+              <Route path="topic-categories" element={<Navigate to="/funnels?tab=casetypes" replace />} />
+              <Route path="casetypes" element={<Navigate to="/funnels?tab=casetypes" replace />} />
               <Route path="templates" element={<Templates />} />
               <Route path="integrations" element={<Integrations />} />
               <Route path="knowledge-base" element={<Navigate to="/base" replace />} />

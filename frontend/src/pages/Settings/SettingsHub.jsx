@@ -36,7 +36,6 @@ const SIDEBAR_GROUPS = [
         items: [
             { key: 'firma', label: 'Firma & Bilgi Bankası', icon: '🏢' },
             { key: 'subeler', label: 'Şubeler', icon: '📍' },
-            { key: 'kategoriler', label: 'Kategoriler', icon: '📂' },
             { key: 'urunler', label: 'Ürünler', icon: '📦' },
             { key: 'sablonlar', label: 'Şablonlar', icon: '📝' },
             { key: 'entegrasyonlar', label: 'Entegrasyonlar', icon: '🔗' },

@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI, appointmentConfigAPI, rulesAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
-import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
+import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Layers } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import FunnelPipeline from '../../components/Funnels/FunnelPipeline';
+import CaseTypesAndTopics from '../Settings/CaseTypesAndTopics';
 import './Funnels.css';
 
 // Colors cycle automatically — no user selection needed
@@ -24,6 +26,21 @@ const Funnels = () => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const { showError } = useToast();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab = searchParams.get('tab') === 'casetypes' ? 'casetypes' : 'funnels';
+
+    const handleTabChange = (tab) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (tab === 'funnels') {
+                next.delete('tab');
+            } else {
+                next.set('tab', tab);
+            }
+            return next;
+        });
+    };
+
     const [funnels, setFunnels] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -530,41 +547,71 @@ const Funnels = () => {
         <div className="funnels-page">
             {/* Header */}
             <div className="funnels-header">
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Kanban size={22} />
-                    {t('funnels.management')}
-                </h2>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}>Şube:</span>
-                        <select
-                            value={selectedBranchId}
-                            onChange={(e) => setSelectedBranchId(e.target.value)}
-                            style={{
-                                padding: '6px 12px',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '6px',
-                                fontSize: '13px',
-                                color: '#334155',
-                                background: '#ffffff',
-                                outline: 'none',
-                                cursor: 'pointer'
-                            }}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
+                        <Kanban size={22} />
+                        {t('funnels.management')}
+                    </h2>
+
+                    {/* Akış yönetiminin başlığının yanında Sekmeler (Akışlar & Vaka Tipleri) */}
+                    <div className="funnel-header-tabs">
+                        <button
+                            type="button"
+                            className={`funnel-header-tab ${activeTab === 'funnels' ? 'active' : ''}`}
+                            onClick={() => handleTabChange('funnels')}
                         >
-                            <option value="ALL">Tüm Şubeler</option>
-                            {branches.map(branch => (
-                                <option key={branch.id} value={branch.id}>
-                                    {branch.name} {!branch.isActive ? '(Pasif)' : ''}
-                                </option>
-                            ))}
-                        </select>
+                            <Kanban size={14} color={activeTab === 'funnels' ? '#2563eb' : '#64748b'} />
+                            Akışlar
+                        </button>
+                        <button
+                            type="button"
+                            className={`funnel-header-tab ${activeTab === 'casetypes' ? 'active' : ''}`}
+                            onClick={() => handleTabChange('casetypes')}
+                        >
+                            <Layers size={14} color={activeTab === 'casetypes' ? '#2563eb' : '#64748b'} />
+                            Vaka Tipleri
+                        </button>
                     </div>
-                    <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 16px', borderRadius: 8, fontSize: 14, fontWeight: 500 }}>
-                        <Plus size={16} />
-                        Yeni Akış
-                    </button>
                 </div>
+
+                {activeTab === 'funnels' && (
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}>Şube:</span>
+                            <select
+                                value={selectedBranchId}
+                                onChange={(e) => setSelectedBranchId(e.target.value)}
+                                style={{
+                                    padding: '6px 12px',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    color: '#334155',
+                                    background: '#ffffff',
+                                    outline: 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <option value="ALL">Tüm Şubeler</option>
+                                {branches.map(branch => (
+                                    <option key={branch.id} value={branch.id}>
+                                        {branch.name} {!branch.isActive ? '(Pasif)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 36, padding: '0 16px', borderRadius: 8, fontSize: 14, fontWeight: 500 }}>
+                            <Plus size={16} />
+                            Yeni Akış
+                        </button>
+                    </div>
+                )}
             </div>
+
+            {activeTab === 'casetypes' ? (
+                <CaseTypesAndTopics />
+            ) : (
+                <>
 
             {/* Add Funnel Form */}
             {showAddForm && (
@@ -1553,6 +1600,8 @@ const Funnels = () => {
                 stage={entryRulesModal.stage}
                 onSave={handleSaveEntryRules}
             />
+                </>
+            )}
         </div>
     );
 };
