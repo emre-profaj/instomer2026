@@ -61,6 +61,7 @@ import Marketing from './pages/Marketing/Marketing';
 import AppNotes from './pages/AppNotes/AppNotes';
 import FlowTest from './pages/FlowTest/FlowTest';
 import SetupWizard from './pages/Settings/SetupWizard';
+import AIAgents from './pages/AIAgents/AIAgents';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -125,6 +126,9 @@ function App() {
 
               <Route path="teams" element={<Users />} />
               <Route path="users" element={<Navigate to="/teams" replace />} />
+              <Route path="ai-agents" element={<AIAgents />} />
+              <Route path="agents" element={<Navigate to="/ai-agents" replace />} />
+              <Route path="assistants" element={<Navigate to="/ai-agents" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="firm-settings" element={<FirmSettings />} />
               <Route path="workspace-settings" element={<WorkspaceSettings />} />
