@@ -241,8 +241,14 @@ const SetupWizard = () => {
     setKbLoading(true);
     if (typeof knowledgeBaseAPI?.getAll === 'function') {
       knowledgeBaseAPI.getAll(wsId)
-        .then(res => setKbEntries(res.data?.entries || res.data || []))
-        .catch(err => console.error('KB Load error:', err))
+        .then(res => {
+          const raw = res.data?.entries || res.data;
+          setKbEntries(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('KB Load error:', err);
+          setKbEntries([]);
+        })
         .finally(() => setKbLoading(false));
     } else {
       setKbLoading(false);
@@ -252,8 +258,14 @@ const SetupWizard = () => {
     setBranchesLoading(true);
     if (typeof appointmentConfigAPI?.getLocations === 'function') {
       appointmentConfigAPI.getLocations(wsId)
-        .then(res => setBranches(res.data?.locations || res.data || []))
-        .catch(err => console.error('Branches Load error:', err))
+        .then(res => {
+          const raw = res.data?.locations || res.data;
+          setBranches(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Branches Load error:', err);
+          setBranches([]);
+        })
         .finally(() => setBranchesLoading(false));
     } else {
       setBranchesLoading(false);
@@ -263,8 +275,14 @@ const SetupWizard = () => {
     setCategoriesLoading(true);
     if (typeof getTopicCategories === 'function') {
       getTopicCategories(wsId)
-        .then(res => setCategories(res.data || []))
-        .catch(err => console.error('Categories Load error:', err))
+        .then(res => {
+          const raw = res.data?.categories || res.data;
+          setCategories(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Categories Load error:', err);
+          setCategories([]);
+        })
         .finally(() => setCategoriesLoading(false));
     } else {
       setCategoriesLoading(false);
@@ -274,8 +292,14 @@ const SetupWizard = () => {
     setProductsLoading(true);
     if (typeof productAPI?.getAll === 'function') {
       productAPI.getAll(wsId)
-        .then(res => setProducts(res.data?.products || res.data || []))
-        .catch(err => console.error('Products Load error:', err))
+        .then(res => {
+          const raw = res.data?.products || res.data;
+          setProducts(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Products Load error:', err);
+          setProducts([]);
+        })
         .finally(() => setProductsLoading(false));
     } else {
       setProductsLoading(false);
@@ -284,19 +308,37 @@ const SetupWizard = () => {
     // Load Funnels
     if (typeof funnelAPI?.getAll === 'function') {
       funnelAPI.getAll(wsId)
-        .then(res => setFunnels(res.data || []))
-        .catch(err => console.error('Funnels Load error:', err));
+        .then(res => {
+          const raw = res.data?.funnels || res.data;
+          setFunnels(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Funnels Load error:', err);
+          setFunnels([]);
+        });
     }
 
     // Load Teams
     if (typeof teamAPI?.getWorkspaceTeams === 'function') {
       teamAPI.getWorkspaceTeams(wsId)
-        .then(res => setTeams(res.data || []))
-        .catch(err => console.error('Teams Load error:', err));
+        .then(res => {
+          const raw = res.data?.teams || res.data;
+          setTeams(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Teams Load error:', err);
+          setTeams([]);
+        });
     } else if (typeof teamAPI?.getAll === 'function') {
       teamAPI.getAll(wsId)
-        .then(res => setTeams(res.data || []))
-        .catch(err => console.error('Teams Load error:', err));
+        .then(res => {
+          const raw = res.data?.teams || res.data;
+          setTeams(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Teams Load error:', err);
+          setTeams([]);
+        });
     }
 
   }, [currentWorkspace?.id]);
@@ -1218,57 +1260,63 @@ const SetupWizard = () => {
     </div>
   );
 
-  const renderAkislar = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
-      <div>
-        <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Akışlar (Funnels)</h2>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Müşteri taleplerinin otomatik yönlendirildiği kanban akışları.</p>
-      </div>
-
-      <div style={{ border: '1.5px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            Genel Müşteri Akışı 🔒
-          </h3>
-          <span style={{ background: '#fef2f2', color: '#E63B2E', fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Varsayılan</span>
+  const renderAkislar = () => {
+    const funnelList = Array.isArray(funnels) ? funnels : [];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
+        <div>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Akışlar (Funnels)</h2>
+          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Müşteri taleplerinin otomatik yönlendirildiği kanban akışları.</p>
         </div>
-        <p style={{ color: '#64748b', fontSize: '13px', margin: '6px 0 0 0' }}>Gelen tüm talepler için temel karşılama, bilgi toplama ve yönlendirme süreci.</p>
-      </div>
 
-      {funnels.filter(f => f.name !== 'Genel Akış').map(f => (
-        <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', borderLeft: `4px solid ${f.color || '#3b82f6'}` }}>
-          <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{f.icon || '💼'} {f.name}</div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-            Aşamalar: {f.stages?.map(s => s.name).join(' → ') || 'Standart Aşamalar'}
+        <div style={{ border: '1.5px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Genel Müşteri Akışı 🔒
+            </h3>
+            <span style={{ background: '#fef2f2', color: '#E63B2E', fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Varsayılan</span>
           </div>
+          <p style={{ color: '#64748b', fontSize: '13px', margin: '6px 0 0 0' }}>Gelen tüm talepler için temel karşılama, bilgi toplama ve yönlendirme süreci.</p>
         </div>
-      ))}
-    </div>
-  );
 
-  const renderTakimlar = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
-      <div>
-        <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Takımlar & Ekipler</h2>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Vaka ve taleplerin atandığı departmanlar.</p>
-      </div>
-
-      {teams.length === 0 ? (
-        <div style={{ padding: '20px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center' }}>
-          Takımlar listeleniyor...
-        </div>
-      ) : (
-        teams.map(team => (
-          <div key={team.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff' }}>
-            <div style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>👥 {team.name}</div>
-            <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-              {team.members?.length || 0} Üye atanmış durumda.
+        {funnelList.filter(f => f && f.name !== 'Genel Akış' && f.name !== 'Genel').map(f => (
+          <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', borderLeft: `4px solid ${f.color || '#3b82f6'}` }}>
+            <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{f.icon || '💼'} {f.name}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+              Aşamalar: {Array.isArray(f.stages) ? f.stages.map(s => s.name).join(' → ') : 'Standart Aşamalar'}
             </div>
           </div>
-        ))
-      )}
-    </div>
-  );
+        ))}
+      </div>
+    );
+  };
+
+  const renderTakimlar = () => {
+    const teamList = Array.isArray(teams) ? teams : [];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
+        <div>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Takımlar & Ekipler</h2>
+          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Vaka ve taleplerin atandığı departmanlar.</p>
+        </div>
+
+        {teamList.length === 0 ? (
+          <div style={{ padding: '20px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center' }}>
+            Kayıtlı takım bulunamadı veya takımlar yükleniyor...
+          </div>
+        ) : (
+          teamList.map(team => (
+            <div key={team.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff' }}>
+              <div style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>👥 {team.name}</div>
+              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                {Array.isArray(team.members) ? team.members.length : (team._count?.members || 0)} Üye atanmış durumda.
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  };
 
   const renderAgentlar = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
@@ -1323,12 +1371,12 @@ const SetupWizard = () => {
         {[
           { label: 'Firma Adı', val: companyName || currentWorkspace?.name || 'Instomer' },
           { label: 'Çalışma Saatleri (7 Gün)', val: companyHours || 'Tanımlı değil' },
-          { label: 'Bilgi Bankası Belgeleri', val: `${kbEntries.length} Kaynak Aktif` },
-          { label: 'Şubeler', val: `${branches.length} Şube Tanımlı` },
-          { label: 'Kategoriler', val: `${categories.length} Kategori` },
-          { label: 'Ürünler / Portföyler', val: `${products.length} Ürün Listelendi` },
-          { label: 'Akışlar', val: `${funnels.length || 1} Akış Aktif` },
-          { label: 'Takımlar', val: `${teams.length || 1} Takım Aktif` },
+          { label: 'Bilgi Bankası Belgeleri', val: `${(Array.isArray(kbEntries) ? kbEntries.length : 0)} Kaynak Aktif` },
+          { label: 'Şubeler', val: `${(Array.isArray(branches) ? branches.length : 0)} Şube Tanımlı` },
+          { label: 'Kategoriler', val: `${(Array.isArray(categories) ? categories.length : 0)} Kategori` },
+          { label: 'Ürünler / Portföyler', val: `${(Array.isArray(products) ? products.length : 0)} Ürün Listelendi` },
+          { label: 'Akışlar', val: `${(Array.isArray(funnels) ? funnels.length : 0) || 1} Akış Aktif` },
+          { label: 'Takımlar', val: `${(Array.isArray(teams) ? teams.length : 0) || 1} Takım Aktif` },
           { label: 'AI Asistan', val: 'Chat & Voice Aktif' },
         ].map((item, i) => (
           <div key={i} style={{ border: '1px solid #e2e8f0', padding: '14px 16px', borderRadius: '8px', background: '#fff' }}>
