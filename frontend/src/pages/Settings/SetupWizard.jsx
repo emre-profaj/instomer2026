@@ -550,10 +550,11 @@ const SetupWizard = () => {
     // 5. Ürün & Portföy Listesi
     if (Array.isArray(products) && products.length > 0) {
       const pLines = products.map((p, idx) => {
-        const priceStr = p.price ? ` - ${p.price} ${p.currency || 'TRY'}` : '';
-        const catStr = p.category ? ` [${p.category}]` : '';
-        const descStr = p.description ? `\n   Açıklama: ${p.description}` : '';
-        return `${idx + 1}. ${p.name}${priceStr}${catStr}${descStr}`;
+        const priceStr = (p.price != null && p.price !== '') ? ` - ${!isNaN(Number(p.price)) ? Number(p.price).toLocaleString('tr-TR') : p.price} ${p.currency || 'TRY'}` : '';
+        const catName = typeof p.category === 'object' ? p.category?.name : (typeof p.category === 'string' ? p.category : (categories.find(c => c.id === p.categoryId)?.name || ''));
+        const catStr = catName ? ` [${catName}]` : '';
+        const descStr = (p.description && typeof p.description === 'string') ? `\n   Açıklama: ${p.description}` : '';
+        return `${idx + 1}. ${p.name || 'Ürün'}${priceStr}${catStr}${descStr}`;
       });
       sections.push(`📦 ÜRÜN VE HİZMET PORTFÖYÜ (${products.length} Kalem):\n${pLines.join('\n')}`);
     }
@@ -561,7 +562,7 @@ const SetupWizard = () => {
     // 6. Akışlar & Aşamalar
     if (Array.isArray(funnels) && funnels.length > 0) {
       const fLines = funnels.map((f, idx) => {
-        const stageList = (f.stages || []).map((s, si) => `   ${si + 1}) ${s.title || s.name || 'Aşama'}`).join('\n');
+        const stageList = (f.stages || []).map((s, si) => `   ${si + 1}) ${typeof s === 'object' ? (s.title || s.name || 'Aşama') : String(s)}`).join('\n');
         return `Akış #${idx + 1}: ${f.name || 'Ana Akış'}${f.description ? ` (${f.description})` : ''}\nAşamalar:\n${stageList || '   (Standart aşamalar)'}`;
       });
       sections.push(`🔄 MÜŞTERİ YOLCULUĞU & SATIŞ AKIŞLARI (${funnels.length} Akış):\n${fLines.join('\n\n')}`);
@@ -570,9 +571,11 @@ const SetupWizard = () => {
     // 7. Takımlar & Ekipler
     if (Array.isArray(teams) && teams.length > 0) {
       const tLines = teams.map((t, idx) => {
-        const memberCount = (t.members || []).length;
-        const leaderStr = t.leader ? ` (Lider: ${t.leader.name || t.leader.email})` : '';
-        return `${idx + 1}. ${t.name}${leaderStr} - ${memberCount} Temsilci`;
+        const memberCount = Array.isArray(t.members) ? t.members.length : 0;
+        const leaderMember = Array.isArray(t.members) ? t.members.find(m => m?.isLeader) : null;
+        const leaderName = leaderMember?.user?.name || leaderMember?.user?.email || (typeof t.leader === 'object' ? (t.leader?.name || t.leader?.email) : (typeof t.leader === 'string' ? t.leader : ''));
+        const leaderStr = leaderName ? ` (Lider: ${leaderName})` : '';
+        return `${idx + 1}. ${t.name || 'Takım'}${leaderStr} - ${memberCount} Temsilci`;
       });
       sections.push(`👥 DEPARTMANLAR VE UZMAN TAKIMLAR (${teams.length} Takım):\n${tLines.join('\n')}`);
     }
@@ -3542,12 +3545,15 @@ const SetupWizard = () => {
                     <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Özel kategori eklenmedi (Genel Danışmanlık geçerli).</p>
                   ) : (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {displayCategories.map((c, idx) => (
-                        <span key={c.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', color: '#0f172a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E63B2E' }} />
-                          {c.name}
-                        </span>
-                      ))}
+                      {displayCategories.map((c, idx) => {
+                        const catName = typeof c === 'object' ? (c.name || `Kategori #${idx + 1}`) : String(c);
+                        return (
+                          <span key={c.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', color: '#0f172a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E63B2E' }} />
+                            {catName}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -3565,20 +3571,23 @@ const SetupWizard = () => {
                     <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Özel ürün/portföy tanımlanmadı.</p>
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
-                      {displayProducts.map((p, idx) => (
-                        <div key={p.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                            <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>{p.name}</span>
-                            {p.price && (
-                              <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 700 }}>
-                                {Number(p.price).toLocaleString('tr-TR')} {p.currency || 'TRY'}
-                              </span>
-                            )}
+                      {displayProducts.map((p, idx) => {
+                        const catLabel = typeof p.category === 'object' ? p.category?.name : (typeof p.category === 'string' ? p.category : (categories.find(c => c.id === p.categoryId)?.name || ''));
+                        return (
+                          <div key={p.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>{typeof p.name === 'string' ? p.name : (p.name?.name || 'Ürün')}</span>
+                              {p.price != null && p.price !== '' && (
+                                <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 700 }}>
+                                  {!isNaN(Number(p.price)) ? Number(p.price).toLocaleString('tr-TR') : String(p.price)} {typeof p.currency === 'string' ? p.currency : 'TRY'}
+                                </span>
+                              )}
+                            </div>
+                            {catLabel && <div style={{ fontSize: '11px', color: '#64748b' }}>Kategori: {catLabel}</div>}
+                            {p.description && typeof p.description === 'string' && <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.4 }}>{p.description}</div>}
                           </div>
-                          {p.category && <div style={{ fontSize: '11px', color: '#64748b' }}>Kategori: {p.category}</div>}
-                          {p.description && <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.4 }}>{p.description}</div>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -3599,16 +3608,19 @@ const SetupWizard = () => {
                           {funnel.name || `Akış #${idx + 1}`}
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
-                          {(funnel.stages || []).map((stg, sIdx) => (
-                            <React.Fragment key={stg.id || sIdx}>
-                              <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: '12px', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
-                                {sIdx + 1}. {stg.title || stg.name || `Aşama ${sIdx + 1}`}
-                              </span>
-                              {sIdx < (funnel.stages || []).length - 1 && (
-                                <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700 }}>→</span>
-                              )}
-                            </React.Fragment>
-                          ))}
+                          {(Array.isArray(funnel.stages) ? funnel.stages : []).map((stg, sIdx) => {
+                            const stageTitle = typeof stg === 'object' ? (stg.title || stg.name || `Aşama ${sIdx + 1}`) : String(stg);
+                            return (
+                              <React.Fragment key={stg.id || sIdx}>
+                                <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: '12px', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                                  {sIdx + 1}. {stageTitle}
+                                </span>
+                                {sIdx < (funnel.stages || []).length - 1 && (
+                                  <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700 }}>→</span>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -3625,14 +3637,18 @@ const SetupWizard = () => {
                     <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayTeams.length || 1} Takım</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                    {(displayTeams.length > 0 ? displayTeams : [{ name: 'Satış & Danışmanlık Ekibi', members: [{ user: { name: 'Müşteri Temsilcisi' } }] }]).map((t, idx) => (
-                      <div key={t.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px' }}>
-                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px', marginBottom: '4px' }}>{t.name}</div>
-                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                          👥 {(t.members || []).length} Ekip Üyesi {t.leader ? ` • Lider: ${t.leader.name || t.leader.email}` : ''}
+                    {(displayTeams.length > 0 ? displayTeams : [{ name: 'Satış & Danışmanlık Ekibi', members: [{ user: { name: 'Müşteri Temsilcisi' } }] }]).map((t, idx) => {
+                      const leaderMember = Array.isArray(t.members) ? t.members.find(m => m?.isLeader) : null;
+                      const leaderName = leaderMember?.user?.name || leaderMember?.user?.email || (typeof t.leader === 'object' ? (t.leader?.name || t.leader?.email) : (typeof t.leader === 'string' ? t.leader : ''));
+                      return (
+                        <div key={t.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px', marginBottom: '4px' }}>{t.name}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            👥 {(Array.isArray(t.members) ? t.members.length : 0)} Ekip Üyesi {leaderName ? ` • Lider: ${leaderName}` : ''}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
