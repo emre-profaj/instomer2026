@@ -297,8 +297,8 @@ export const addMember = async (req, res) => {
         const { workspaceId } = req.params;
         const { email, role, name, password } = req.body;
 
-        // Check if requester has permission (must be OWNER)
-        if (!['OWNER', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
+        // Check if requester has permission (must be OWNER or ADMIN)
+        if (!['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
 

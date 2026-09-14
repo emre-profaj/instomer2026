@@ -10,7 +10,12 @@ import {
   teamAPI,
   funnelAPI
 } from '../../services/api';
-import { getTopicCategories, createTopicCategory } from '../../services/topicCategory.api';
+import {
+  getTopicCategories,
+  createTopicCategory,
+  updateTopicCategory,
+  deleteTopicCategory
+} from '../../services/topicCategory.api';
 import {
   X,
   Check,
@@ -31,7 +36,10 @@ import {
   ChevronRight,
   Sparkles,
   Clock,
-  Copy
+  Copy,
+  Edit2,
+  UserPlus,
+  User
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -137,7 +145,7 @@ const formatScheduleToString = (schedule) => {
 const SetupWizard = () => {
   const [activeStep, setActiveStep] = useState(0);
   const navigate = useNavigate();
-  const { currentWorkspace } = useAuth();
+  const { currentWorkspace, user: currentUser } = useAuth();
   const toast = useToast();
 
   const showSuccess = (msg) => toast?.showSuccess ? toast.showSuccess(msg) : alert(msg);
@@ -207,6 +215,9 @@ const SetupWizard = () => {
   const [showAddBranch, setShowAddBranch] = useState(false);
   const [newBranch, setNewBranch] = useState({ name: '', address: '', phone: '' });
   const [savingBranch, setSavingBranch] = useState(false);
+  const [editingBranchId, setEditingBranchId] = useState(null);
+  const [editBranchData, setEditBranchData] = useState({ name: '', address: '', phone: '' });
+  const [savingEditBranch, setSavingEditBranch] = useState(false);
 
   // 4. Kategoriler State
   const [categories, setCategories] = useState([]);
@@ -214,6 +225,9 @@ const SetupWizard = () => {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategory, setNewCategory] = useState({ name: '', description: '', color: '#3b82f6' });
   const [savingCategory, setSavingCategory] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editCategoryData, setEditCategoryData] = useState({ name: '', description: '', color: '#3b82f6' });
+  const [savingEditCategory, setSavingEditCategory] = useState(false);
 
   // 5. Ürünler State
   const [products, setProducts] = useState([]);
@@ -221,10 +235,36 @@ const SetupWizard = () => {
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', categoryId: '' });
   const [savingProduct, setSavingProduct] = useState(false);
+  const [editingProductId, setEditingProductId] = useState(null);
+  const [editProductData, setEditProductData] = useState({ name: '', price: '', categoryId: '' });
+  const [savingEditProduct, setSavingEditProduct] = useState(false);
 
-  // 6. Akışlar & Takımlar State
+  // 6. Akışlar State
   const [funnels, setFunnels] = useState([]);
+  const [showAddFunnel, setShowAddFunnel] = useState(false);
+  const [newFunnel, setNewFunnel] = useState({ name: '', color: '#3b82f6' });
+  const [savingFunnel, setSavingFunnel] = useState(false);
+  const [editingFunnelId, setEditingFunnelId] = useState(null);
+  const [editFunnelData, setEditFunnelData] = useState({ name: '', color: '#3b82f6' });
+  const [savingEditFunnel, setSavingEditFunnel] = useState(false);
+
+  // 7. Takımlar & Kullanıcı Yönetimi State
   const [teams, setTeams] = useState([]);
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#3b82f6' });
+  const [savingTeam, setSavingTeam] = useState(false);
+  const [editingTeamId, setEditingTeamId] = useState(null);
+  const [editTeamData, setEditTeamData] = useState({ name: '', description: '', color: '#3b82f6' });
+  const [savingEditTeam, setSavingEditTeam] = useState(false);
+
+  // Workspace Üyeleri & Takım Üyeliği
+  const [workspaceMembers, setWorkspaceMembers] = useState([]);
+  const [activeTeamMemberAddId, setActiveTeamMemberAddId] = useState(null);
+  const [selectedMemberUserId, setSelectedMemberUserId] = useState('');
+  const [addingTeamMember, setAddingTeamMember] = useState(false);
+  const [showCreateNewUserModal, setShowCreateNewUserModal] = useState(false);
+  const [newUserData, setNewUserData] = useState({ name: '', email: '', password: 'Password123!' });
+  const [creatingUser, setCreatingUser] = useState(false);
 
   // Load Initial Workspace Data
   useEffect(() => {
@@ -332,6 +372,25 @@ const SetupWizard = () => {
         .catch(err => {
           console.error('Teams Load error:', err);
           setTeams([]);
+        });
+    }
+
+    // Load Workspace Members
+    if (typeof workspaceAPI?.getMembers === 'function') {
+      workspaceAPI.getMembers(wsId)
+        .then(res => {
+          const raw = res.data?.members || res.data;
+          let list = Array.isArray(raw) ? raw : [];
+          if (list.length === 0 && currentUser?.id) {
+            list = [{ userId: currentUser.id, role: 'OWNER', user: currentUser }];
+          }
+          setWorkspaceMembers(list);
+        })
+        .catch(err => {
+          console.error('Workspace members Load error:', err);
+          if (currentUser?.id) {
+            setWorkspaceMembers([{ userId: currentUser.id, role: 'OWNER', user: currentUser }]);
+          }
         });
     }
 
@@ -517,6 +576,334 @@ const SetupWizard = () => {
       showError(err.response?.data?.error || 'Ürün eklenirken hata oluştu.');
     } finally {
       setSavingProduct(false);
+    }
+  };
+
+  // ─── BRANCH ACTIONS (EDIT / DELETE) ──────────────────────────────────────
+  const handleStartEditBranch = (branch) => {
+    setEditingBranchId(branch.id);
+    setEditBranchData({ name: branch.name || '', address: branch.address || '', phone: branch.phone || '' });
+  };
+
+  const handleUpdateBranch = async () => {
+    if (!editBranchData.name.trim()) {
+      showError('Şube adı gereklidir.');
+      return;
+    }
+    setSavingEditBranch(true);
+    try {
+      const res = await appointmentConfigAPI.updateLocation(currentWorkspace.id, editingBranchId, editBranchData);
+      const updated = res.data?.location || res.data;
+      setBranches(prev => prev.map(b => b.id === editingBranchId ? (updated?.id ? updated : { ...b, ...editBranchData }) : b));
+      showSuccess('Şube bilgileri güncellendi.');
+      setEditingBranchId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Şube güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditBranch(false);
+    }
+  };
+
+  const handleDeleteBranch = async (branchId) => {
+    if (!window.confirm('Bu şubeyi silmek istediğinize emin misiniz?')) return;
+    try {
+      await appointmentConfigAPI.deleteLocation(currentWorkspace.id, branchId);
+      setBranches(prev => prev.filter(b => b.id !== branchId));
+      showSuccess('Şube silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Şube silinirken hata oluştu.');
+    }
+  };
+
+  // ─── CATEGORY ACTIONS (EDIT / DELETE) ───────────────────────────────────
+  const handleStartEditCategory = (cat) => {
+    setEditingCategoryId(cat.id);
+    setEditCategoryData({ name: cat.name || '', description: cat.description || '', color: cat.color || '#3b82f6' });
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editCategoryData.name.trim()) {
+      showError('Kategori adı gereklidir.');
+      return;
+    }
+    setSavingEditCategory(true);
+    try {
+      const res = await updateTopicCategory(currentWorkspace.id, editingCategoryId, editCategoryData);
+      const updated = res.data;
+      setCategories(prev => prev.map(c => c.id === editingCategoryId ? (updated?.id ? updated : { ...c, ...editCategoryData }) : c));
+      showSuccess('Kategori güncellendi.');
+      setEditingCategoryId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kategori güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId) => {
+    if (!window.confirm('Bu kategoriyi silmek istediğinize emin misiniz?')) return;
+    try {
+      await deleteTopicCategory(currentWorkspace.id, catId);
+      setCategories(prev => prev.filter(c => c.id !== catId));
+      showSuccess('Kategori silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kategori silinirken hata oluştu.');
+    }
+  };
+
+  // ─── PRODUCT ACTIONS (EDIT / DELETE) ─────────────────────────────────────
+  const handleStartEditProduct = (prod) => {
+    setEditingProductId(prod.id);
+    setEditProductData({
+      name: prod.name || '',
+      price: prod.price !== undefined && prod.price !== null ? prod.price : '',
+      categoryId: prod.categoryId || ''
+    });
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!editProductData.name.trim()) {
+      showError('Ürün adı gereklidir.');
+      return;
+    }
+    setSavingEditProduct(true);
+    try {
+      const res = await productAPI.update(currentWorkspace.id, editingProductId, {
+        name: editProductData.name.trim(),
+        price: parseFloat(editProductData.price) || 0,
+        categoryId: editProductData.categoryId || null
+      });
+      const updated = res.data?.product || res.data;
+      setProducts(prev => prev.map(p => p.id === editingProductId ? (updated?.id ? updated : { ...p, ...editProductData, price: parseFloat(editProductData.price) || 0 }) : p));
+      showSuccess('Ürün güncellendi.');
+      setEditingProductId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Ürün güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditProduct(false);
+    }
+  };
+
+  const handleDeleteProduct = async (prodId) => {
+    if (!window.confirm('Bu ürünü silmek istediğinize emin misiniz?')) return;
+    try {
+      await productAPI.delete(currentWorkspace.id, prodId);
+      setProducts(prev => prev.filter(p => p.id !== prodId));
+      showSuccess('Ürün silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Ürün silinirken hata oluştu.');
+    }
+  };
+
+  // ─── FUNNEL ACTIONS (CREATE / EDIT / DELETE) ─────────────────────────────
+  const handleCreateFunnel = async () => {
+    if (!newFunnel.name.trim()) {
+      showError('Akış adı gereklidir.');
+      return;
+    }
+    setSavingFunnel(true);
+    try {
+      const res = await funnelAPI.create(currentWorkspace.id, newFunnel);
+      const created = res.data?.funnel || res.data;
+      if (created) setFunnels(prev => [...prev, created]);
+      showSuccess('Yeni akış başarıyla oluşturuldu!');
+      setNewFunnel({ name: '', color: '#3b82f6' });
+      setShowAddFunnel(false);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Akış eklenirken hata oluştu.');
+    } finally {
+      setSavingFunnel(false);
+    }
+  };
+
+  const handleStartEditFunnel = (f) => {
+    setEditingFunnelId(f.id);
+    setEditFunnelData({ name: f.name || '', color: f.color || '#3b82f6' });
+  };
+
+  const handleUpdateFunnel = async () => {
+    if (!editFunnelData.name.trim()) {
+      showError('Akış adı gereklidir.');
+      return;
+    }
+    setSavingEditFunnel(true);
+    try {
+      const res = await funnelAPI.update(currentWorkspace.id, editingFunnelId, editFunnelData);
+      const updated = res.data?.funnel || res.data;
+      setFunnels(prev => prev.map(f => f.id === editingFunnelId ? (updated?.id ? updated : { ...f, ...editFunnelData }) : f));
+      showSuccess('Akış güncellendi.');
+      setEditingFunnelId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Akış güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditFunnel(false);
+    }
+  };
+
+  const handleDeleteFunnel = async (funnelId) => {
+    if (!window.confirm('Bu akışı silmek istediğinize emin misiniz?')) return;
+    try {
+      await funnelAPI.delete(currentWorkspace.id, funnelId);
+      setFunnels(prev => prev.filter(f => f.id !== funnelId));
+      showSuccess('Akış silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Akış silinirken hata oluştu.');
+    }
+  };
+
+  // ─── TEAM ACTIONS (CREATE / EDIT / DELETE / MEMBER) ─────────────────────
+  const handleCreateTeam = async () => {
+    if (!newTeam.name.trim()) {
+      showError('Takım adı gereklidir.');
+      return;
+    }
+    setSavingTeam(true);
+    try {
+      const res = await teamAPI.create(currentWorkspace.id, newTeam);
+      const created = res.data?.team || res.data;
+      if (created) setTeams(prev => [...prev, created]);
+      showSuccess('Yeni takım başarıyla oluşturuldu!');
+      setNewTeam({ name: '', description: '', color: '#3b82f6' });
+      setShowAddTeam(false);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Takım oluşturulurken hata oluştu.');
+    } finally {
+      setSavingTeam(false);
+    }
+  };
+
+  const handleStartEditTeam = (team) => {
+    setEditingTeamId(team.id);
+    setEditTeamData({ name: team.name || '', description: team.description || '', color: team.color || '#3b82f6' });
+  };
+
+  const handleUpdateTeam = async () => {
+    if (!editTeamData.name.trim()) {
+      showError('Takım adı gereklidir.');
+      return;
+    }
+    setSavingEditTeam(true);
+    try {
+      const res = await teamAPI.update(currentWorkspace.id, editingTeamId, editTeamData);
+      const updated = res.data?.team || res.data;
+      setTeams(prev => prev.map(t => t.id === editingTeamId ? (updated?.id ? updated : { ...t, ...editTeamData }) : t));
+      showSuccess('Takım güncellendi.');
+      setEditingTeamId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Takım güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditTeam(false);
+    }
+  };
+
+  const handleDeleteTeam = async (teamId) => {
+    if (!window.confirm('Bu takımı silmek istediğinize emin misiniz?')) return;
+    try {
+      await teamAPI.delete(currentWorkspace.id, teamId);
+      setTeams(prev => prev.filter(t => t.id !== teamId));
+      showSuccess('Takım silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Takım silinirken hata oluştu.');
+    }
+  };
+
+  const handleAddMemberToTeam = async (teamId) => {
+    if (!selectedMemberUserId) {
+      showError('Lütfen takıma eklenecek bir kullanıcı seçin.');
+      return;
+    }
+    setAddingTeamMember(true);
+    try {
+      const res = await teamAPI.addMember(currentWorkspace.id, teamId, { userId: selectedMemberUserId });
+      const newMember = res.data?.teamMember;
+      
+      const userObj = workspaceMembers.find(m => (m.user?.id || m.userId) === selectedMemberUserId)?.user;
+      const memberWithUser = newMember?.user ? newMember : { ...(newMember || {}), user: userObj, userId: selectedMemberUserId };
+
+      setTeams(prev => prev.map(t => {
+        if (t.id === teamId) {
+          const existingMembers = Array.isArray(t.members) ? t.members : [];
+          return {
+            ...t,
+            members: [...existingMembers, memberWithUser]
+          };
+        }
+        return t;
+      }));
+      showSuccess('Kullanıcı takıma eklendi!');
+      setSelectedMemberUserId('');
+      setActiveTeamMemberAddId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kullanıcı takıma eklenemedi.');
+    } finally {
+      setAddingTeamMember(false);
+    }
+  };
+
+  const handleRemoveMemberFromTeam = async (teamId, memberUserId) => {
+    if (!window.confirm('Bu kullanıcıyı takımdan çıkarmak istediğinize emin misiniz?')) return;
+    try {
+      await teamAPI.removeMember(currentWorkspace.id, teamId, memberUserId, 'user');
+      setTeams(prev => prev.map(t => {
+        if (t.id === teamId) {
+          return {
+            ...t,
+            members: (t.members || []).filter(m => (m.user?.id || m.userId) !== memberUserId)
+          };
+        }
+        return t;
+      }));
+      showSuccess('Kullanıcı takımdan çıkarıldı.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kullanıcı takımdan çıkarılırken hata oluştu.');
+    }
+  };
+
+  const handleCreateAndAddUserToTeam = async (teamId) => {
+    if (!newUserData.name.trim() || !newUserData.email.trim()) {
+      showError('Ad Soyad ve E-posta zorunludur.');
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      const memberRes = await workspaceAPI.addMember(currentWorkspace.id, {
+        name: newUserData.name.trim(),
+        email: newUserData.email.trim().toLowerCase(),
+        password: newUserData.password || 'Password123!',
+        role: 'AGENT'
+      });
+      const createdMember = memberRes.data?.member;
+      const newUserId = createdMember?.userId || createdMember?.user?.id;
+
+      if (newUserId) {
+        setWorkspaceMembers(prev => [...prev, createdMember]);
+
+        const teamMemberRes = await teamAPI.addMember(currentWorkspace.id, teamId, { userId: newUserId });
+        const newTeamMember = teamMemberRes.data?.teamMember || {
+          id: Date.now(),
+          userId: newUserId,
+          user: createdMember.user || { name: newUserData.name, email: newUserData.email }
+        };
+
+        setTeams(prev => prev.map(t => {
+          if (t.id === teamId) {
+            return {
+              ...t,
+              members: [...(t.members || []), newTeamMember]
+            };
+          }
+          return t;
+        }));
+
+        showSuccess('Yeni kullanıcı oluşturuldu ve takıma eklendi!');
+        setNewUserData({ name: '', email: '', password: 'Password123!' });
+        setShowCreateNewUserModal(false);
+        setActiveTeamMemberAddId(null);
+      }
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kullanıcı oluşturulurken hata oluştu.');
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -1033,14 +1420,67 @@ const SetupWizard = () => {
         </div>
       ) : (
         branches.map(branch => (
-          <div key={branch.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>{branch.name}</span>
-              <span style={{ color: '#16a34a', fontSize: '13px', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>Aktif</span>
+          editingBranchId === branch.id ? (
+            <div key={branch.id} style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>Şubeyi Düzenle</div>
+              <input
+                type="text"
+                placeholder="Şube Adı*"
+                value={editBranchData.name}
+                onChange={e => setEditBranchData({ ...editBranchData, name: e.target.value })}
+                style={inputStyle}
+              />
+              <input
+                type="text"
+                placeholder="Adres"
+                value={editBranchData.address}
+                onChange={e => setEditBranchData({ ...editBranchData, address: e.target.value })}
+                style={inputStyle}
+              />
+              <input
+                type="text"
+                placeholder="Telefon"
+                value={editBranchData.phone}
+                onChange={e => setEditBranchData({ ...editBranchData, phone: e.target.value })}
+                style={inputStyle}
+              />
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setEditingBranchId(null)} style={secondaryBtnStyle}>İptal</button>
+                <button type="button" onClick={handleUpdateBranch} disabled={savingEditBranch} style={primaryBtnStyle}>
+                  {savingEditBranch ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                </button>
+              </div>
             </div>
-            {branch.address && <div style={{ color: '#64748b', fontSize: '13px' }}>📍 {branch.address}</div>}
-            {branch.phone && <div style={{ color: '#64748b', fontSize: '13px' }}>📞 {branch.phone}</div>}
-          </div>
+          ) : (
+            <div key={branch.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>{branch.name}</span>
+                  <span style={{ color: '#16a34a', fontSize: '12px', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>Aktif</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditBranch(branch)}
+                    style={actionBtnStyle}
+                    title="Şubeyi Düzenle"
+                  >
+                    <Edit2 size={13} /> Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBranch(branch.id)}
+                    style={deleteBtnStyle}
+                    title="Şubeyi Sil"
+                  >
+                    <Trash2 size={13} /> Sil
+                  </button>
+                </div>
+              </div>
+              {branch.address && <div style={{ color: '#64748b', fontSize: '13px' }}>📍 {branch.address}</div>}
+              {branch.phone && <div style={{ color: '#64748b', fontSize: '13px' }}>📞 {branch.phone}</div>}
+            </div>
+          )
         ))
       )}
     </div>
@@ -1097,12 +1537,58 @@ const SetupWizard = () => {
           Henüz kategori bulunamadı. "Kategori Ekle" butonuna basarak ilk kategorinizi oluşturabilirsiniz.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
           {categories.map(cat => (
-            <div key={cat.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fff', borderLeft: `4px solid ${cat.color || '#3b82f6'}` }}>
-              <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{cat.name}</div>
-              {cat.description && <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>{cat.description}</div>}
-            </div>
+            editingCategoryId === cat.id ? (
+              <div key={cat.id} style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '14px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: '#0f172a' }}>Kategoriyi Düzenle</div>
+                <input
+                  type="text"
+                  placeholder="Kategori Adı*"
+                  value={editCategoryData.name}
+                  onChange={e => setEditCategoryData({ ...editCategoryData, name: e.target.value })}
+                  style={inputStyle}
+                />
+                <input
+                  type="text"
+                  placeholder="Açıklama (Opsiyonel)"
+                  value={editCategoryData.description}
+                  onChange={e => setEditCategoryData({ ...editCategoryData, description: e.target.value })}
+                  style={inputStyle}
+                />
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setEditingCategoryId(null)} style={secondaryBtnStyle}>İptal</button>
+                  <button type="button" onClick={handleUpdateCategory} disabled={savingEditCategory} style={primaryBtnStyle}>
+                    {savingEditCategory ? 'Kaydediliyor...' : 'Kaydet'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={cat.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fff', borderLeft: `4px solid ${cat.color || '#3b82f6'}`, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '10px' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{cat.name}</div>
+                  {cat.description && <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>{cat.description}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditCategory(cat)}
+                    style={actionBtnStyle}
+                    title="Düzenle"
+                  >
+                    <Edit2 size={12} /> Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCategory(cat.id)}
+                    style={deleteBtnStyle}
+                    title="Sil"
+                  >
+                    <Trash2 size={12} /> Sil
+                  </button>
+                </div>
+              </div>
+            )
           ))}
         </div>
       )}
@@ -1110,7 +1596,7 @@ const SetupWizard = () => {
   );
 
   const renderUrunler = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '760px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '820px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Ürünler / Portföyler</h2>
@@ -1138,7 +1624,7 @@ const SetupWizard = () => {
           <div style={{ display: 'flex', gap: '12px' }}>
             <input
               type="number"
-              placeholder="Fiyat"
+              placeholder="Fiyat (TL)"
               value={newProduct.price}
               onChange={e => setNewProduct({ ...newProduct, price: e.target.value })}
               style={{ ...inputStyle, flex: 1 }}
@@ -1172,28 +1658,97 @@ const SetupWizard = () => {
           Henüz eklenmiş ürün veya hizmet bulunamadı. "Ürün Ekle" butonu ile ekleyebilirsiniz.
         </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
-              <th style={{ padding: '10px 12px', color: '#475569' }}>Ürün / Hizmet Adı</th>
-              <th style={{ padding: '10px 12px', color: '#475569' }}>Fiyat</th>
-              <th style={{ padding: '10px 12px', color: '#475569' }}>Kategori</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map(prod => (
-              <tr key={prod.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '10px 12px', fontWeight: 600, color: '#1e293b' }}>{prod.name}</td>
-                <td style={{ padding: '10px 12px', color: '#0f172a' }}>
-                  {prod.price ? `₺${Number(prod.price).toLocaleString('tr-TR')}` : 'Fiyat Belirtilmedi'}
-                </td>
-                <td style={{ padding: '10px 12px', color: '#64748b' }}>
-                  {prod.category?.name || categories.find(c => c.id === prod.categoryId)?.name || '-'}
-                </td>
+        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
+                <th style={{ padding: '12px', color: '#475569' }}>Ürün / Hizmet Adı</th>
+                <th style={{ padding: '12px', color: '#475569' }}>Fiyat</th>
+                <th style={{ padding: '12px', color: '#475569' }}>Kategori</th>
+                <th style={{ padding: '12px', color: '#475569', textAlign: 'right' }}>İşlemler</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {products.map(prod => (
+                editingProductId === prod.id ? (
+                  <tr key={prod.id} style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+                    <td style={{ padding: '8px 12px' }}>
+                      <input
+                        type="text"
+                        value={editProductData.name}
+                        onChange={e => setEditProductData({ ...editProductData, name: e.target.value })}
+                        style={{ ...inputStyle, padding: '6px 10px', fontSize: '13px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <input
+                        type="number"
+                        value={editProductData.price}
+                        onChange={e => setEditProductData({ ...editProductData, price: e.target.value })}
+                        style={{ ...inputStyle, width: '110px', padding: '6px 10px', fontSize: '13px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <select
+                        value={editProductData.categoryId}
+                        onChange={e => setEditProductData({ ...editProductData, categoryId: e.target.value })}
+                        style={{ ...inputStyle, padding: '6px 10px', fontSize: '13px' }}
+                      >
+                        <option value="">-- Kategori --</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        onClick={handleUpdateProduct}
+                        disabled={savingEditProduct}
+                        style={{ ...primaryBtnStyle, padding: '5px 10px', fontSize: '12px', marginRight: '6px', display: 'inline-flex' }}
+                      >
+                        {savingEditProduct ? '...' : 'Kaydet'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingProductId(null)}
+                        style={{ ...secondaryBtnStyle, padding: '5px 10px', fontSize: '12px', display: 'inline-flex' }}
+                      >
+                        İptal
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={prod.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '12px', fontWeight: 600, color: '#1e293b' }}>{prod.name}</td>
+                    <td style={{ padding: '12px', color: '#0f172a' }}>
+                      {prod.price ? `₺${Number(prod.price).toLocaleString('tr-TR')}` : 'Fiyat Belirtilmedi'}
+                    </td>
+                    <td style={{ padding: '12px', color: '#64748b' }}>
+                      {prod.category?.name || categories.find(c => c.id === prod.categoryId)?.name || '-'}
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditProduct(prod)}
+                        style={{ ...actionBtnStyle, marginRight: '6px' }}
+                        title="Düzenle"
+                      >
+                        <Edit2 size={12} /> Düzenle
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(prod.id)}
+                        style={deleteBtnStyle}
+                        title="Sil"
+                      >
+                        <Trash2 size={12} /> Sil
+                      </button>
+                    </td>
+                  </tr>
+                )
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -1202,10 +1757,38 @@ const SetupWizard = () => {
     const funnelList = Array.isArray(funnels) ? funnels : [];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
-        <div>
-          <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Akışlar (Funnels)</h2>
-          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Müşteri taleplerinin otomatik yönlendirildiği kanban akışları.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Akışlar (Funnels)</h2>
+            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Müşteri taleplerinin otomatik yönlendirildiği kanban akışları.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddFunnel(!showAddFunnel)}
+            style={primaryBtnStyle}
+          >
+            <Plus size={16} /> Yeni Akış Ekle
+          </button>
         </div>
+
+        {showAddFunnel && (
+          <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni Akış Oluştur</h4>
+            <input
+              type="text"
+              placeholder="Akış Adı (Örn: VIP Müşteri Takibi, Teknik Servis)*"
+              value={newFunnel.name}
+              onChange={e => setNewFunnel({ ...newFunnel, name: e.target.value })}
+              style={inputStyle}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowAddFunnel(false)} style={secondaryBtnStyle}>İptal</button>
+              <button type="button" onClick={handleCreateFunnel} disabled={savingFunnel} style={primaryBtnStyle}>
+                {savingFunnel ? 'Kaydediliyor...' : 'Akışı Oluştur'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ border: '1.5px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1218,12 +1801,51 @@ const SetupWizard = () => {
         </div>
 
         {funnelList.filter(f => f && f.name !== 'Genel Akış' && f.name !== 'Genel').map(f => (
-          <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', borderLeft: `4px solid ${f.color || '#3b82f6'}` }}>
-            <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{f.icon || '💼'} {f.name}</div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              Aşamalar: {Array.isArray(f.stages) ? f.stages.map(s => s.name).join(' → ') : 'Standart Aşamalar'}
+          editingFunnelId === f.id ? (
+            <div key={f.id} style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '14px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontWeight: 600, fontSize: '13px', color: '#0f172a' }}>Akışı Düzenle</div>
+              <input
+                type="text"
+                placeholder="Akış Adı*"
+                value={editFunnelData.name}
+                onChange={e => setEditFunnelData({ ...editFunnelData, name: e.target.value })}
+                style={inputStyle}
+              />
+              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setEditingFunnelId(null)} style={secondaryBtnStyle}>İptal</button>
+                <button type="button" onClick={handleUpdateFunnel} disabled={savingEditFunnel} style={primaryBtnStyle}>
+                  {savingEditFunnel ? 'Kaydediliyor...' : 'Kaydet'}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', borderLeft: `4px solid ${f.color || '#3b82f6'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{f.icon || '💼'} {f.name}</div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  Aşamalar: {Array.isArray(f.stages) ? f.stages.map(s => s.name).join(' → ') : 'Standart Aşamalar'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleStartEditFunnel(f)}
+                  style={actionBtnStyle}
+                  title="Düzenle"
+                >
+                  <Edit2 size={12} /> Düzenle
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFunnel(f.id)}
+                  style={deleteBtnStyle}
+                  title="Sil"
+                >
+                  <Trash2 size={12} /> Sil
+                </button>
+              </div>
+            </div>
+          )
         ))}
       </div>
     );
@@ -1232,25 +1854,268 @@ const SetupWizard = () => {
   const renderTakimlar = () => {
     const teamList = Array.isArray(teams) ? teams : [];
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
-        <div>
-          <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Takımlar & Ekipler</h2>
-          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Vaka ve taleplerin atandığı departmanlar.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '740px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Takımlar & Ekipler</h2>
+            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Vaka ve taleplerin atandığı departmanlar ve ekip üyeleri.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddTeam(!showAddTeam)}
+            style={primaryBtnStyle}
+          >
+            <Plus size={16} /> Yeni Takım Ekle
+          </button>
         </div>
 
+        {showAddTeam && (
+          <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni Takım Oluştur</h4>
+            <input
+              type="text"
+              placeholder="Takım Adı (Örn: Satış Ekibi, Teknik Servis, Destek)*"
+              value={newTeam.name}
+              onChange={e => setNewTeam({ ...newTeam, name: e.target.value })}
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              placeholder="Açıklama (Opsiyonel)"
+              value={newTeam.description}
+              onChange={e => setNewTeam({ ...newTeam, description: e.target.value })}
+              style={inputStyle}
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowAddTeam(false)} style={secondaryBtnStyle}>İptal</button>
+              <button type="button" onClick={handleCreateTeam} disabled={savingTeam} style={primaryBtnStyle}>
+                {savingTeam ? 'Kaydediliyor...' : 'Takımı Oluştur'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {teamList.length === 0 ? (
-          <div style={{ padding: '20px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center' }}>
-            Kayıtlı takım bulunamadı veya takımlar yükleniyor...
+          <div style={{ padding: '24px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center' }}>
+            Kayıtlı takım bulunamadı. "Yeni Takım Ekle" butonuna basarak ilk takımınızı oluşturabilirsiniz.
           </div>
         ) : (
-          teamList.map(team => (
-            <div key={team.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff' }}>
-              <div style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>👥 {team.name}</div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-                {Array.isArray(team.members) ? team.members.length : (team._count?.members || 0)} Üye atanmış durumda.
+          teamList.map(team => {
+            const members = Array.isArray(team.members) ? team.members : [];
+            const isAddingMember = activeTeamMemberAddId === team.id;
+
+            return editingTeamId === team.id ? (
+              <div key={team.id} style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>Takımı Düzenle</div>
+                <input
+                  type="text"
+                  placeholder="Takım Adı*"
+                  value={editTeamData.name}
+                  onChange={e => setEditTeamData({ ...editTeamData, name: e.target.value })}
+                  style={inputStyle}
+                />
+                <input
+                  type="text"
+                  placeholder="Açıklama"
+                  value={editTeamData.description}
+                  onChange={e => setEditTeamData({ ...editTeamData, description: e.target.value })}
+                  style={inputStyle}
+                />
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setEditingTeamId(null)} style={secondaryBtnStyle}>İptal</button>
+                  <button type="button" onClick={handleUpdateTeam} disabled={savingEditTeam} style={primaryBtnStyle}>
+                    {savingEditTeam ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            ) : (
+              <div key={team.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>👥 {team.name}</span>
+                    {team.description && <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>{team.description}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditTeam(team)}
+                      style={actionBtnStyle}
+                      title="Takımı Düzenle"
+                    >
+                      <Edit2 size={12} /> Düzenle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTeam(team.id)}
+                      style={deleteBtnStyle}
+                      title="Takımı Sil"
+                    >
+                      <Trash2 size={12} /> Sil
+                    </button>
+                  </div>
+                </div>
+
+                {/* Ekip Üyeleri Bölümü */}
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                      Ekip Üyeleri ({members.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTeamMemberAddId(isAddingMember ? null : team.id);
+                        setShowCreateNewUserModal(false);
+                      }}
+                      style={{ ...actionBtnStyle, background: '#eff6ff', borderColor: '#bfdbfe', color: '#2563eb' }}
+                    >
+                      <UserPlus size={12} /> {isAddingMember ? 'Kapat' : 'Kullanıcı / Üye Ekle'}
+                    </button>
+                  </div>
+
+                  {members.length === 0 ? (
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                      Bu takıma henüz atanmış kullanıcı yok.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {members.map(m => {
+                        const mUserId = m.user?.id || m.userId;
+                        const mName = m.user?.name || m.name || m.user?.email || 'Üye';
+                        const isLeader = m.role === 'LEADER';
+
+                        return (
+                          <div
+                            key={m.id || mUserId}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '16px',
+                              padding: '3px 8px',
+                              fontSize: '12px',
+                              color: '#1e293b'
+                            }}
+                          >
+                            <User size={12} color="#64748b" />
+                            <span>{mName}</span>
+                            {isLeader && (
+                              <span style={{ fontSize: '10px', background: '#fef3c7', color: '#b45309', padding: '1px 4px', borderRadius: '4px', fontWeight: 600 }}>
+                                Lider
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMemberFromTeam(team.id, mUserId)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: '#94a3b8', display: 'flex', alignItems: 'center' }}
+                              title="Takımdan Çıkar"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Üye Ekleme / Yeni Kullanıcı Paneli */}
+                  {isAddingMember && (
+                    <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                        Mevcut Çalışma Alanı Kullanıcısını Takıma Ekle
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <select
+                          value={selectedMemberUserId}
+                          onChange={e => setSelectedMemberUserId(e.target.value)}
+                          style={{ ...inputStyle, flex: 1, padding: '7px 10px', fontSize: '13px' }}
+                        >
+                          <option value="">-- Kullanıcı Seçin --</option>
+                          {workspaceMembers.map(wm => {
+                            const uid = wm.user?.id || wm.userId || wm.id;
+                            const uname = wm.user?.name || wm.name || wm.user?.email || wm.email || 'Kullanıcı';
+                            const uemail = wm.user?.email || wm.email || '';
+                            const isAlreadyInTeam = members.some(m => (m.user?.id || m.userId) === uid);
+                            return (
+                              <option key={uid} value={uid} disabled={isAlreadyInTeam}>
+                                {uname} {uemail && uname !== uemail ? `(${uemail})` : ''} {isAlreadyInTeam ? '(Zaten Takımda)' : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleAddMemberToTeam(team.id)}
+                          disabled={addingTeamMember || !selectedMemberUserId}
+                          style={{ ...primaryBtnStyle, padding: '7px 14px', fontSize: '13px', whiteSpace: 'nowrap' }}
+                        >
+                          {addingTeamMember ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                          {addingTeamMember ? 'Ekleniyor...' : 'Ekle'}
+                        </button>
+                      </div>
+
+                      {/* Veya Yeni Kullanıcı Oluştur */}
+                      <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowCreateNewUserModal(!showCreateNewUserModal)}
+                          style={{ background: 'none', border: 'none', color: '#E63B2E', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
+                        >
+                          <UserPlus size={13} /> {showCreateNewUserModal ? 'Yeni Kullanıcı Formunu Kapat' : '+ Yeni Kullanıcı Hesabı Oluştur ve Takıma Ekle'}
+                        </button>
+
+                        {showCreateNewUserModal && (
+                          <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', background: '#fff', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                            <input
+                              type="text"
+                              placeholder="Ad Soyad*"
+                              value={newUserData.name}
+                              onChange={e => setNewUserData({ ...newUserData, name: e.target.value })}
+                              style={{ ...inputStyle, padding: '7px 10px', fontSize: '12px' }}
+                            />
+                            <input
+                              type="email"
+                              placeholder="E-posta Adresi*"
+                              value={newUserData.email}
+                              onChange={e => setNewUserData({ ...newUserData, email: e.target.value })}
+                              style={{ ...inputStyle, padding: '7px 10px', fontSize: '12px' }}
+                            />
+                            <input
+                              type="password"
+                              placeholder="Şifre (Varsayılan: Password123!)"
+                              value={newUserData.password}
+                              onChange={e => setNewUserData({ ...newUserData, password: e.target.value })}
+                              style={{ ...inputStyle, padding: '7px 10px', fontSize: '12px' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setShowCreateNewUserModal(false)}
+                                style={{ ...secondaryBtnStyle, padding: '5px 10px', fontSize: '12px' }}
+                              >
+                                İptal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCreateAndAddUserToTeam(team.id)}
+                                disabled={creatingUser}
+                                style={{ ...primaryBtnStyle, background: '#0f172a', padding: '5px 12px', fontSize: '12px' }}
+                              >
+                                {creatingUser ? <Loader2 size={12} className="animate-spin" /> : <UserPlus size={12} />}
+                                {creatingUser ? 'Oluşturuluyor...' : 'Oluştur ve Takıma Ekle'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     );
@@ -1507,6 +2372,36 @@ const secondaryBtnStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px'
+};
+
+const actionBtnStyle = {
+  background: '#f8fafc',
+  border: '1px solid #cbd5e1',
+  borderRadius: '6px',
+  padding: '5px 10px',
+  fontSize: '12px',
+  fontWeight: 500,
+  color: '#334155',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  transition: 'all 0.15s ease'
+};
+
+const deleteBtnStyle = {
+  background: '#fff',
+  border: '1px solid #fecaca',
+  borderRadius: '6px',
+  padding: '5px 10px',
+  fontSize: '12px',
+  fontWeight: 500,
+  color: '#dc2626',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  transition: 'all 0.15s ease'
 };
 
 export default SetupWizard;
