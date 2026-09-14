@@ -2333,7 +2333,7 @@ model MarketingRecipient {
   campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   send        CampaignSend?     @relation(fields: [sendId], references: [id], onDelete: Cascade)
   group       CampaignGroup?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  contact     Contact?          @relation("MarketingRecipientContact", fields: [contactId], references: [id])
+  contact     Contact?          @relation("MarketingRecipientContact", fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([campaignId])
   @@index([sendId])
