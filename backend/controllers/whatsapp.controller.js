@@ -1512,6 +1512,10 @@ export const webhookHandler = async (req, res) => {
                         }
                     }
                     // --- AUTOMATION RULES END ---
+                    releaseMessageLock(wamid);
+                } else {
+                    console.warn(`⚠️ [WhatsApp Webhook] Mesaj işlenemedi: '${phone_number_id}' phoneNumberId veritabanında (WhatsappPhoneNumber) bulunamadı!`);
+                    releaseMessageLock(wamid);
                 }
             }
             res.sendStatus(200);
