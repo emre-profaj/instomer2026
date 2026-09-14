@@ -1253,7 +1253,7 @@ export const splitCase = async (req, res) => {
         workspaceId,
         contactId: sourceCase.contactId,
         caseNumber: nextNumber,
-        title: `Talep #${nextNumber} (ayrıştırıldı)`,
+        title: `Konu #${nextNumber} (ayrıştırıldı)`,
         status: 'ACTIVE',
         priority: sourceCase.priority,
         assignedToId: sourceCase.assignedToId,
@@ -1275,17 +1275,20 @@ export const splitCase = async (req, res) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────
-// SYNC CASE TITLES — "Talep #..." başlıklarını konuşma konusundan düzelt
+// SYNC CASE TITLES — "Konu #..." başlıklarını konuşma konusundan düzelt
 // ────────────────────────────────────────────────────────────────────────────
 export const syncCaseTitles = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        // "Talep #" ile başlayan case'leri bul
+        // "Konu #" veya eski "Talep #" ile başlayan case'leri bul
         const cases = await prisma.case.findMany({
             where: {
                 workspaceId,
-                title: { startsWith: 'Talep #' }
+                OR: [
+                    { title: { startsWith: 'Konu #' } },
+                    { title: { startsWith: 'Talep #' } },
+                ]
             },
             select: {
                 id: true,
@@ -1302,7 +1305,7 @@ export const syncCaseTitles = async (req, res) => {
         for (const c of cases) {
             const conv = c.conversations[0];
             const newTitle = conv?.aiTopic || conv?.title;
-            if (newTitle && newTitle.trim() && !newTitle.startsWith('Talep #')) {
+            if (newTitle && newTitle.trim() && !newTitle.startsWith('Konu #') && !newTitle.startsWith('Talep #')) {
                 await prisma.case.update({
                     where: { id: c.id },
                     data: { title: newTitle.trim() }

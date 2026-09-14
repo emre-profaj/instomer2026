@@ -984,13 +984,13 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 if (conv?.caseId) {
                     const caseUpdateData = {};
 
-                    // Case başlığını konuşma konusundan güncelle (otomatik oluşturulan "Talep #xxx" ise)
+                    // Case başlığını konuşma konusundan güncelle (otomatik oluşturulan "Konu #xxx" ise)
                     if (extractedData?.topic && extractedData.topic !== 'null') {
                         const existingCase = await prisma.case.findUnique({
                             where: { id: conv.caseId },
                             select: { title: true }
                         });
-                        if (existingCase?.title?.startsWith('Talep #')) {
+                        if (existingCase?.title?.startsWith('Konu #') || existingCase?.title?.startsWith('Talep #')) {
                             caseUpdateData.title = extractedData.topic;
                         }
                     }

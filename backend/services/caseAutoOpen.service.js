@@ -52,7 +52,7 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
       workspaceId,
       contactId,
       caseNumber: nextNumber,
-      title: conversationTitle || `Talep #${nextNumber}`,
+      title: conversationTitle || `Konu #${nextNumber}`,
       status: 'ACTIVE',
       priority: 'NORMAL',
       conversations: { connect: { id: conversationId } },

@@ -176,6 +176,7 @@ const Customers = () => {
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState(sf.search || '');
+    const [debouncedSearch, setDebouncedSearch] = useState(sf.search || '');
     const [statusFilter, setStatusFilter] = useState(sf.statusFilter || 'ALL');
     // Funnel filter state
     const [funnelFilter, setFunnelFilter] = useState(sf.funnelFilter || 'ALL');
@@ -468,7 +469,7 @@ const Customers = () => {
                 silentReloadContacts();
             }
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, branchFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter, segmentFilter]);
+    }, [currentWorkspace, page, debouncedSearch, statusFilter, sourceFilter, categoryFilter, branchFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter, segmentFilter]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -496,7 +497,7 @@ const Customers = () => {
 
     // Helper to get active query parameters for fetching contacts
     const getContactQueryParams = useCallback((overrides = {}) => ({
-        search,
+        search: debouncedSearch,
         status: statusFilter,
         source: sourceFilter,
         category: categoryFilter,
@@ -524,7 +525,7 @@ const Customers = () => {
         hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
         ...overrides
     }), [
-        search, statusFilter, sourceFilter, categoryFilter, branchFilter, tagFilter,
+        debouncedSearch, statusFilter, sourceFilter, categoryFilter, branchFilter, tagFilter,
         contactInfoFilter, callStatusFilter, importGroupFilter, segmentFilter,
         selectedFunnelIds, funnelFilter, mergedFunnelIds, funnelStageFilter,
         showArchived, onlyOpenCases, assignmentFilter, sortField, sortDir,
@@ -690,8 +691,16 @@ const Customers = () => {
 
     const handleSearch = (e) => {
         setSearch(e.target.value);
-        setPage(1);
     };
+
+    // Debounce search: wait 400ms after user stops typing before triggering API call
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search);
+            setPage(1);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [search]);
 
     const handleStatusFilter = (status) => {
         setStatusFilter(status);
