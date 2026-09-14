@@ -41,7 +41,9 @@ import {
   Edit2,
   UserPlus,
   User,
-  Bot
+  Bot,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -244,10 +246,20 @@ const SetupWizard = () => {
   // 6. Akışlar State
   const [funnels, setFunnels] = useState([]);
   const [showAddFunnel, setShowAddFunnel] = useState(false);
-  const [newFunnel, setNewFunnel] = useState({ name: '', color: '#3b82f6' });
+  const [newFunnel, setNewFunnel] = useState({
+    name: '',
+    color: '#3b82f6',
+    stages: ['Yeni Başvuru', 'İşlemde', 'Tamamlandı', 'İptal']
+  });
+  const [newStageInput, setNewStageInput] = useState('');
   const [savingFunnel, setSavingFunnel] = useState(false);
   const [editingFunnelId, setEditingFunnelId] = useState(null);
-  const [editFunnelData, setEditFunnelData] = useState({ name: '', color: '#3b82f6' });
+  const [editFunnelData, setEditFunnelData] = useState({
+    name: '',
+    color: '#3b82f6',
+    stages: [],
+    deletedStageIds: []
+  });
   const [savingEditFunnel, setSavingEditFunnel] = useState(false);
 
   // 7. Takımlar & Kullanıcı Yönetimi State
@@ -748,19 +760,32 @@ const SetupWizard = () => {
     }
   };
 
-  // ─── FUNNEL ACTIONS (CREATE / EDIT / DELETE) ─────────────────────────────
+  // ─── FUNNEL ACTIONS (CREATE / EDIT / DELETE / STAGES) ────────────────────
   const handleCreateFunnel = async () => {
     if (!newFunnel.name.trim()) {
       showError('Akış adı gereklidir.');
       return;
     }
+    const cleanStages = (newFunnel.stages || [])
+      .map(s => typeof s === 'string' ? s.trim() : (s.name || '').trim())
+      .filter(Boolean);
+
     setSavingFunnel(true);
     try {
-      const res = await funnelAPI.create(currentWorkspace.id, newFunnel);
+      const payload = {
+        name: newFunnel.name.trim(),
+        color: newFunnel.color || '#3b82f6',
+        stages: cleanStages.length > 0 ? cleanStages : ['Yeni Başvuru', 'İşlemde', 'Tamamlandı']
+      };
+      const res = await funnelAPI.create(currentWorkspace.id, payload);
       const created = res.data?.funnel || res.data;
       if (created) setFunnels(prev => [...prev, created]);
-      showSuccess('Yeni akış başarıyla oluşturuldu!');
-      setNewFunnel({ name: '', color: '#3b82f6' });
+      showSuccess('Yeni akış ve aşamaları başarıyla oluşturuldu!');
+      setNewFunnel({
+        name: '',
+        color: '#3b82f6',
+        stages: ['Yeni Başvuru', 'İşlemde', 'Tamamlandı', 'İptal']
+      });
       setShowAddFunnel(false);
     } catch (err) {
       showError(err.response?.data?.error || 'Akış eklenirken hata oluştu.');
@@ -771,7 +796,88 @@ const SetupWizard = () => {
 
   const handleStartEditFunnel = (f) => {
     setEditingFunnelId(f.id);
-    setEditFunnelData({ name: f.name || '', color: f.color || '#3b82f6' });
+    const existingStages = Array.isArray(f.stages)
+      ? f.stages.map((s, idx) => ({
+          id: s.id,
+          name: s.name || '',
+          color: s.color || '#3b82f6',
+          order: s.order !== undefined ? s.order : idx,
+          isNew: false
+        }))
+      : [];
+    setEditFunnelData({
+      name: f.name || '',
+      color: f.color || '#3b82f6',
+      stages: existingStages,
+      deletedStageIds: []
+    });
+  };
+
+  const handleAddStageToEditFunnel = () => {
+    setEditFunnelData(prev => ({
+      ...prev,
+      stages: [
+        ...prev.stages,
+        {
+          id: 'temp_' + Date.now(),
+          name: '',
+          color: '#3b82f6',
+          order: prev.stages.length,
+          isNew: true
+        }
+      ]
+    }));
+  };
+
+  const handleRemoveStageFromEditFunnel = (index) => {
+    setEditFunnelData(prev => {
+      const stageToRemove = prev.stages[index];
+      const nextStages = prev.stages.filter((_, i) => i !== index);
+      const nextDeleted = (!stageToRemove.isNew && stageToRemove.id)
+        ? [...(prev.deletedStageIds || []), stageToRemove.id]
+        : (prev.deletedStageIds || []);
+      return {
+        ...prev,
+        stages: nextStages,
+        deletedStageIds: nextDeleted
+      };
+    });
+  };
+
+  const handleMoveStage = (index, direction) => {
+    setEditFunnelData(prev => {
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.stages.length) return prev;
+      const copy = [...prev.stages];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return { ...prev, stages: copy };
+    });
+  };
+
+  const handleStageChangeInEditFunnel = (index, field, value) => {
+    setEditFunnelData(prev => {
+      const copy = [...prev.stages];
+      copy[index] = { ...copy[index], [field]: value };
+      return { ...prev, stages: copy };
+    });
+  };
+
+  const handleAddStageToNewFunnel = () => {
+    if (!newStageInput.trim()) return;
+    setNewFunnel(prev => ({
+      ...prev,
+      stages: [...prev.stages, newStageInput.trim()]
+    }));
+    setNewStageInput('');
+  };
+
+  const handleRemoveStageFromNewFunnel = (index) => {
+    setNewFunnel(prev => ({
+      ...prev,
+      stages: prev.stages.filter((_, i) => i !== index)
+    }));
   };
 
   const handleUpdateFunnel = async () => {
@@ -779,12 +885,78 @@ const SetupWizard = () => {
       showError('Akış adı gereklidir.');
       return;
     }
+
+    const validStages = (editFunnelData.stages || []).filter(s => s.name && s.name.trim().length > 0);
+    if (validStages.length === 0) {
+      showError('Akış için en az bir aşama adı girilmelidir.');
+      return;
+    }
+
     setSavingEditFunnel(true);
     try {
-      const res = await funnelAPI.update(currentWorkspace.id, editingFunnelId, editFunnelData);
-      const updated = res.data?.funnel || res.data;
-      setFunnels(prev => prev.map(f => f.id === editingFunnelId ? (updated?.id ? updated : { ...f, ...editFunnelData }) : f));
-      showSuccess('Akış güncellendi.');
+      const wsId = currentWorkspace.id;
+
+      // 1. Update funnel basic info
+      await funnelAPI.update(wsId, editingFunnelId, {
+        name: editFunnelData.name.trim(),
+        color: editFunnelData.color || '#3b82f6'
+      });
+
+      // 2. Delete removed stages
+      if (Array.isArray(editFunnelData.deletedStageIds)) {
+        for (const stageId of editFunnelData.deletedStageIds) {
+          try {
+            await funnelAPI.deleteStage(wsId, editingFunnelId, stageId);
+          } catch (delErr) {
+            console.warn('Delete stage warning:', stageId, delErr);
+          }
+        }
+      }
+
+      // 3. Update existing stages & Create new stages
+      const finalStages = [];
+      for (let i = 0; i < validStages.length; i++) {
+        const st = validStages[i];
+        if (st.isNew) {
+          const createRes = await funnelAPI.createStage(wsId, editingFunnelId, {
+            name: st.name.trim(),
+            color: st.color || '#3b82f6',
+            order: i
+          });
+          const created = createRes.data?.stage || createRes.data;
+          finalStages.push(created || { id: st.id, name: st.name.trim(), color: st.color || '#3b82f6', order: i });
+        } else {
+          await funnelAPI.updateStage(wsId, editingFunnelId, st.id, {
+            name: st.name.trim(),
+            color: st.color || '#3b82f6',
+            order: i
+          });
+          finalStages.push({ ...st, name: st.name.trim(), color: st.color || '#3b82f6', order: i });
+        }
+      }
+
+      // Update state
+      setFunnels(prev => prev.map(f => {
+        if (f.id === editingFunnelId) {
+          return {
+            ...f,
+            name: editFunnelData.name.trim(),
+            color: editFunnelData.color || '#3b82f6',
+            stages: finalStages
+          };
+        }
+        return f;
+      }));
+
+      // Background re-fetch to ensure complete sync with database
+      funnelAPI.getAll(wsId)
+        .then(res => {
+          const raw = res.data?.funnels || res.data;
+          if (Array.isArray(raw)) setFunnels(raw);
+        })
+        .catch(() => {});
+
+      showSuccess('Akış ve aşamaları başarıyla güncellendi.');
       setEditingFunnelId(null);
     } catch (err) {
       showError(err.response?.data?.error || 'Akış güncellenirken hata oluştu.');
@@ -1939,12 +2111,237 @@ const SetupWizard = () => {
 
   const renderAkislar = () => {
     const funnelList = Array.isArray(funnels) ? funnels : [];
+    const defaultFunnel = funnelList.find(f => f && (f.funnelType === 'MAIN' || f.name === 'Genel Akış' || f.name === 'Genel' || f.name === 'Genel Müşteri Akışı'));
+    const otherFunnels = funnelList.filter(f => f && f.id !== defaultFunnel?.id && f.name !== 'Genel Akış' && f.name !== 'Genel' && f.name !== 'Genel Müşteri Akışı');
+
+    const renderFunnelEditForm = (isDefault = false) => (
+      <div style={{
+        border: '1.5px solid #E63B2E',
+        borderRadius: '8px',
+        padding: '16px',
+        background: '#fff',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+        boxShadow: '0 4px 12px rgba(230, 59, 46, 0.08)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Edit2 size={16} color="#E63B2E" />
+            {isDefault ? 'Varsayılan Akış Aşamalarını Düzenle' : 'Akışı ve Aşamaları Düzenle'}
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditingFunnelId(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+            title="Kapat"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+            Akış Adı *
+          </label>
+          <input
+            type="text"
+            placeholder="Akış Adı*"
+            value={editFunnelData.name}
+            onChange={e => setEditFunnelData({ ...editFunnelData, name: e.target.value })}
+            style={inputStyle}
+            disabled={isDefault}
+          />
+        </div>
+
+        {/* Stages Section */}
+        <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>Akış Aşamaları</span>
+                <span style={{ fontSize: '11px', background: '#e2e8f0', color: '#475569', padding: '1px 7px', borderRadius: '10px', fontWeight: 600 }}>
+                  {editFunnelData.stages?.length || 0}
+                </span>
+              </div>
+              <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                Aşama isimlerini değiştirebilir, sıralarını düzenleyebilir veya yeni aşama ekleyebilirsiniz.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddStageToEditFunnel}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#334155',
+                cursor: 'pointer'
+              }}
+            >
+              <Plus size={14} /> Yeni Aşama Ekle
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {(editFunnelData.stages || []).map((st, idx) => (
+              <div
+                key={st.id || idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '8px 10px'
+                }}
+              >
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: '#e2e8f0',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  flexShrink: 0
+                }}>
+                  {idx + 1}
+                </span>
+
+                <input
+                  type="color"
+                  value={st.color || '#3b82f6'}
+                  onChange={e => handleStageChangeInEditFunnel(idx, 'color', e.target.value)}
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    padding: 0,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    flexShrink: 0
+                  }}
+                  title="Aşama Rengi"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Aşama Adı (örn: Teklif Verildi)*"
+                  value={st.name}
+                  onChange={e => handleStageChangeInEditFunnel(idx, 'name', e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    flex: 1,
+                    padding: '6px 10px',
+                    fontSize: '13px'
+                  }}
+                />
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    disabled={idx === 0}
+                    onClick={() => handleMoveStage(idx, 'up')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                      opacity: idx === 0 ? 0.25 : 0.8,
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="Yukarı Taşı"
+                  >
+                    <ChevronUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === (editFunnelData.stages?.length || 0) - 1}
+                    onClick={() => handleMoveStage(idx, 'down')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: idx === (editFunnelData.stages?.length || 0) - 1 ? 'not-allowed' : 'pointer',
+                      opacity: idx === (editFunnelData.stages?.length || 0) - 1 ? 0.25 : 0.8,
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="Aşağı Taşı"
+                  >
+                    <ChevronDown size={14} />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={(editFunnelData.stages?.length || 0) <= 1}
+                  onClick={() => handleRemoveStageFromEditFunnel(idx)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: (editFunnelData.stages?.length || 0) <= 1 ? 'not-allowed' : 'pointer',
+                    opacity: (editFunnelData.stages?.length || 0) <= 1 ? 0.25 : 0.8,
+                    color: '#ef4444',
+                    padding: '4px',
+                    flexShrink: 0
+                  }}
+                  title="Aşamayı Kaldır"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {(!editFunnelData.stages || editFunnelData.stages.length === 0) && (
+            <div style={{ padding: '12px', textAlign: 'center', color: '#ef4444', fontSize: '13px', background: '#fef2f2', borderRadius: '6px', marginTop: '8px' }}>
+              En az bir aşama adı eklemeniz gerekmektedir.
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setEditingFunnelId(null)}
+            style={secondaryBtnStyle}
+            disabled={savingEditFunnel}
+          >
+            İptal
+          </button>
+          <button
+            type="button"
+            onClick={handleUpdateFunnel}
+            disabled={savingEditFunnel}
+            style={primaryBtnStyle}
+          >
+            {savingEditFunnel ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+          </button>
+        </div>
+      </div>
+    );
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Akışlar (Funnels)</h2>
-            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Müşteri taleplerinin otomatik yönlendirildiği kanban akışları.</p>
+            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Müşteri taleplerinin otomatik yönlendirildiği kanban akışları ve aşamaları.</p>
           </div>
           <button
             type="button"
@@ -1956,16 +2353,88 @@ const SetupWizard = () => {
         </div>
 
         {showAddFunnel && (
-          <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni Akış Oluştur</h4>
-            <input
-              type="text"
-              placeholder="Akış Adı (Örn: VIP Müşteri Takibi, Teknik Servis)*"
-              value={newFunnel.name}
-              onChange={e => setNewFunnel({ ...newFunnel, name: e.target.value })}
-              style={inputStyle}
-            />
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 4px 12px rgba(230, 59, 46, 0.08)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a' }}>Yeni Akış Oluştur</h4>
+              <button
+                type="button"
+                onClick={() => setShowAddFunnel(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                Akış Adı *
+              </label>
+              <input
+                type="text"
+                placeholder="Akış Adı (Örn: VIP Müşteri Takibi, Teknik Servis)*"
+                value={newFunnel.name}
+                onChange={e => setNewFunnel({ ...newFunnel, name: e.target.value })}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                Başlangıç Aşamaları
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                {(newFunnel.stages || []).map((stage, sIdx) => (
+                  <span
+                    key={sIdx}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '4px 10px',
+                      background: '#f1f5f9',
+                      borderRadius: '16px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      border: '1px solid #e2e8f0'
+                    }}
+                  >
+                    <span>{typeof stage === 'string' ? stage : stage.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStageFromNewFunnel(sIdx)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#64748b', display: 'flex', alignItems: 'center' }}
+                      title="Kaldır"
+                    >
+                      <X size={13} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Yeni aşama ekle (örn: Sözleşme İmzalandı)"
+                  value={newStageInput}
+                  onChange={e => setNewStageInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddStageToNewFunnel();
+                    }
+                  }}
+                  style={{ ...inputStyle, flex: 1, padding: '6px 10px', fontSize: '13px' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddStageToNewFunnel}
+                  style={{ ...secondaryBtnStyle, padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap' }}
+                >
+                  <Plus size={14} /> Ekle
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
               <button type="button" onClick={() => setShowAddFunnel(false)} style={secondaryBtnStyle}>İptal</button>
               <button type="button" onClick={handleCreateFunnel} disabled={savingFunnel} style={primaryBtnStyle}>
                 {savingFunnel ? 'Kaydediliyor...' : 'Akışı Oluştur'}
@@ -1974,59 +2443,132 @@ const SetupWizard = () => {
           </div>
         )}
 
-        <div style={{ border: '1.5px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Genel Müşteri Akışı 🔒
-            </h3>
-            <span style={{ background: '#fef2f2', color: '#E63B2E', fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Varsayılan</span>
-          </div>
-          <p style={{ color: '#64748b', fontSize: '13px', margin: '6px 0 0 0' }}>Gelen tüm talepler için temel karşılama, bilgi toplama ve yönlendirme süreci.</p>
-        </div>
-
-        {funnelList.filter(f => f && f.name !== 'Genel Akış' && f.name !== 'Genel').map(f => (
-          editingFunnelId === f.id ? (
-            <div key={f.id} style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '14px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontWeight: 600, fontSize: '13px', color: '#0f172a' }}>Akışı Düzenle</div>
-              <input
-                type="text"
-                placeholder="Akış Adı*"
-                value={editFunnelData.name}
-                onChange={e => setEditFunnelData({ ...editFunnelData, name: e.target.value })}
-                style={inputStyle}
-              />
-              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setEditingFunnelId(null)} style={secondaryBtnStyle}>İptal</button>
-                <button type="button" onClick={handleUpdateFunnel} disabled={savingEditFunnel} style={primaryBtnStyle}>
-                  {savingEditFunnel ? 'Kaydediliyor...' : 'Kaydet'}
+        {/* Varsayılan Akış */}
+        {defaultFunnel && editingFunnelId === defaultFunnel.id ? (
+          renderFunnelEditForm(true)
+        ) : (
+          <div style={{ border: '1.5px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>📋</span>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a' }}>
+                  {defaultFunnel?.name || 'Genel Müşteri Akışı'} 🔒
+                </h3>
+                <span style={{ background: '#fef2f2', color: '#E63B2E', fontSize: '12px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Varsayılan</span>
+              </div>
+              {defaultFunnel && (
+                <button
+                  type="button"
+                  onClick={() => handleStartEditFunnel(defaultFunnel)}
+                  style={actionBtnStyle}
+                  title="Aşamaları Düzenle"
+                >
+                  <Edit2 size={12} /> Aşamaları Düzenle
                 </button>
+              )}
+            </div>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>Gelen tüm talepler için temel karşılama, bilgi toplama ve yönlendirme süreci.</p>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
+                Aşamalar ({Array.isArray(defaultFunnel?.stages) ? defaultFunnel.stages.length : 0}):
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                {Array.isArray(defaultFunnel?.stages) && defaultFunnel.stages.length > 0 ? (
+                  defaultFunnel.stages.map((st, sIdx) => (
+                    <React.Fragment key={st.id || sIdx}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '16px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        background: '#ffffff',
+                        color: '#334155',
+                        border: `1px solid ${st.color ? st.color + '55' : '#cbd5e1'}`
+                      }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: st.color || '#3b82f6' }} />
+                        {st.name}
+                      </span>
+                      {sIdx < defaultFunnel.stages.length - 1 && (
+                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>→</span>
+                      )}
+                    </React.Fragment>
+                  ))
+                ) : (
+                  <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>Yeni Başvuru → İşlemde → Kapandı → Çözüldü</span>
+                )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Diğer Akışlar */}
+        {otherFunnels.map(f => (
+          editingFunnelId === f.id ? (
+            <React.Fragment key={f.id}>
+              {renderFunnelEditForm(false)}
+            </React.Fragment>
           ) : (
-            <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', borderLeft: `4px solid ${f.color || '#3b82f6'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{f.icon || '💼'} {f.name}</div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  Aşamalar: {Array.isArray(f.stages) ? f.stages.map(s => s.name).join(' → ') : 'Standart Aşamalar'}
+            <div key={f.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff', borderLeft: `4px solid ${f.color || '#3b82f6'}`, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>{f.icon || '💼'}</span>
+                  <span style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>{f.name}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditFunnel(f)}
+                    style={actionBtnStyle}
+                    title="Düzenle"
+                  >
+                    <Edit2 size={12} /> Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFunnel(f.id)}
+                    style={deleteBtnStyle}
+                    title="Sil"
+                  >
+                    <Trash2 size={12} /> Sil
+                  </button>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => handleStartEditFunnel(f)}
-                  style={actionBtnStyle}
-                  title="Düzenle"
-                >
-                  <Edit2 size={12} /> Düzenle
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFunnel(f.id)}
-                  style={deleteBtnStyle}
-                  title="Sil"
-                >
-                  <Trash2 size={12} /> Sil
-                </button>
+
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
+                  Aşamalar ({Array.isArray(f.stages) ? f.stages.length : 0}):
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                  {Array.isArray(f.stages) && f.stages.length > 0 ? (
+                    f.stages.map((st, sIdx) => (
+                      <React.Fragment key={st.id || sIdx}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '4px 10px',
+                          borderRadius: '16px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          background: '#f8fafc',
+                          color: '#334155',
+                          border: `1px solid ${st.color ? st.color + '55' : '#cbd5e1'}`
+                        }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: st.color || '#3b82f6' }} />
+                          {st.name}
+                        </span>
+                        {sIdx < f.stages.length - 1 && (
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>→</span>
+                        )}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>Aşama tanımlanmamış</span>
+                  )}
+                </div>
               </div>
             </div>
           )

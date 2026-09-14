@@ -539,14 +539,22 @@ export const createFunnel = async (req, res) => {
         const maxOrder = await prisma.funnel.aggregate({ where: { workspaceId }, _max: { order: true } });
         const nextOrder = (maxOrder._max.order || 0) + 1;
 
-        // Eşleşen default preset varsa onun aşamalarını kullan
+        // Gelen stages varsa kullan, yoksa eşleşen default preset varsa onun aşamalarını kullan
+        const reqStages = Array.isArray(req.body.stages) && req.body.stages.length > 0
+            ? req.body.stages.map((s, idx) => ({
+                name: typeof s === 'string' ? s.trim() : (s.name || '').trim(),
+                color: s.color || '#3b82f6',
+                order: idx
+            })).filter(s => s.name)
+            : null;
+
         const normalizedName = normalizeTR(name);
         const matchingDefault = DEFAULT_FUNNELS.find(d => normalizeTR(d.name) === normalizedName);
-        const stages = matchingDefault ? matchingDefault.stages : [
-            { name: 'Yeni',     color: '#3b82f6', order: 0 },
-            { name: 'İşlemde',  color: '#f59e0b', order: 1 },
-            { name: 'Kapandı',  color: '#10b981', order: 2 }
-        ];
+        const stages = (reqStages && reqStages.length > 0) ? reqStages : (matchingDefault ? matchingDefault.stages : [
+            { name: 'Yeni Başvuru', color: '#3b82f6', order: 0 },
+            { name: 'İşlemde',     color: '#f59e0b', order: 1 },
+            { name: 'Tamamlandı',  color: '#10b981', order: 2 }
+        ]);
 
         // Sınıflandırma kriterlerini ve kategori eşleştirmelerini JSON olarak hazırla
         let finalClassCriteria = null;
