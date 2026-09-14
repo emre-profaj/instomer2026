@@ -394,26 +394,45 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         const unmerged = rawList.filter(c => c && !c.description?.includes('Birleştirildi'));
         const listToProcess = unmerged.length > 0 ? unmerged : rawList;
 
-        // 2. caseNumber (kısa ve tam) bazında grupla; aynı numaralı mükerrerleri BİRLEŞTİR, farklı numaralı olanları AYRI tut
-        const groupedByNumber = new Map();
-        const noNumberCases = [];
+        const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', 'Genel', 'Manuel Kayıt', '-', '—', ''];
+        const isGenericTitle = (t) => !t || GENERIC.includes(t.trim()) || t.startsWith('Konu #') || t.includes('━') || t.includes('═') || t.includes('🎯');
+
+        const deduped = [];
 
         for (const c of listToProcess) {
             if (!c || !c.id) continue;
             const rawNum = c.caseNumber ? String(c.caseNumber).trim() : null;
             const shortNum = rawNum ? (rawNum.includes('-') && rawNum.length > 8 ? rawNum.split('-').pop() : rawNum) : null;
-            const groupKey = shortNum ? shortNum.toLowerCase() : null;
 
-            if (!groupKey) {
-                noNumberCases.push(c);
-                continue;
-            }
+            // Mevcut deduped listesinde bu case ile birleşecek bir primary case ara:
+            const existing = deduped.find(dc => {
+                const dcRawNum = dc.caseNumber ? String(dc.caseNumber).trim() : null;
+                const dcShortNum = dcRawNum ? (dcRawNum.includes('-') && dcRawNum.length > 8 ? dcRawNum.split('-').pop() : dcRawNum) : null;
 
-            if (!groupedByNumber.has(groupKey)) {
-                groupedByNumber.set(groupKey, { ...c, _allIds: [c.id] });
-            } else {
-                // AYNI CASE NUMARASINA SAHİP MÜKERRER KAYIT BULUNDU -> BİRLEŞTİR
-                const existing = groupedByNumber.get(groupKey);
+                // 1. Case numarası eşleşmesi
+                if (shortNum && dcShortNum && shortNum.toLowerCase() === dcShortNum.toLowerCase()) return true;
+
+                // 2. Ortak konuşma paylaşımı
+                const dcConvIds = new Set((dc.conversations || []).map(cv => cv.id));
+                if ((c.conversations || []).some(cv => dcConvIds.has(cv.id))) return true;
+
+                // 3. İkisi de ACTIVE ve 10 dakika içinde açılmış (aynı olay/mesaj kaynaklı mükerrer)
+                if (c.status === 'ACTIVE' && dc.status === 'ACTIVE') {
+                    if (c.createdAt && dc.createdAt) {
+                        const timeDiff = Math.abs(new Date(c.createdAt).getTime() - new Date(dc.createdAt).getTime());
+                        if (timeDiff < 10 * 60 * 1000) return true;
+                    }
+                    // Biri generic ve konuşmasız ise
+                    if ((isGenericTitle(c.title) && (!c.conversations || c.conversations.length === 0)) ||
+                        (isGenericTitle(dc.title) && (!dc.conversations || dc.conversations.length === 0))) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+            if (existing) {
                 existing._allIds = existing._allIds || [existing.id];
                 if (!existing._allIds.includes(c.id)) {
                     existing._allIds.push(c.id);
@@ -443,10 +462,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 }
                 existing.activities = existingActs;
 
-                // Başlık kontrolü: Eğer mevcudun başlığı generic ise ama yeni kaydın başlığı doluysa güncelle
-                const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', '-', '—', ''];
-                if ((!existing.title || GENERIC.includes(existing.title.trim())) && c.title && !GENERIC.includes(c.title.trim())) {
+                // Başlık kontrolü: Generic yerine spesifik başlığı koru
+                if (isGenericTitle(existing.title) && !isGenericTitle(c.title)) {
                     existing.title = c.title;
+                }
+
+                // Numarası olanı tercih et
+                if (!existing.caseNumber && c.caseNumber) {
+                    existing.caseNumber = c.caseNumber;
                 }
 
                 // Eksik alanları tamamla
@@ -455,10 +478,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 if (!existing.categoryId && c.categoryId) existing.categoryId = c.categoryId;
                 if (!existing.caseTypeId && c.caseTypeId) existing.caseTypeId = c.caseTypeId;
                 if (existing.status !== 'ACTIVE' && c.status === 'ACTIVE') existing.status = 'ACTIVE';
+            } else {
+                deduped.push({ ...c, _allIds: [c.id] });
             }
         }
 
-        return [...groupedByNumber.values(), ...noNumberCases];
+        return deduped;
     };
 
     const distinctCases = useMemo(() => sanitizeCases(allCases), [allCases]);

@@ -4157,41 +4157,10 @@ Konu başlığı:`;
             data: { aiTopic: topic }
         });
 
-        // ── AUTO-CASE: Topic oluştuğunda otomatik Case oluştur ──
+        // ── AUTO-CASE: Topic oluştuğunda otomatik Case oluştur / mevcut case başlığını güncelle ──
         try {
-            const convForCase = await prisma.conversation.findUnique({
-                where: { id: conversationId },
-                select: { caseId: true, contactId: true, assignedToId: true, assignedTeamId: true, topicCategoryId: true }
-            });
-            if (convForCase && !convForCase.caseId && convForCase.contactId) {
-                const caseNumber = await generateCaseNumber(workspaceId);
-
-                let caseTypeId = null;
-                try {
-                    if (convForCase.topicCategoryId) {
-                        const tcForCase = await prisma.topicCategory.findUnique({ where: { id: convForCase.topicCategoryId }, select: { caseTypeId: true } });
-                        caseTypeId = tcForCase?.caseTypeId || null;
-                    }
-                } catch (_) {}
-
-                const newCase = await prisma.case.create({
-                    data: {
-                        workspaceId,
-                        contactId: convForCase.contactId,
-                        caseNumber,
-                        title: topic,
-                        assignedToId: convForCase.assignedToId || null,
-                        assignedTeamId: convForCase.assignedTeamId || null,
-                        priority: 'NORMAL',
-                        caseTypeId
-                    }
-                });
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { caseId: newCase.id }
-                });
-                console.log(`📦 [AutoCase] Auto-created case "${caseNumber}" for topic "${topic}"`);
-            }
+            const { ensureCaseForConversation } = await import('./case.controller.js');
+            await ensureCaseForConversation(workspaceId, conversationId, { initialTopic: topic });
         } catch (caseErr) {
             console.error(`⚠️ [AutoCase] Failed in autoGenerateTopic:`, caseErr.message);
         }

@@ -37,20 +37,22 @@ export function getNextSequence(lastSeq = '') {
 
 // ─── Async In-Memory Mutex Lock ──────────────────────────────────────────
 // Aynı müşteri veya aynı workspace için paralel webhook/classifier isteklerinin
-// aynı case numarasını veya mükerrer case üretmesini kesin olarak engeller.
+// aynı case numarasını veya mükerrer case üretmesini kesin olarak engeller (FIFO Promise Kuyruğu).
 const caseAsyncLocks = new Map();
 export const withCaseLock = async (key, fn) => {
-    while (caseAsyncLocks.has(key)) {
-        await caseAsyncLocks.get(key);
-    }
-    let resolve;
-    const promise = new Promise(r => { resolve = r; });
-    caseAsyncLocks.set(key, promise);
+    const prevLock = caseAsyncLocks.get(key) || Promise.resolve();
+    let resolveNext;
+    const currentLock = new Promise(r => { resolveNext = r; });
+    caseAsyncLocks.set(key, currentLock);
+
     try {
+        await prevLock;
         return await fn();
     } finally {
-        caseAsyncLocks.delete(key);
-        resolve();
+        if (caseAsyncLocks.get(key) === currentLock) {
+            caseAsyncLocks.delete(key);
+        }
+        resolveNext();
     }
 };
 
@@ -108,8 +110,8 @@ export const generateCaseNumber = async (workspaceId) => {
 // ─── Merkezi Auto-Case Helper ────────────────────────────────────────────
 // Herhangi bir conversation için case yoksa otomatik oluşturur.
 // Tüm webhook controller'lardan fire-and-forget çağrılabilir.
-// Örnek: ensureCaseForConversation(workspaceId, conversationId).catch(console.error)
-export const ensureCaseForConversation = async (workspaceId, conversationId) => {
+// Örnek: ensureCaseForConversation(workspaceId, conversationId, options).catch(console.error)
+export const ensureCaseForConversation = async (workspaceId, conversationId, options = {}) => {
     try {
         if (!workspaceId || !conversationId) return null;
 
@@ -131,17 +133,51 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 }
             });
 
-            // Zaten case'e bağlıysa veya contact yoksa atla
-            if (!conv || conv.caseId || !conv.contactId) return null;
+            // Contact yoksa vaka oluşturulamaz
+            if (!conv || !conv.contactId) return null;
+
+            const GENERIC_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', 'Genel', 'Manuel Kayıt', '-', '—', ''];
+            const isGenericOrDecorative = (t) => !t || GENERIC_TITLES.includes(t.trim()) || t.startsWith('Konu #') || t.includes('━') || t.includes('═') || t.includes('🎯');
+
+            // Zaten bir case'e bağlıysa
+            if (conv.caseId) {
+                const assignedCase = await prisma.case.findUnique({ where: { id: conv.caseId } });
+                if (assignedCase) {
+                    const candidateTopic = options.initialTopic || (conv.aiTopic && !isGenericOrDecorative(conv.aiTopic) ? conv.aiTopic : null);
+                    if (candidateTopic && isGenericOrDecorative(assignedCase.title)) {
+                        await prisma.case.update({
+                            where: { id: assignedCase.id },
+                            data: { title: candidateTopic.trim().substring(0, 200) }
+                        });
+                        assignedCase.title = candidateTopic.trim().substring(0, 200);
+                        console.log(`🏷️ [AutoCase] Updated existing case ${assignedCase.caseNumber} title to "${assignedCase.title}"`);
+                    }
+                    return assignedCase;
+                }
+            }
 
             // Kilit mekanizması: Aynı müşterinin eşzamanlı vaka açmasını engelle
             return await withCaseLock(`contact_case_${conv.contactId}`, async () => {
-                // Bu kişinin zaten aktif case'i varsa, conversation'ı ona bağla
+                // Kilidi beklerken başka bir işlem bu conversation'ı bir case'e bağlamış olabilir, tekrar kontrol et
+                const freshConv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { caseId: true }
+                });
+                if (freshConv?.caseId) {
+                    const linkedCase = await prisma.case.findUnique({ where: { id: freshConv.caseId } });
+                    if (linkedCase) return linkedCase;
+                }
+
+                // Bu kişinin zaten aktif bir case'i var mı veya son 60 saniyede açılmış bir case'i var mı?
+                const sixtySecondsAgo = new Date(Date.now() - 60000);
                 const existingCase = await prisma.case.findFirst({
                     where: {
                         contactId: conv.contactId,
                         workspaceId,
-                        status: { in: ['ACTIVE', 'PENDING', 'IN_PROGRESS'] }
+                        OR: [
+                            { status: { in: ['ACTIVE', 'PENDING', 'IN_PROGRESS'] } },
+                            { createdAt: { gte: sixtySecondsAgo } }
+                        ]
                     },
                     orderBy: { updatedAt: 'desc' }
                 });
@@ -152,6 +188,17 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                         data: { caseId: existingCase.id }
                     });
                     console.log(`📦 [AutoCase] Linked conv ${conversationId} to existing case ${existingCase.caseNumber}`);
+
+                    const candidateTopic = options.initialTopic || (conv.aiTopic && !isGenericOrDecorative(conv.aiTopic) ? conv.aiTopic : null);
+                    if (candidateTopic && isGenericOrDecorative(existingCase.title)) {
+                        await prisma.case.update({
+                            where: { id: existingCase.id },
+                            data: { title: candidateTopic.trim().substring(0, 200) }
+                        });
+                        existingCase.title = candidateTopic.trim().substring(0, 200);
+                        console.log(`🏷️ [AutoCase] Updated existing case ${existingCase.caseNumber} title to "${existingCase.title}"`);
+                    }
+
                     return existingCase;
                 }
 
@@ -163,73 +210,72 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                     INSTAGRAM: '💬 Instagram',
                     EMAIL: '📧 E-posta',
                     PHONE: '📞 Telefon',
-            WIDGET: '🌐 Web Widget',
-            FORM: '📝 Form',
-            WEB_WIDGET: '🌐 Web Widget'
-        };
-        const channelLabel = channelLabels[conv.channel] || conv.channel || 'Yeni İletişim';
-        
-        // aiTopic'ten dekoratif başlıkları temizle (form mesaj headerları)
-        let topic = conv.aiTopic;
-        if (topic && (topic.includes('━') || topic.includes('═') || topic.includes('🎯'))) {
-            topic = null; // Dekoratif başlık, gerçek konu değil
-        }
-        
-        // FORM kanalı için topic boşsa, formSubmission'dan konu çek
-        if (!topic && conv.channel === 'FORM') {
-            const latestSubmission = await prisma.formSubmission.findFirst({
-                where: { conversationId },
-                orderBy: { createdAt: 'desc' },
-                select: { message: true, formWebhook: { select: { name: true } } }
-            });
-            topic = latestSubmission?.message || latestSubmission?.formWebhook?.name || null;
-        }
-        const title = topic || channelLabel;
+                    WIDGET: '🌐 Web Widget',
+                    FORM: '📝 Form',
+                    WEB_WIDGET: '🌐 Web Widget'
+                };
+                const channelLabel = channelLabels[conv.channel] || conv.channel || 'Yeni İletişim';
 
-        let topicCategoryId = conv.topicCategoryId;
-        if (!topicCategoryId) {
-            try {
-                const { matchCategoryFromConversation } = await import('../services/categoryMatcher.service.js');
-                const catMatch = await matchCategoryFromConversation(workspaceId, conversationId);
-                if (catMatch?.categoryId) {
-                    topicCategoryId = catMatch.categoryId;
+                let topic = options.initialTopic || conv.aiTopic;
+                if (topic && isGenericOrDecorative(topic)) {
+                    topic = null;
                 }
-            } catch (_) {}
-        }
 
-        let caseTypeId = null;
-        if (topicCategoryId) {
-            const tc = await prisma.topicCategory.findUnique({
-                where: { id: topicCategoryId },
-                select: { caseTypeId: true }
-            });
-            caseTypeId = tc?.caseTypeId || null;
-        }
+                // FORM kanalı için topic boşsa, formSubmission'dan konu çek
+                if (!topic && conv.channel === 'FORM') {
+                    const latestSubmission = await prisma.formSubmission.findFirst({
+                        where: { conversationId },
+                        orderBy: { createdAt: 'desc' },
+                        select: { message: true, formWebhook: { select: { name: true } } }
+                    });
+                    topic = latestSubmission?.message || latestSubmission?.formWebhook?.name || null;
+                }
+                const title = topic || channelLabel;
 
-        const newCase = await prisma.case.create({
-            data: {
-                workspaceId,
-                contactId: conv.contactId,
-                caseNumber,
-                title,
-                assignedToId: conv.assignedToId || null,
-                assignedTeamId: conv.assignedTeamId || null,
-                funnelType: conv.funnelType || null,
-                funnelStageId: conv.funnelStageId || null,
-                categoryId: topicCategoryId || null,
-                caseTypeId,
-                campaignId: conv.campaignId || null,
-                priority: 'NORMAL'
-            }
-        });
+                let topicCategoryId = conv.topicCategoryId;
+                if (!topicCategoryId) {
+                    try {
+                        const { matchCategoryFromConversation } = await import('../services/categoryMatcher.service.js');
+                        const catMatch = await matchCategoryFromConversation(workspaceId, conversationId);
+                        if (catMatch?.categoryId) {
+                            topicCategoryId = catMatch.categoryId;
+                        }
+                    } catch (_) {}
+                }
 
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: { caseId: newCase.id }
-        });
+                let caseTypeId = null;
+                if (topicCategoryId) {
+                    const tc = await prisma.topicCategory.findUnique({
+                        where: { id: topicCategoryId },
+                        select: { caseTypeId: true }
+                    });
+                    caseTypeId = tc?.caseTypeId || null;
+                }
 
-        console.log(`📦 [AutoCase] Auto-created case "${caseNumber}" (${title}) for conv ${conversationId}`);
-        return newCase;
+                const newCase = await prisma.case.create({
+                    data: {
+                        workspaceId,
+                        contactId: conv.contactId,
+                        caseNumber,
+                        title,
+                        assignedToId: conv.assignedToId || null,
+                        assignedTeamId: conv.assignedTeamId || null,
+                        funnelType: conv.funnelType || null,
+                        funnelStageId: conv.funnelStageId || null,
+                        categoryId: topicCategoryId || null,
+                        caseTypeId,
+                        campaignId: conv.campaignId || null,
+                        priority: 'NORMAL'
+                    }
+                });
+
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { caseId: newCase.id }
+                });
+
+                console.log(`📦 [AutoCase] Auto-created case "${caseNumber}" (${title}) for conv ${conversationId}`);
+                return newCase;
             });
         });
     } catch (err) {
@@ -384,6 +430,9 @@ export const getContactCases = async (req, res) => {
             ? cases.filter(c => !c.description?.includes('Birleştirildi'))
             : cases;
 
+        const GENERIC_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', 'Genel', 'Manuel Kayıt', '-', '—', ''];
+        const isGenericOrDecorative = (t) => !t || GENERIC_TITLES.includes(t.trim()) || t.startsWith('Konu #') || t.includes('━') || t.includes('═') || t.includes('🎯');
+
         const seenCaseNumbers = new Set();
         const seenIds = new Set();
         const dedupedCases = [];
@@ -391,55 +440,88 @@ export const getContactCases = async (req, res) => {
         for (const c of candidateCases) {
             if (seenIds.has(c.id)) continue;
             const cNum = c.caseNumber ? String(c.caseNumber).trim() : null;
-            if (cNum && seenCaseNumbers.has(cNum)) {
-                // Aynı case numarasına sahip mükerrer kayıt:
-                // Konuşmaları ve aktiviteleri ana case'e dahil et ve veritabanında birleştir
-                const primaryCase = dedupedCases.find(dc => dc.caseNumber === c.caseNumber);
-                if (primaryCase) {
-                    // Eğer primaryCase boş ama bu kayıt doluysa, başlık ve aşama bilgilerini al
-                    if ((!primaryCase.conversations?.length && c.conversations?.length) || (primaryCase.title?.startsWith('Yeni') && c.title)) {
-                        primaryCase.title = c.title;
-                        primaryCase.funnelStageId = primaryCase.funnelStageId || c.funnelStageId;
-                        primaryCase.funnelType = primaryCase.funnelType || c.funnelType;
-                        primaryCase.categoryId = primaryCase.categoryId || c.categoryId;
-                        primaryCase.caseTypeId = primaryCase.caseTypeId || c.caseTypeId;
+
+            // Find an existing primaryCase to merge with
+            const primaryCase = dedupedCases.find(dc => {
+                // 1. Same caseNumber
+                if (cNum && dc.caseNumber === cNum) return true;
+
+                // 2. Both ACTIVE and share at least one conversation
+                if (c.status === 'ACTIVE' && dc.status === 'ACTIVE') {
+                    const dcConvIds = new Set((dc.conversations || []).map(cv => cv.id));
+                    const hasSharedConv = (c.conversations || []).some(cv => dcConvIds.has(cv.id));
+                    if (hasSharedConv) return true;
+
+                    // 3. Both ACTIVE, same contact, created within 10 minutes of each other
+                    if (c.createdAt && dc.createdAt) {
+                        const timeDiff = Math.abs(new Date(c.createdAt).getTime() - new Date(dc.createdAt).getTime());
+                        if (timeDiff < 10 * 60 * 1000) return true;
                     }
 
-                    // Veritabanında mükerrer kaydın tüm ilişkilerini ana case'e aktar ve mükerrer kaydı kapat
-                    prisma.conversation.updateMany({
-                        where: { caseId: c.id },
-                        data: { caseId: primaryCase.id }
-                    }).catch(e => console.error('DB merge conv error:', e.message));
+                    // 4. One of them has generic title and no conversations
+                    if ((isGenericOrDecorative(c.title) && (!c.conversations || c.conversations.length === 0)) ||
+                        (isGenericOrDecorative(dc.title) && (!dc.conversations || dc.conversations.length === 0))) {
+                        return true;
+                    }
+                }
+                return false;
+            });
 
-                    prisma.contactActivity.updateMany({
-                        where: { caseId: c.id },
-                        data: { caseId: primaryCase.id }
-                    }).catch(e => console.error('DB merge activity error:', e.message));
+            if (primaryCase) {
+                seenIds.add(c.id);
 
-                    prisma.deal.updateMany({
-                        where: { caseId: c.id },
-                        data: { caseId: primaryCase.id }
-                    }).catch(e => console.error('DB merge deal error:', e.message));
-
+                // If primaryCase has generic/decorative title but c has specific title, adopt c's title!
+                if (isGenericOrDecorative(primaryCase.title) && !isGenericOrDecorative(c.title)) {
+                    primaryCase.title = c.title;
                     prisma.case.update({
-                        where: { id: c.id },
-                        data: { status: 'CLOSED', description: `[Otomatik Birleştirildi] -> ${primaryCase.id}` }
-                    }).catch(e => console.error('DB merge case status error:', e.message));
+                        where: { id: primaryCase.id },
+                        data: { title: c.title }
+                    }).catch(() => {});
+                }
+                if (!primaryCase.caseNumber && c.caseNumber) primaryCase.caseNumber = c.caseNumber;
+                if (!primaryCase.funnelStageId && c.funnelStageId) primaryCase.funnelStageId = c.funnelStageId;
+                if (!primaryCase.funnelType && c.funnelType) primaryCase.funnelType = c.funnelType;
+                if (!primaryCase.categoryId && c.categoryId) primaryCase.categoryId = c.categoryId;
+                if (!primaryCase.caseTypeId && c.caseTypeId) primaryCase.caseTypeId = c.caseTypeId;
 
-                    if (c.conversations?.length > 0) {
-                        const existingConvIds = new Set((primaryCase.conversations || []).map(cv => cv.id));
-                        for (const cv of c.conversations) {
-                            if (!existingConvIds.has(cv.id)) {
-                                primaryCase.conversations.push(cv);
-                            }
+                // Veritabanında mükerrer kaydın tüm ilişkilerini ana case'e aktar ve mükerrer kaydı kapat
+                prisma.conversation.updateMany({
+                    where: { caseId: c.id },
+                    data: { caseId: primaryCase.id }
+                }).catch(e => console.error('DB merge conv error:', e.message));
+
+                prisma.contactActivity.updateMany({
+                    where: { caseId: c.id },
+                    data: { caseId: primaryCase.id }
+                }).catch(e => console.error('DB merge activity error:', e.message));
+
+                prisma.deal.updateMany({
+                    where: { caseId: c.id },
+                    data: { caseId: primaryCase.id }
+                }).catch(e => console.error('DB merge deal error:', e.message));
+
+                prisma.case.update({
+                    where: { id: c.id },
+                    data: { status: 'CLOSED', description: `[Otomatik Birleştirildi] -> ${primaryCase.id}` }
+                }).catch(e => console.error('DB merge case status error:', e.message));
+
+                if (c.conversations?.length > 0) {
+                    const existingConvIds = new Set((primaryCase.conversations || []).map(cv => cv.id));
+                    for (const cv of c.conversations) {
+                        if (!existingConvIds.has(cv.id)) {
+                            primaryCase.conversations = primaryCase.conversations || [];
+                            primaryCase.conversations.push(cv);
+                            existingConvIds.add(cv.id);
                         }
                     }
-                    if (c.activities?.length > 0) {
-                        const existingActIds = new Set((primaryCase.activities || []).map(a => a.id));
-                        for (const act of c.activities) {
-                            if (!existingActIds.has(act.id)) {
-                                primaryCase.activities.push(act);
-                            }
+                }
+                if (c.activities?.length > 0) {
+                    const existingActIds = new Set((primaryCase.activities || []).map(a => a.id));
+                    for (const act of c.activities) {
+                        if (!existingActIds.has(act.id)) {
+                            primaryCase.activities = primaryCase.activities || [];
+                            primaryCase.activities.push(act);
+                            existingActIds.add(act.id);
                         }
                     }
                 }
@@ -452,8 +534,6 @@ export const getContactCases = async (req, res) => {
 
         // ── AUTO-SYNC: Case funnelStageId boşsa ama bağlı conversation'da doluysa, case'i güncelle ──
         // + Case title generic kanal etiketi ise ama conversation'da aiTopic varsa, case title'ı güncelle
-        const GENERIC_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case'];
-        const isGenericOrDecorative = (t) => !t || GENERIC_TITLES.includes(t.trim()) || t.includes('━') || t.includes('═') || t.includes('🎯');
         for (const c of dedupedCases) {
             let needsUpdate = false;
             const updateData = {};
