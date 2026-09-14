@@ -102,6 +102,10 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [showForm, setShowForm] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
     const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'MANUAL' | 'AUTO'
+    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'COMPLETED' | 'DRAFT'
+    const [dateFilter, setDateFilter] = useState(''); // '' | 'thisWeek' | 'thisMonth' | 'last30' | 'last90' | 'custom'
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
 
     const getCampaignChannels = (c) => {
@@ -164,9 +168,42 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         if (typeFilter === 'MANUAL' && isAutoCampaign(c)) return false;
         if (typeFilter === 'AUTO' && !isAutoCampaign(c)) return false;
 
+        // Durum Filtresi
+        if (statusFilter === 'ACTIVE' && c.status !== 'ACTIVE' && c.status !== 'SENDING') return false;
+        if (statusFilter === 'COMPLETED' && c.status !== 'COMPLETED') return false;
+        if (statusFilter === 'DRAFT' && c.status !== 'DRAFT') return false;
+        if (statusFilter === 'PAUSED' && c.status !== 'PAUSED' && c.status !== 'INACTIVE') return false;
+
+        // Tarih Filtresi
+        if (dateFilter) {
+            const cDate = new Date(c.startDate || c.createdAt);
+            const now = new Date();
+            if (dateFilter === 'thisWeek') {
+                const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1); weekStart.setHours(0,0,0,0);
+                if (cDate < weekStart) return false;
+            } else if (dateFilter === 'thisMonth') {
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                if (cDate < monthStart) return false;
+            } else if (dateFilter === 'last30') {
+                const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                if (cDate < d30) return false;
+            } else if (dateFilter === 'last90') {
+                const d90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                if (cDate < d90) return false;
+            } else if (dateFilter === 'custom') {
+                if (dateFrom && cDate < new Date(dateFrom)) return false;
+                if (dateTo && cDate > new Date(dateTo + 'T23:59:59')) return false;
+            }
+        }
+
         // Arama Filtresi
         if (searchQuery.trim() && !c.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
         return true;
+    }).sort((a, b) => {
+        // En yeniden en eskiye sıralama
+        const dateA = new Date(a.startDate || a.createdAt || 0);
+        const dateB = new Date(b.startDate || b.createdAt || 0);
+        return dateB - dateA;
     });
 
     const getStatusBadge = (c) => {
@@ -263,7 +300,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             </div>
 
             {/* Filters */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
                     {[
                         { key: 'ALL', label: 'Tümü' },
@@ -289,6 +326,66 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                         </button>
                     ))}
                 </div>
+
+                {/* Durum Filtresi */}
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
+                    {[
+                        { key: 'ALL', label: 'Tümü' },
+                        { key: 'ACTIVE', label: '🟢 Aktifler' },
+                        { key: 'COMPLETED', label: 'Tamamlanan' },
+                        { key: 'DRAFT', label: 'Taslak' },
+                    ].map(f => (
+                        <button
+                            key={f.key}
+                            onClick={() => setStatusFilter(f.key)}
+                            style={{
+                                padding: '6px 12px',
+                                border: 'none',
+                                borderRadius: 6,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                background: statusFilter === f.key ? '#fff' : 'transparent',
+                                color: statusFilter === f.key ? '#1e293b' : '#64748b',
+                                boxShadow: statusFilter === f.key ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Tarih Filtresi */}
+                <select
+                    value={dateFilter}
+                    onChange={e => { setDateFilter(e.target.value); if (e.target.value !== 'custom') { setDateFrom(''); setDateTo(''); } }}
+                    style={{
+                        height: 33, borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 12,
+                        padding: '0 28px 0 10px', outline: 'none', background: '#fff', color: dateFilter ? '#1e293b' : '#94a3b8',
+                        fontWeight: dateFilter ? 600 : 400, cursor: 'pointer',
+                        appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2394a3b8\' stroke-width=\'2\'%3E%3Cpath d=\'M6 9l6 6 6-6\'/%3E%3C/svg%3E")',
+                        backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
+                    }}
+                >
+                    <option value="">📅 Tüm Tarihler</option>
+                    <option value="thisWeek">Bu Hafta</option>
+                    <option value="thisMonth">Bu Ay</option>
+                    <option value="last30">Son 30 Gün</option>
+                    <option value="last90">Son 90 Gün</option>
+                    <option value="custom">Özel Aralık</option>
+                </select>
+
+                {dateFilter === 'custom' && (
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                            style={{ height: 33, borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 11, padding: '0 8px', outline: 'none' }} />
+                        <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>
+                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                            style={{ height: 33, borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 11, padding: '0 8px', outline: 'none' }} />
+                    </div>
+                )}
+
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <Search size={14} style={{ position: 'absolute', left: 10, color: '#94a3b8' }} />
                     <input
@@ -309,6 +406,20 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                         }}
                     />
                 </div>
+
+                {/* Aktif filtre sayısı */}
+                {(statusFilter !== 'ALL' || dateFilter || searchQuery) && (
+                    <button
+                        onClick={() => { setStatusFilter('ALL'); setDateFilter(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setTypeFilter('ALL'); }}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 4,
+                            padding: '5px 10px', border: '1px solid #fca5a5', borderRadius: 6,
+                            background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        }}
+                    >
+                        <X size={12} /> Temizle
+                    </button>
+                )}
             </div>
 
             {/* Campaign List */}
