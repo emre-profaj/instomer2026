@@ -2697,11 +2697,11 @@ const Customers = () => {
                                 <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
                                     <Loader size={24} className="spin" style={{ color: '#94a3b8' }} />
                                 </div>
-                            ) : filteredContacts.length === 0 ? (
+                            ) : contacts.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>Kişi bulunamadı</div>
                             ) : (
                                 <div className="cust-card-list">
-                                    {filteredContacts.map(contact => {
+                                    {contacts.map(contact => {
                                         const isExpanded = expandedCards.has(contact.id);
                                         const allCases = getContactAllCases(contact);
                                         const primaryCase = getPrimaryCase(contact);
