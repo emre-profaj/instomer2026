@@ -444,9 +444,18 @@ const Inbox = () => {
     useEffect(() => {
         localStorage.setItem('inbox_showBulk', showBulk);
     }, [showBulk]);
-    // Sıralama: customerFirst (varsayılan — müşterinin son yazdığına göre) veya lastMessage
+    // Sıralama: lastMessage (varsayılan — son mesaja göre) veya customerFirst
     const [sortBy, setSortBy] = useState(() => {
-        try { return localStorage.getItem('inbox_sortBy') || 'customerFirst'; } catch { return 'customerFirst'; }
+        try {
+            const stored = localStorage.getItem('inbox_sortBy');
+            if (!stored || stored === 'customerFirst') {
+                localStorage.setItem('inbox_sortBy', 'lastMessage');
+                return 'lastMessage';
+            }
+            return stored;
+        } catch {
+            return 'lastMessage';
+        }
     });
     useEffect(() => {
         localStorage.setItem('inbox_sortBy', sortBy);
