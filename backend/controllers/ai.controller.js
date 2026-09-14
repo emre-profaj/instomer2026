@@ -1813,8 +1813,29 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                                 }
                             });
 
-                            // Lead ise aksiyonları çalıştır
-                            if (classResult.isQualifiedLead) {
+                            // aiTopic güncellenince bağlı case'in başlığını da güncelle
+                            if (extractedTopic) {
+                                try {
+                                    const updatedConv = await prisma.conversation.findUnique({
+                                        where: { id: conversationId },
+                                        select: { caseId: true }
+                                    });
+                                    if (updatedConv?.caseId) {
+                                        await prisma.case.update({
+                                            where: { id: updatedConv.caseId },
+                                            data: { title: extractedTopic.trim().substring(0, 200) }
+                                        });
+                                        console.log(`🔄 [UnifiedAI] Case title synced: "${extractedTopic}" → case ${updatedConv.caseId}`);
+                                    }
+                                } catch (_) {}
+                            }
+
+                            // Aksiyonları çalıştır: Lead, telefon, kategori, ürün veya şube eşleşmesi varsa
+                            const freshContact = await prisma.contact.findUnique({ where: { id: conversation.contactId }, select: { phone: true } });
+                            const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
+                            const hasClassification = !!(classResult.topicCategoryId || classResult.matchedProductIds?.length > 0 || classResult.matchedBranchId);
+                            const shouldRunActions = (classResult.isQualifiedLead && !conversation?.isQualifiedLead) || contactHasPhone || hasClassification;
+                            if (shouldRunActions) {
                                 try {
                                     const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
                                     await executeClassificationActions(

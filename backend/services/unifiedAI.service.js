@@ -416,7 +416,5 @@ YANIT FORMATI (JSON):
  * Toggle bağımlılığı kaldırıldı (maliyet optimizasyonu).
  */
 export async function isUnifiedAIEnabled(workspaceId) {
-    // Birleşik AI modu henüz kategori/şube/ürün sınıflandırması desteklemiyor
-    // Ayrı classifier (classifyAndExtract) çalışsın
-    return false;
+    return true;
 }
