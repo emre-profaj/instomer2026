@@ -9,7 +9,7 @@ import BotModal from '../../components/Settings/BotModal';
 
 // Lazy import mevcut bileşenler
 import Automations from '../Automations/Automations';
-import Channels from '../Channels/Channels';
+import Classifier from '../Classifier/Classifier';
 import Integrations from '../Settings/Integrations';
 
 const OtomasyonlarHub = () => {
@@ -62,10 +62,10 @@ const OtomasyonlarHub = () => {
                     <AgentsSection workspaceId={currentWorkspace.id} />
                 )}
 
-                {/* Sınıflandırma & Yönlendirme — mevcut Channels sayfası */}
+                {/* Sınıflandırma & Yönlendirme — Kural tabanlı ve AI akış yönlendirmesi */}
                 {activeSection === 'classifier' && (
                     <div style={{ margin: '-24px' }}>
-                        <Channels />
+                        <Classifier />
                     </div>
                 )}
 
