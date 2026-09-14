@@ -150,14 +150,11 @@ const SetupWizard = () => {
   const [companyWebsite, setCompanyWebsite] = useState(currentWorkspace?.companyWebsite || '');
   const [weeklySchedule, setWeeklySchedule] = useState(() => parseScheduleFromString(currentWorkspace?.companyWorkingHours));
   const [companyHours, setCompanyHours] = useState(() => currentWorkspace?.companyWorkingHours || formatScheduleToString(parseScheduleFromString(currentWorkspace?.companyWorkingHours)));
-  const [manualHoursMode, setManualHoursMode] = useState(false);
 
   const updateDaySchedule = (index, updates) => {
     setWeeklySchedule(prev => {
       const next = prev.map((d, i) => i === index ? { ...d, ...updates } : d);
-      if (!manualHoursMode) {
-        setCompanyHours(formatScheduleToString(next));
-      }
+      setCompanyHours(formatScheduleToString(next));
       return next;
     });
   };
@@ -179,7 +176,6 @@ const SetupWizard = () => {
       } else if (presetType === 'all_week') {
         next = next.map(d => ({ ...d, isOpen: true, start: '09:00', end: '18:00' }));
       }
-      setManualHoursMode(false);
       setCompanyHours(formatScheduleToString(next));
       return next;
     });
@@ -189,9 +185,7 @@ const SetupWizard = () => {
   const copyDayTimeToWeekdays = (sourceDay) => {
     setWeeklySchedule(prev => {
       const next = prev.map((d, i) => i < 5 ? { ...d, isOpen: true, start: sourceDay.start, end: sourceDay.end } : d);
-      if (!manualHoursMode) {
-        setCompanyHours(formatScheduleToString(next));
-      }
+      setCompanyHours(formatScheduleToString(next));
       return next;
     });
     showSuccess('Pazartesi saatleri hafta içi günlere uygulandı.');
@@ -788,62 +782,6 @@ const SetupWizard = () => {
           ))}
         </div>
 
-        {/* Canlı Özet Gösterimi & Elle Düzenleme */}
-        <div style={{
-          background: '#f8fafc',
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-          padding: '10px 14px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
-              Kaydedilecek Çalışma Saatleri Özeti:
-            </span>
-            <button
-              type="button"
-              onClick={() => setManualHoursMode(!manualHoursMode)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#E63B2E',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                textDecoration: 'underline'
-              }}
-            >
-              {manualHoursMode ? 'Otomatik Hesaplamaya Dön' : 'Metni Elle Düzenle'}
-            </button>
-          </div>
-
-          {manualHoursMode ? (
-            <input
-              type="text"
-              value={companyHours}
-              onChange={e => setCompanyHours(e.target.value)}
-              placeholder="Örn: Hafta içi 09:00 - 18:00, Hafta sonu Kapalı"
-              style={{ ...inputStyle, padding: '7px 10px', fontSize: '13px' }}
-            />
-          ) : (
-            <div style={{
-              fontSize: '13px',
-              fontWeight: 500,
-              color: '#0f172a',
-              background: '#fff',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
-              padding: '7px 10px'
-            }}>
-              {companyHours || 'Saat belirtilmedi'}
-            </div>
-          )}
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-            Bu bilgi AI Agentların müşterileri randevu saatlerine yönlendirmesi ve takvim slotlarının açılması için kullanılır.
-          </span>
-        </div>
       </div>
     </div>
   );
