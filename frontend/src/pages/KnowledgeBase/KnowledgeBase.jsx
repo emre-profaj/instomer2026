@@ -1,16 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search, Wand2 } from 'lucide-react';
 import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const { currentWorkspace, user } = useAuth();
     const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
     const canManage = user?.role === 'SUPER_ADMIN';
@@ -604,6 +605,23 @@ const KnowledgeBase = () => {
                     <span>Base</span>
                 </div>
                 <nav className="base-nav">
+                    {canManage && (
+                        <button
+                            type="button"
+                            className="base-nav-item"
+                            onClick={() => navigate('/setup-wizard')}
+                            style={{
+                                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(79, 70, 229, 0.16) 100%)',
+                                color: '#4f46e5',
+                                borderColor: 'rgba(99, 102, 241, 0.3)',
+                                fontWeight: 600,
+                                marginBottom: '6px',
+                                boxShadow: '0 1px 4px rgba(99, 102, 241, 0.08)'
+                            }}
+                        >
+                            <Wand2 size={16} color="#4f46e5" /> Hızlı Kurulum Sihirbazı
+                        </button>
+                    )}
                     {canManage && (
                         <button
                             type="button"

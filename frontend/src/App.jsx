@@ -60,6 +60,7 @@ import RealEstateCampaigns from './pages/RealEstate/RealEstateCampaigns';
 import Marketing from './pages/Marketing/Marketing';
 import AppNotes from './pages/AppNotes/AppNotes';
 import FlowTest from './pages/FlowTest/FlowTest';
+import SetupWizard from './pages/Settings/SetupWizard';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -133,6 +134,9 @@ function App() {
               <Route path="integrations" element={<Integrations />} />
               <Route path="knowledge-base" element={<Navigate to="/base" replace />} />
               <Route path="base" element={<KnowledgeBase />} />
+              <Route path="setup-wizard" element={<SetupWizard />} />
+              <Route path="ayarlar/wizard" element={<SetupWizard />} />
+              <Route path="base/wizard" element={<SetupWizard />} />
 
               <Route path="general-report" element={<CeoReport />} />
               <Route path="general-report/general" element={<GeneralReport />} />

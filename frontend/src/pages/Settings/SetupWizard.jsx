@@ -32,7 +32,7 @@ const STEPS = [
 const SetupWizard = () => {
   const [activeStep, setActiveStep] = useState(0);
   const navigate = useNavigate();
-  // const { currentWorkspace } = useAuth(); // Assuming this is available, omitted to prevent crash if not
+  const { currentWorkspace } = useAuth();
 
   const progress = Math.round((activeStep / (STEPS.length - 1)) * 100);
 
@@ -45,7 +45,7 @@ const SetupWizard = () => {
   };
 
   const handleComplete = () => {
-    navigate('/ayarlar');
+    navigate('/base');
   };
 
   const renderFirma = () => (
@@ -53,7 +53,7 @@ const SetupWizard = () => {
       <h2>Firma Bilgileri</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <label style={labelStyle}>Firma Adı</label>
-        <input type="text" defaultValue="Instomer Real Estate" style={inputStyle} />
+        <input type="text" defaultValue={currentWorkspace?.name || "Instomer"} style={inputStyle} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <label style={labelStyle}>Sektör</label>
@@ -354,13 +354,13 @@ const SetupWizard = () => {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100%', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: '#fff' }}>
+    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', width: '100%', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: '#fff', overflow: 'hidden' }}>
       
       {/* Left Sidebar */}
       <div style={{ width: '260px', background: '#f8f9fa', borderRight: '1px solid #eee', display: 'flex', flexDirection: 'column', padding: '20px 0' }}>
         <div style={{ padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
           <h2 style={{ margin: 0, fontSize: '18px' }}>Kurulum</h2>
-          <button onClick={() => navigate('/ayarlar')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+          <button onClick={() => navigate('/base')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }} title="Kapat">
             <X size={20} color="#666" />
           </button>
         </div>
