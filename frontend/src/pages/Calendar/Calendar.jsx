@@ -22,6 +22,32 @@ const APPOINTMENT_STATUSES = [
     { value: 'NO_SHOW', label: 'Gelmedi', color: '#f59e0b' }
 ];
 
+export const MEETING_TYPES = [
+    { value: 'YUZ_YUZE', label: 'Yüz Yüze',        icon: '🤝', color: '#10b981' },
+    { value: 'ONLINE',   label: 'Online / Video',  icon: '💻', color: '#3b82f6' },
+    { value: 'TELEFON',  label: 'Telefon',         icon: '📞', color: '#f59e0b' },
+    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: '🏥', color: '#8b5cf6' },
+    { value: 'DIGER',    label: 'Diğer',           icon: '📋', color: '#64748b' },
+];
+
+export const getMeetingType = (item) => {
+    if (!item) return MEETING_TYPES[0];
+    const val = item.procedure || item.meetingType || item.callTopic;
+    if (val) {
+        const found = MEETING_TYPES.find(m => m.value === val || m.label.toLowerCase() === String(val).toLowerCase());
+        if (found) return found;
+        if (/yüz|yuz/i.test(val)) return MEETING_TYPES[0];
+        if (/online|video|zoom|meet/i.test(val)) return MEETING_TYPES[1];
+        if (/telefon|phone|arama/i.test(val)) return MEETING_TYPES[2];
+        if (/klinik|muayene|doktor|hastane/i.test(val)) return MEETING_TYPES[3];
+        if (/diğer|diger/i.test(val)) return MEETING_TYPES[4];
+    }
+    if (item.googleMeetLink || item.isGoogleEvent) return MEETING_TYPES[1];
+    if (item.doctorName || item.branch) return MEETING_TYPES[3];
+    if (item.type === 'CALL') return MEETING_TYPES[2];
+    return MEETING_TYPES[0];
+};
+
 const RESOURCE_TYPES = [
     { value: 'ROOM', label: 'Room', icon: '🏠' },
     { value: 'PERSON', label: 'Person', icon: '👤' },
@@ -276,13 +302,29 @@ function formatDoctorDisplayName(rawName) {
     const [sidebarPage, setSidebarPage] = useState(1);
     const SIDEBAR_PAGE_SIZE = 8;
 
-    // Activity type filter (multi-select)
+    // Activity type filter (multi-select): 'calls', 'meetings', 'tasks'
     const [activeFilters, setActiveFilters] = useState(() => {
         try {
             const saved = localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_activity`);
-            return saved ? new Set(JSON.parse(saved)) : new Set(['calls', 'appointments', 'meetings', 'tasks']);
-        } catch { return new Set(['calls', 'appointments', 'meetings', 'tasks']); }
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const s = new Set(parsed);
+                if (s.has('appointments')) {
+                    s.add('meetings');
+                }
+                return s;
+            }
+            return new Set(['calls', 'meetings', 'tasks']);
+        } catch { return new Set(['calls', 'meetings', 'tasks']); }
     });
+
+    // Görüşme Tipi filtresi: 'ALL' | 'YUZ_YUZE' | 'ONLINE' | 'TELEFON' | 'KLINIK' | 'DIGER'
+    const [selectedMeetingType, setSelectedMeetingType] = useState(() => {
+        try {
+            return localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_meetingType`) || 'ALL';
+        } catch { return 'ALL'; }
+    });
+
     const [showCompleted, setShowCompleted] = useState(() => {
         try { return localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_showCompleted`) === 'true'; } catch { return false; }
     });
@@ -298,6 +340,9 @@ function formatDoctorDisplayName(rawName) {
         try { localStorage.setItem(lsKey('activity'), JSON.stringify([...activeFilters])); } catch {}
     }, [activeFilters]);
     useEffect(() => {
+        try { localStorage.setItem(lsKey('meetingType'), selectedMeetingType); } catch {}
+    }, [selectedMeetingType]);
+    useEffect(() => {
         try { localStorage.setItem(lsKey('showCompleted'), showCompleted); } catch {}
     }, [showCompleted]);
 
@@ -305,22 +350,24 @@ function formatDoctorDisplayName(rawName) {
     const clearAllFilters = () => {
         setSelectedAgents(new Set());
         setSelectedResource('');
-        setActiveFilters(new Set(['calls', 'appointments', 'meetings', 'tasks']));
+        setSelectedMeetingType('ALL');
+        setActiveFilters(new Set(['calls', 'meetings', 'tasks']));
         setShowCompleted(false);
         try {
             localStorage.removeItem(lsKey('agents'));
             localStorage.removeItem(lsKey('resource'));
+            localStorage.removeItem(lsKey('meetingType'));
             localStorage.removeItem(lsKey('activity'));
             localStorage.removeItem(lsKey('showCompleted'));
         } catch {}
     };
 
-    const hasActiveFilters = selectedAgents.size > 0 || selectedResource !== '';
+    const hasActiveFilters = selectedAgents.size > 0 || selectedResource !== '' || selectedMeetingType !== 'ALL';
 
     const toggleActivityFilter = (key) => {
         setActiveFilters(prev => {
-            const allKeys = ['calls', 'appointments', 'meetings', 'tasks'];
-            const allActive = allKeys.every(k => prev.has(k));
+            const allKeys = ['calls', 'meetings', 'tasks'];
+            const allActive = allKeys.every(k => prev.has(k) || (k === 'meetings' && prev.has('appointments')));
 
             if (key === 'all') {
                 return new Set(allKeys);
@@ -331,11 +378,15 @@ function formatDoctorDisplayName(rawName) {
             }
 
             const next = new Set(prev);
-            if (next.has(key)) {
+            const isTargetActive = next.has(key) || (key === 'meetings' && next.has('appointments'));
+
+            if (isTargetActive) {
                 next.delete(key);
+                if (key === 'meetings') next.delete('appointments');
                 if (next.size === 0) return new Set(allKeys);
             } else {
                 next.add(key);
+                if (key === 'meetings') next.add('appointments');
             }
             return next;
         });
@@ -343,7 +394,8 @@ function formatDoctorDisplayName(rawName) {
 
     // Helper: check if a type is active in multi-select
     const isFilterActive = (key) => {
-        if (key === 'all') return ['calls', 'appointments', 'meetings', 'tasks'].every(k => activeFilters.has(k));
+        if (key === 'all') return ['calls', 'meetings', 'tasks'].every(k => activeFilters.has(k) || (k === 'meetings' && activeFilters.has('appointments')));
+        if (key === 'meetings' || key === 'appointments') return activeFilters.has('meetings') || activeFilters.has('appointments');
         return activeFilters.has(key);
     };
 
@@ -772,10 +824,10 @@ function formatDoctorDisplayName(rawName) {
 
     const filteredUpcomingAppointments = upcomingAppointments.filter(apt => {
         if (!showCompleted && apt.isCompleted) return false;
-        if (apt.isGoogleEvent) {
-            if (!activeFilters.has('appointments') && !activeFilters.has('meetings')) return false;
-        } else if (!activeFilters.has('appointments')) {
-            return false;
+        if (!activeFilters.has('meetings') && !activeFilters.has('appointments')) return false;
+        if (selectedMeetingType !== 'ALL') {
+            const mt = getMeetingType(apt);
+            if (mt.value !== selectedMeetingType) return false;
         }
         return true;
     });
@@ -851,10 +903,10 @@ function formatDoctorDisplayName(rawName) {
             const start = new Date(apt.startTime);
             if (start.toDateString() !== dateStr) return false;
             if (start.getHours() !== hour) return false;
-            if (apt.isGoogleEvent) {
-                if (!activeFilters.has('appointments') && !activeFilters.has('meetings')) return false;
-            } else if (!activeFilters.has('appointments')) {
-                return false;
+            if (!activeFilters.has('meetings') && !activeFilters.has('appointments')) return false;
+            if (selectedMeetingType !== 'ALL') {
+                const mt = getMeetingType(apt);
+                if (mt.value !== selectedMeetingType) return false;
             }
             return true;
         });
@@ -930,10 +982,10 @@ function formatDoctorDisplayName(rawName) {
             const aptDate = new Date(apt.startTime);
             if (aptDate.toDateString() !== date.toDateString()) return false;
             if (!ignoreTypeFilter) {
-                if (apt.isGoogleEvent) {
-                    if (!activeFilters.has('appointments') && !activeFilters.has('meetings')) return false;
-                } else if (!activeFilters.has('appointments')) {
-                    return false;
+                if (!activeFilters.has('meetings') && !activeFilters.has('appointments')) return false;
+                if (selectedMeetingType !== 'ALL') {
+                    const mt = getMeetingType(apt);
+                    if (mt.value !== selectedMeetingType) return false;
                 }
             }
             // Tamamlanan filtresi
@@ -959,7 +1011,18 @@ function formatDoctorDisplayName(rawName) {
             if (actDate.toDateString() !== date.toDateString()) return false;
             // Aktivite tipi filtresi
             const filterKey = typeToFilterKey[act.type] || 'tasks';
-            if (!ignoreTypeFilter && !activeFilters.has(filterKey)) return false;
+            if (!ignoreTypeFilter) {
+                if (filterKey === 'meetings') {
+                    if (!activeFilters.has('meetings') && !activeFilters.has('appointments')) return false;
+                } else if (!activeFilters.has(filterKey)) {
+                    return false;
+                }
+                // Görüşme tipi filtresi (MEETING aktiviteleri için)
+                if (act.type === 'MEETING' && selectedMeetingType !== 'ALL') {
+                    const mt = getMeetingType(act);
+                    if (mt.value !== selectedMeetingType) return false;
+                }
+            }
             // Tamamlanan filtresi
             if ((act.status === 'COMPLETED' || act.status === 'DONE') && !showCompleted) return false;
             // Agent filtresi
@@ -972,8 +1035,7 @@ function formatDoctorDisplayName(rawName) {
     const activityCounts = useMemo(() => {
         const days = getDaysInMonth();
         let calls = 0;
-        let appointmentsCount = 0;
-        let meetings = 0;
+        let meetingsCount = 0;
         let tasks = 0;
 
         days.forEach(day => {
@@ -982,26 +1044,23 @@ function formatDoctorDisplayName(rawName) {
             const actCallsForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'CALL' || a.type === 'NOTE');
             calls += scForDay.length + actCallsForDay.length;
 
-            // 2. Appointments count
+            // 2. Görüşmeler count (Appointments + Meeting Activities)
             const aptForDay = getAppointmentsForDay(day.date, true);
-            appointmentsCount += aptForDay.length;
-
-            // 3. Meetings count
             const meetForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'MEETING');
-            meetings += meetForDay.length;
+            meetingsCount += aptForDay.length + meetForDay.length;
 
-            // 4. Tasks count
+            // 3. Tasks count
             const taskForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'TASK' || a.type === 'REMINDER');
             tasks += taskForDay.length;
         });
 
         return {
             calls,
-            appointments: appointmentsCount,
-            meetings,
+            meetings: meetingsCount,
+            appointments: meetingsCount,
             tasks
         };
-    }, [appointments, calendarActivities, scheduledCalls, currentDate, showCompleted, selectedAgents, selectedResource]);
+    }, [appointments, calendarActivities, scheduledCalls, currentDate, showCompleted, selectedAgents, selectedResource, selectedMeetingType]);
 
     const openCreateModal = (date = null, contact = null) => {
         const now = (date instanceof Date ? date : null) || new Date();
@@ -1011,6 +1070,7 @@ function formatDoctorDisplayName(rawName) {
         endTime.setMinutes(endTime.getMinutes() + 30);
 
         const initialRes = selectedResource ? resources.find(r => r.id === selectedResource) : null;
+        const defaultMeetingType = (selectedMeetingType !== 'ALL' ? selectedMeetingType : null) || (initialRes?.type === 'PERSON' ? 'KLINIK' : 'YUZ_YUZE');
 
         setFormData({
             title: contact?.name ? `${contact.name} — Görüşme` : '',
@@ -1021,6 +1081,8 @@ function formatDoctorDisplayName(rawName) {
             resourceId: selectedResource || '',
             doctorName: initialRes?.type === 'PERSON' ? initialRes.name : '',
             branch: initialRes?.description || '',
+            procedure: defaultMeetingType,
+            meetingType: defaultMeetingType,
             contactName: contact?.name || '',
             contactPhone: contact?.phone || contact?.phoneNumber || '',
             contactEmail: contact?.email || '',
@@ -1135,6 +1197,8 @@ function formatDoctorDisplayName(rawName) {
             }
         }
 
+        const currentMeetingType = getMeetingType(appointment).value;
+
         setFormData({
             title: appointment.title || '',
             description: appointment.description || '',
@@ -1144,6 +1208,8 @@ function formatDoctorDisplayName(rawName) {
             resourceId: resolvedResId,
             doctorName: resolvedDoctor,
             branch: resolvedBranch,
+            procedure: appointment.procedure || currentMeetingType,
+            meetingType: currentMeetingType,
             contactName: appointment.contactName || '',
             contactPhone: appointment.contactPhone || '',
             contactEmail: appointment.contactEmail || '',
@@ -1868,10 +1934,9 @@ function formatDoctorDisplayName(rawName) {
                         {/* Aktivite tip butonları */}
                         <div className="cal-type-filters">
                             {[
-                                { key: 'calls',        icon: <PhoneCall size={13} />, label: 'Aramalar',    count: activityCounts.calls,        color: '#f59e0b' },
-                                { key: 'appointments', icon: <CalendarClock size={13} />, label: 'Randevular',  count: activityCounts.appointments,  color: '#3b82f6' },
-                                { key: 'meetings',     icon: <Handshake size={13} />, label: 'Görüşmeler',  count: activityCounts.meetings,      color: '#10b981' },
-                                { key: 'tasks',        icon: <ListTodo size={13} />,  label: 'Görevler',    count: activityCounts.tasks,         color: '#8b5cf6' },
+                                { key: 'calls',    icon: <PhoneCall size={13} />,  label: 'Aramalar',   count: activityCounts.calls,    color: '#f59e0b' },
+                                { key: 'meetings', icon: <Handshake size={13} />,  label: 'Görüşmeler', count: activityCounts.meetings, color: '#3b82f6' },
+                                { key: 'tasks',    icon: <ListTodo size={13} />,   label: 'Görevler',   count: activityCounts.tasks,    color: '#8b5cf6' },
                             ].map(f => (
                                 <button
                                     key={f.key}
@@ -1884,6 +1949,23 @@ function formatDoctorDisplayName(rawName) {
                                     {f.count > 0 && <span className="cal-type-count">{f.count}</span>}
                                 </button>
                             ))}
+                        </div>
+
+                        {/* Görüşme Tipi Filtresi */}
+                        <div className="cal-meeting-type-filter">
+                            <select
+                                className="cal-meeting-type-select"
+                                value={selectedMeetingType}
+                                onChange={(e) => setSelectedMeetingType(e.target.value)}
+                                title="Görüşme Tipi Filtresi"
+                            >
+                                <option value="ALL">🎯 Tüm Görüşme Tipleri</option>
+                                {MEETING_TYPES.map(t => (
+                                    <option key={t.value} value={t.value}>
+                                        {t.icon} {t.label}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* Tamamlananları göster toggle */}
@@ -1993,12 +2075,17 @@ function formatDoctorDisplayName(rawName) {
                         const renderTodoItem = (item) => {
                             if (item.itemType === 'activity') {
                                 const act = item.data;
+                                const isMeetingAct = act.type === 'MEETING';
+                                const actMType = getMeetingType(act);
                                 const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
                                 return (
                                     <div key={act.id} className="todo-item" onClick={() => setSelectedActivity(act)}>
-                                        <div className="todo-icon" style={{ backgroundColor: cfg.color }}>{cfg.icon}</div>
+                                        <div className="todo-icon" style={{ backgroundColor: isMeetingAct ? actMType.color : cfg.color }}>
+                                            {isMeetingAct ? actMType.icon : cfg.icon}
+                                        </div>
                                         <div className="todo-content">
-                                            <span className="todo-title">{act.title || cfg.label}</span>
+                                            <span className="todo-title">{act.title || (isMeetingAct ? actMType.label : cfg.label)}</span>
+                                            {isMeetingAct && <span className="todo-agent" style={{ color: actMType.color, fontWeight: 500 }}>{actMType.icon} {actMType.label}</span>}
                                             {act.contact?.name && <span className="todo-contact">{act.contact.name}</span>}
                                             {act.assignee?.name && <span className="todo-agent">👤 {act.assignee.name}</span>}
                                         </div>
@@ -2021,14 +2108,16 @@ function formatDoctorDisplayName(rawName) {
                                 );
                             } else {
                                 const apt = item.data;
+                                const mType = getMeetingType(apt);
                                 const gColor = apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : null;
                                 return (
                                     <div key={apt.id} className="todo-item" onClick={() => openEditModal(apt)}>
                                         <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? gColor : (apt.color || '#3b82f6') }}>
-                                            {apt.isGoogleEvent ? '🇬' : '📅'}
+                                            {apt.isGoogleEvent ? '🇬' : mType.icon}
                                         </div>
                                         <div className="todo-content">
                                             <span className="todo-title">{apt.title}</span>
+                                            <span className="todo-agent" style={{ color: mType.color, fontWeight: 500 }}>{mType.icon} {mType.label}</span>
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && <span className="todo-agent">👤 {apt.assignedTo.name}</span>}
                                             {apt.isGoogleEvent && <span className="todo-agent" style={{ color: gColor, fontWeight: 500 }}>Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
@@ -2172,23 +2261,26 @@ function formatDoctorDisplayName(rawName) {
                                             }}
                                             onDrop={(e) => handleDayDrop(e, d, hour)}
                                         >
-                                            {apts.map(apt => (
-                                                <div key={apt.id}
-                                                    draggable="true"
-                                                    onDragStart={(e) => handleDragStart(e, apt)}
-                                                    onDragEnd={handleDragEnd}
-                                                    className={`week-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
-                                                    style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
-                                                    onClick={e => {
-                                                        if (isDraggingRef.current) return;
-                                                        e.stopPropagation();
-                                                        openEditModal(apt);
-                                                    }}
-                                                >
-                                                    <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)}</span>
-                                                    <span className="week-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
-                                                </div>
-                                            ))}
+                                            {apts.map(apt => {
+                                                const mType = getMeetingType(apt);
+                                                return (
+                                                    <div key={apt.id}
+                                                        draggable="true"
+                                                        onDragStart={(e) => handleDragStart(e, apt)}
+                                                        onDragEnd={handleDragEnd}
+                                                        className={`week-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
+                                                        style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
+                                                        onClick={e => {
+                                                            if (isDraggingRef.current) return;
+                                                            e.stopPropagation();
+                                                            openEditModal(apt);
+                                                        }}
+                                                    >
+                                                        <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}<span className="cal-mt-icon">{mType.icon}</span> {formatTime(apt.startTime)}</span>
+                                                        <span className="week-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
+                                                    </div>
+                                                );
+                                            })}
                                             {calls.map(sc => (
                                                 <div key={sc.id} className="week-event"
                                                     style={{ backgroundColor: '#f97316' }}
@@ -2238,24 +2330,27 @@ function formatDoctorDisplayName(rawName) {
                                         }}
                                         onDrop={(e) => handleDayDrop(e, currentDate, hour)}
                                     >
-                                        {apts.map(apt => (
-                                            <div key={apt.id}
-                                                draggable="true"
-                                                onDragStart={(e) => handleDragStart(e, apt)}
-                                                onDragEnd={handleDragEnd}
-                                                className={`day-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
-                                                style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
-                                                onClick={e => {
-                                                    if (isDraggingRef.current) return;
-                                                    e.stopPropagation();
-                                                    openEditModal(apt);
-                                                }}
-                                            >
-                                                <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
-                                                <span className="day-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
-                                                {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
-                                            </div>
-                                        ))}
+                                        {apts.map(apt => {
+                                            const mType = getMeetingType(apt);
+                                            return (
+                                                <div key={apt.id}
+                                                    draggable="true"
+                                                    onDragStart={(e) => handleDragStart(e, apt)}
+                                                    onDragEnd={handleDragEnd}
+                                                    className={`day-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
+                                                    style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
+                                                    onClick={e => {
+                                                        if (isDraggingRef.current) return;
+                                                        e.stopPropagation();
+                                                        openEditModal(apt);
+                                                    }}
+                                                >
+                                                    <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}<span className="cal-mt-icon">{mType.icon}</span> {formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
+                                                    <span className="day-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
+                                                    {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
+                                                </div>
+                                            );
+                                        })}
                                         {calls.map(sc => (
                                             <div key={sc.id} className="day-event"
                                                 style={{ backgroundColor: '#f97316' }}
@@ -2311,6 +2406,7 @@ function formatDoctorDisplayName(rawName) {
                                         // 1. Randevular
                                         getAppointmentsForDay(day.date).forEach(apt => {
                                             const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
+                                            const mType = getMeetingType(apt);
                                             const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
                                             const aptEnd = new Date(apt.endTime || apt.startTime);
                                             const isOverdue = !apt.isGoogleEvent && aptEnd < now && apt.status === 'SCHEDULED';
@@ -2335,6 +2431,7 @@ function formatDoctorDisplayName(rawName) {
                                                             }}
                                                         >
                                                             {apt.isGoogleEvent && <span style={{ marginRight: 3, fontSize: 11 }}>🇬</span>}
+                                                            <span className="apt-meeting-icon" title={mType.label}>{mType.icon}</span>
                                                             {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
                                                             {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
                                                             <span className="apt-time">{formatTime(apt.startTime)}</span>
@@ -2348,6 +2445,7 @@ function formatDoctorDisplayName(rawName) {
                                                                 </span>
                                                             </div>
                                                             <div className="tooltip-body">
+                                                                <div className="tooltip-row"><span style={{ fontSize: 13 }}>{mType.icon}</span><span>Görüşme Tipi: <strong>{mType.label}</strong></span></div>
                                                                 <div className="tooltip-row"><Clock size={14} /><span>{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span></div>
                                                                 {apt.contactName && <div className="tooltip-row"><User size={14} /><span>{apt.contactName}</span></div>}
                                                                 {apt.location && <div className="tooltip-row"><Building2 size={14} /><span>{apt.location}</span></div>}
@@ -2383,6 +2481,8 @@ function formatDoctorDisplayName(rawName) {
 
                                         // 3. Aktiviteler
                                         getActivitiesForDay(day.date).forEach(act => {
+                                            const actMType = getMeetingType(act);
+                                            const isMeetingAct = act.type === 'MEETING';
                                             const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
                                             const actDate = new Date(act.dueDate || act.createdAt);
                                             const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
@@ -2392,13 +2492,13 @@ function formatDoctorDisplayName(rawName) {
                                                 render: (
                                                     <div key={`act-${act.id}`}
                                                         className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
-                                                        style={{ backgroundColor: cfg.color, cursor: 'pointer' }}
+                                                        style={{ backgroundColor: isMeetingAct ? (actMType.color || cfg.color) : cfg.color, cursor: 'pointer' }}
                                                         onClick={(e) => { e.stopPropagation(); setSelectedActivity(act); }}
                                                     >
                                                         {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
                                                         {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
-                                                        <span className="apt-time">{cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                                        <span className="apt-title">{act.title || act.contact?.name || cfg.label}</span>
+                                                        <span className="apt-time">{isMeetingAct ? actMType.icon : cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                        <span className="apt-title">{act.title || act.contact?.name || (isMeetingAct ? actMType.label : cfg.label)}</span>
                                                     </div>
                                                 )
                                             });
@@ -2761,7 +2861,7 @@ function formatDoctorDisplayName(rawName) {
                             <h2>
                                 {selectedAppointment?.isGoogleEvent
                                     ? (isGoogleEventEditMode ? '✏️ Google Takvim Etkinliğini Düzenle' : '🇬 Google Takvim Etkinliği')
-                                    : (selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu')
+                                    : (selectedAppointment ? 'Görüşme / Randevu Düzenle' : 'Yeni Görüşme Planla')
                                 }
                             </h2>
                             <button className="apt-modal-close" onClick={() => { setIsModalOpen(false); setIsGoogleEventEditMode(false); }}>
@@ -3001,9 +3101,28 @@ function formatDoctorDisplayName(rawName) {
                                         className="apt-title-input"
                                         value={formData.title}
                                         onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                                        placeholder="Randevu başlığı girin..."
+                                        placeholder="Görüşme / Randevu başlığı girin..."
                                         required
                                     />
+                                </div>
+
+                                {/* Görüşme Tipi */}
+                                <div className="apt-section">
+                                    <span className="apt-section-label">Görüşme Tipi</span>
+                                    <div className="apt-meeting-type-pills">
+                                        {MEETING_TYPES.map(type => (
+                                            <button
+                                                key={type.value}
+                                                type="button"
+                                                className={`apt-meeting-type-btn ${formData.meetingType === type.value ? 'active' : ''}`}
+                                                style={formData.meetingType === type.value ? { background: type.color, borderColor: type.color, color: '#fff' } : {}}
+                                                onClick={() => setFormData(prev => ({ ...prev, meetingType: type.value, procedure: type.value }))}
+                                            >
+                                                <span className="apt-mt-icon">{type.icon}</span>
+                                                <span>{type.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {/* Date & Time Row */}
@@ -3391,6 +3510,7 @@ function formatDoctorDisplayName(rawName) {
                                 const allItems = [];
                                 getAppointmentsForDay(dayPopup.date).forEach(apt => {
                                     const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
+                                    const mType = getMeetingType(apt);
                                     const aptEnd = new Date(apt.endTime || apt.startTime);
                                     const isOverdue = !apt.isGoogleEvent && aptEnd < now && apt.status === 'SCHEDULED';
                                     const isCompleted = apt.status === 'COMPLETED';
@@ -3413,6 +3533,7 @@ function formatDoctorDisplayName(rawName) {
                                                 }}
                                             >
                                                 {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>🇬 Google</span>}
+                                                <span className="popup-badge meeting-type" style={{ background: mType.color, color: '#fff' }}>{mType.icon} {mType.label}</span>
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
                                                 <span className="popup-time">{formatTime(apt.startTime)}</span>
@@ -3438,6 +3559,8 @@ function formatDoctorDisplayName(rawName) {
                                     });
                                 }
                                 getActivitiesForDay(dayPopup.date).forEach(act => {
+                                    const isMeetingAct = act.type === 'MEETING';
+                                    const actMType = getMeetingType(act);
                                     const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
                                     const actDate = new Date(act.dueDate || act.createdAt);
                                     const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
@@ -3446,13 +3569,14 @@ function formatDoctorDisplayName(rawName) {
                                         sortTime: actDate,
                                         render: (
                                             <div key={`dp-act-${act.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
-                                                style={{ borderLeftColor: cfg.color }}
+                                                style={{ borderLeftColor: isMeetingAct ? actMType.color : cfg.color }}
                                                 onClick={() => { setSelectedActivity(act); setDayPopup(null); }}
                                             >
+                                                {isMeetingAct && <span className="popup-badge meeting-type" style={{ background: actMType.color, color: '#fff' }}>{actMType.icon} {actMType.label}</span>}
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
                                                 {isCompleted && <span className="popup-badge completed">✓</span>}
-                                                <span className="popup-time">{cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                                <span className="popup-title">{act.title || act.contact?.name || cfg.label}</span>
+                                                <span className="popup-time">{isMeetingAct ? actMType.icon : cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                <span className="popup-title">{act.title || act.contact?.name || (isMeetingAct ? actMType.label : cfg.label)}</span>
                                                 {act.contact?.name && <span className="popup-contact">{act.contact.name}</span>}
                                             </div>
                                         )

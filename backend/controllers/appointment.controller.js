@@ -194,7 +194,7 @@ export const createAppointment = async (req, res) => {
         const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
-            color, notes, resourceId, doctorName, branch, procedure
+            color, notes, resourceId, doctorName, branch, procedure, meetingType
         } = req.body;
 
         if (!title || !startTime || !endTime) {
@@ -256,7 +256,7 @@ export const createAppointment = async (req, res) => {
                 contactEmail: contactEmail || null,
                 doctorName: resolvedDoctorName || null,
                 branch: resolvedBranch || null,
-                procedure: procedure || null,
+                procedure: procedure || meetingType || null,
                 color: color || '#3b82f6',
                 notes,
                 resourceId: resourceId || null,
@@ -316,7 +316,7 @@ export const updateAppointment = async (req, res) => {
         const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
-            status, color, notes, resourceId, doctorName, branch, procedure
+            status, color, notes, resourceId, doctorName, branch, procedure, meetingType
         } = req.body;
 
         // 1. Google Takvim etkinliği doğrudan güncelleniyorsa (id 'google-' ile başlar)
@@ -390,7 +390,8 @@ export const updateAppointment = async (req, res) => {
         if (notes !== undefined) updateData.notes = notes;
         if (doctorName !== undefined) updateData.doctorName = doctorName;
         if (branch !== undefined) updateData.branch = branch;
-        if (procedure !== undefined) updateData.procedure = procedure;
+        const proc = procedure !== undefined ? procedure : meetingType;
+        if (proc !== undefined) updateData.procedure = proc;
         if (resourceId !== undefined) {
             updateData.resourceId = resourceId || null;
             if (resourceId) {

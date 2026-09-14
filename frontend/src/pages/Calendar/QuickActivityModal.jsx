@@ -19,6 +19,9 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
     const [callSuccess, setCallSuccess] = useState(null); // 'SUCCESS' | 'FAILED'
     const [sentiment, setSentiment] = useState(null); // 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE'
 
+    // MEETING özel alanlar
+    const [meetingType, setMeetingType] = useState('YUZ_YUZE');
+
     // Ortak alanlar
     const [description, setDescription] = useState('');
     const [dueDate, setDueDate] = useState('');
@@ -60,6 +63,7 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                 assignedToId: isNote ? null : (assignedToId || null),
                 status: isNote ? 'COMPLETED' : 'PENDING',
                 ...(isNote && { callSuccessful: callSuccess === 'SUCCESS', callSentiment: sentiment }),
+                ...(actionType === 'MEETING' && { callTopic: meetingType }),
             };
             await activityAPI.createActivity(contact.id, data);
             onSaved?.();
@@ -130,6 +134,32 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                                 </>
                             )}
                         </>
+                    )}
+
+                    {/* MEETING: Görüşme Tipi */}
+                    {actionType === 'MEETING' && (
+                        <div className="qam-field">
+                            <label className="qam-field-label">Görüşme Tipi</label>
+                            <div className="qam-choice-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                                {[
+                                    { value: 'YUZ_YUZE', label: 'Yüz Yüze',        icon: '🤝' },
+                                    { value: 'ONLINE',   label: 'Online / Video',  icon: '💻' },
+                                    { value: 'TELEFON',  label: 'Telefon',         icon: '📞' },
+                                    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: '🏥' },
+                                    { value: 'DIGER',    label: 'Diğer',           icon: '📋' },
+                                ].map(t => (
+                                    <button
+                                        key={t.value}
+                                        type="button"
+                                        className={`qam-choice ${meetingType === t.value ? 'selected' : ''}`}
+                                        onClick={() => setMeetingType(t.value)}
+                                        style={{ flex: '1 1 auto', minWidth: '100px' }}
+                                    >
+                                        <span>{t.icon}</span> {t.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     )}
 
                     {/* Tarih/Saat — CALL, MEETING, REMINDER */}

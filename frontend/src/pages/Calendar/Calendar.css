@@ -3588,3 +3588,87 @@
     padding-top: 12px;
     border-top: 1px solid #f1f5f9;
 }
+
+/* ════════ Görüşme Tipi Stilleri ════════ */
+.cal-meeting-type-filter {
+    display: flex;
+    align-items: center;
+}
+
+.cal-meeting-type-select {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1.5px solid #e2e8f0;
+    background: #fff;
+    color: #475569;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    height: 32px;
+}
+
+.cal-meeting-type-select:hover,
+.cal-meeting-type-select:focus {
+    border-color: #3b82f6;
+    color: #1e293b;
+}
+
+/* Modal Görüşme Tipi Butonları */
+.apt-meeting-type-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.apt-meeting-type-btn {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.apt-meeting-type-btn:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+.apt-meeting-type-btn.active {
+    color: #ffffff;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.apt-mt-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* Kartlar üzerindeki Görüşme Tipi İkonları */
+.apt-meeting-icon,
+.cal-mt-icon,
+.day-event-mt-icon {
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.popup-badge.meeting-type {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 6px;
+}
