@@ -29,7 +29,9 @@ import {
   FileText,
   Trash2,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Clock,
+  Copy
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -58,6 +60,80 @@ const STEPS = [
   { key: 'ozet', label: 'Özet', icon: <CheckCircle2 size={16} /> },
 ];
 
+const DEFAULT_WEEKLY_SCHEDULE = [
+  { key: 'pzt', day: 'Pazartesi', short: 'Pzt', isOpen: true, start: '09:00', end: '18:00' },
+  { key: 'sal', day: 'Salı', short: 'Sal', isOpen: true, start: '09:00', end: '18:00' },
+  { key: 'car', day: 'Çarşamba', short: 'Çar', isOpen: true, start: '09:00', end: '18:00' },
+  { key: 'per', day: 'Perşembe', short: 'Per', isOpen: true, start: '09:00', end: '18:00' },
+  { key: 'cum', day: 'Cuma', short: 'Cum', isOpen: true, start: '09:00', end: '18:00' },
+  { key: 'cmt', day: 'Cumartesi', short: 'Cmt', isOpen: false, start: '10:00', end: '16:00' },
+  { key: 'paz', day: 'Pazar', short: 'Paz', isOpen: false, start: '10:00', end: '16:00' },
+];
+
+const parseScheduleFromString = (initialStr) => {
+  if (!initialStr || typeof initialStr !== 'string') {
+    return DEFAULT_WEEKLY_SCHEDULE.map(d => ({ ...d }));
+  }
+  const s = initialStr.toLowerCase();
+  const schedule = DEFAULT_WEEKLY_SCHEDULE.map(d => ({ ...d }));
+
+  const timeMatch = initialStr.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+  if (timeMatch) {
+    const start = timeMatch[1].padStart(5, '0');
+    const end = timeMatch[2].padStart(5, '0');
+    schedule.forEach(d => {
+      d.start = start;
+      d.end = end;
+    });
+  }
+
+  if (s.includes('7 gün') || s.includes('her gün')) {
+    schedule.forEach(d => { d.isOpen = true; });
+  } else {
+    if (s.includes('cumartesi') || s.includes('cmt')) {
+      if (!s.includes('cumartesi: kapalı') && !s.includes('cmt: kapalı') && !s.includes('cumartesi kapalı')) {
+        schedule[5].isOpen = true;
+      }
+    }
+    if (s.includes('pazar') || s.includes('paz')) {
+      if (!s.includes('pazar: kapalı') && !s.includes('paz: kapalı') && !s.includes('pazar kapalı')) {
+        schedule[6].isOpen = true;
+      }
+    }
+  }
+  return schedule;
+};
+
+const formatScheduleToString = (schedule) => {
+  const openDays = schedule.filter(d => d.isOpen);
+  if (openDays.length === 0) return 'Tüm günler kapalı';
+
+  const weekdays = schedule.slice(0, 5);
+  const sat = schedule[5];
+  const sun = schedule[6];
+
+  const weekdaysAllOpen = weekdays.every(d => d.isOpen);
+  const weekdaysSameHours = weekdaysAllOpen && weekdays.every(d => d.start === weekdays[0].start && d.end === weekdays[0].end);
+
+  if (weekdaysSameHours) {
+    if (sat.isOpen && sun.isOpen && sat.start === weekdays[0].start && sat.end === weekdays[0].end && sun.start === weekdays[0].start && sun.end === weekdays[0].end) {
+      return `Haftanın 7 günü: ${weekdays[0].start} - ${weekdays[0].end}`;
+    }
+    const parts = [`Pzt - Cum: ${weekdays[0].start} - ${weekdays[0].end}`];
+    if (sat.isOpen && sun.isOpen && sat.start === sun.start && sat.end === sun.end) {
+      parts.push(`Hafta sonu: ${sat.start} - ${sat.end}`);
+    } else {
+      if (sat.isOpen) parts.push(`Cumartesi: ${sat.start} - ${sat.end}`);
+      else parts.push('Cumartesi: Kapalı');
+      if (sun.isOpen) parts.push(`Pazar: ${sun.start} - ${sun.end}`);
+      else parts.push('Pazar: Kapalı');
+    }
+    return parts.join(', ');
+  }
+
+  return schedule.map(d => d.isOpen ? `${d.short}: ${d.start} - ${d.end}` : `${d.short}: Kapalı`).join(', ');
+};
+
 const SetupWizard = () => {
   const [activeStep, setActiveStep] = useState(0);
   const navigate = useNavigate();
@@ -72,7 +148,54 @@ const SetupWizard = () => {
   const [companyIndustry, setCompanyIndustry] = useState(currentWorkspace?.industry || 'Emlak / Gayrimenkul');
   const [companyAddress, setCompanyAddress] = useState(currentWorkspace?.companyAddress || '');
   const [companyWebsite, setCompanyWebsite] = useState(currentWorkspace?.companyWebsite || '');
-  const [companyHours, setCompanyHours] = useState(currentWorkspace?.companyWorkingHours || 'Hafta içi 09:00 - 18:00');
+  const [weeklySchedule, setWeeklySchedule] = useState(() => parseScheduleFromString(currentWorkspace?.companyWorkingHours));
+  const [companyHours, setCompanyHours] = useState(() => currentWorkspace?.companyWorkingHours || formatScheduleToString(parseScheduleFromString(currentWorkspace?.companyWorkingHours)));
+  const [manualHoursMode, setManualHoursMode] = useState(false);
+
+  const updateDaySchedule = (index, updates) => {
+    setWeeklySchedule(prev => {
+      const next = prev.map((d, i) => i === index ? { ...d, ...updates } : d);
+      if (!manualHoursMode) {
+        setCompanyHours(formatScheduleToString(next));
+      }
+      return next;
+    });
+  };
+
+  const applySchedulePreset = (presetType) => {
+    setWeeklySchedule(prev => {
+      let next = prev.map(d => ({ ...d }));
+      if (presetType === 'weekdays') {
+        next = next.map((d, i) => i < 5 
+          ? { ...d, isOpen: true, start: '09:00', end: '18:00' }
+          : { ...d, isOpen: false }
+        );
+      } else if (presetType === 'weekdays_sat') {
+        next = next.map((d, i) => {
+          if (i < 5) return { ...d, isOpen: true, start: '09:00', end: '18:00' };
+          if (i === 5) return { ...d, isOpen: true, start: '10:00', end: '16:00' };
+          return { ...d, isOpen: false };
+        });
+      } else if (presetType === 'all_week') {
+        next = next.map(d => ({ ...d, isOpen: true, start: '09:00', end: '18:00' }));
+      }
+      setManualHoursMode(false);
+      setCompanyHours(formatScheduleToString(next));
+      return next;
+    });
+    showSuccess('Çalışma saatleri şablonu uygulandı.');
+  };
+
+  const copyDayTimeToWeekdays = (sourceDay) => {
+    setWeeklySchedule(prev => {
+      const next = prev.map((d, i) => i < 5 ? { ...d, isOpen: true, start: sourceDay.start, end: sourceDay.end } : d);
+      if (!manualHoursMode) {
+        setCompanyHours(formatScheduleToString(next));
+      }
+      return next;
+    });
+    showSuccess('Pazartesi saatleri hafta içi günlere uygulandı.');
+  };
 
   // 2. Bilgi Bankası (KB) State
   const [kbUrl, setKbUrl] = useState('');
@@ -180,7 +303,19 @@ const SetupWizard = () => {
 
   const progress = Math.round((activeStep / (STEPS.length - 1)) * 100);
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    if (activeStep === 0 && currentWorkspace?.id && companyName) {
+      try {
+        await workspaceAPI.update(currentWorkspace.id, {
+          name: companyName,
+          companyAddress,
+          companyWebsite,
+          companyWorkingHours: companyHours
+        });
+      } catch (e) {
+        console.warn('Auto-save step 1 warning:', e);
+      }
+    }
     if (activeStep < STEPS.length - 1) setActiveStep(activeStep + 1);
   };
 
@@ -404,15 +539,269 @@ const SetupWizard = () => {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <label style={labelStyle}>Çalışma Saatleri</label>
-        <input
-          type="text"
-          value={companyHours}
-          onChange={e => setCompanyHours(e.target.value)}
-          placeholder="Hafta içi 09:00 - 18:00, Cumartesi 10:00 - 15:00"
-          style={inputStyle}
-        />
+      {/* 7 Günlük Çalışma Saatleri */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Clock size={16} color="#E63B2E" />
+              Çalışma Saatleri (7 Gün)
+            </label>
+            <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+              Haftanın 7 günü için çalışma ve randevu saatlerini ayrı ayrı belirleyin.
+            </p>
+          </div>
+          
+          {/* Hızlı Şablonlar */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => applySchedulePreset('weekdays')}
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#334155',
+                cursor: 'pointer'
+              }}
+            >
+              Hafta İçi (Pzt-Cum)
+            </button>
+            <button
+              type="button"
+              onClick={() => applySchedulePreset('weekdays_sat')}
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#334155',
+                cursor: 'pointer'
+              }}
+            >
+              + Cumartesi
+            </button>
+            <button
+              type="button"
+              onClick={() => applySchedulePreset('all_week')}
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#334155',
+                cursor: 'pointer'
+              }}
+            >
+              7 Gün Açık
+            </button>
+          </div>
+        </div>
+
+        {/* 7 Gün Liste Kartı */}
+        <div style={{
+          border: '1.5px solid #e2e8f0',
+          borderRadius: '10px',
+          background: '#fff',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {weeklySchedule.map((item, idx) => (
+            <div
+              key={item.key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '9px 14px',
+                borderBottom: idx < weeklySchedule.length - 1 ? '1px solid #f1f5f9' : 'none',
+                background: item.isOpen ? '#fff' : '#fbfcfd',
+                transition: 'background 0.15s ease',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}
+            >
+              {/* Sol: Checkbox + Gün Adı + Rozet */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '170px' }}>
+                <input
+                  type="checkbox"
+                  id={`day-toggle-${item.key}`}
+                  checked={item.isOpen}
+                  onChange={e => updateDaySchedule(idx, { isOpen: e.target.checked })}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    cursor: 'pointer',
+                    accentColor: '#E63B2E'
+                  }}
+                />
+                <label
+                  htmlFor={`day-toggle-${item.key}`}
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: item.isOpen ? 600 : 500,
+                    color: item.isOpen ? '#1e293b' : '#64748b',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    minWidth: '75px'
+                  }}
+                >
+                  {item.day}
+                </label>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: item.isOpen ? '#dcfce7' : '#f1f5f9',
+                    color: item.isOpen ? '#166534' : '#64748b',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: item.isOpen ? '#22c55e' : '#94a3b8'
+                  }} />
+                  {item.isOpen ? 'Açık' : 'Kapalı'}
+                </span>
+              </div>
+
+              {/* Sağ: Saat Seçiciler veya Kapalı Bildirimi */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {item.isOpen ? (
+                  <>
+                    <input
+                      type="time"
+                      value={item.start}
+                      onChange={e => updateDaySchedule(idx, { start: e.target.value })}
+                      style={{
+                        padding: '5px 8px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        color: '#0f172a',
+                        background: '#fff'
+                      }}
+                    />
+                    <span style={{ color: '#94a3b8', fontWeight: 600 }}>-</span>
+                    <input
+                      type="time"
+                      value={item.end}
+                      onChange={e => updateDaySchedule(idx, { end: e.target.value })}
+                      style={{
+                        padding: '5px 8px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        color: '#0f172a',
+                        background: '#fff'
+                      }}
+                    />
+                    {idx === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => copyDayTimeToWeekdays(item)}
+                        title="Bu saatleri hafta içi günlere (Salı - Cuma) uygula"
+                        style={{
+                          background: '#f8fafc',
+                          border: '1px dashed #cbd5e1',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          color: '#475569',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <Copy size={12} /> Hafta İçine Yay
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic', paddingRight: '8px' }}>
+                    Kapalı (Randevu ve arama kabul edilmez)
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Canlı Özet Gösterimi & Elle Düzenleme */}
+        <div style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+              Kaydedilecek Çalışma Saatleri Özeti:
+            </span>
+            <button
+              type="button"
+              onClick={() => setManualHoursMode(!manualHoursMode)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#E63B2E',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}
+            >
+              {manualHoursMode ? 'Otomatik Hesaplamaya Dön' : 'Metni Elle Düzenle'}
+            </button>
+          </div>
+
+          {manualHoursMode ? (
+            <input
+              type="text"
+              value={companyHours}
+              onChange={e => setCompanyHours(e.target.value)}
+              placeholder="Örn: Hafta içi 09:00 - 18:00, Hafta sonu Kapalı"
+              style={{ ...inputStyle, padding: '7px 10px', fontSize: '13px' }}
+            />
+          ) : (
+            <div style={{
+              fontSize: '13px',
+              fontWeight: 500,
+              color: '#0f172a',
+              background: '#fff',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              padding: '7px 10px'
+            }}>
+              {companyHours || 'Saat belirtilmedi'}
+            </div>
+          )}
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+            Bu bilgi AI Agentların müşterileri randevu saatlerine yönlendirmesi ve takvim slotlarının açılması için kullanılır.
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -933,6 +1322,7 @@ const SetupWizard = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
         {[
           { label: 'Firma Adı', val: companyName || currentWorkspace?.name || 'Instomer' },
+          { label: 'Çalışma Saatleri (7 Gün)', val: companyHours || 'Tanımlı değil' },
           { label: 'Bilgi Bankası Belgeleri', val: `${kbEntries.length} Kaynak Aktif` },
           { label: 'Şubeler', val: `${branches.length} Şube Tanımlı` },
           { label: 'Kategoriler', val: `${categories.length} Kategori` },
