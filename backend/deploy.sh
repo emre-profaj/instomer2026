@@ -27,6 +27,15 @@ echo "🗄️ [4/5] Prisma şeması güncelleniyor..."
 npx prisma generate
 npx prisma db push --accept-data-loss || npx prisma migrate deploy || true
 
+echo "🌐 [Frontend] htdocs senkronizasyonu yapılıyor..."
+if [ -d "../htdocs" ] && [ -d "../frontend/dist" ]; then
+    cp -rf ../frontend/dist/* ../htdocs/
+    chmod -R 755 ../htdocs/
+elif [ -d "/home/instomer-chatcrm/htdocs" ] && [ -d "/home/instomer-chatcrm/frontend/dist" ]; then
+    cp -rf /home/instomer-chatcrm/frontend/dist/* /home/instomer-chatcrm/htdocs/
+    chmod -R 755 /home/instomer-chatcrm/htdocs/
+fi
+
 echo "🔄 [5/5] PM2 Cluster Sıfır Kesinti ile Yenileniyor (Zero-Downtime Reload)..."
 if pm2 describe instomer 2>&1 | grep -q "your-username"; then
     echo "🧹 Eski/geçersiz instomer tanımı temizleniyor..."
