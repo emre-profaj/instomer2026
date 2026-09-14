@@ -4762,14 +4762,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     onClick={(e) => e.stopPropagation()}
                                                                     style={{
                                                                         position: 'absolute',
-                                                                        top: '100%',
+                                                                        bottom: '100%',
                                                                         left: 0,
-                                                                        marginTop: 6,
+                                                                        marginBottom: 6,
                                                                         padding: 6,
                                                                         background: '#fff',
                                                                         border: '1px solid #e2e8f0',
                                                                         borderRadius: 12,
-                                                                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                                                                        boxShadow: '0 -10px 25px -5px rgba(0,0,0,0.15), 0 -8px 10px -6px rgba(0,0,0,0.1)',
                                                                         width: 220,
                                                                         zIndex: 50
                                                                     }}
