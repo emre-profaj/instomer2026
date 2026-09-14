@@ -1400,11 +1400,12 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                         } catch (_) {}
                     }
 
-                    // Aksiyonları çalıştır: Lead olduysa VEYA telefon numarası varsa
+                    // Aksiyonları çalıştır: Lead, telefon, kategori, ürün veya şube eşleşmesi varsa
                     // Contact.phone'u taze oku — executePhoneCaptureRule tarafından güncellenmiş olabilir
                     const freshContact = await prisma.contact.findUnique({ where: { id: conv.contactId }, select: { phone: true } });
                     const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
-                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone;
+                    const hasClassification = !!(classResult.topicCategoryId || classResult.matchedProductIds?.length > 0 || classResult.matchedBranchId);
+                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone || hasClassification;
                     if (shouldRunActions) {
                         await executeClassificationActions(
                             workspaceId, conversationId, conv.contactId, classResult
