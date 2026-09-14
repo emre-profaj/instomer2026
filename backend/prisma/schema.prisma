@@ -580,6 +580,7 @@ model Conversation {
   @@index([topicCategoryId]) // Topic category analytics
   @@index([caseId])
   @@index([workspaceId, isArchived]) // Archive filter
+  @@index([workspaceId, lastContactMessageAt(sort: Desc)]) // Müşteri Yanıtı sıralaması
   @@map("conversations")
 }
 

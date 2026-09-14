@@ -463,7 +463,10 @@ export const getConversations = async (req, res) => {
             },
             orderBy: [
                 { isStarred: 'desc' },
-                { lastMessageAt: 'desc' }
+                // Müşteri Yanıtı sıralaması: müşterinin son yazdığı zamana göre
+                ...(req.query.sortBy === 'customerFirst'
+                    ? [{ lastContactMessageAt: 'desc' }]
+                    : [{ lastMessageAt: 'desc' }])
             ],
             skip: (parseInt(page) - 1) * parseInt(limit),
             take: parseInt(limit)

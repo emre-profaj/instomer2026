@@ -2023,6 +2023,7 @@ const Inbox = () => {
             if (hideUnanswered) params.hideUnanswered = 'true';
             if (showBulk) params.showBulk = 'true';
             if (sortBy === 'lastMessage') params.sortBy = 'lastMessage';
+            else if (sortBy === 'customerFirst') params.sortBy = 'customerFirst';
 
             const response = await conversationAPI.getAll(currentWorkspace.id, params);
             const moreConversations = response.data.conversations || [];
@@ -2316,6 +2317,7 @@ const Inbox = () => {
                 if (hideUnanswered) params.hideUnanswered = 'true';
                 if (showBulk) params.showBulk = 'true';
                 if (sortBy === 'lastMessage') params.sortBy = 'lastMessage';
+                else if (sortBy === 'customerFirst') params.sortBy = 'customerFirst';
 
                 // Advanced Single-Channel Push to Backend (Prevents Filter Pagination Paradox)
                 if (activeChannel) {
