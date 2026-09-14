@@ -2581,39 +2581,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </select>
                                                 )}
 
-                                                {/* Segment pills — yeşil (Açılıp kapanabilir) */}
-                                                {contactSegments.length > 0 && (
-                                                    !segmentsExpanded ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={toggleSegmentsExpanded}
-                                                            className="unified-segment-toggle-btn"
-                                                            title="Akıllı segmentleri göster"
-                                                        >
-                                                            <span>📊</span>
-                                                            <span>{contactSegments.length} Segment</span>
-                                                            <ChevronDown size={11} style={{ opacity: 0.7 }} />
-                                                        </button>
-                                                    ) : (
-                                                        <>
-                                                            {contactSegments.map(seg => (
-                                                                <div key={`seg-${seg.id}`} className="unified-tag" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d040' }}>
-                                                                    <span style={{ fontSize: 10 }}>{seg.icon}</span>
-                                                                    <span>{seg.label}</span>
-                                                                </div>
-                                                            ))}
-                                                            <button
-                                                                type="button"
-                                                                onClick={toggleSegmentsExpanded}
-                                                                className="unified-segment-collapse-btn"
-                                                                title="Segmentleri daralt"
-                                                            >
-                                                                <ChevronDown size={11} style={{ transform: 'rotate(180deg)' }} />
-                                                                <span>Daralt</span>
-                                                            </button>
-                                                        </>
-                                                    )
-                                                )}
+
                                             </div>
 
                                             {/* Location / Language Row */}
@@ -6240,6 +6208,56 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 500 }}>
                                                 {safeFormatDateTime(profile.lastContactedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                             </span>
+                                        </div>
+                                    )}
+
+                                    {/* 6. Dahil Olduğu Listeler (Segmentler) */}
+                                    {contactSegments.length > 0 && (
+                                        <div style={{ paddingTop: '6px', borderTop: '1px dashed #e2e8f0' }}>
+                                            <div
+                                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: segmentsExpanded ? '6px' : 0 }}
+                                                onClick={toggleSegmentsExpanded}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', fontWeight: 500 }}>
+                                                    <span style={{ fontSize: 13 }}>📊</span>
+                                                    <span>Dahil Olduğu Listeler</span>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{
+                                                        fontSize: '10px',
+                                                        fontWeight: 700,
+                                                        color: '#166534',
+                                                        background: '#dcfce7',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid #bbf7d0'
+                                                    }}>
+                                                        {contactSegments.length}
+                                                    </span>
+                                                    <ChevronDown size={12} style={{ color: '#94a3b8', transition: 'transform 0.2s ease', transform: segmentsExpanded ? 'rotate(180deg)' : 'none' }} />
+                                                </div>
+                                            </div>
+                                            {segmentsExpanded && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                    {contactSegments.map(seg => (
+                                                        <span key={`seg-${seg.id}`} style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                            fontSize: '10.5px',
+                                                            fontWeight: 600,
+                                                            color: '#166534',
+                                                            background: '#f0fdf4',
+                                                            border: '1px solid #bbf7d0',
+                                                            padding: '2px 7px',
+                                                            borderRadius: '6px'
+                                                        }}>
+                                                            <span style={{ fontSize: 10 }}>{seg.icon}</span>
+                                                            <span>{seg.label}</span>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
