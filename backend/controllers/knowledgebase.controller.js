@@ -461,3 +461,70 @@ export const getCompiledKnowledgeBase = async (req, res) => {
     }
 };
 
+// Save/Update compiled unified knowledge base for workspace (all wizard steps merged into a real KnowledgeBase entry)
+export const saveCompiledKnowledgeBase = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { customText, title: customTitle } = req.body || {};
+
+        // 1. Derlenmiş tüm adımların bağlamını al
+        const result = await getBaseKnowledgeContext(workspaceId);
+        const textToSave = (customText || result.text || '').trim();
+        const docTitle = (customTitle || '🏢 Kurumsal Bilgi Tabanı & AI Hafızası (Tüm Adımlar)').trim();
+
+        if (!textToSave) {
+            return res.status(400).json({ error: 'Kaydedilecek birleşik bilgi bankası içeriği bulunamadı' });
+        }
+
+        // 2. Mevcut birleşik bilgi bankası kaydını ara
+        const existing = await prisma.knowledgeBase.findFirst({
+            where: {
+                workspaceId,
+                OR: [
+                    { sourceType: 'UNIFIED_SYSTEM' },
+                    { title: { contains: 'Kurumsal Bilgi Tabanı' } },
+                    { title: { contains: 'AI Hafızası' } }
+                ]
+            }
+        });
+
+        let entry;
+        if (existing) {
+            entry = await prisma.knowledgeBase.update({
+                where: { id: existing.id },
+                data: {
+                    title: docTitle,
+                    content: textToSave,
+                    sourceType: 'UNIFIED_SYSTEM',
+                    lastSyncedAt: new Date()
+                }
+            });
+        } else {
+            entry = await prisma.knowledgeBase.create({
+                data: {
+                    workspaceId,
+                    title: docTitle,
+                    content: textToSave,
+                    sourceType: 'UNIFIED_SYSTEM',
+                    lastSyncedAt: new Date()
+                }
+            });
+        }
+
+        // 3. Retell entegrasyonu varsa arka planda senkronize et
+        autoSyncToRetell(workspaceId, entry).catch(err => {
+            console.warn('Retell sync warning on saveCompiled:', err.message);
+        });
+
+        res.json({
+            success: true,
+            message: 'Tüm adımlardaki bilgiler birleştirilerek Bilgi Bankası belgesi olarak kaydedildi.',
+            entry,
+            compiled: result
+        });
+    } catch (error) {
+        console.error('saveCompiledKnowledgeBase error:', error);
+        res.status(500).json({ error: 'Birleşik bilgi bankası kaydedilemedi' });
+    }
+};
+

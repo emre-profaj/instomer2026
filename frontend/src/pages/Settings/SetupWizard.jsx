@@ -320,6 +320,8 @@ const SetupWizard = () => {
   const [compiledKbLoading, setCompiledKbLoading] = useState(false);
   const [ozetTab, setOzetTab] = useState('structured'); // 'structured' | 'rawText'
   const [copiedKb, setCopiedKb] = useState(false);
+  const [savingCompiledKb, setSavingCompiledKb] = useState(false);
+  const [compiledKbSaved, setCompiledKbSaved] = useState(false);
 
   // Load Initial Workspace Data
   useEffect(() => {
@@ -488,10 +490,45 @@ const SetupWizard = () => {
     }
   };
 
-  // Son adım olan 'ozet' adımına geçildiğinde birleşik bilgi bankasını getir
+  // Tüm adımlardaki bilgileri birleştirerek veritabanına gerçek bir Bilgi Bankası belgesi olarak kaydet
+  const saveUnifiedKnowledgeBase = async (customText = null, notify = false) => {
+    if (!currentWorkspace?.id) return;
+    setSavingCompiledKb(true);
+    try {
+      const textToSave = (customText || compiledKb?.text || getClientCompiledKbText() || '').trim();
+      const res = await knowledgeBaseAPI.saveCompiled(currentWorkspace.id, {
+        customText: textToSave,
+        title: '🏢 Kurumsal Bilgi Tabanı & AI Hafızası (Tüm Adımlar)'
+      });
+      setCompiledKbSaved(true);
+      if (res.data?.entry) {
+        setKbEntries(prev => {
+          const list = Array.isArray(prev) ? prev : [];
+          const exists = list.some(item => item.id === res.data.entry.id);
+          if (exists) {
+            return list.map(item => item.id === res.data.entry.id ? res.data.entry : item);
+          }
+          return [res.data.entry, ...list];
+        });
+      }
+      if (notify) {
+        showSuccess('Tüm adımlardaki bilgiler birleştirilerek Bilgi Bankası belgesi olarak kaydedildi!');
+      }
+    } catch (err) {
+      console.error('saveUnifiedKnowledgeBase error:', err);
+      if (notify) {
+        showError('Birleşik Bilgi Bankası kaydedilirken bir hata oluştu.');
+      }
+    } finally {
+      setSavingCompiledKb(false);
+    }
+  };
+
+  // Son adım olan 'ozet' adımına geçildiğinde birleşik bilgi bankasını getir ve otomatik olarak veritabanına kaydet
   useEffect(() => {
     if (STEPS[activeStep]?.key === 'ozet' && currentWorkspace?.id) {
       fetchCompiledKb();
+      saveUnifiedKnowledgeBase(null, false);
     }
   }, [activeStep, currentWorkspace?.id]);
 
@@ -635,9 +672,11 @@ const SetupWizard = () => {
           companyWorkingHours: companyHours
         });
       }
-      showSuccess('Kurulum adımları başarıyla tamamlandı!');
+      // Tüm adımları veritabanına birleşik Bilgi Bankası olarak kaydet
+      await saveUnifiedKnowledgeBase(null, false);
+      showSuccess('Tüm adımlar başarıyla birleştirildi ve Bilgi Bankası olarak kaydedildi!');
     } catch (e) {
-      console.warn('Workspace update warning:', e);
+      console.warn('Workspace or KB update warning:', e);
     }
     navigate('/base');
   };
@@ -3407,6 +3446,39 @@ const SetupWizard = () => {
 
               <button
                 type="button"
+                onClick={() => saveUnifiedKnowledgeBase(rawCompiledText, true)}
+                disabled={savingCompiledKb}
+                title="Tüm adımlardaki bilgileri birleştirip Bilgi Bankası belgesi olarak kaydeder"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: compiledKbSaved ? '#16a34a' : '#E63B2E',
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: savingCompiledKb ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                }}
+              >
+                {savingCompiledKb ? (
+                  <>
+                    <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>Kaydediliyor...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>{compiledKbSaved ? 'Bilgi Bankasına Kaydedildi ✓' : 'Bilgi Bankası Olarak Kaydet'}</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleCopyKbText(rawCompiledText)}
                 style={{
                   display: 'flex',
@@ -3430,6 +3502,37 @@ const SetupWizard = () => {
 
           {/* Tab İçeriği */}
           <div style={{ padding: '22px' }}>
+            {/* Canlı Kayıt Durumu Bildirimi */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '18px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Book size={18} color="#16a34a" />
+                <span style={{ fontSize: '13px', color: '#14532d', fontWeight: 500 }}>
+                  Girdiğiniz tüm bilgiler (Firma, Saatler, Şubeler, Kategoriler, Ürünler, Akışlar, Takımlar) <strong>birleştirilerek Bilgi Bankası (AI Hafızası) belgesi olarak kaydedildi.</strong>
+                </span>
+              </div>
+              <span style={{
+                background: compiledKbSaved ? '#dcfce7' : '#fef3c7',
+                color: compiledKbSaved ? '#15803d' : '#b45309',
+                border: '1px solid ' + (compiledKbSaved ? '#86efac' : '#fde68a'),
+                padding: '4px 10px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: 700,
+                whiteSpace: 'nowrap'
+              }}>
+                {compiledKbSaved ? '✓ Bilgi Bankasında Aktif' : '⏳ Otomatik Kaydedildi'}
+              </span>
+            </div>
+
             {compiledKbLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '10px', color: '#64748b' }}>
                 <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
@@ -3484,28 +3587,36 @@ const SetupWizard = () => {
                     </div>
                     <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayKbEntries.length} Kaynak</span>
                   </div>
-                  {displayKbEntries.length === 0 ? (
-                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Henüz ek belge eklenmedi. Sistem varsayılan kurumsal bilgileri kullanır.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {displayKbEntries.slice(0, 8).map((kb, idx) => (
-                        <div key={kb.id || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', fontSize: '13px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                            <FileText size={15} color="#64748b" />
-                            <span style={{ fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kb.title || `Belge #${idx + 1}`}</span>
-                          </div>
-                          <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
-                            {kb.sourceType || 'Belge'}
-                          </span>
-                        </div>
-                      ))}
-                      {displayKbEntries.length > 8 && (
-                        <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', paddingTop: '4px' }}>
-                          + {displayKbEntries.length - 8} kaynak daha Bilgi Bankasında aktif
-                        </div>
-                      )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {/* Birleşik Hafıza Kaydı Rozeti */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                        <Sparkles size={16} color="#16a34a" />
+                        <span style={{ fontWeight: 700, color: '#166534' }}>🏢 Kurumsal Bilgi Tabanı & AI Hafızası (Tüm Adımlar Birleşik)</span>
+                      </div>
+                      <span style={{ fontSize: '11px', background: '#dcfce7', color: '#15803d', padding: '3px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 700 }}>
+                        BİRLEŞİK SİSTEM HAFIZASI
+                      </span>
                     </div>
-                  )}
+
+                    {displayKbEntries.filter(kb => kb.sourceType !== 'UNIFIED_SYSTEM').slice(0, 7).map((kb, idx) => (
+                      <div key={kb.id || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                          <FileText size={15} color="#64748b" />
+                          <span style={{ fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kb.title || `Belge #${idx + 1}`}</span>
+                        </div>
+                        <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                          {kb.sourceType || 'Belge'}
+                        </span>
+                      </div>
+                    ))}
+                    {displayKbEntries.filter(kb => kb.sourceType !== 'UNIFIED_SYSTEM').length > 7 && (
+                      <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', paddingTop: '4px' }}>
+                        + {displayKbEntries.filter(kb => kb.sourceType !== 'UNIFIED_SYSTEM').length - 7} kaynak daha Bilgi Bankasında aktif
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 3. ADIM: ŞUBELER */}

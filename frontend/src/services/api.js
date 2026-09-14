@@ -167,6 +167,7 @@ export const workspaceAPI = {
     // Company Info
     getCompanyInfo: (workspaceId) => api.get(`/workspaces/${workspaceId}/company`),
     updateCompanyInfo: (workspaceId, data) => api.put(`/workspaces/${workspaceId}/company`, data),
+    update: (workspaceId, data) => api.put(`/workspaces/${workspaceId}/company`, data),
     uploadCompanyLogo: (workspaceId, formData) => api.post(`/workspaces/${workspaceId}/company/logo`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
@@ -510,6 +511,7 @@ export const leadsAPI = {
 export const knowledgeBaseAPI = {
     getAll: (workspaceId) => api.get(`/knowledgebase/${workspaceId}`),
     getCompiled: (workspaceId) => api.get(`/knowledgebase/${workspaceId}/compiled`),
+    saveCompiled: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/compiled/save`, data),
     addText: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/text`, data),
     addUrl: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/url`, data),
     uploadFile: (workspaceId, formData) => api.post(`/knowledgebase/${workspaceId}/upload`, formData, {

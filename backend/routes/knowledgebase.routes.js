@@ -10,7 +10,8 @@ import {
     addUrlEntry,
     syncEntryManually,
     bulkSyncAllToRetell,
-    getCompiledKnowledgeBase
+    getCompiledKnowledgeBase,
+    saveCompiledKnowledgeBase
 } from '../controllers/knowledgebase.controller.js';
 
 const router = express.Router();
@@ -19,6 +20,9 @@ router.use(authenticateJWT);
 
 // Get compiled unified knowledge base (all wizard steps merged)
 router.get('/:workspaceId/compiled', requireWorkspaceAccess, getCompiledKnowledgeBase);
+
+// Save/Update compiled unified knowledge base as an actual KnowledgeBase record
+router.post('/:workspaceId/compiled/save', requireWorkspaceAccess, saveCompiledKnowledgeBase);
 
 // Get all entries
 router.get('/:workspaceId', requireWorkspaceAccess, getKnowledgeBase);
