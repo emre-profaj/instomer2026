@@ -43,7 +43,8 @@ import {
   User,
   Bot,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  RefreshCw
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -314,6 +315,12 @@ const SetupWizard = () => {
   });
   const [savingEditBot, setSavingEditBot] = useState(false);
 
+  // 9. Özet & Birleşik Bilgi Bankası State
+  const [compiledKb, setCompiledKb] = useState(null);
+  const [compiledKbLoading, setCompiledKbLoading] = useState(false);
+  const [ozetTab, setOzetTab] = useState('structured'); // 'structured' | 'rawText'
+  const [copiedKb, setCopiedKb] = useState(false);
+
   // Load Initial Workspace Data
   useEffect(() => {
     if (!currentWorkspace?.id) return;
@@ -460,6 +467,138 @@ const SetupWizard = () => {
     }
 
   }, [currentWorkspace?.id]);
+
+  // Derlenmiş Birleşik Bilgi Bankası Verisini Getir
+  const fetchCompiledKb = () => {
+    if (!currentWorkspace?.id) return;
+    setCompiledKbLoading(true);
+    if (typeof knowledgeBaseAPI?.getCompiled === 'function') {
+      knowledgeBaseAPI.getCompiled(currentWorkspace.id)
+        .then(res => {
+          setCompiledKb(res.data);
+        })
+        .catch(err => {
+          console.warn('Derlenmiş bilgi bankası yüklenirken hata (yerel durum kullanılacak):', err);
+        })
+        .finally(() => {
+          setCompiledKbLoading(false);
+        });
+    } else {
+      setCompiledKbLoading(false);
+    }
+  };
+
+  // Son adım olan 'ozet' adımına geçildiğinde birleşik bilgi bankasını getir
+  useEffect(() => {
+    if (STEPS[activeStep]?.key === 'ozet' && currentWorkspace?.id) {
+      fetchCompiledKb();
+    }
+  }, [activeStep, currentWorkspace?.id]);
+
+  // Tüm adımlardaki yerel verilerden anında oluşturulan birleşik AI sistem metni
+  const getClientCompiledKbText = () => {
+    const sections = [];
+
+    // 1. Şirket Bilgileri & 7 Günlük Çalışma Saatleri
+    const compLines = [];
+    if (companyName) compLines.push(`Firma Adı: ${companyName}`);
+    if (companyIndustry) compLines.push(`Sektör / Alan: ${companyIndustry}`);
+    if (companyDescription) compLines.push(`Hakkında: ${companyDescription}`);
+    if (companyPhone) compLines.push(`İletişim Telefon: ${companyPhone}`);
+    if (companyEmail) compLines.push(`E-posta: ${companyEmail}`);
+    if (companyWebsite) compLines.push(`Web Sitesi: ${companyWebsite}`);
+    if (companyAddress) compLines.push(`Merkez Adres: ${companyAddress}`);
+    if (companyHours) {
+      compLines.push(`Çalışma Saatleri (7 Gün): ${companyHours}`);
+    } else if (Array.isArray(weeklySchedule) && weeklySchedule.length > 0) {
+      const scheduleStr = weeklySchedule.map(d => `${d.day}: ${d.isOpen ? `${d.start} - ${d.end}` : 'Kapalı'}`).join(' | ');
+      compLines.push(`Çalışma Saatleri (7 Gün): ${scheduleStr}`);
+    }
+    if (compLines.length > 0) {
+      sections.push(`🏢 ŞİRKET BİLGİLERİ VE ÇALIŞMA SAATLERİ:\n${compLines.join('\n')}`);
+    }
+
+    // 2. Bilgi Bankası Belgeleri & Metin Kaynakları
+    if (Array.isArray(kbEntries) && kbEntries.length > 0) {
+      const kbLines = kbEntries.map((e, idx) => {
+        const title = e.title || `Belge #${idx + 1}`;
+        const preview = e.content ? (e.content.length > 250 ? e.content.slice(0, 250).trim() + '...' : e.content.trim()) : '(İçerik işlendi)';
+        return `[${idx + 1}] ${title} (${e.sourceType || 'Belge'})\n${preview}`;
+      });
+      sections.push(`📚 BİLGİ BANKASI VE METİN KAYNAKLARI (${kbEntries.length} Kaynak):\n${kbLines.join('\n\n')}`);
+    }
+
+    // 3. Şubeler & Lokasyonlar
+    if (Array.isArray(branches) && branches.length > 0) {
+      const bLines = branches.map((b, idx) => {
+        const parts = [`${idx + 1}. ${b.name}`];
+        if (b.address) parts.push(`Adres: ${b.address}`);
+        if (b.phone) parts.push(`Tel: ${b.phone}`);
+        return parts.join(' | ');
+      });
+      sections.push(`📍 HİZMET ŞUBELERİ & LOKASYONLAR (${branches.length} Şube):\n${bLines.join('\n')}`);
+    }
+
+    // 4. Hizmet & Konu Kategorileri
+    if (Array.isArray(categories) && categories.length > 0) {
+      const cLines = categories.map((c, idx) => {
+        return `${idx + 1}. ${c.name}${c.description ? ` (${c.description})` : ''}`;
+      });
+      sections.push(`🏷️ HİZMET / KONU KATEGORİLERİ (${categories.length} Kategori):\n${cLines.join('\n')}`);
+    }
+
+    // 5. Ürün & Portföy Listesi
+    if (Array.isArray(products) && products.length > 0) {
+      const pLines = products.map((p, idx) => {
+        const priceStr = p.price ? ` - ${p.price} ${p.currency || 'TRY'}` : '';
+        const catStr = p.category ? ` [${p.category}]` : '';
+        const descStr = p.description ? `\n   Açıklama: ${p.description}` : '';
+        return `${idx + 1}. ${p.name}${priceStr}${catStr}${descStr}`;
+      });
+      sections.push(`📦 ÜRÜN VE HİZMET PORTFÖYÜ (${products.length} Kalem):\n${pLines.join('\n')}`);
+    }
+
+    // 6. Akışlar & Aşamalar
+    if (Array.isArray(funnels) && funnels.length > 0) {
+      const fLines = funnels.map((f, idx) => {
+        const stageList = (f.stages || []).map((s, si) => `   ${si + 1}) ${s.title || s.name || 'Aşama'}`).join('\n');
+        return `Akış #${idx + 1}: ${f.name || 'Ana Akış'}${f.description ? ` (${f.description})` : ''}\nAşamalar:\n${stageList || '   (Standart aşamalar)'}`;
+      });
+      sections.push(`🔄 MÜŞTERİ YOLCULUĞU & SATIŞ AKIŞLARI (${funnels.length} Akış):\n${fLines.join('\n\n')}`);
+    }
+
+    // 7. Takımlar & Ekipler
+    if (Array.isArray(teams) && teams.length > 0) {
+      const tLines = teams.map((t, idx) => {
+        const memberCount = (t.members || []).length;
+        const leaderStr = t.leader ? ` (Lider: ${t.leader.name || t.leader.email})` : '';
+        return `${idx + 1}. ${t.name}${leaderStr} - ${memberCount} Temsilci`;
+      });
+      sections.push(`👥 DEPARTMANLAR VE UZMAN TAKIMLAR (${teams.length} Takım):\n${tLines.join('\n')}`);
+    }
+
+    // 8. AI Asistanlar
+    if (Array.isArray(bots) && bots.length > 0) {
+      const bLines = bots.map((b, idx) => {
+        const caps = b.capabilities ? Object.keys(b.capabilities).filter(k => b.capabilities[k]).join(', ') : 'Temel Soru-Cevap';
+        return `Asistan: ${b.name} (${b.role || 'Müşteri Temsilcisi'})\nTalimat: ${b.prompt || 'Kurumsal dilde yardımcı ol'}\nYetenekler: ${caps}`;
+      });
+      sections.push(`🤖 YETKİLİ AI ASİSTANLAR (${bots.length} Asistan):\n${bLines.join('\n\n')}`);
+    }
+
+    return sections.join('\n\n' + '—'.repeat(50) + '\n\n');
+  };
+
+  const handleCopyKbText = (text) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedKb(true);
+      showSuccess('Bilgi Bankası metni panoya kopyalandı.');
+      setTimeout(() => setCopiedKb(false), 2500);
+    }).catch(err => {
+      console.error('Copy failed:', err);
+    });
+  };
 
   const progress = Math.round((activeStep / (STEPS.length - 1)) * 100);
 
@@ -2877,32 +3016,6 @@ const SetupWizard = () => {
                 style={{ ...inputStyle, resize: 'vertical', marginTop: '4px' }}
               />
             </div>
-            <div>
-              <label style={{ ...labelStyle, fontSize: '12px', marginBottom: '6px', display: 'block' }}>Hizmet Vereceği Kanallar</label>
-              <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#334155' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={newBot.whatsappEnabled}
-                    onChange={e => setNewBot({ ...newBot, whatsappEnabled: e.target.checked })}
-                  /> WhatsApp
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={newBot.instagramEnabled}
-                    onChange={e => setNewBot({ ...newBot, instagramEnabled: e.target.checked })}
-                  /> Instagram
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={newBot.widgetEnabled}
-                    onChange={e => setNewBot({ ...newBot, widgetEnabled: e.target.checked })}
-                  /> Web Widget
-                </label>
-              </div>
-            </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
               <button type="button" onClick={() => setShowAddBot(false)} style={secondaryBtnStyle}>İptal</button>
               <button type="button" onClick={handleCreateBot} disabled={savingBot} style={primaryBtnStyle}>
@@ -3037,36 +3150,6 @@ const SetupWizard = () => {
                   />
                 </div>
 
-                {/* Aktif Kanallar */}
-                <div>
-                  <label style={{ ...labelStyle, fontSize: '12px', marginBottom: '6px', display: 'block' }}>
-                    İletişim Kanalları
-                  </label>
-                  <div style={{ display: 'flex', gap: '16px', fontSize: '13px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={editBotData.whatsappEnabled}
-                        onChange={e => setEditBotData({ ...editBotData, whatsappEnabled: e.target.checked })}
-                      /> WhatsApp
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={editBotData.instagramEnabled}
-                        onChange={e => setEditBotData({ ...editBotData, instagramEnabled: e.target.checked })}
-                      /> Instagram
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={editBotData.widgetEnabled}
-                        onChange={e => setEditBotData({ ...editBotData, widgetEnabled: e.target.checked })}
-                      /> Web Widget
-                    </label>
-                  </div>
-                </div>
-
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
                   <button type="button" onClick={() => setEditingBotId(null)} style={secondaryBtnStyle}>İptal</button>
                   <button type="button" onClick={handleUpdateBot} disabled={savingEditBot} style={primaryBtnStyle}>
@@ -3156,20 +3239,6 @@ const SetupWizard = () => {
                       {bot.prompt ? bot.prompt : 'Asistan, Bilgi Bankası adımında eklediğiniz tüm web sitesi ve metin verilerini kullanarak müşterilerin sorularını kurumsal dilde yanıtlar.'}
                     </p>
                   </div>
-
-                  {/* Kanallar */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                    <span style={{ fontWeight: 600, color: '#475569' }}>Kanallar:</span>
-                    <span style={{ color: bot.whatsappEnabled ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
-                      {bot.whatsappEnabled ? '●' : '○'} WhatsApp
-                    </span>
-                    <span style={{ color: bot.instagramEnabled ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
-                      {bot.instagramEnabled ? '●' : '○'} Instagram
-                    </span>
-                    <span style={{ color: bot.widgetEnabled ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
-                      {bot.widgetEnabled ? '●' : '○'} Web Widget
-                    </span>
-                  </div>
                 </div>
               </div>
             );
@@ -3179,36 +3248,490 @@ const SetupWizard = () => {
     );
   };
 
-  const renderOzet = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
-      <div style={{ background: '#dcfce7', color: '#166534', padding: '18px 20px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <CheckCircle2 size={32} />
-        <div>
-          <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700 }}>Harika! Kurulum hazır.</h2>
-          <p style={{ margin: 0, fontSize: '14px' }}>Sistemi hemen kullanmaya başlayabilirsiniz. İhtiyaç halinde ayarları daha sonra Base menüsünden düzenleyebilirsiniz.</p>
+  const renderOzet = () => {
+    const rawCompiledText = compiledKb?.text || getClientCompiledKbText();
+    const charCount = rawCompiledText ? rawCompiledText.length : 0;
+    const wordCount = rawCompiledText ? rawCompiledText.split(/\s+/).filter(Boolean).length : 0;
+
+    const displayBranches = (compiledKb?.structuredData?.branches && compiledKb.structuredData.branches.length > 0)
+      ? compiledKb.structuredData.branches
+      : (Array.isArray(branches) ? branches : []);
+
+    const displayKbEntries = (compiledKb?.structuredData?.kbEntries && compiledKb.structuredData.kbEntries.length > 0)
+      ? compiledKb.structuredData.kbEntries
+      : (Array.isArray(kbEntries) ? kbEntries : []);
+
+    const displayCategories = (compiledKb?.structuredData?.categories && compiledKb.structuredData.categories.length > 0)
+      ? compiledKb.structuredData.categories
+      : (Array.isArray(categories) ? categories : []);
+
+    const displayProducts = (compiledKb?.structuredData?.products && compiledKb.structuredData.products.length > 0)
+      ? compiledKb.structuredData.products
+      : (Array.isArray(products) ? products : []);
+
+    const displayFunnels = (compiledKb?.structuredData?.funnels && compiledKb.structuredData.funnels.length > 0)
+      ? compiledKb.structuredData.funnels
+      : (Array.isArray(funnels) ? funnels : []);
+
+    const displayTeams = (compiledKb?.structuredData?.teams && compiledKb.structuredData.teams.length > 0)
+      ? compiledKb.structuredData.teams
+      : (Array.isArray(teams) ? teams : []);
+
+    const displayBots = (compiledKb?.structuredData?.bots && compiledKb.structuredData.bots.length > 0)
+      ? compiledKb.structuredData.bots
+      : (Array.isArray(bots) ? bots : []);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '960px', width: '100%', paddingBottom: '32px' }}>
+        {/* Tebrikler / Durum Banner */}
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', padding: '20px 24px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <CheckCircle2 size={26} color="#16a34a" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700, color: '#14532d' }}>Harika! Kurulumunuz Başarıyla Hazırlandı</h2>
+            <p style={{ margin: 0, fontSize: '13px', color: '#166534', lineHeight: 1.5 }}>
+              Tüm adımlarda girdiğiniz firma detayları, çalışma saatleri, belgeler, şubeler, kategoriler, ürünler, akışlar ve takımlar <strong>birleşik Bilgi Bankası (AI Hafızası)</strong> olarak derlendi.
+            </p>
+          </div>
+        </div>
+
+        {/* 9 Adım Özet Metrikleri */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          {[
+            { label: 'Firma Adı', val: companyName || currentWorkspace?.name || 'Instomer', icon: <Building2 size={15} color="#64748b" /> },
+            { label: 'Çalışma Saatleri (7 Gün)', val: companyHours ? (companyHours.length > 28 ? companyHours.slice(0, 26) + '...' : companyHours) : 'Tanımlı', icon: <Clock size={15} color="#64748b" /> },
+            { label: 'Bilgi Bankası', val: `${displayKbEntries.length} Kaynak Aktif`, icon: <Book size={15} color="#64748b" /> },
+            { label: 'Şubeler', val: `${displayBranches.length} Şube`, icon: <MapPin size={15} color="#64748b" /> },
+            { label: 'Kategoriler', val: `${displayCategories.length} Kategori`, icon: <Folder size={15} color="#64748b" /> },
+            { label: 'Ürün & Portföy', val: `${displayProducts.length} Kalem`, icon: <Package size={15} color="#64748b" /> },
+            { label: 'Satış Akışları', val: `${displayFunnels.length || 1} Akış Aktif`, icon: <Workflow size={15} color="#64748b" /> },
+            { label: 'Departman & Ekipler', val: `${displayTeams.length || 1} Takım`, icon: <Users size={15} color="#64748b" /> },
+            { label: 'AI Asistan', val: `${displayBots.filter(b => b.isActive).length} Asistan Aktif`, icon: <Bot size={15} color="#64748b" /> },
+          ].map((item, i) => (
+            <div key={i} style={{ border: '1px solid #e2e8f0', padding: '12px 14px', borderRadius: '10px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '11px', fontWeight: 600 }}>
+                {item.icon}
+                <span>{item.label}</span>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={typeof item.val === 'string' ? item.val : ''}>
+                {item.val}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* BİLGİ BANKASI SON HALİ (TÜM ADIMLARIN BİRLEŞİK AI HAFIZASI) */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', background: '#fff', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+          {/* Bölüm Başlığı & Tab Kontrolleri */}
+          <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.02em' }}>
+                  <Sparkles size={12} /> BİRLEŞİK AI HAFIZASI
+                </span>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                  Bilgi Bankasının Son Hali (Tüm Adımlar)
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                AI asistanınız ve çalışma ortamınız bu ortak hafızayı kullanarak müşterilerinizle kurumsal dilde iletişim kurar.
+              </p>
+            </div>
+
+            {/* Sağ Taraf: Sekmeler & Eylemler */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', background: '#e2e8f0', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setOzetTab('structured')}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: ozetTab === 'structured' ? '#fff' : 'transparent',
+                    color: ozetTab === 'structured' ? '#0f172a' : '#64748b',
+                    boxShadow: ozetTab === 'structured' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  📋 Adım Adım Detaylar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOzetTab('rawText')}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: ozetTab === 'rawText' ? '#fff' : 'transparent',
+                    color: ozetTab === 'rawText' ? '#0f172a' : '#64748b',
+                    boxShadow: ozetTab === 'rawText' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  📜 AI Sistem Metni (Ham Prompt)
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchCompiledKb()}
+                title="Yenile"
+                disabled={compiledKbLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '7px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  color: '#475569',
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={13} style={{ animation: compiledKbLoading ? 'spin 1s linear infinite' : 'none' }} />
+                <span>Yenile</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCopyKbText(rawCompiledText)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '7px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid ' + (copiedKb ? '#86efac' : '#cbd5e1'),
+                  background: copiedKb ? '#f0fdf4' : '#fff',
+                  color: copiedKb ? '#166534' : '#0f172a',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {copiedKb ? <Check size={14} color="#16a34a" /> : <Copy size={13} />}
+                <span>{copiedKb ? 'Kopyalandı!' : 'Metni Kopyala'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Tab İçeriği */}
+          <div style={{ padding: '22px' }}>
+            {compiledKbLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '10px', color: '#64748b' }}>
+                <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: '14px' }}>Birleşik Bilgi Bankası derleniyor...</span>
+              </div>
+            ) : ozetTab === 'structured' ? (
+              /* YAPILANDIRILMIŞ ADIM ADIM GÖRÜNÜM */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* 1. ADIM: FİRMA BİLGİLERİ VE 7 GÜNLÜK SAATLER */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                    <Building2 size={16} color="#E63B2E" />
+                    <span>1. Adım: Şirket Bilgileri & 7 Günlük Çalışma Saatleri</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', fontSize: '13px' }}>
+                    <div><span style={{ color: '#64748b' }}>Firma: </span><strong>{companyName || currentWorkspace?.name || 'Belirtilmedi'}</strong></div>
+                    <div><span style={{ color: '#64748b' }}>Sektör: </span><strong>{companyIndustry || 'Emlak / Hizmet'}</strong></div>
+                    <div><span style={{ color: '#64748b' }}>Web: </span><strong>{companyWebsite || '—'}</strong></div>
+                    <div><span style={{ color: '#64748b' }}>Adres: </span><strong>{companyAddress || '—'}</strong></div>
+                  </div>
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Haftalık Çalışma Saatleri:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {Array.isArray(weeklySchedule) && weeklySchedule.length > 0 ? (
+                        weeklySchedule.map((d, idx) => (
+                          <span key={idx} style={{
+                            fontSize: '11px',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            background: d.isOpen ? '#ecfdf5' : '#f1f5f9',
+                            color: d.isOpen ? '#047857' : '#64748b',
+                            border: '1px solid ' + (d.isOpen ? '#a7f3d0' : '#e2e8f0'),
+                            fontWeight: 600
+                          }}>
+                            {d.day}: {d.isOpen ? `${d.start} - ${d.end}` : 'Kapalı'}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#0f172a' }}>{companyHours || 'Her gün 09:00 - 18:00'}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. ADIM: BİLGİ BANKASI BELGELERİ */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <Book size={16} color="#E63B2E" />
+                      <span>2. Adım: Bilgi Bankası Belgeleri & Metin Kaynakları</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayKbEntries.length} Kaynak</span>
+                  </div>
+                  {displayKbEntries.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Henüz ek belge eklenmedi. Sistem varsayılan kurumsal bilgileri kullanır.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {displayKbEntries.slice(0, 8).map((kb, idx) => (
+                        <div key={kb.id || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                            <FileText size={15} color="#64748b" />
+                            <span style={{ fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kb.title || `Belge #${idx + 1}`}</span>
+                          </div>
+                          <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                            {kb.sourceType || 'Belge'}
+                          </span>
+                        </div>
+                      ))}
+                      {displayKbEntries.length > 8 && (
+                        <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', paddingTop: '4px' }}>
+                          + {displayKbEntries.length - 8} kaynak daha Bilgi Bankasında aktif
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. ADIM: ŞUBELER */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <MapPin size={16} color="#E63B2E" />
+                      <span>3. Adım: Hizmet Şubeleri & Lokasyonlar</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayBranches.length} Şube</span>
+                  </div>
+                  {displayBranches.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Merkez ofis / Online tek lokasyon olarak yapılandırıldı.</p>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
+                      {displayBranches.map((b, idx) => (
+                        <div key={b.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '10px 12px', borderRadius: '6px', fontSize: '13px' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '3px' }}>{b.name}</div>
+                          {b.address && <div style={{ fontSize: '12px', color: '#64748b' }}>📍 {b.address}</div>}
+                          {b.phone && <div style={{ fontSize: '12px', color: '#64748b' }}>📞 {b.phone}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. ADIM: KATEGORİLER */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <Folder size={16} color="#E63B2E" />
+                      <span>4. Adım: Konu ve Hizmet Kategorileri</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayCategories.length} Kategori</span>
+                  </div>
+                  {displayCategories.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Özel kategori eklenmedi (Genel Danışmanlık geçerli).</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {displayCategories.map((c, idx) => (
+                        <span key={c.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', color: '#0f172a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E63B2E' }} />
+                          {c.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. ADIM: ÜRÜN & PORTFÖY */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <Package size={16} color="#E63B2E" />
+                      <span>5. Adım: Ürün ve Hizmet Portföyü / Fiyatlar</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayProducts.length} Kalem</span>
+                  </div>
+                  {displayProducts.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Özel ürün/portföy tanımlanmadı.</p>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+                      {displayProducts.map((p, idx) => (
+                        <div key={p.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>{p.name}</span>
+                            {p.price && (
+                              <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 700 }}>
+                                {Number(p.price).toLocaleString('tr-TR')} {p.currency || 'TRY'}
+                              </span>
+                            )}
+                          </div>
+                          {p.category && <div style={{ fontSize: '11px', color: '#64748b' }}>Kategori: {p.category}</div>}
+                          {p.description && <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.4 }}>{p.description}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. ADIM: AKIŞLAR & AŞAMALAR */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <Workflow size={16} color="#E63B2E" />
+                      <span>6. Adım: Satış & Müşteri Aşamaları (Akışlar)</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayFunnels.length || 1} Akış</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(displayFunnels.length > 0 ? displayFunnels : [{ name: 'Standart Satış Akışı', stages: [{ title: 'Yeni Talep' }, { title: 'İletişime Geçildi' }, { title: 'Teklif' }, { title: 'Randevu' }, { title: 'Satış Başarılı' }] }]).map((funnel, idx) => (
+                      <div key={funnel.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px 14px', borderRadius: '8px' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px', marginBottom: '8px' }}>
+                          {funnel.name || `Akış #${idx + 1}`}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+                          {(funnel.stages || []).map((stg, sIdx) => (
+                            <React.Fragment key={stg.id || sIdx}>
+                              <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: '12px', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                                {sIdx + 1}. {stg.title || stg.name || `Aşama ${sIdx + 1}`}
+                              </span>
+                              {sIdx < (funnel.stages || []).length - 1 && (
+                                <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700 }}>→</span>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 7. ADIM: TAKIMLAR & EKİPLER */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <Users size={16} color="#E63B2E" />
+                      <span>7. Adım: Departmanlar & Uzman Takımlar</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayTeams.length || 1} Takım</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+                    {(displayTeams.length > 0 ? displayTeams : [{ name: 'Satış & Danışmanlık Ekibi', members: [{ user: { name: 'Müşteri Temsilcisi' } }] }]).map((t, idx) => (
+                      <div key={t.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px', marginBottom: '4px' }}>{t.name}</div>
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>
+                          👥 {(t.members || []).length} Ekip Üyesi {t.leader ? ` • Lider: ${t.leader.name || t.leader.email}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 8. ADIM: AI ASİSTAN */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <Bot size={16} color="#E63B2E" />
+                      <span>8. Adım: Yetkili AI Asistan</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 700, background: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
+                      ● Aktif
+                    </span>
+                  </div>
+                  {displayBots.length > 0 ? (
+                    displayBots.map((b, idx) => (
+                      <div key={b.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>{b.name}</span>
+                          <span style={{ fontSize: '12px', color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px' }}>{b.role || 'Müşteri Danışmanı'}</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', background: '#f8fafc', padding: '8px 10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                          <strong>Sistem Talimatı:</strong> {b.prompt || 'Müşterilere kurumsal dilde yardımcı olur ve bilgi bankasındaki kaynakları temel alır.'}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px 14px', borderRadius: '6px' }}>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>Insta (Kurumsal AI Asistan)</div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                        Bilgi Bankası ve diğer adımlardaki tüm kurumsal verileri kullanarak 7/24 kesintisiz müşteri desteği sağlar.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            ) : (
+              /* AI SİSTEM METNİ / PROMPT (HAM METİN) GÖRÜNÜMÜ */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px', color: '#475569' }}>
+                  <span>
+                    Bu metin, AI modelinin sistem talimatına (system prompt) enjekte edilen <strong>nihai birleşik şirket hafızasıdır</strong>.
+                  </span>
+                  <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                    {charCount.toLocaleString('tr-TR')} karakter • ~{wordCount.toLocaleString('tr-TR')} kelime
+                  </span>
+                </div>
+
+                <div style={{ position: 'relative' }}>
+                  <pre style={{
+                    margin: 0,
+                    background: '#0f172a',
+                    color: '#f8fafc',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    lineHeight: 1.6,
+                    fontFamily: 'SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: '540px',
+                    overflowY: 'auto',
+                    border: '1px solid #1e293b'
+                  }}>
+                    {rawCompiledText || '(Bilgi bankası metni oluşturuluyor...)'}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyKbText(rawCompiledText)}
+                    style={{
+                      position: 'absolute',
+                      top: '12px',
+                      right: '12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      color: '#fff',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      backdropFilter: 'blur(4px)'
+                    }}
+                  >
+                    {copiedKb ? <Check size={12} color="#86efac" /> : <Copy size={12} />}
+                    <span>{copiedKb ? 'Kopyalandı!' : 'Kopyala'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-        {[
-          { label: 'Firma Adı', val: companyName || currentWorkspace?.name || 'Instomer' },
-          { label: 'Çalışma Saatleri (7 Gün)', val: companyHours || 'Tanımlı değil' },
-          { label: 'Bilgi Bankası Belgeleri', val: `${(Array.isArray(kbEntries) ? kbEntries.length : 0)} Kaynak Aktif` },
-          { label: 'Şubeler', val: `${(Array.isArray(branches) ? branches.length : 0)} Şube Tanımlı` },
-          { label: 'Kategoriler', val: `${(Array.isArray(categories) ? categories.length : 0)} Kategori` },
-          { label: 'Ürünler / Portföyler', val: `${(Array.isArray(products) ? products.length : 0)} Ürün Listelendi` },
-          { label: 'Akışlar', val: `${(Array.isArray(funnels) ? funnels.length : 0) || 1} Akış Aktif` },
-          { label: 'Takımlar', val: `${(Array.isArray(teams) ? teams.length : 0) || 1} Takım Aktif` },
-          { label: 'AI Asistan', val: `${(Array.isArray(bots) ? bots.filter(b => b.isActive).length : 0)} Asistan Aktif` },
-        ].map((item, i) => (
-          <div key={i} style={{ border: '1px solid #e2e8f0', padding: '14px 16px', borderRadius: '8px', background: '#fff' }}>
-            <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}>{item.label}</div>
-            <div style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a' }}>{item.val}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderContent = () => {
     switch (STEPS[activeStep].key) {

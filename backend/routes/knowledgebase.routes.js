@@ -9,12 +9,16 @@ import {
     upload,
     addUrlEntry,
     syncEntryManually,
-    bulkSyncAllToRetell
+    bulkSyncAllToRetell,
+    getCompiledKnowledgeBase
 } from '../controllers/knowledgebase.controller.js';
 
 const router = express.Router();
 
 router.use(authenticateJWT);
+
+// Get compiled unified knowledge base (all wizard steps merged)
+router.get('/:workspaceId/compiled', requireWorkspaceAccess, getCompiledKnowledgeBase);
 
 // Get all entries
 router.get('/:workspaceId', requireWorkspaceAccess, getKnowledgeBase);

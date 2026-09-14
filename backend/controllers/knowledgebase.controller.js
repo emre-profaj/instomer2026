@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { getBaseKnowledgeContext } from '../services/baseKnowledge.service.js';
 
 /**
  * Instomer KB girişini Retell'e otomatik senkronize et.
@@ -445,6 +446,18 @@ export const syncEntryManually = async (req, res) => {
     } catch (error) {
         console.error('Sync entry error:', error);
         res.status(500).json({ error: 'Senkronizasyon sırasında hata oluştu' });
+    }
+};
+
+// Get compiled unified knowledge base for workspace (all wizard steps merged)
+export const getCompiledKnowledgeBase = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const result = await getBaseKnowledgeContext(workspaceId);
+        res.json(result);
+    } catch (error) {
+        console.error('getCompiledKnowledgeBase error:', error);
+        res.status(500).json({ error: 'Derlenmiş bilgi bankası alınamadı' });
     }
 };
 

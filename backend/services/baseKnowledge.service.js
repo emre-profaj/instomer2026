@@ -5,21 +5,35 @@
  * promptuna enjekte edilebilir, yapılandırılmış ve token-optimizeli
  * formata dönüştürür.
  * 
- * Kapsadığı Base Alanları:
- * 1. Şirket Bilgileri (Ad, Açıklama, Adres, Telefon, E-posta, Website, Saatler)
+ * Kapsadığı Alanlar:
+ * 1. Şirket Bilgileri & 7 Günlük Çalışma Saatleri
  * 2. Şubeler & Konumlar (İsim, Adres, Telefon)
- * 3. Ürünler, Hizmetler & Fiyatlar (İsim, Fiyat, Para Birimi, Kategori, Bot Notu)
- * 4. Kaynaklar & Uzmanlar (İsim, Unvan, Tür, Çalışma Saatleri)
- * 5. Bilgi Bankası Metinleri & Soru-Cevaplar (Başlık/Soru, İçerik/Cevap)
+ * 3. Kategoriler & Hizmet Alanları
+ * 4. Ürünler, Hizmetler & Fiyatlar
+ * 5. Müşteri Akışları (Funnels) ve Aşamaları
+ * 6. Takımlar & Ekipler (Departmanlar, Üyeler, Liderler)
+ * 7. AI Asistanlar (Rol, Sistem Talimatı, Yetenekler)
+ * 8. Kaynaklar & Uzmanlar
+ * 9. Bilgi Bankası Metinleri, Taranan Sayfalar & Soru-Cevaplar (SSS)
  */
 
 import prisma from '../lib/prisma.js';
 
 export async function getBaseKnowledgeContext(workspaceId) {
-    if (!workspaceId) return { text: '', summary: {} };
+    if (!workspaceId) return { text: '', summary: {}, structuredData: {} };
 
     try {
-        const [workspace, branches, products, resources, kbEntries] = await Promise.all([
+        const [
+            workspace,
+            branches,
+            categories,
+            products,
+            funnels,
+            teams,
+            bots,
+            resources,
+            kbEntries
+        ] = await Promise.all([
             // 1. Şirket Bilgileri
             prisma.workspace.findUnique({
                 where: { id: workspaceId },
@@ -37,13 +51,20 @@ export async function getBaseKnowledgeContext(workspaceId) {
             // 2. Şubeler
             prisma.appointmentBranch.findMany({
                 where: { workspaceId, isActive: true },
-                select: { name: true, address: true, phone: true },
+                select: { id: true, name: true, address: true, phone: true },
                 orderBy: { order: 'asc' }
             }),
-            // 3. Ürünler ve Fiyatlar (Gruplar hariç, doğrudan ürün/hizmetler)
+            // 3. Kategoriler
+            prisma.topicCategory.findMany({
+                where: { workspaceId },
+                select: { id: true, name: true, description: true },
+                orderBy: { createdAt: 'asc' }
+            }),
+            // 4. Ürünler ve Fiyatlar
             prisma.product.findMany({
                 where: { workspaceId, isActive: true, isGroup: false },
                 select: {
+                    id: true,
                     name: true,
                     price: true,
                     priceUSD: true,
@@ -51,14 +72,59 @@ export async function getBaseKnowledgeContext(workspaceId) {
                     description: true,
                     aiContext: true,
                     groupName: true,
-                    category: { select: { name: true } }
+                    category: { select: { id: true, name: true } }
                 },
                 take: 150
             }),
-            // 4. Kaynaklar & Uzmanlar
+            // 5. Akışlar ve Aşamaları
+            prisma.funnel.findMany({
+                where: { workspaceId },
+                select: {
+                    id: true,
+                    name: true,
+                    icon: true,
+                    color: true,
+                    isDefault: true,
+                    stages: {
+                        select: { id: true, name: true, color: true, order: true },
+                        orderBy: { order: 'asc' }
+                    }
+                },
+                orderBy: { order: 'asc' }
+            }),
+            // 6. Takımlar ve Ekip Üyeleri
+            prisma.team.findMany({
+                where: { workspaceId },
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    members: {
+                        select: {
+                            id: true,
+                            isLeader: true,
+                            user: { select: { id: true, name: true, email: true } }
+                        }
+                    }
+                }
+            }),
+            // 7. AI Asistanlar
+            prisma.aIBot.findMany({
+                where: { workspaceId },
+                select: {
+                    id: true,
+                    name: true,
+                    role: true,
+                    prompt: true,
+                    capabilities: true,
+                    isActive: true
+                }
+            }),
+            // 8. Kaynaklar & Uzmanlar
             prisma.calendarResource.findMany({
                 where: { workspaceId, isActive: true },
                 select: {
+                    id: true,
                     name: true,
                     title: true,
                     type: true,
@@ -67,10 +133,10 @@ export async function getBaseKnowledgeContext(workspaceId) {
                 },
                 take: 50
             }),
-            // 5. Bilgi Bankası Metinleri & SSS
+            // 9. Bilgi Bankası Metinleri & SSS
             prisma.knowledgeBase.findMany({
                 where: { workspaceId },
-                select: { title: true, content: true, sourceType: true, sourceUrl: true },
+                select: { id: true, title: true, content: true, sourceType: true, sourceUrl: true, filename: true },
                 orderBy: { updatedAt: 'desc' },
                 take: 100
             })
@@ -78,7 +144,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
 
         const sections = [];
 
-        // 1. Şirket Bilgileri
+        // 1. Şirket Bilgileri & Çalışma Saatleri
         if (workspace) {
             const lines = [];
             if (workspace.companyName) lines.push(`Firma Adı: ${workspace.companyName}`);
@@ -87,10 +153,10 @@ export async function getBaseKnowledgeContext(workspaceId) {
             if (workspace.companyEmail) lines.push(`E-posta: ${workspace.companyEmail}`);
             if (workspace.companyWebsite) lines.push(`Website: ${workspace.companyWebsite}`);
             if (workspace.companyAddress) lines.push(`Merkez Adres: ${workspace.companyAddress}`);
-            if (workspace.companyWorkingHours) lines.push(`Çalışma Saatleri: ${workspace.companyWorkingHours}`);
+            if (workspace.companyWorkingHours) lines.push(`Çalışma Saatleri (7 Gün): ${workspace.companyWorkingHours}`);
 
             if (lines.length > 0) {
-                sections.push(`🏢 ŞİRKET BİLGİLERİ:\n${lines.join('\n')}`);
+                sections.push(`🏢 ŞİRKET BİLGİLERİ VE ÇALIŞMA SAATLERİ:\n${lines.join('\n')}`);
             }
         }
 
@@ -105,7 +171,17 @@ export async function getBaseKnowledgeContext(workspaceId) {
             sections.push(`📍 ŞUBELER VE ADRESLER:\n${branchLines.join('\n')}`);
         }
 
-        // 3. Ürünler, Hizmetler ve Fiyatlar
+        // 3. Kategoriler
+        if (categories.length > 0) {
+            const catLines = categories.map(c => {
+                let info = `- ${c.name}`;
+                if (c.description) info += `: ${c.description}`;
+                return info;
+            });
+            sections.push(`📁 HİZMET VE KONU KATEGORİLERİ:\n${catLines.join('\n')}`);
+        }
+
+        // 4. Ürünler, Hizmetler ve Fiyatlar
         if (products.length > 0) {
             const productLines = products.map(p => {
                 let info = `- ${p.name}`;
@@ -120,7 +196,37 @@ export async function getBaseKnowledgeContext(workspaceId) {
             sections.push(`🛍️ ÜRÜNLER, HİZMETLER VE FİYAT LİSTESİ:\n${productLines.join('\n')}`);
         }
 
-        // 4. Uzmanlar, Doktorlar ve Personel
+        // 5. Akışlar (Funnels) ve Aşamaları
+        if (funnels.length > 0) {
+            const funnelLines = funnels.map(f => {
+                const stageNames = Array.isArray(f.stages) && f.stages.length > 0
+                    ? f.stages.map(s => s.name).join(' → ')
+                    : 'Standart Aşamalar';
+                return `- ${f.name}${f.isDefault ? ' (Varsayılan)' : ''}: [Aşamalar: ${stageNames}]`;
+            });
+            sections.push(`🔄 MÜŞTERİ AKIŞLARI (FUNNELS) VE AŞAMALARI:\n${funnelLines.join('\n')}`);
+        }
+
+        // 6. Takımlar ve Departmanlar
+        if (teams.length > 0) {
+            const teamLines = teams.map(t => {
+                const memberNames = (t.members || []).map(m => `${m.user?.name || m.user?.email}${m.isLeader ? ' (Lider)' : ''}`).join(', ');
+                return `- ${t.name}: ${t.description || 'Genel Departman'}${memberNames ? ` | Üyeler: ${memberNames}` : ''}`;
+            });
+            sections.push(`👥 TAKIMLAR VE DEPARTMANLAR:\n${teamLines.join('\n')}`);
+        }
+
+        // 7. AI Asistanlar
+        if (bots.length > 0) {
+            const botLines = bots.map(b => {
+                let info = `- ${b.name} (${b.role || 'Müşteri Temsilcisi'})${b.isActive ? ' [Aktif]' : ' [Pasif]'}`;
+                if (b.prompt) info += ` | Sistem Talimatı: "${b.prompt.substring(0, 300)}"`;
+                return info;
+            });
+            sections.push(`🤖 AI ASİSTAN DAVRANIŞ KURALLARI VE TALİMATLARI:\n${botLines.join('\n')}`);
+        }
+
+        // 8. Uzmanlar, Doktorlar ve Personel
         if (resources.length > 0) {
             const resourceLines = resources.map(r => {
                 let info = `- ${r.title ? r.title + ' ' : ''}${r.name}`;
@@ -128,10 +234,10 @@ export async function getBaseKnowledgeContext(workspaceId) {
                 if (r.availableStart && r.availableEnd) info += ` | Çalışma Saatleri: ${r.availableStart} - ${r.availableEnd}`;
                 return info;
             });
-            sections.push(`👥 UZMANLAR VE KADRO:\n${resourceLines.join('\n')}`);
+            sections.push(`👨‍⚕️ UZMANLAR VE ÇALIŞMA SAATLERİ:\n${resourceLines.join('\n')}`);
         }
 
-        // 5. Bilgi Bankası Metinleri ve Soru-Cevaplar (SSS)
+        // 9. Bilgi Bankası Metinleri ve Soru-Cevaplar (SSS)
         if (kbEntries.length > 0) {
             const faqs = kbEntries.filter(e => e.sourceType === 'FAQ');
             const docs = kbEntries.filter(e => e.sourceType !== 'FAQ');
@@ -160,15 +266,32 @@ export async function getBaseKnowledgeContext(workspaceId) {
             text: fullText,
             summary: {
                 hasCompany: !!workspace?.companyName,
+                companyName: workspace?.companyName,
+                companyHours: workspace?.companyWorkingHours,
                 branchCount: branches.length,
+                categoryCount: categories.length,
                 productCount: products.length,
+                funnelCount: funnels.length,
+                teamCount: teams.length,
+                botCount: bots.length,
                 resourceCount: resources.length,
                 kbCount: kbEntries.length
+            },
+            structuredData: {
+                company: workspace,
+                branches,
+                categories,
+                products,
+                funnels,
+                teams,
+                bots,
+                resources,
+                kbEntries
             }
         };
     } catch (error) {
         console.error('getBaseKnowledgeContext error:', error);
-        return { text: '', summary: {} };
+        return { text: '', summary: {}, structuredData: {} };
     }
 }
 

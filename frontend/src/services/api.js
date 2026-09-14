@@ -509,6 +509,7 @@ export const leadsAPI = {
 
 export const knowledgeBaseAPI = {
     getAll: (workspaceId) => api.get(`/knowledgebase/${workspaceId}`),
+    getCompiled: (workspaceId) => api.get(`/knowledgebase/${workspaceId}/compiled`),
     addText: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/text`, data),
     addUrl: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/url`, data),
     uploadFile: (workspaceId, formData) => api.post(`/knowledgebase/${workspaceId}/upload`, formData, {
