@@ -954,7 +954,12 @@ export const marketingV2API = {
     createGroup: (workspaceId, campaignId, data) => api.post(`/marketing-v2/${workspaceId}/campaigns/${campaignId}/groups`, data),
     executeGroup: (workspaceId, groupId) => api.post(`/marketing-v2/${workspaceId}/groups/${groupId}/execute`),
 
-    quickBulkCampaign: (workspaceId, data) => api.post(`/marketing-v2/${workspaceId}/quick-bulk-campaign`, data)
+    quickBulkCampaign: (workspaceId, data) => api.post(`/marketing-v2/${workspaceId}/quick-bulk-campaign`, data),
+
+    // Campaign detail, recipients & retry
+    getCampaignDetail: (workspaceId, id) => api.get(`/marketing-v2/${workspaceId}/campaigns/${id}/detail`),
+    getCampaignRecipients: (workspaceId, id, params) => api.get(`/marketing-v2/${workspaceId}/campaigns/${id}/recipients`, { params }),
+    retryCampaignFailed: (workspaceId, id) => api.post(`/marketing-v2/${workspaceId}/campaigns/${id}/retry`)
 };
 
 // ==================== BILLING API ====================

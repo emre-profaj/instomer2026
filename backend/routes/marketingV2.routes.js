@@ -38,5 +38,10 @@ router.post('/:workspaceId/wizard-launch', marketingV2Controller.wizardLaunchCam
 router.post('/:workspaceId/sync-past-data', marketingV2Controller.syncPastData);
 router.post('/:workspaceId/quick-bulk-campaign', marketingV2Controller.quickBulkCampaign);
 
+// CAMPAIGN DETAIL, RECIPIENTS & RETRY
+router.get('/:workspaceId/campaigns/:id/detail', marketingV2Controller.getCampaignFullDetail);
+router.get('/:workspaceId/campaigns/:id/recipients', marketingV2Controller.getCampaignRecipients);
+router.post('/:workspaceId/campaigns/:id/retry', marketingV2Controller.retryCampaignFailed);
+
 export default router;
 

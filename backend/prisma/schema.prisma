@@ -460,6 +460,7 @@ model Contact {
   scheduledMessages ScheduledMessage[] // Zamanlanmış mesajlar
   birthDate         DateTime? // Doğum günü
   groupMemberships  ContactGroupMember[] // Grup üyelikleri
+  marketingRecipients MarketingRecipient[] @relation("MarketingRecipientContact")
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -2332,11 +2333,13 @@ model MarketingRecipient {
   campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   send        CampaignSend?     @relation(fields: [sendId], references: [id], onDelete: Cascade)
   group       CampaignGroup?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact     Contact?          @relation("MarketingRecipientContact", fields: [contactId], references: [id])
 
   @@index([campaignId])
   @@index([sendId])
   @@index([groupId])
   @@index([messageId])
+  @@index([contactId])
   @@map("marketing_recipients")
 }
 

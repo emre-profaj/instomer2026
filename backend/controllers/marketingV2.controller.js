@@ -1927,9 +1927,7 @@ export const quickBulkCampaign = async (req, res) => {
         // 6. Launch execution in background via executeGroupSendCore
         executeGroupSendCore(workspaceId, group.id).catch(err => {
             console.error(`❌ [quickBulkCampaign] Background execution error:`, err);
-        });
-
-        return res.json({
+        });\n\n        return res.json({
             success: true,
             campaign,
             group,
@@ -1941,5 +1939,346 @@ export const quickBulkCampaign = async (req, res) => {
     } catch (error) {
         console.error('❌ [quickBulkCampaign]', error);
         return res.status(500).json({ error: error.message || 'Hızlı kampanya oluşturulamadı' });
+    }
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// CAMPAIGN DETAIL — Mesaj önizlemesi + alıcı özeti
+// ══════════════════════════════════════════════════════════════════════════
+
+export const getCampaignFullDetail = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+
+        const campaign = await prisma.marketingCampaign.findFirst({
+            where: { id, workspaceId },
+            include: {
+                groups: {
+                    include: {
+                        groupMessages: {
+                            include: {
+                                message: true
+                            }
+                        },
+                        list: { select: { id: true, name: true, icon: true, color: true } }
+                    }
+                },
+                messagesLegacy: true,
+                template: true,
+                _count: { select: { recipients: true, groups: true } }
+            }
+        });
+
+        if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
+
+        // Alıcı durum özeti
+        const statusCounts = await prisma.marketingRecipient.groupBy({
+            by: ['status'],
+            where: { campaignId: id },
+            _count: { id: true }
+        });
+
+        const statusSummary = Object.fromEntries(statusCounts.map(s => [s.status, s._count.id]));
+
+        // Mesaj önizlemelerini topla
+        const messagePreviews = [];
+
+        // v2 gruplarından mesajları çek
+        for (const group of campaign.groups) {
+            for (const gm of group.groupMessages) {
+                if (gm.message) {
+                    messagePreviews.push({
+                        id: gm.message.id,
+                        name: gm.message.name,
+                        channel: gm.message.channel,
+                        content: gm.message.content,
+                        templateName: gm.message.templateName,
+                        groupName: group.name
+                    });
+                }
+            }
+        }
+
+        // Legacy mesajlar
+        if (campaign.messagesLegacy?.length > 0) {
+            for (const msg of campaign.messagesLegacy) {
+                messagePreviews.push({
+                    id: msg.id,
+                    name: msg.name,
+                    channel: msg.channel,
+                    content: msg.content,
+                    templateName: msg.templateName,
+                    groupName: '(Legacy)'
+                });
+            }
+        }
+
+        // Template varsa (eski v1 kampanya)
+        if (campaign.template) {
+            messagePreviews.push({
+                id: 'template-' + campaign.template.id,
+                name: campaign.template.name,
+                channel: 'WHATSAPP',
+                content: campaign.template.bodyText || campaign.template.components,
+                templateName: campaign.template.name,
+                groupName: '(Şablon)'
+            });
+        }
+
+        // Hedef liste bilgileri
+        const targetLists = campaign.groups
+            .filter(g => g.list)
+            .map(g => ({ id: g.list.id, name: g.list.name, icon: g.list.icon, color: g.list.color, groupName: g.name }));
+
+        res.json({
+            success: true,
+            campaign: {
+                id: campaign.id,
+                name: campaign.name,
+                description: campaign.description,
+                status: campaign.status,
+                channel: campaign.channel,
+                sentCount: campaign.sentCount,
+                deliveredCount: campaign.deliveredCount,
+                readCount: campaign.readCount,
+                failedCount: campaign.failedCount,
+                repliedCount: campaign.repliedCount,
+                sentAt: campaign.sentAt,
+                createdAt: campaign.createdAt,
+                startDate: campaign.startDate,
+                endDate: campaign.endDate,
+                budget: campaign.budget,
+                isAutomation: campaign.isAutomation
+            },
+            statusSummary,
+            messagePreviews,
+            targetLists,
+            totalRecipients: campaign._count.recipients,
+            totalGroups: campaign._count.groups
+        });
+    } catch (error) {
+        console.error('❌ [getCampaignFullDetail]', error);
+        res.status(500).json({ error: 'Kampanya detayı yüklenemedi' });
+    }
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// CAMPAIGN RECIPIENTS — Sayfalı alıcı listesi
+// ══════════════════════════════════════════════════════════════════════════
+
+export const getCampaignRecipients = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, page = 1, limit = 50, search } = req.query;
+
+        const where = { campaignId: id };
+        if (status && status !== 'ALL') where.status = status;
+        if (search) {
+            where.OR = [
+                { name: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search } },
+                { email: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        const [recipients, total] = await Promise.all([
+            prisma.marketingRecipient.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip: (parseInt(page) - 1) * parseInt(limit),
+                take: parseInt(limit),
+                include: {
+                    contact: { select: { id: true, name: true, phone: true, avatar: true } }
+                }
+            }),
+            prisma.marketingRecipient.count({ where })
+        ]);
+
+        // Durum özeti
+        const statusCounts = await prisma.marketingRecipient.groupBy({
+            by: ['status'],
+            where: { campaignId: id },
+            _count: { id: true }
+        });
+
+        res.json({
+            success: true,
+            recipients,
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            statusCounts: Object.fromEntries(statusCounts.map(s => [s.status, s._count.id]))
+        });
+    } catch (error) {
+        console.error('❌ [getCampaignRecipients]', error);
+        res.status(500).json({ error: 'Alıcılar yüklenemedi' });
+    }
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// RETRY FAILED — Başarısız alıcılara tekrar gönderim
+// ══════════════════════════════════════════════════════════════════════════
+
+export const retryCampaignFailed = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+
+        const campaign = await prisma.marketingCampaign.findFirst({
+            where: { id, workspaceId },
+            include: {
+                template: true,
+                groups: {
+                    include: {
+                        groupMessages: { include: { message: true } }
+                    }
+                }
+            }
+        });
+        if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
+
+        const failedRecipients = await prisma.marketingRecipient.findMany({
+            where: { campaignId: id, status: 'FAILED' }
+        });
+
+        if (failedRecipients.length === 0) {
+            return res.json({ success: true, retried: 0, message: 'Başarısız alıcı yok' });
+        }
+
+        // WhatsApp numarasını bul
+        const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({ where: { workspaceId } });
+        if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
+
+        // Template'i bul — önce v2 group mesajlarından, yoksa campaign template'den
+        let templateName = null;
+        let templateLang = 'tr';
+
+        if (campaign.groups?.length > 0) {
+            for (const group of campaign.groups) {
+                for (const gm of group.groupMessages) {
+                    if (gm.message?.templateName) {
+                        templateName = gm.message.templateName;
+                        break;
+                    }
+                }
+                if (templateName) break;
+            }
+        }
+
+        if (!templateName && campaign.template) {
+            templateName = campaign.template.name;
+            templateLang = campaign.template.language || 'tr';
+        }
+
+        if (!templateName) {
+            return res.status(400).json({ error: 'Kampanyada WhatsApp şablonu bulunamadı' });
+        }
+
+        // Kampanyayı RUNNING yap
+        await prisma.marketingCampaign.update({
+            where: { id },
+            data: { status: 'RUNNING' }
+        });
+
+        res.json({
+            success: true,
+            retrying: failedRecipients.length,
+            message: `${failedRecipients.length} başarısız alıcıya tekrar gönderiliyor...`
+        });
+
+        // Arka planda gönder
+        const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v21.0';
+        setImmediate(async () => {
+            let retried = 0, stillFailed = 0;
+
+            for (const recipient of failedRecipients) {
+                try {
+                    await prisma.marketingRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: 'PENDING', failReason: null, failedAt: null }
+                    });
+
+                    const payload = {
+                        messaging_product: 'whatsapp',
+                        to: recipient.phone,
+                        type: 'template',
+                        template: {
+                            name: templateName,
+                            language: { code: templateLang }
+                        }
+                    };
+
+                    const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.phoneNumberId}/messages`;
+                    const response = await axios.post(apiUrl, payload, {
+                        headers: { Authorization: `Bearer ${whatsappPhone.accessToken}`, 'Content-Type': 'application/json' }
+                    });
+
+                    const waMessageId = response.data?.messages?.[0]?.id;
+
+                    // Message tablosuna kayıt oluştur (webhook takibi için)
+                    let dbMessageId = waMessageId;
+                    try {
+                        const conversation = recipient.contactId
+                            ? await prisma.conversation.findFirst({
+                                where: { contactId: recipient.contactId, workspaceId }
+                            })
+                            : null;
+
+                        if (conversation) {
+                            const dbMsg = await prisma.message.create({
+                                data: {
+                                    conversationId: conversation.id,
+                                    content: `[Kampanya Tekrar Gönderim] ${templateName}`,
+                                    isFromContact: false,
+                                    whatsappMessageId: waMessageId,
+                                    type: 'TEMPLATE',
+                                    status: 'sent',
+                                    channel: 'WHATSAPP'
+                                }
+                            });
+                            dbMessageId = dbMsg.id;
+                        }
+                    } catch (_) {}
+
+                    await prisma.marketingRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: 'SENT', messageId: dbMessageId, sentAt: new Date() }
+                    });
+                    retried++;
+
+                    await new Promise(r => setTimeout(r, 1500));
+                } catch (err) {
+                    console.error(`❌ [Campaign Retry v2] Failed for ${recipient.phone}:`, err.response?.data?.error?.message || err.message);
+                    await prisma.marketingRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: 'FAILED', failedAt: new Date(), failReason: err.response?.data?.error?.message || err.message }
+                    });
+                    stillFailed++;
+                }
+            }
+
+            // Kampanya sayaçlarını güncelle
+            const counts = await prisma.marketingRecipient.groupBy({
+                by: ['status'],
+                where: { campaignId: id },
+                _count: { id: true }
+            });
+            const countMap = Object.fromEntries(counts.map(c => [c.status, c._count.id]));
+
+            await prisma.marketingCampaign.update({
+                where: { id },
+                data: {
+                    status: 'COMPLETED',
+                    sentCount: (countMap.SENT || 0) + (countMap.DELIVERED || 0) + (countMap.READ || 0),
+                    deliveredCount: countMap.DELIVERED || 0,
+                    readCount: countMap.READ || 0,
+                    failedCount: countMap.FAILED || 0
+                }
+            });
+
+            console.log(`🔄 [Campaign Retry v2] Done: ${retried} resent, ${stillFailed} still failed`);
+        });
+    } catch (error) {
+        console.error('❌ [retryCampaignFailed v2]', error);
+        res.status(500).json({ error: 'Tekrar gönderim başlatılamadı' });
     }
 };

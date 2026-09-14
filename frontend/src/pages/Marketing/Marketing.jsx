@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import api, { marketingV2API } from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
     BarChart2, Phone, Mail, Smartphone, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
@@ -95,6 +95,320 @@ function CampaignFormModal({ initial, onSave, onClose }) {
     );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGN DETAIL MODAL — Mesaj önizlemesi + alıcı listesi + retry
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATUS_BADGES = {
+    PENDING: { label: '⏳ Bekliyor', bg: '#fef3c7', color: '#92400e' },
+    SENT: { label: '📤 Gönderildi', bg: '#dbeafe', color: '#1e40af' },
+    DELIVERED: { label: '✅ Teslim', bg: '#d1fae5', color: '#065f46' },
+    READ: { label: '👁 Okundu', bg: '#ede9fe', color: '#5b21b6' },
+    FAILED: { label: '❌ Başarısız', bg: '#fee2e2', color: '#991b1b' }
+};
+
+function CampaignDetailModal({ wsId, campaignId, onClose }) {
+    const [detail, setDetail] = useState(null);
+    const [recipients, setRecipients] = useState([]);
+    const [recipientTotal, setRecipientTotal] = useState(0);
+    const [statusCounts, setStatusCounts] = useState({});
+    const [recipientFilter, setRecipientFilter] = useState('ALL');
+    const [recipientPage, setRecipientPage] = useState(1);
+    const [recipientSearch, setRecipientSearch] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [loadingRecipients, setLoadingRecipients] = useState(false);
+    const [retrying, setRetrying] = useState(false);
+
+    // Kampanya detayını yükle
+    useEffect(() => {
+        if (!campaignId) return;
+        setLoading(true);
+        marketingV2API.getCampaignDetail(wsId, campaignId)
+            .then(res => {
+                setDetail(res.data);
+                setStatusCounts(res.data.statusSummary || {});
+            })
+            .catch(err => console.error('Detail load error:', err))
+            .finally(() => setLoading(false));
+    }, [campaignId, wsId]);
+
+    // Alıcıları yükle
+    const loadRecipients = useCallback(() => {
+        if (!campaignId) return;
+        setLoadingRecipients(true);
+        const params = { page: recipientPage, limit: 50 };
+        if (recipientFilter !== 'ALL') params.status = recipientFilter;
+        if (recipientSearch.trim()) params.search = recipientSearch.trim();
+        marketingV2API.getCampaignRecipients(wsId, campaignId, params)
+            .then(res => {
+                setRecipients(res.data.recipients || []);
+                setRecipientTotal(res.data.total || 0);
+                if (res.data.statusCounts) setStatusCounts(res.data.statusCounts);
+            })
+            .catch(err => console.error('Recipients load error:', err))
+            .finally(() => setLoadingRecipients(false));
+    }, [campaignId, wsId, recipientPage, recipientFilter, recipientSearch]);
+
+    useEffect(() => { loadRecipients(); }, [loadRecipients]);
+
+    const handleRetry = async () => {
+        if (!confirm('Başarısız alıcılara tekrar göndermek istediğinize emin misiniz?')) return;
+        setRetrying(true);
+        try {
+            const res = await marketingV2API.retryCampaignFailed(wsId, campaignId);
+            alert(res.data.message || 'Tekrar gönderim başlatıldı');
+            setTimeout(() => { loadRecipients(); setRetrying(false); }, 3000);
+        } catch (err) {
+            alert('Hata: ' + (err.response?.data?.error || err.message));
+            setRetrying(false);
+        }
+    };
+
+    const camp = detail?.campaign;
+    const totalPages = Math.ceil(recipientTotal / 50);
+    const failedCount = statusCounts.FAILED || 0;
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div style={{
+                background: '#fff', borderRadius: 16, width: '90%', maxWidth: 900, maxHeight: '90vh',
+                overflow: 'auto', padding: 0, position: 'relative'
+            }} onClick={e => e.stopPropagation()}>
+
+                {/* Header */}
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '20px 24px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0,
+                    background: '#fff', zIndex: 10, borderRadius: '16px 16px 0 0'
+                }}>
+                    <div>
+                        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                            📊 Kampanya Detayı
+                        </h2>
+                        {camp && <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{camp.name}</div>}
+                    </div>
+                    <button onClick={onClose} style={{
+                        background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8',
+                        width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }} onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
+                       onMouseOut={e => e.currentTarget.style.background = 'none'}>✕</button>
+                </div>
+
+                {loading ? (
+                    <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
+                        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
+                        <div style={{ marginTop: 10 }}>Yükleniyor...</div>
+                    </div>
+                ) : !camp ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Kampanya bulunamadı</div>
+                ) : (
+                    <div style={{ padding: '20px 24px' }}>
+
+                        {/* İstatistik Kartları */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+                            {[
+                                { label: 'Gönderildi', value: camp.sentCount || 0, color: '#2563eb', icon: '📤' },
+                                { label: 'Teslim', value: camp.deliveredCount || 0, color: '#16a34a', icon: '✅' },
+                                { label: 'Okundu', value: camp.readCount || 0, color: '#7c3aed', icon: '👁' },
+                                { label: 'Başarısız', value: camp.failedCount || 0, color: '#dc2626', icon: '❌' },
+                                { label: 'Yanıtlayan', value: camp.repliedCount || 0, color: '#0891b2', icon: '💬' }
+                            ].map(s => (
+                                <div key={s.label} style={{
+                                    background: s.color + '0a', border: `1px solid ${s.color}22`, borderRadius: 10,
+                                    padding: '14px 16px', textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.icon} {s.value}</div>
+                                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{s.label}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Mesaj Önizlemesi */}
+                        {detail?.messagePreviews?.length > 0 && (
+                            <div style={{ marginBottom: 20 }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 10 }}>📝 Gönderilen Mesaj</h3>
+                                {detail.messagePreviews.map((msg, i) => (
+                                    <div key={i} style={{
+                                        background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10,
+                                        padding: '12px 16px', marginBottom: 8
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{msg.name || msg.templateName || 'Mesaj'}</span>
+                                            <span style={{
+                                                fontSize: 10, background: '#e2e8f0', color: '#475569',
+                                                padding: '2px 8px', borderRadius: 6, fontWeight: 500
+                                            }}>{msg.channel}</span>
+                                            {msg.groupName && msg.groupName !== '(Legacy)' && msg.groupName !== '(Şablon)' && (
+                                                <span style={{ fontSize: 10, color: '#94a3b8' }}>• {msg.groupName}</span>
+                                            )}
+                                        </div>
+                                        {msg.templateName && (
+                                            <div style={{ fontSize: 12, color: '#64748b' }}>
+                                                Şablon: <strong>{msg.templateName}</strong>
+                                            </div>
+                                        )}
+                                        {msg.content && typeof msg.content === 'string' && (
+                                            <div style={{
+                                                fontSize: 13, color: '#374151', marginTop: 6, lineHeight: 1.5,
+                                                background: '#fff', padding: '8px 12px', borderRadius: 8,
+                                                border: '1px solid #e5e7eb', whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto'
+                                            }}>
+                                                {msg.content.substring(0, 500)}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Hedef Listeler */}
+                        {detail?.targetLists?.length > 0 && (
+                            <div style={{ marginBottom: 20 }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8 }}>🎯 Hedef Listeler</h3>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    {detail.targetLists.map((l, i) => (
+                                        <span key={i} style={{
+                                            background: l.color + '15', color: l.color, border: `1px solid ${l.color}33`,
+                                            padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500
+                                        }}>{l.icon} {l.name}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Alıcı Listesi */}
+                        <div>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                marginBottom: 12, flexWrap: 'wrap', gap: 8
+                            }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: 0 }}>
+                                    👥 Alıcılar ({recipientTotal})
+                                </h3>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <input
+                                        placeholder="Ara..."
+                                        value={recipientSearch}
+                                        onChange={e => { setRecipientSearch(e.target.value); setRecipientPage(1); }}
+                                        style={{
+                                            padding: '6px 12px', borderRadius: 8, border: '1px solid #e2e8f0',
+                                            fontSize: 13, width: 160, outline: 'none'
+                                        }}
+                                    />
+                                    {['ALL', 'SENT', 'DELIVERED', 'READ', 'FAILED'].map(s => (
+                                        <button key={s} onClick={() => { setRecipientFilter(s); setRecipientPage(1); }} style={{
+                                            padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+                                            cursor: 'pointer', border: '1px solid',
+                                            background: recipientFilter === s ? '#2563eb' : '#fff',
+                                            color: recipientFilter === s ? '#fff' : '#64748b',
+                                            borderColor: recipientFilter === s ? '#2563eb' : '#e2e8f0'
+                                        }}>
+                                            {s === 'ALL' ? 'Tümü' : STATUS_BADGES[s]?.label?.split(' ')[0] || s}
+                                            {s !== 'ALL' && statusCounts[s] ? ` (${statusCounts[s]})` : ''}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Tablo */}
+                            {loadingRecipients ? (
+                                <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
+                                    <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
+                                </div>
+                            ) : recipients.length === 0 ? (
+                                <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
+                                    Alıcı bulunamadı
+                                </div>
+                            ) : (
+                                <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                        <thead>
+                                            <tr style={{ background: '#f8fafc' }}>
+                                                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Kişi</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Telefon</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Durum</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Tarih</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {recipients.map(r => {
+                                                const badge = STATUS_BADGES[r.status] || { label: r.status, bg: '#f1f5f9', color: '#475569' };
+                                                const displayName = r.contact?.name || r.name || '—';
+                                                const displayPhone = r.contact?.phone || r.phone || r.email || '—';
+                                                const dateStr = r.sentAt || r.deliveredAt || r.readAt || r.failedAt;
+                                                return (
+                                                    <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}
+                                                        title={r.failReason ? `Hata: ${r.failReason}` : ''}>
+                                                        <td style={{ padding: '10px 14px', color: '#0f172a', fontWeight: 500 }}>{displayName}</td>
+                                                        <td style={{ padding: '10px 14px', color: '#64748b' }}>{displayPhone}</td>
+                                                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                                            <span style={{
+                                                                background: badge.bg, color: badge.color,
+                                                                padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600
+                                                            }}>{badge.label}</span>
+                                                            {r.failReason && (
+                                                                <div style={{ fontSize: 10, color: '#ef4444', marginTop: 3 }} title={r.failReason}>
+                                                                    {r.failReason.substring(0, 60)}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: '10px 14px', textAlign: 'right', color: '#94a3b8', fontSize: 12 }}>
+                                                            {dateStr ? new Date(dateStr).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Pagination */}
+                            {totalPages > 1 && (
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+                                    <button disabled={recipientPage <= 1} onClick={() => setRecipientPage(p => p - 1)}
+                                        style={{
+                                            padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0', cursor: 'pointer',
+                                            background: recipientPage <= 1 ? '#f8fafc' : '#fff', color: recipientPage <= 1 ? '#cbd5e1' : '#374151', fontSize: 13
+                                        }}>← Önceki</button>
+                                    <span style={{ padding: '6px 10px', fontSize: 13, color: '#64748b' }}>{recipientPage} / {totalPages}</span>
+                                    <button disabled={recipientPage >= totalPages} onClick={() => setRecipientPage(p => p + 1)}
+                                        style={{
+                                            padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0', cursor: 'pointer',
+                                            background: recipientPage >= totalPages ? '#f8fafc' : '#fff', color: recipientPage >= totalPages ? '#cbd5e1' : '#374151', fontSize: 13
+                                        }}>Sonraki →</button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div style={{
+                            display: 'flex', justifyContent: 'flex-end', gap: 10,
+                            marginTop: 20, paddingTop: 16, borderTop: '1px solid #e5e7eb'
+                        }}>
+                            {failedCount > 0 && (
+                                <button onClick={handleRetry} disabled={retrying} style={{
+                                    padding: '10px 20px', borderRadius: 10, border: 'none',
+                                    background: retrying ? '#fecaca' : '#dc2626', color: '#fff',
+                                    fontSize: 14, fontWeight: 600, cursor: retrying ? 'default' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 6
+                                }}>
+                                    <RefreshCw size={15} />
+                                    {retrying ? 'Gönderiliyor...' : `Başarısızlara Tekrar Gönder (${failedCount})`}
+                                </button>
+                            )}
+                            <button onClick={onClose} style={{
+                                padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0',
+                                background: '#fff', color: '#374151', fontSize: 14, fontWeight: 500, cursor: 'pointer'
+                            }}>Kapat</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function CampaignsTab({ wsId, onGoToGroups }) {
     const [campaigns, setCampaigns] = useState([]);
     const [editItem, setEditItem] = useState(null);
@@ -107,6 +421,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [detailCampaignId, setDetailCampaignId] = useState(null);
 
     const getCampaignChannels = (c) => {
         const chs = new Set();
@@ -451,13 +766,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                     gap: 10,
                                 }}
                                 onClick={() => {
-                                    if (c.isAutomation) {
-                                        alert(`Bu kayıt otomasyon tarafından oluşturulan rapordur.\n\nGönderilen: ${sent} adet.`);
-                                    } else if (c.isLegacy) {
-                                        alert(`Eski Kampanya Mesajları:\n${c.messagesLegacy?.map(m => m.name || 'İsimsiz').join(', ') || 'Mesaj yok'}`);
-                                    } else {
-                                        onGoToGroups(c.id);
-                                    }
+                                    setDetailCampaignId(c.id);
                                 }}
                                 onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
                                 onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
@@ -542,6 +851,11 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             {/* Basic Campaign Edit Modal */}
             {showForm && (
                 <CampaignFormModal initial={editItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />
+            )}
+
+            {/* Campaign Detail Modal */}
+            {detailCampaignId && (
+                <CampaignDetailModal wsId={wsId} campaignId={detailCampaignId} onClose={() => setDetailCampaignId(null)} />
             )}
         </div>
     );
@@ -1080,6 +1394,13 @@ function ListsTab({ wsId }) {
     const [memberSearch, setMemberSearch] = useState('');
     const [memberTotal, setMemberTotal] = useState(0);
 
+    // Kişi ekleme state'leri
+    const [showAddMember, setShowAddMember] = useState(false);
+    const [addSearch, setAddSearch] = useState('');
+    const [addResults, setAddResults] = useState([]);
+    const [addLoading, setAddLoading] = useState(false);
+    const [addingId, setAddingId] = useState(null);
+
     const fetchGroups = useCallback(async () => {
         if (!wsId) return;
         setLoading(true);
@@ -1148,6 +1469,39 @@ function ListsTab({ wsId }) {
             await api.delete(`/contact-groups/${wsId}/groups/${group.id}`);
             setGroups(prev => prev.filter(g => g.id !== group.id));
         } catch (e) { alert('Silinemedi'); }
+    };
+
+    // Kişi arama (listeye eklemek için)
+    const searchContacts = useCallback(async (q) => {
+        if (!q || q.length < 2) { setAddResults([]); return; }
+        setAddLoading(true);
+        try {
+            const res = await api.get(`/contacts/${wsId}`, { params: { search: q, limit: 20 } });
+            const contacts = res.data.contacts || res.data || [];
+            // Zaten listede olanları filtrele
+            const memberIds = new Set(members.map(m => m.id));
+            setAddResults(contacts.filter(c => !memberIds.has(c.id)));
+        } catch (e) { console.error(e); }
+        setAddLoading(false);
+    }, [wsId, members]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => searchContacts(addSearch), 300);
+        return () => clearTimeout(timer);
+    }, [addSearch, searchContacts]);
+
+    const handleAddMember = async (contactId) => {
+        if (!viewGroup) return;
+        setAddingId(contactId);
+        try {
+            await api.post(`/contact-groups/${wsId}/groups/${viewGroup.id}/members`, { contactIds: [contactId] });
+            fetchMembers(viewGroup.id, memberSearch);
+            setGroups(prev => prev.map(g => g.id === viewGroup.id ? { ...g, _count: { members: (g._count?.members || 0) + 1 } } : g));
+            setAddResults(prev => prev.filter(c => c.id !== contactId));
+        } catch (e) {
+            alert('Eklenemedi: ' + (e.response?.data?.error || e.message));
+        }
+        setAddingId(null);
     };
 
     return (
@@ -1259,25 +1613,99 @@ function ListsTab({ wsId }) {
                         </div>
 
                         <div style={{ padding: '12px 24px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                            <div style={{ position: 'relative' }}>
-                                <Search size={16} style={{ position: 'absolute', left: 12, top: 11, color: '#9ca3af' }} />
-                                <input
-                                    type="text"
-                                    className="grp-input"
-                                    placeholder="Bu listede ara (Ad, telefon, e-posta)..."
-                                    value={memberSearch}
-                                    onChange={e => setMemberSearch(e.target.value)}
-                                    style={{ paddingLeft: 36, fontSize: 13, height: 38 }}
-                                />
-                                {memberSearch && (
-                                    <button
-                                        onClick={() => setMemberSearch('')}
-                                        style={{ position: 'absolute', right: 10, top: 9, background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                )}
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <div style={{ position: 'relative', flex: 1 }}>
+                                    <Search size={16} style={{ position: 'absolute', left: 12, top: 11, color: '#9ca3af' }} />
+                                    <input
+                                        type="text"
+                                        className="grp-input"
+                                        placeholder="Bu listede ara (Ad, telefon, e-posta)..."
+                                        value={memberSearch}
+                                        onChange={e => setMemberSearch(e.target.value)}
+                                        style={{ paddingLeft: 36, fontSize: 13, height: 38 }}
+                                    />
+                                    {memberSearch && (
+                                        <button
+                                            onClick={() => setMemberSearch('')}
+                                            style={{ position: 'absolute', right: 10, top: 9, background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => { setShowAddMember(!showAddMember); setAddSearch(''); setAddResults([]); }}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: 8, border: 'none',
+                                        background: showAddMember ? '#dbeafe' : '#2563eb', color: showAddMember ? '#1e40af' : '#fff',
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                        display: 'flex', alignItems: 'center', gap: 4
+                                    }}
+                                >
+                                    <Plus size={14} /> Kişi Ekle
+                                </button>
                             </div>
+
+                            {/* Kişi ekleme paneli */}
+                            {showAddMember && (
+                                <div style={{
+                                    marginTop: 10, background: '#fff', border: '1px solid #e2e8f0',
+                                    borderRadius: 10, padding: '10px 12px'
+                                }}>
+                                    <div style={{ position: 'relative' }}>
+                                        <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
+                                        <input
+                                            type="text"
+                                            placeholder="Kişi adı veya telefon ile ara..."
+                                            value={addSearch}
+                                            onChange={e => setAddSearch(e.target.value)}
+                                            style={{
+                                                width: '100%', padding: '8px 12px 8px 32px', borderRadius: 8,
+                                                border: '1px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box'
+                                            }}
+                                            autoFocus
+                                        />
+                                    </div>
+                                    {addLoading && (
+                                        <div style={{ padding: '10px 0', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>Aranıyor...</div>
+                                    )}
+                                    {addResults.length > 0 && (
+                                        <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
+                                            {addResults.map(c => (
+                                                <div key={c.id} style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                                                    transition: 'background 0.1s'
+                                                }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <div>
+                                                        <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{c.name || 'İsimsiz'}</div>
+                                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.phone || c.email || '-'}</div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleAddMember(c.id)}
+                                                        disabled={addingId === c.id}
+                                                        style={{
+                                                            padding: '4px 12px', borderRadius: 6, border: 'none',
+                                                            background: addingId === c.id ? '#d1fae5' : '#16a34a', color: '#fff',
+                                                            fontSize: 12, fontWeight: 600, cursor: addingId === c.id ? 'default' : 'pointer'
+                                                        }}
+                                                    >
+                                                        {addingId === c.id ? '✓' : '+ Ekle'}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {addSearch.length >= 2 && !addLoading && addResults.length === 0 && (
+                                        <div style={{ padding: '10px 0', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                                            Sonuç bulunamadı
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
