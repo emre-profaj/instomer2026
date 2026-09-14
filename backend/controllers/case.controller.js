@@ -678,6 +678,18 @@ export const createCase = async (req, res) => {
 
         res.status(201).json(newCase);
 
+        // Lead ve Vaka skorunu anlık güncelle
+        if (contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore, updateCaseScore }) => {
+                updateLeadScore(contactId).catch(err => 
+                    console.error('⚠️ [CaseCreate] Lead score update error:', err.message)
+                );
+                updateCaseScore(newCase.id).catch(err => 
+                    console.error('⚠️ [CaseCreate] Case score update error:', err.message)
+                );
+            });
+        }
+
         // Entry Rules: Deal oluşturulunca aşama kurallarını değerlendir
         if (contactId) {
             evaluateAndApplyRules(contactId, workspaceId).catch(err => 
@@ -892,6 +904,18 @@ export const updateCase = async (req, res) => {
         }
 
         res.json(updated);
+
+        // Son Durum / Skor Güncellemesi: Case durumu, aşama veya ürünler güncellendiğinde skorları anlık yeniden hesapla
+        if (updated.contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore, updateCaseScore }) => {
+                updateLeadScore(updated.contactId).catch(err => 
+                    console.error('⚠️ [CaseUpdate] Lead score update error:', err.message)
+                );
+                updateCaseScore(caseId).catch(err => 
+                    console.error('⚠️ [CaseUpdate] Case score update error:', err.message)
+                );
+            });
+        }
 
         // Entry Rules: Deal durumu değişince (WON/LOST) aşama kurallarını değerlendir
         if (status !== undefined && updated.contactId) {

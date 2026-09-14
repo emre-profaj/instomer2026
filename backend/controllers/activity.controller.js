@@ -140,6 +140,23 @@ export const createActivity = async (req, res) => {
                     }
                 }
 
+                // Lead & Vaka skorunu anlık güncelle
+                if (contactId) {
+                    import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                        updateLeadScore(contactId).catch(err =>
+                            console.error('⚠️ [CallNote] Lead score update error:', err.message)
+                        );
+                    });
+                }
+                const targetCaseId = req.body.caseId || existingPlannedCall.caseId;
+                if (targetCaseId) {
+                    import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                        updateCaseScore(targetCaseId).catch(err =>
+                            console.error('⚠️ [CallNote] Case score update error:', err.message)
+                        );
+                    });
+                }
+
                 return res.status(201).json({
                     data: updatedActivity,
                     completedPlannedCall: existingPlannedCall.id
@@ -435,6 +452,13 @@ export const createActivity = async (req, res) => {
             import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
                 updateLeadScore(contactId).catch(err =>
                     console.error('⚠️ [CreateActivity] Score update hatası:', err.message)
+                );
+            });
+        }
+        if (req.body.caseId) {
+            import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                updateCaseScore(req.body.caseId).catch(err =>
+                    console.error('⚠️ [CreateActivity] Case score update hatası:', err.message)
                 );
             });
         }
@@ -923,6 +947,23 @@ export const updateActivity = async (req, res) => {
         }
 
         res.json(updated);
+
+        // Lead & Vaka skorunu anlık güncelle
+        if (existing.contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(existing.contactId).catch(err =>
+                    console.error('⚠️ [UpdateActivity] Lead score update error:', err.message)
+                );
+            });
+        }
+        const actCaseId = updated.caseId || existing.caseId;
+        if (actCaseId) {
+            import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                updateCaseScore(actCaseId).catch(err =>
+                    console.error('⚠️ [UpdateActivity] Case score update error:', err.message)
+                );
+            });
+        }
     } catch (error) {
         console.error('Update Activity Error:', error);
         res.status(500).json({ error: 'Aktivite güncellenirken bir hata oluştu.' });
@@ -942,6 +983,21 @@ export const deleteActivity = async (req, res) => {
         await prisma.contactActivity.delete({ where: { id: activityId } });
 
         res.json({ success: true });
+
+        if (existing.contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(existing.contactId).catch(err =>
+                    console.error('⚠️ [DeleteActivity] Lead score update error:', err.message)
+                );
+            });
+        }
+        if (existing.caseId) {
+            import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                updateCaseScore(existing.caseId).catch(err =>
+                    console.error('⚠️ [DeleteActivity] Case score update error:', err.message)
+                );
+            });
+        }
     } catch (error) {
         console.error('Delete Activity Error:', error);
         res.status(500).json({ error: 'Aktivite silinirken bir hata oluştu.' });
@@ -1026,11 +1082,18 @@ export const completeActivity = async (req, res) => {
             }
         }
 
-        // Lead skorunu güncelle (aktivite tamamlandı → başarılı arama, ziyaret vb. puan etkiler)
+        // Lead & Vaka skorunu güncelle (aktivite tamamlandı → başarılı arama, ziyaret, sonuç notu vb. puan etkiler)
         if (existing.contactId) {
             import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
                 updateLeadScore(existing.contactId).catch(err =>
                     console.error('⚠️ [CompleteActivity] Score update hatası:', err.message)
+                );
+            });
+        }
+        if (existing.caseId) {
+            import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                updateCaseScore(existing.caseId).catch(err =>
+                    console.error('⚠️ [CompleteActivity] Case score update hatası:', err.message)
                 );
             });
         }

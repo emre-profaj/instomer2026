@@ -2424,6 +2424,22 @@ export const addInternalNote = async (req, res) => {
         }
 
         res.status(201).json({ note, autoActivity, stageChange });
+
+        // Lead & Vaka skorunu anlık güncelle
+        if (conversation?.contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(conversation.contactId).catch(err =>
+                    console.error('⚠️ [AddInternalNote] Lead score update error:', err.message)
+                );
+            });
+        }
+        if (conversation?.caseId) {
+            import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                updateCaseScore(conversation.caseId).catch(err =>
+                    console.error('⚠️ [AddInternalNote] Case score update error:', err.message)
+                );
+            });
+        }
     } catch (error) {
         console.error('Add internal note error:', error);
         res.status(500).json({ error: 'Failed to add internal note' });
@@ -2472,7 +2488,7 @@ export const deleteInternalNote = async (req, res) => {
         // Verify note's conversation belongs to this workspace
         const note = await prisma.internalNote.findUnique({
             where: { id: noteId },
-            include: { conversation: { select: { workspaceId: true } } }
+            include: { conversation: { select: { workspaceId: true, contactId: true, caseId: true } } }
         });
 
         if (!note || note.conversation.workspaceId !== workspaceId) {
@@ -2489,6 +2505,22 @@ export const deleteInternalNote = async (req, res) => {
         });
 
         res.json({ message: 'Note deleted successfully' });
+
+        // Lead & Vaka skorunu anlık güncelle (not silindi)
+        if (note?.conversation?.contactId) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(note.conversation.contactId).catch(err =>
+                    console.error('⚠️ [DeleteInternalNote] Lead score update error:', err.message)
+                );
+            });
+        }
+        if (note?.conversation?.caseId) {
+            import('../services/leadScoring.service.js').then(({ updateCaseScore }) => {
+                updateCaseScore(note.conversation.caseId).catch(err =>
+                    console.error('⚠️ [DeleteInternalNote] Case score update error:', err.message)
+                );
+            });
+        }
     } catch (error) {
         console.error('Delete note error:', error);
         res.status(500).json({ error: 'Failed to delete note' });

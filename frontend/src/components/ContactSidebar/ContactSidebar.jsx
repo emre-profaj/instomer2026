@@ -902,6 +902,41 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         };
     }, [activeCaseInfo?.caseId]);
 
+    // Canlı Lead & Vaka Skor Güncellemesi (Socket Dinleyicisi)
+    useEffect(() => {
+        const handleCaseScoreUpdated = (e) => {
+            const { caseId, score, temperature } = e.detail || {};
+            if (!caseId) return;
+            setActiveCaseInfo(prev => {
+                if (!prev) return prev;
+                if (prev.caseId === caseId || prev.id === caseId) {
+                    return { ...prev, leadScore: score, leadTemperature: temperature };
+                }
+                return prev;
+            });
+            setAllCases(prev => Array.isArray(prev) ? prev.map(c => (c.id === caseId || c.caseId === caseId) ? { ...c, leadScore: score, leadTemperature: temperature } : c) : prev);
+        };
+
+        const handleContactScoreUpdated = (e) => {
+            const { contactId, score, temperature } = e.detail || {};
+            if (!contactId) return;
+            setProfile(prev => {
+                if (!prev) return prev;
+                if (prev.id === contactId) {
+                    return { ...prev, leadScore: score, leadTemperature: temperature };
+                }
+                return prev;
+            });
+        };
+
+        window.addEventListener('websocket:case_score_updated', handleCaseScoreUpdated);
+        window.addEventListener('websocket:contact_score_updated', handleContactScoreUpdated);
+        return () => {
+            window.removeEventListener('websocket:case_score_updated', handleCaseScoreUpdated);
+            window.removeEventListener('websocket:contact_score_updated', handleContactScoreUpdated);
+        };
+    }, []);
+
     useEffect(() => {
         if (currentWorkspace?.id) {
             appointmentConfigAPI.getBranches(currentWorkspace.id)

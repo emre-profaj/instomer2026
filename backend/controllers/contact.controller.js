@@ -2142,6 +2142,15 @@ export const updateContact = async (req, res) => {
 
         res.json({ contact });
 
+        // Son Durum / Not / Skor Güncellemesi: Contact güncellendiğinde skorları anlık yeniden hesapla
+        if (id) {
+            import('../services/leadScoring.service.js').then(({ updateLeadScore }) => {
+                updateLeadScore(id).catch(err =>
+                    console.error('⚠️ [UpdateContact] Lead score update error:', err.message)
+                );
+            });
+        }
+
         // Entry Rules: Contact bilgileri güncellendi → aşama kurallarını değerlendir
         const evalWorkspaceId = workspaceId || contact.workspaceId;
         if (evalWorkspaceId) {

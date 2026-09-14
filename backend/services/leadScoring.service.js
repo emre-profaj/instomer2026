@@ -67,6 +67,36 @@ const SCORING_TEMPLATES = {
 };
 
 /**
+ * Temsilci / Dahili Notları için Niyet ve Duygu Sözlüğü
+ */
+export const POSITIVE_NOTE_KEYWORDS = [
+  // Genel olumlu / ilişki
+  'çok iyi', 'olumlu', 'ilgili', 'ilgileniyor', 'sıcak', 'çok sıcak', 'istekli',
+  'güzel geçti', 'görüşme iyi geçti', 'beğendi', 'ikna oldu', 'memnun', 'teşekkür etti',
+  // Aksiyon / takip
+  'yarın ara', 'tekrar ara', 'hemen ara', 'randevu', 'randevu istedi', 'randevuya gelecek',
+  'geliyor', 'gelecek', 'ziyaret edecek', 'bekliyor', 'haber bekliyor',
+  // Ticari / Satın alma niyeti
+  'satın alacak', 'alacak', 'anlaştık', 'anlaşma sağlandı', 'anlaşma', 'fiyat onayladı',
+  'onayladı', 'teklif istedi', 'teklif verildi', 'teklif gönderildi', 'bütçesi var', 'bütçe uygun',
+  'kabul etti', 'ödeyecek', 'kapora', 'kayıt oldu', 'satış', 'satıldı', 'kesin', 'potansiyel',
+  'fırsat', 'sıcak fırsat', 'vip', 'müşterimiz', 'hastamız', 'işlem yapılacak', 'tedavi olacak'
+];
+
+export const NEGATIVE_NOTE_KEYWORDS = [
+  // İlgisiz / Vazgeçti
+  'olumsuz', 'ilgilenmiyor', 'ilgisiz', 'istemiyor', 'istemedi', 'vazgeçti', 'vazgecti',
+  'vazgeçmiş', 'vazgecmis', 'almayacak', 'almayacakmış', 'iptal', 'iptal etti',
+  // Finansal / Rakip
+  'pahalı buldu', 'pahalı geldi', 'bütçe yetersiz', 'bütçesi yok', 'bütçesi yetersiz',
+  'para yok', 'başka yerden almış', 'başkasından almış', 'rakibe gitti', 'başkasıyla anlaştı',
+  // Ulaşılamayan / Geçersiz
+  'ulaşılamadı', 'ulaşamadım', 'ulaşılmıyor', 'cevap vermiyor', 'açmıyor', 'aramayın',
+  'aramayın dedi', 'yanlış numara', 'hatalı numara', 'engelledi', 'engellemiş', 'şikayet',
+  'soğuk', 'kapattı', 'surata kapattı', 'sahte', 'spam', 'küfür'
+];
+
+/**
  * Kişinin lead skorunu hesapla
  * 
  * @param {string} contactId
@@ -77,12 +107,20 @@ export async function calculateLeadScore(contactId) {
     const contact = await prisma.contact.findUnique({
       where: { id: contactId },
       include: {
+        funnelStage: {
+          select: { id: true, name: true, order: true, isClosing: true, statusType: true }
+        },
         conversations: {
           include: {
             messages: {
               orderBy: { createdAt: 'desc' },
               take: 50,
               select: { isFromContact: true, content: true, createdAt: true, messageType: true }
+            },
+            internalNotes: {
+              orderBy: { createdAt: 'desc' },
+              take: 30,
+              select: { content: true, createdAt: true }
             }
           },
           orderBy: { lastMessageAt: 'desc' },
@@ -90,8 +128,34 @@ export async function calculateLeadScore(contactId) {
         },
         activities: {
           orderBy: { createdAt: 'desc' },
-          take: 20,
-          select: { type: true, status: true, createdAt: true, callSuccessful: true }
+          take: 30,
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+            callSuccessful: true,
+            callSentiment: true,
+            title: true,
+            description: true,
+            result: true
+          }
+        },
+        cases: {
+          orderBy: { updatedAt: 'desc' },
+          take: 5,
+          select: {
+            id: true,
+            status: true,
+            priority: true,
+            wonAt: true,
+            lostAt: true,
+            lostReason: true,
+            funnelStageId: true,
+            products: true,
+            categoryId: true
+          }
         },
         deals: {
           orderBy: { createdAt: 'desc' },
@@ -127,7 +191,7 @@ export async function calculateLeadScore(contactId) {
     if (contact.company) { score += 5; breakdown.company = 5; }
 
     // ── 2. Mesaj puanları ────────────────────────────────────
-    const allMessages = contact.conversations.flatMap(c => c.messages);
+    const allMessages = (contact.conversations || []).flatMap(c => c.messages || []);
     const customerMessages = allMessages.filter(m => m.isFromContact);
     
     // Mesaj sayısı (max 15 puan)
@@ -146,7 +210,7 @@ export async function calculateLeadScore(contactId) {
       else { breakdown.recency = 0; }
     }
 
-    // ── 3. İçerik puanları (anahtar kelimeler) ──────────────
+    // ── 3. İçerik puanları (müşteri mesajları anahtar kelimeler) ───────────
     const allContent = customerMessages.map(m => m.content || '').join(' ').toLowerCase();
     
     // Fiyat/bütçe konuşuldu
@@ -173,7 +237,7 @@ export async function calculateLeadScore(contactId) {
     }
 
     // ── 4. Aktivite puanları ─────────────────────────────────
-    const completedCalls = contact.activities.filter(a => a.type === 'CALL' && a.callSuccessful === true);
+    const completedCalls = (contact.activities || []).filter(a => a.type === 'CALL' && a.callSuccessful === true);
     if (completedCalls.length > 0) {
       const callScore = Math.min(completedCalls.length * 5, 15);
       score += callScore;
@@ -181,7 +245,7 @@ export async function calculateLeadScore(contactId) {
     }
 
     // Başarısız / açılmayan aramalar → ilk 2 normal, 3.'den sonra puan düşür
-    const failedCalls = contact.activities.filter(a => a.type === 'CALL' && a.callSuccessful === false);
+    const failedCalls = (contact.activities || []).filter(a => a.type === 'CALL' && a.callSuccessful === false);
     if (failedCalls.length > 2) {
       const failPenalty = Math.min((failedCalls.length - 2) * 5, 20);
       score -= failPenalty;
@@ -189,7 +253,7 @@ export async function calculateLeadScore(contactId) {
     }
 
     // Ziyaret yapıldı → güçlü niyet sinyali
-    const visits = contact.activities.filter(a => a.type === 'VISIT' && a.status === 'COMPLETED');
+    const visits = (contact.activities || []).filter(a => a.type === 'VISIT' && a.status === 'COMPLETED');
     if (visits.length > 0) {
       const visitScore = Math.min(visits.length * 15, 25);
       score += visitScore;
@@ -197,7 +261,7 @@ export async function calculateLeadScore(contactId) {
     }
 
     // Toplantı yapıldı
-    const meetings = contact.activities.filter(a => a.type === 'MEETING' && a.status === 'COMPLETED');
+    const meetings = (contact.activities || []).filter(a => a.type === 'MEETING' && a.status === 'COMPLETED');
     if (meetings.length > 0) {
       const meetingScore = Math.min(meetings.length * 12, 20);
       score += meetingScore;
@@ -205,21 +269,21 @@ export async function calculateLeadScore(contactId) {
     }
 
     // Tamamlanmış görevler (takip yapıldığını gösterir)
-    const completedTasks = contact.activities.filter(a => a.type === 'TASK' && a.status === 'COMPLETED');
+    const completedTasks = (contact.activities || []).filter(a => a.type === 'TASK' && a.status === 'COMPLETED');
     if (completedTasks.length > 0) {
       const taskScore = Math.min(completedTasks.length * 3, 9);
       score += taskScore;
       breakdown.completedTasks = taskScore;
     }
 
-    const proposals = contact.activities.filter(a => a.type === 'PROPOSAL');
+    const proposals = (contact.activities || []).filter(a => a.type === 'PROPOSAL');
     if (proposals.length > 0) {
       score += 10;
       breakdown.proposalSent = 10;
     }
 
     // ── 5. Deal puanları ─────────────────────────────────────
-    if (contact.deals.length > 0) {
+    if (contact.deals && contact.deals.length > 0) {
       const p = template.dealCreated || 10;
       score += p;
       breakdown.hasDeal = p;
@@ -232,7 +296,7 @@ export async function calculateLeadScore(contactId) {
     }
 
     // ── 6. Form puanları ─────────────────────────────────────
-    if (contact.formSubmissions.length > 0) {
+    if (contact.formSubmissions && contact.formSubmissions.length > 0) {
       score += 8;
       breakdown.formSubmission = 8;
     }
@@ -242,7 +306,7 @@ export async function calculateLeadScore(contactId) {
     if (contact.source === 'FACEBOOK' || contact.source === 'INSTAGRAM') { score += 3; breakdown.socialSource = 3; }
 
     // ── 8. Çoklu kanal bonus ─────────────────────────────────
-    const channels = new Set(contact.conversations.map(c => c.channel));
+    const channels = new Set((contact.conversations || []).map(c => c.channel));
     if (channels.size > 1) {
       score += 5;
       breakdown.multiChannel = 5;
@@ -250,9 +314,9 @@ export async function calculateLeadScore(contactId) {
 
     // ── 9. Aşama ilerleme puanı ──────────────────────────────
     if (contact.funnelStageId && contact.funnelType) {
-      const stage = await prisma.funnelStage.findUnique({ 
+      const stage = contact.funnelStage || await prisma.funnelStage.findUnique({ 
         where: { id: contact.funnelStageId }, 
-        select: { order: true } 
+        select: { order: true, isClosing: true, statusType: true, name: true } 
       });
       const totalStages = await prisma.funnelStage.count({ 
         where: { funnelId: contact.funnelType } 
@@ -266,11 +330,7 @@ export async function calculateLeadScore(contactId) {
     }
 
     // ── 10. Ürün ilgi puanı ───────────────────────────────────
-    const productCase = await prisma.case.findFirst({ 
-      where: { contactId, status: 'ACTIVE', NOT: { products: '[]' } }, 
-      select: { products: true } 
-    });
-    
+    const productCase = (contact.cases || []).find(c => c.status === 'ACTIVE' && c.products && c.products !== '[]');
     if (productCase && productCase.products) {
       let hasProducts = false;
       try {
@@ -287,19 +347,197 @@ export async function calculateLeadScore(contactId) {
     }
 
     // ── 11. Kategori eşleşme puanı ────────────────────────────
-    const categoryCase = await prisma.case.findFirst({ 
-      where: { contactId, status: 'ACTIVE', categoryId: { not: null } }, 
-      select: { categoryId: true } 
-    });
-    
+    const categoryCase = (contact.cases || []).find(c => c.status === 'ACTIVE' && c.categoryId);
     if (categoryCase && categoryCase.categoryId) {
       score += 5;
       breakdown.categoryAssigned = 5;
     }
 
-    // Skor sınırla
-    score = Math.min(score, 100);
-    score = Math.max(score, 0);
+    // ═══════════════════════════════════════════════════════════
+    // ── 12. DAHİLİ / TEMSİLCİ NOTLARI PUANLAMASI ──────────────
+    // ═══════════════════════════════════════════════════════════
+    const internalNotes = (contact.conversations || []).flatMap(c => c.internalNotes || []);
+    const noteActivities = (contact.activities || []).filter(a => a.type === 'NOTE');
+    const totalNotesCount = internalNotes.length + noteActivities.length + (contact.notes ? 1 : 0);
+
+    if (totalNotesCount > 0) {
+      // Not varlığı ve adedi: her not +5 puan (max 15)
+      const countScore = Math.min(totalNotesCount * 5, 15);
+      score += countScore;
+      breakdown.agentNotesCount = countScore;
+
+      // Son 3 gün içinde not girildiyse güncellik bonusu
+      const latestNoteDate = Math.max(
+        ...internalNotes.map(n => new Date(n.createdAt).getTime()),
+        ...noteActivities.map(a => new Date(a.createdAt).getTime()),
+        0
+      );
+      if (latestNoteDate > 0) {
+        const daysSinceNote = (Date.now() - latestNoteDate) / (1000 * 60 * 60 * 24);
+        if (daysSinceNote <= 3) {
+          score += 5;
+          breakdown.recentNoteBonus = 5;
+        }
+      }
+    }
+
+    // Notların içeriğindeki duygu ve niyet sinyallerini analiz et
+    const allNoteTexts = [
+      ...internalNotes.map(n => n.content || ''),
+      contact.notes || '',
+      ...noteActivities.map(a => `${a.title || ''} ${a.description || ''} ${a.result || ''}`),
+      ...(contact.activities || []).filter(a => a.result).map(a => a.result || '')
+    ].filter(t => typeof t === 'string' && t.trim().length > 0);
+
+    const notesTextLower = allNoteTexts.join(' ').toLowerCase();
+
+    if (notesTextLower) {
+      const positiveMatches = POSITIVE_NOTE_KEYWORDS.filter(kw => notesTextLower.includes(kw));
+      if (positiveMatches.length > 0) {
+        const posScore = positiveMatches.length >= 3 ? 35 : (positiveMatches.length === 2 ? 25 : 15);
+        score += posScore;
+        breakdown.positiveNoteIntent = { score: posScore, matches: positiveMatches.slice(0, 5) };
+      }
+
+      const negativeMatches = NEGATIVE_NOTE_KEYWORDS.filter(kw => notesTextLower.includes(kw));
+      if (negativeMatches.length > 0) {
+        const negPenalty = negativeMatches.length >= 2 ? 35 : 20;
+        score -= negPenalty;
+        breakdown.negativeNoteIntent = { penalty: -negPenalty, matches: negativeMatches.slice(0, 5) };
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ── 13. SON DURUM (STATUS & STAGE & CALL OUTCOME) ─────────
+    // ═══════════════════════════════════════════════════════════
+    const primaryCase = (contact.cases || []).find(c => c.status === 'ACTIVE') || (contact.cases || [])[0] || null;
+
+    // A. Vaka Durumu (Case Status)
+    const anyWonCase = (contact.cases || []).some(c => c.status === 'WON');
+    const anyLostCase = (contact.cases || []).some(c => c.status === 'LOST');
+
+    if (anyWonCase || primaryCase?.status === 'WON') {
+      score += 35;
+      breakdown.caseStatus = 'WON (+35)';
+    } else if (anyLostCase || primaryCase?.status === 'LOST') {
+      score -= 45;
+      breakdown.caseStatus = 'LOST (-45)';
+    } else if (primaryCase?.status === 'ACTIVE') {
+      if (primaryCase.priority === 'URGENT') {
+        score += 10;
+        breakdown.casePriority = 10;
+      } else if (primaryCase.priority === 'HIGH') {
+        score += 5;
+        breakdown.casePriority = 5;
+      }
+    }
+
+    // B. Aşama Durumu (Funnel Stage Status)
+    let currentStage = contact.funnelStage || null;
+    if (!currentStage && primaryCase?.funnelStageId) {
+      currentStage = await prisma.funnelStage.findUnique({
+        where: { id: primaryCase.funnelStageId },
+        select: { id: true, name: true, order: true, isClosing: true, statusType: true }
+      });
+    }
+
+    if (currentStage) {
+      if (currentStage.statusType === 'WON') {
+        score += 30;
+        breakdown.stageStatusType = 'WON (+30)';
+      } else if (currentStage.statusType === 'LOST') {
+        score -= 45;
+        breakdown.stageStatusType = 'LOST (-45)';
+      } else {
+        const stageNameLower = (currentStage.name || '').toLowerCase();
+        if (/kazanıldı|satış|başarılı|anlaşıldı|sözleşme/i.test(stageNameLower)) {
+          score += 25;
+          breakdown.stagePositive = 25;
+        } else if (/kayıp|kaybedildi|olumsuz|vazgeçti|ulaşılamadı|ilgisiz/i.test(stageNameLower)) {
+          score -= 35;
+          breakdown.stageNegative = -35;
+        }
+      }
+    }
+
+    // C. Kişi Kategorisi & Durumu (Contact Category & Status)
+    if (contact.category === 'VIP') {
+      score += 20;
+      breakdown.categoryVIP = 20;
+    } else if (contact.category === 'CUSTOMER') {
+      score += 20;
+      breakdown.categoryCustomer = 20;
+    } else if (contact.category === 'OPPORTUNITY') {
+      score += 10;
+      breakdown.categoryOpportunity = 10;
+    }
+
+    if (contact.status === 'QUALIFIED') {
+      score += 15;
+      breakdown.contactQualified = 15;
+    } else if (contact.status === 'UNQUALIFIED') {
+      score -= 25;
+      breakdown.contactUnqualified = -25;
+    } else if (contact.status === 'WON') {
+      score += 30;
+      breakdown.contactWon = 30;
+    } else if (contact.status === 'LOST') {
+      score -= 40;
+      breakdown.contactLost = -40;
+    }
+
+    // D. Son Arama Sonucu & Görüşme Havası (Latest Call Outcome & Sentiment)
+    const sortedCalls = (contact.activities || [])
+      .filter(a => a.type === 'CALL' && a.status === 'COMPLETED')
+      .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+
+    if (sortedCalls.length > 0) {
+      const lastCall = sortedCalls[0];
+      if (lastCall.callSuccessful === true) {
+        score += 10;
+        breakdown.lastCallSuccess = 10;
+      } else if (lastCall.callSuccessful === false) {
+        score -= 10;
+        breakdown.lastCallFailed = -10;
+      }
+
+      if (lastCall.callSentiment === 'Positive') {
+        score += 15;
+        breakdown.lastCallSentiment = 15;
+      } else if (lastCall.callSentiment === 'Negative') {
+        score -= 20;
+        breakdown.lastCallSentiment = -20;
+      }
+
+      // Ardışık başarısız aramalar (son 2 arama ulaşılamadı ise)
+      if (sortedCalls.length >= 2 && sortedCalls[0].callSuccessful === false && sortedCalls[1].callSuccessful === false) {
+        score -= 15;
+        breakdown.consecutiveFailedCalls = -15;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ── KESİN TAVAN / TABAN VE SINIRLAR (STRICT CAPS & FLOORS) 
+    // ═══════════════════════════════════════════════════════════
+    const isBlacklisted = contact.category === 'BLACKLIST' || contact.category === 'SPAM';
+    const isWon = anyWonCase || primaryCase?.status === 'WON' || currentStage?.statusType === 'WON' || contact.status === 'WON';
+    const isLost = anyLostCase || primaryCase?.status === 'LOST' || currentStage?.statusType === 'LOST' || contact.status === 'LOST';
+
+    if (isBlacklisted) {
+      score = 0;
+      breakdown.blacklistCap = 'Skor 0 olarak sınırlandı (Blacklist/Spam)';
+    } else if (isLost && !isWon) {
+      score = Math.min(score, 15);
+      score = Math.max(score, 0);
+      breakdown.lostCap = 'Kayıp durum: Skor maks 15';
+    } else if (isWon) {
+      score = Math.max(score, 90);
+      score = Math.min(score, 100);
+      breakdown.wonFloor = 'Kazanıldı durum: Skor min 90';
+    } else {
+      score = Math.min(score, 100);
+      score = Math.max(score, 0);
+    }
 
     // Sıcaklık belirle
     const temperature = getTemperature(score);
@@ -321,7 +559,19 @@ export async function calculateCaseScore(caseId) {
       where: { id: caseId },
       include: {
         contact: {
-          select: { phone: true, email: true, name: true, company: true, source: true }
+          select: {
+            id: true,
+            phone: true,
+            email: true,
+            name: true,
+            company: true,
+            source: true,
+            category: true,
+            status: true,
+            notes: true,
+            funnelStageId: true,
+            funnelType: true
+          }
         },
         conversations: {
           include: {
@@ -329,6 +579,11 @@ export async function calculateCaseScore(caseId) {
               orderBy: { createdAt: 'desc' },
               take: 50,
               select: { isFromContact: true, content: true, createdAt: true, messageType: true }
+            },
+            internalNotes: {
+              orderBy: { createdAt: 'desc' },
+              take: 30,
+              select: { content: true, createdAt: true }
             },
             deals: {
               orderBy: { createdAt: 'desc' },
@@ -341,16 +596,27 @@ export async function calculateCaseScore(caseId) {
         },
         activities: {
           orderBy: { createdAt: 'desc' },
-          take: 20,
-          select: { type: true, status: true, createdAt: true, callSuccessful: true }
+          take: 30,
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+            callSuccessful: true,
+            callSentiment: true,
+            title: true,
+            description: true,
+            result: true
+          }
         }
       }
     });
 
     if (!caseData) return { score: 0, temperature: 'COLD', breakdown: {} };
 
-    const contact = caseData.contact;
-    const funnelType = caseData.funnelType || 'DEFAULT';
+    const contact = caseData.contact || {};
+    const funnelType = caseData.funnelType || contact.funnelType || 'DEFAULT';
     const template = SCORING_TEMPLATES[funnelType] || SCORING_TEMPLATES.DEFAULT;
 
     let score = 0;
@@ -369,7 +635,7 @@ export async function calculateCaseScore(caseId) {
     if (contact.company) { score += 5; breakdown.company = 5; }
 
     // ── 2. Mesaj puanları ────────────────────────────────────
-    const allMessages = caseData.conversations.flatMap(c => c.messages);
+    const allMessages = (caseData.conversations || []).flatMap(c => c.messages || []);
     const customerMessages = allMessages.filter(m => m.isFromContact);
     
     // Mesaj sayısı
@@ -412,15 +678,15 @@ export async function calculateCaseScore(caseId) {
     }
 
     // ── 4. Aktivite puanları ─────────────────────────────────
-    const completedCalls = caseData.activities.filter(a => a.type === 'CALL' && a.callSuccessful === true);
+    const completedCalls = (caseData.activities || []).filter(a => a.type === 'CALL' && a.callSuccessful === true);
     if (completedCalls.length > 0) {
       const callScore = Math.min(completedCalls.length * 5, 15);
       score += callScore;
       breakdown.successfulCalls = callScore;
     }
 
-    // Başarısız / açılmayan aramalar → ilk 2 normal, 3.'den sonra puan düşür
-    const failedCalls = caseData.activities.filter(a => a.type === 'CALL' && a.callSuccessful === false);
+    // Başarısız / açılmayan aramalar
+    const failedCalls = (caseData.activities || []).filter(a => a.type === 'CALL' && a.callSuccessful === false);
     if (failedCalls.length > 2) {
       const failPenalty = Math.min((failedCalls.length - 2) * 5, 20);
       score -= failPenalty;
@@ -428,7 +694,7 @@ export async function calculateCaseScore(caseId) {
     }
 
     // Ziyaret yapıldı
-    const visits = caseData.activities.filter(a => a.type === 'VISIT' && a.status === 'COMPLETED');
+    const visits = (caseData.activities || []).filter(a => a.type === 'VISIT' && a.status === 'COMPLETED');
     if (visits.length > 0) {
       const visitScore = Math.min(visits.length * 15, 25);
       score += visitScore;
@@ -436,7 +702,7 @@ export async function calculateCaseScore(caseId) {
     }
 
     // Toplantı yapıldı
-    const meetings = caseData.activities.filter(a => a.type === 'MEETING' && a.status === 'COMPLETED');
+    const meetings = (caseData.activities || []).filter(a => a.type === 'MEETING' && a.status === 'COMPLETED');
     if (meetings.length > 0) {
       const meetingScore = Math.min(meetings.length * 12, 20);
       score += meetingScore;
@@ -444,21 +710,21 @@ export async function calculateCaseScore(caseId) {
     }
 
     // Tamamlanmış görevler
-    const completedTasks = caseData.activities.filter(a => a.type === 'TASK' && a.status === 'COMPLETED');
+    const completedTasks = (caseData.activities || []).filter(a => a.type === 'TASK' && a.status === 'COMPLETED');
     if (completedTasks.length > 0) {
       const taskScore = Math.min(completedTasks.length * 3, 9);
       score += taskScore;
       breakdown.completedTasks = taskScore;
     }
 
-    const proposals = caseData.activities.filter(a => a.type === 'PROPOSAL');
+    const proposals = (caseData.activities || []).filter(a => a.type === 'PROPOSAL');
     if (proposals.length > 0) {
       score += 10;
       breakdown.proposalSent = 10;
     }
 
     // ── 5. Deal puanları ─────────────────────────────────────
-    const allDeals = caseData.conversations.flatMap(c => c.deals);
+    const allDeals = (caseData.conversations || []).flatMap(c => c.deals || []);
     if (allDeals.length > 0) {
       const p = template.dealCreated || 10;
       score += p;
@@ -476,14 +742,208 @@ export async function calculateCaseScore(caseId) {
     if (contact.source === 'FACEBOOK' || contact.source === 'INSTAGRAM') { score += 3; breakdown.socialSource = 3; }
 
     // ── 7. Çoklu kanal bonus ─────────────────────────────────
-    const channels = new Set(caseData.conversations.map(c => c.channel));
+    const channels = new Set((caseData.conversations || []).map(c => c.channel));
     if (channels.size > 1) {
       score += 5;
       breakdown.multiChannel = 5;
     }
 
-    score = Math.min(score, 100);
-    score = Math.max(score, 0);
+    // ── 8. Ürün ilgi puanı ───────────────────────────────────
+    if (caseData.products && caseData.products !== '[]') {
+      let hasProducts = false;
+      try {
+        const pArr = typeof caseData.products === 'string' ? JSON.parse(caseData.products) : caseData.products;
+        if (Array.isArray(pArr) && pArr.length > 0) hasProducts = true;
+      } catch (e) {}
+      if (hasProducts) {
+        score += 8;
+        breakdown.productInterest = 8;
+      }
+    }
+
+    // ── 9. Kategori eşleşme puanı ────────────────────────────
+    if (caseData.categoryId) {
+      score += 5;
+      breakdown.categoryAssigned = 5;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ── 10. DAHİLİ / TEMSİLCİ NOTLARI PUANLAMASI ──────────────
+    // ═══════════════════════════════════════════════════════════
+    const internalNotes = (caseData.conversations || []).flatMap(c => c.internalNotes || []);
+    const noteActivities = (caseData.activities || []).filter(a => a.type === 'NOTE');
+    const totalNotesCount = internalNotes.length + noteActivities.length + (contact.notes ? 1 : 0);
+
+    if (totalNotesCount > 0) {
+      const countScore = Math.min(totalNotesCount * 5, 15);
+      score += countScore;
+      breakdown.agentNotesCount = countScore;
+
+      const latestNoteDate = Math.max(
+        ...internalNotes.map(n => new Date(n.createdAt).getTime()),
+        ...noteActivities.map(a => new Date(a.createdAt).getTime()),
+        0
+      );
+      if (latestNoteDate > 0) {
+        const daysSinceNote = (Date.now() - latestNoteDate) / (1000 * 60 * 60 * 24);
+        if (daysSinceNote <= 3) {
+          score += 5;
+          breakdown.recentNoteBonus = 5;
+        }
+      }
+    }
+
+    const allNoteTexts = [
+      ...internalNotes.map(n => n.content || ''),
+      contact.notes || '',
+      ...noteActivities.map(a => `${a.title || ''} ${a.description || ''} ${a.result || ''}`),
+      ...(caseData.activities || []).filter(a => a.result).map(a => a.result || '')
+    ].filter(t => typeof t === 'string' && t.trim().length > 0);
+
+    const notesTextLower = allNoteTexts.join(' ').toLowerCase();
+
+    if (notesTextLower) {
+      const positiveMatches = POSITIVE_NOTE_KEYWORDS.filter(kw => notesTextLower.includes(kw));
+      if (positiveMatches.length > 0) {
+        const posScore = positiveMatches.length >= 3 ? 35 : (positiveMatches.length === 2 ? 25 : 15);
+        score += posScore;
+        breakdown.positiveNoteIntent = { score: posScore, matches: positiveMatches.slice(0, 5) };
+      }
+
+      const negativeMatches = NEGATIVE_NOTE_KEYWORDS.filter(kw => notesTextLower.includes(kw));
+      if (negativeMatches.length > 0) {
+        const negPenalty = negativeMatches.length >= 2 ? 35 : 20;
+        score -= negPenalty;
+        breakdown.negativeNoteIntent = { penalty: -negPenalty, matches: negativeMatches.slice(0, 5) };
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ── 11. SON DURUM (CASE STATUS & STAGE & CALL OUTCOME) ────
+    // ═══════════════════════════════════════════════════════════
+    // A. Vaka Durumu
+    if (caseData.status === 'WON') {
+      score += 35;
+      breakdown.caseStatus = 'WON (+35)';
+    } else if (caseData.status === 'LOST') {
+      score -= 45;
+      breakdown.caseStatus = 'LOST (-45)';
+    } else if (caseData.status === 'ACTIVE') {
+      if (caseData.priority === 'URGENT') {
+        score += 10;
+        breakdown.casePriority = 10;
+      } else if (caseData.priority === 'HIGH') {
+        score += 5;
+        breakdown.casePriority = 5;
+      }
+    }
+
+    // B. Aşama Durumu
+    const stageId = caseData.funnelStageId || contact.funnelStageId;
+    let stage = null;
+    if (stageId) {
+      stage = await prisma.funnelStage.findUnique({
+        where: { id: stageId },
+        select: { id: true, name: true, order: true, isClosing: true, statusType: true }
+      });
+    }
+
+    if (stage) {
+      if (stage.statusType === 'WON') {
+        score += 30;
+        breakdown.stageStatusType = 'WON (+30)';
+      } else if (stage.statusType === 'LOST') {
+        score -= 45;
+        breakdown.stageStatusType = 'LOST (-45)';
+      } else {
+        const stageNameLower = (stage.name || '').toLowerCase();
+        if (/kazanıldı|satış|başarılı|anlaşıldı|sözleşme/i.test(stageNameLower)) {
+          score += 25;
+          breakdown.stagePositive = 25;
+        } else if (/kayıp|kaybedildi|olumsuz|vazgeçti|ulaşılamadı|ilgisiz/i.test(stageNameLower)) {
+          score -= 35;
+          breakdown.stageNegative = -35;
+        }
+      }
+    }
+
+    // C. Kişi Kategorisi & Durumu
+    if (contact.category === 'VIP') {
+      score += 20;
+      breakdown.categoryVIP = 20;
+    } else if (contact.category === 'CUSTOMER') {
+      score += 20;
+      breakdown.categoryCustomer = 20;
+    } else if (contact.category === 'OPPORTUNITY') {
+      score += 10;
+      breakdown.categoryOpportunity = 10;
+    }
+
+    if (contact.status === 'QUALIFIED') {
+      score += 15;
+      breakdown.contactQualified = 15;
+    } else if (contact.status === 'UNQUALIFIED') {
+      score -= 25;
+      breakdown.contactUnqualified = -25;
+    } else if (contact.status === 'WON') {
+      score += 30;
+      breakdown.contactWon = 30;
+    } else if (contact.status === 'LOST') {
+      score -= 40;
+      breakdown.contactLost = -40;
+    }
+
+    // D. Son Arama Sonucu & Duygusu
+    const sortedCalls = (caseData.activities || [])
+      .filter(a => a.type === 'CALL' && a.status === 'COMPLETED')
+      .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+
+    if (sortedCalls.length > 0) {
+      const lastCall = sortedCalls[0];
+      if (lastCall.callSuccessful === true) {
+        score += 10;
+        breakdown.lastCallSuccess = 10;
+      } else if (lastCall.callSuccessful === false) {
+        score -= 10;
+        breakdown.lastCallFailed = -10;
+      }
+
+      if (lastCall.callSentiment === 'Positive') {
+        score += 15;
+        breakdown.lastCallSentiment = 15;
+      } else if (lastCall.callSentiment === 'Negative') {
+        score -= 20;
+        breakdown.lastCallSentiment = -20;
+      }
+
+      if (sortedCalls.length >= 2 && sortedCalls[0].callSuccessful === false && sortedCalls[1].callSuccessful === false) {
+        score -= 15;
+        breakdown.consecutiveFailedCalls = -15;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ── KESİN TAVAN / TABAN VE SINIRLAR ───────────────────────
+    // ═══════════════════════════════════════════════════════════
+    const isBlacklisted = contact.category === 'BLACKLIST' || contact.category === 'SPAM';
+    const isWon = caseData.status === 'WON' || stage?.statusType === 'WON' || contact.status === 'WON';
+    const isLost = caseData.status === 'LOST' || stage?.statusType === 'LOST' || contact.status === 'LOST';
+
+    if (isBlacklisted) {
+      score = 0;
+      breakdown.blacklistCap = 'Skor 0 olarak sınırlandı (Blacklist/Spam)';
+    } else if (isLost && !isWon) {
+      score = Math.min(score, 15);
+      score = Math.max(score, 0);
+      breakdown.lostCap = 'Kayıp durum: Skor maks 15';
+    } else if (isWon) {
+      score = Math.max(score, 90);
+      score = Math.min(score, 100);
+      breakdown.wonFloor = 'Kazanıldı durum: Skor min 90';
+    } else {
+      score = Math.min(score, 100);
+      score = Math.max(score, 0);
+    }
 
     const temperature = getTemperature(score);
 
@@ -509,12 +969,12 @@ export async function updateLeadScore(contactId) {
       }
     });
 
-    // Aktif case'lerin skorlarını da güncelle (yeni)
-    const activeCases = await prisma.case.findMany({
-        where: { contactId, status: 'ACTIVE' },
+    // İlgili tüm case'lerin skorlarını da güncelle
+    const relatedCases = await prisma.case.findMany({
+        where: { contactId },
         select: { id: true }
     });
-    for (const c of activeCases) {
+    for (const c of relatedCases) {
         await updateCaseScore(c.id);
     }
 
