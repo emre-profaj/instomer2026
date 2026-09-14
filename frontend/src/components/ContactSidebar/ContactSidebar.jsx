@@ -907,6 +907,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             appointmentConfigAPI.getBranches(currentWorkspace.id)
                 .then(res => setAvailableBranches(res.data?.branches || []))
                 .catch(err => console.error('Failed to load branches in ContactSidebar:', err));
+
+            getTopicCategories(currentWorkspace.id)
+                .then(res => setAvailableCategories(res.data || []))
+                .catch(err => console.error('Failed to load categories in ContactSidebar:', err));
         }
     }, [currentWorkspace?.id]);
 
@@ -3647,140 +3651,168 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 12px 6px' }}>
                                                 {/* Kategori etiketi */}
                                                 <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                                                    <button
-                                                        onClick={async () => {
-                                                            if (categoryOpenCaseId !== c.id && availableCategories.length === 0) {
-                                                                try {
-                                                                    const res = await getTopicCategories(currentWorkspace.id);
-                                                                    setAvailableCategories(res.data || []);
-                                                                } catch (e) { console.error(e); }
-                                                            }
-                                                            setCategoryOpenCaseId(prev => prev === c.id ? null : c.id);
-                                                            setCategorySearch('');
-                                                        }}
-                                                        style={{
-                                                            background: activeConv?.topicCategory?.name
-                                                                ? (activeConv.topicCategory.color || '#6366f1') + '18'
-                                                                : '#ffffff',
-                                                            color: activeConv?.topicCategory?.color || '#334155',
-                                                            border: `1px solid ${activeConv?.topicCategory?.name ? (activeConv.topicCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
-                                                            borderRadius: 6,
-                                                            padding: '0 8px',
-                                                            fontSize: '0.65rem',
-                                                            fontWeight: 600,
-                                                            whiteSpace: 'nowrap',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.15s',
-                                                            height: 26,
-                                                            width: '100%',
-                                                            boxSizing: 'border-box'
-                                                        }}
-                                                    >
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                                                            <span style={{ fontSize: '0.7rem' }}>
-                                                                {activeConv?.topicCategory?.icon || '📁'}
-                                                            </span>
-                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {activeConv?.topicCategory?.name || 'Kategori Seç'}
-                                                            </span>
-                                                        </span>
-                                                        <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0, transition: 'transform 0.2s', transform: categoryOpenCaseId === c.id ? 'rotate(180deg)' : 'none' }} />
-                                                    </button>
+                                                    {(() => {
+                                                        const caseCatId = c?.categoryId || activeConv?.topicCategoryId;
+                                                        const currentCaseCategory = c?.category || activeConv?.topicCategory || availableCategories.find(cat => cat.id === caseCatId) || null;
 
-                                                    {(categoryOpenCaseId === c.id) && (
-                                                        <>
-                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryOpenCaseId(null)} />
-                                                        <div style={{
-                                                            position: 'absolute',
-                                                            top: '100%',
-                                                            left: 0,
-                                                            zIndex: 9999,
-                                                            background: '#fff',
-                                                            border: '1px solid #e5e7eb',
-                                                            borderRadius: 12,
-                                                            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-                                                            width: 260,
-                                                            maxHeight: 320,
-                                                            overflow: 'hidden',
-                                                            marginTop: 4
-                                                        }}
-                                                        onClick={e => e.stopPropagation()}
-                                                        >
-                                                            <div style={{ padding: '8px' }}>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Kategori ara..."
-                                                                    value={categorySearch}
-                                                                    onChange={e => setCategorySearch(e.target.value)}
-                                                                    autoFocus
-                                                                    style={{
-                                                                        width: '100%', padding: '6px 10px',
-                                                                        border: '1px solid #e5e7eb', borderRadius: 8,
-                                                                        fontSize: '0.75rem', outline: 'none'
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                            <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                                                                <button
-                                                                    onClick={async () => {
+                                                        return (
+                                                            <>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (categoryOpenCaseId !== c.id && availableCategories.length === 0) {
                                                                         try {
-                                                                            await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null });
-                                                                            setLocalConvOverride(prev => ({
-                                                                                ...(prev || activeConv),
-                                                                                topicCategory: null
-                                                                            }));
-                                                                            setCategoryOpenCaseId(null);
+                                                                            const res = await getTopicCategories(currentWorkspace.id);
+                                                                            setAvailableCategories(res.data || []);
                                                                         } catch (e) { console.error(e); }
-                                                                    }}
-                                                                    style={{
-                                                                        width: '100%', padding: '7px 12px',
-                                                                        background: 'none',
-                                                                        border: 'none', borderBottom: '1px solid #f1f5f9',
-                                                                        fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
-                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
-                                                                    }}
+                                                                    }
+                                                                    setCategoryOpenCaseId(prev => prev === c.id ? null : c.id);
+                                                                    setCategorySearch('');
+                                                                }}
+                                                                style={{
+                                                                    background: currentCaseCategory?.name
+                                                                        ? (currentCaseCategory.color || '#6366f1') + '18'
+                                                                        : '#ffffff',
+                                                                    color: currentCaseCategory?.color || '#334155',
+                                                                    border: `1px solid ${currentCaseCategory?.name ? (currentCaseCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
+                                                                    borderRadius: 6,
+                                                                    padding: '0 8px',
+                                                                    fontSize: '0.65rem',
+                                                                    fontWeight: 600,
+                                                                    whiteSpace: 'nowrap',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.15s',
+                                                                    height: 26,
+                                                                    width: '100%',
+                                                                    boxSizing: 'border-box'
+                                                                }}
+                                                            >
+                                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                                                    <span style={{ fontSize: '0.7rem' }}>
+                                                                        {currentCaseCategory?.icon || '📁'}
+                                                                    </span>
+                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                        {currentCaseCategory?.name || 'Kategori Seç'}
+                                                                    </span>
+                                                                </span>
+                                                                <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0, transition: 'transform 0.2s', transform: categoryOpenCaseId === c.id ? 'rotate(180deg)' : 'none' }} />
+                                                            </button>
+
+                                                            {(categoryOpenCaseId === c.id) && (
+                                                                <>
+                                                                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryOpenCaseId(null)} />
+                                                                <div style={{
+                                                                    position: 'absolute',
+                                                                    top: '100%',
+                                                                    left: 0,
+                                                                    zIndex: 9999,
+                                                                    background: '#fff',
+                                                                    border: '1px solid #e5e7eb',
+                                                                    borderRadius: 12,
+                                                                    boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                                    width: 260,
+                                                                    maxHeight: 320,
+                                                                    overflow: 'hidden',
+                                                                    marginTop: 4
+                                                                }}
+                                                                onClick={e => e.stopPropagation()}
                                                                 >
-                                                                    <X size={12} /> Kategoriyi Kaldır
-                                                                </button>
-                                                                {availableCategories
-                                                                    .filter(catItem => !categorySearch || catItem.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                                                                    .map(cat => (
+                                                                    <div style={{ padding: '8px' }}>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Kategori ara..."
+                                                                            value={categorySearch}
+                                                                            onChange={e => setCategorySearch(e.target.value)}
+                                                                            autoFocus
+                                                                            style={{
+                                                                                width: '100%', padding: '6px 10px',
+                                                                                border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                                fontSize: '0.75rem', outline: 'none'
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                    <div style={{ maxHeight: 240, overflowY: 'auto' }}>
                                                                         <button
-                                                                            key={cat.id}
                                                                             onClick={async () => {
                                                                                 try {
-                                                                                    const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id });
-                                                                                    setLocalConvOverride(prev => ({
-                                                                                        ...(prev || activeConv),
-                                                                                        topicCategory: res.data.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
-                                                                                    }));
+                                                                                    if (c?.id && c.id !== 'default') {
+                                                                                        await caseAPI.update(currentWorkspace.id, c.id, { categoryId: null }).catch(() => {});
+                                                                                        c.categoryId = null;
+                                                                                        c.category = null;
+                                                                                    }
+                                                                                    if (activeConv?.id) {
+                                                                                        await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null }).catch(() => {});
+                                                                                        setLocalConvOverride(prev => ({
+                                                                                            ...(prev || activeConv),
+                                                                                            topicCategoryId: null,
+                                                                                            topicCategory: null
+                                                                                        }));
+                                                                                    }
                                                                                     setCategoryOpenCaseId(null);
                                                                                 } catch (e) { console.error(e); }
                                                                             }}
                                                                             style={{
-                                                                                width: '100%', padding: '6px 10px',
-                                                                                background: activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent',
-                                                                                border: 'none', fontSize: '0.72rem',
-                                                                                color: '#374151', cursor: 'pointer',
-                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
-                                                                                transition: 'background 0.1s'
+                                                                                width: '100%', padding: '7px 12px',
+                                                                                background: 'none',
+                                                                                border: 'none', borderBottom: '1px solid #f1f5f9',
+                                                                                fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
+                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
                                                                             }}
-                                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                                                            onMouseLeave={e => { e.currentTarget.style.background = activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent'; }}
                                                                         >
-                                                                            <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
-                                                                            <span style={{ flex: 1 }}>{cat.name}</span>
-                                                                            {activeConv?.topicCategory?.id === cat.id && <Check size={12} style={{ color: '#22c55e' }} />}
+                                                                            <X size={12} /> Kategoriyi Kaldır
                                                                         </button>
-                                                                    ))
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                        </>
-                                                    )}
+                                                                        {availableCategories
+                                                                            .filter(catItem => !categorySearch || catItem.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                                                                            .map(cat => {
+                                                                                const isSelected = (currentCaseCategory?.id === cat.id) || (caseCatId === cat.id);
+                                                                                return (
+                                                                                    <button
+                                                                                        key={cat.id}
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                if (c?.id && c.id !== 'default') {
+                                                                                                    await caseAPI.update(currentWorkspace.id, c.id, { categoryId: cat.id }).catch(() => {});
+                                                                                                    c.categoryId = cat.id;
+                                                                                                    c.category = { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color };
+                                                                                                }
+                                                                                                if (activeConv?.id) {
+                                                                                                    const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id }).catch(() => {});
+                                                                                                    setLocalConvOverride(prev => ({
+                                                                                                        ...(prev || activeConv),
+                                                                                                        topicCategoryId: cat.id,
+                                                                                                        topicCategory: res?.data?.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
+                                                                                                    }));
+                                                                                                }
+                                                                                                setCategoryOpenCaseId(null);
+                                                                                            } catch (e) { console.error(e); }
+                                                                                        }}
+                                                                                        style={{
+                                                                                            width: '100%', padding: '6px 10px',
+                                                                                            background: isSelected ? '#f0fdf4' : 'transparent',
+                                                                                            border: 'none', fontSize: '0.72rem',
+                                                                                            color: '#374151', cursor: 'pointer',
+                                                                                            textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                                                                        onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#f0fdf4' : 'transparent'; }}
+                                                                                    >
+                                                                                        <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
+                                                                                        <span style={{ flex: 1 }}>{cat.name}</span>
+                                                                                        {isSelected && <Check size={12} style={{ color: '#22c55e' }} />}
+                                                                                    </button>
+                                                                                );
+                                                                            })
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                                </>
+                                                            )}
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 {/* Ürün ekle butonu */}

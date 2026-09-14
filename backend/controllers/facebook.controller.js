@@ -3474,6 +3474,35 @@ async function handleLeadgenEvent(leadValue, entryId) {
         });
         console.log(`✅ [LEADGEN] Message created: ${message.id}`);
 
+        // 3.7. Kategori Otomatik Eşleme (Lead Form içeriği & alanlarından)
+        let leadCategoryMatch = null;
+        try {
+            const { matchCategoryFromText } = await import('../services/categoryMatcher.service.js');
+            const leadSearchText = [
+                formName,
+                ...Object.entries(fieldData).map(([k, v]) => `${k}: ${v}`),
+                messageContent
+            ].filter(Boolean).join('\n');
+
+            leadCategoryMatch = await matchCategoryFromText(facebookPage.workspaceId, leadSearchText);
+            if (leadCategoryMatch?.categoryId) {
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { topicCategoryId: leadCategoryMatch.categoryId }
+                });
+                conversation.topicCategoryId = leadCategoryMatch.categoryId;
+                conversation.topicCategory = {
+                    id: leadCategoryMatch.category.id,
+                    name: leadCategoryMatch.category.name,
+                    icon: leadCategoryMatch.category.icon,
+                    color: leadCategoryMatch.category.color
+                };
+                console.log(`📁 [LEADGEN] Kategori otomatik eşleşti: ${leadCategoryMatch.matchType} → ${leadCategoryMatch.matchedTerm} (${leadCategoryMatch.categoryId})`);
+            }
+        } catch (leadCatErr) {
+            console.error('⚠️ [LEADGEN] Kategori eşleştirme hatası:', leadCatErr.message);
+        }
+
         // 3.6. Kanal yönlendirmesi (akış/aşama + takım ataması)
         try {
             const { applyChannelRouting } = await import('../services/conversationRouting.service.js');
@@ -3491,11 +3520,19 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('⚠️ [LEADGEN] Channel routing error:', chRoutingErr.message);
         }
 
+        // Post-processing pipeline (Lead scoring, auto-case, auto-category sync)
+        try {
+            const { runChannelPostProcessing } = await import('./inbox.controller.js');
+            runChannelPostProcessing(facebookPage.workspaceId, conversation.id, contact?.id, messageContent, 'FACEBOOK_LEAD').catch(() => {});
+        } catch (ppErr) {
+            console.error('⚠️ [LEADGEN] Post-processing pipeline error:', ppErr.message);
+        }
+
         // 5. Emit Socket Events (workspace-specific)
         try {
             emitToWorkspace(facebookPage.workspaceId, 'new_conversation', {
                 workspaceId: facebookPage.workspaceId,
-                conversation: { ...conversation, contact }
+                conversation: { ...conversation, contact, topicCategory: conversation.topicCategory }
             });
 
             emitToWorkspace(facebookPage.workspaceId, 'new_message', {

@@ -31,18 +31,27 @@ async function _autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
   
   const nextNumber = await generateCaseNumber(workspaceId);
   
-  // Konuşma bilgilerini al (title + caseType)
+  // Konuşma bilgilerini al (title + category + caseType)
   let conversationTitle = null;
   let caseTypeId = null;
+  let topicCategoryId = null;
   try {
       const conv = await prisma.conversation.findUnique({
           where: { id: conversationId },
           select: { title: true, topicCategoryId: true }
       });
       conversationTitle = conv?.title || null;
-      if (conv?.topicCategoryId) {
+      topicCategoryId = conv?.topicCategoryId || null;
+      if (!topicCategoryId) {
+          try {
+              const { matchCategoryFromConversation } = await import('./categoryMatcher.service.js');
+              const catMatch = await matchCategoryFromConversation(workspaceId, conversationId);
+              if (catMatch?.categoryId) topicCategoryId = catMatch.categoryId;
+          } catch (_) {}
+      }
+      if (topicCategoryId) {
           const tc = await prisma.topicCategory.findUnique({
-              where: { id: conv.topicCategoryId },
+              where: { id: topicCategoryId },
               select: { caseTypeId: true }
           });
           caseTypeId = tc?.caseTypeId || null;
@@ -60,6 +69,7 @@ async function _autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
       conversations: { connect: { id: conversationId } },
       assignedToId: lastCase?.assignedToId || null,
       assignedTeamId: lastCase?.assignedTeamId || null,
+      categoryId: topicCategoryId || null,
       caseTypeId,
     }
   });

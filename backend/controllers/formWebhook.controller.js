@@ -517,6 +517,29 @@ export const handleFormSubmission = async (req, res) => {
             }
         });
 
+        // Kategori Otomatik Eşleme
+        try {
+            const { matchCategoryFromText } = await import('../services/categoryMatcher.service.js');
+            const formSearchText = [webhook.name, subject, product, message, messageContent].filter(Boolean).join('\n');
+            const catMatch = await matchCategoryFromText(webhook.workspaceId, formSearchText);
+            if (catMatch?.categoryId) {
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { topicCategoryId: catMatch.categoryId }
+                });
+                conversation.topicCategoryId = catMatch.categoryId;
+                conversation.topicCategory = {
+                    id: catMatch.category.id,
+                    name: catMatch.category.name,
+                    icon: catMatch.category.icon,
+                    color: catMatch.category.color
+                };
+                console.log(`📁 [FormWebhook] Kategori otomatik eşleşti: ${catMatch.matchType} → ${catMatch.matchedTerm} (${catMatch.categoryId})`);
+            }
+        } catch (catMatchErr) {
+            console.error('⚠️ [FormWebhook] Kategori eşleştirme hatası:', catMatchErr.message);
+        }
+
         // Madde 0: Pipeline post-processing
         try {
             const { runChannelPostProcessing } = await import('./inbox.controller.js');
@@ -538,7 +561,7 @@ export const handleFormSubmission = async (req, res) => {
             emitToWorkspace(webhook.workspaceId, 'new_conversation', {
                 workspaceId: webhook.workspaceId,
                 conversationId: conversation.id,
-                conversation,
+                conversation: { ...conversation, topicCategory: conversation.topicCategory },
                 channel: 'FORM'
             });
 

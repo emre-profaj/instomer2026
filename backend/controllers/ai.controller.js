@@ -622,6 +622,29 @@ export const updateConversationAnalysis = async (req, res) => {
             }
         });
 
+        if (topicCategoryId !== undefined && updated.caseId) {
+            await prisma.case.update({
+                where: { id: updated.caseId },
+                data: { categoryId: topicCategoryId || null }
+            }).catch(() => {});
+        }
+
+        try {
+            const { emitToWorkspace } = await import('../socket.js');
+            emitToWorkspace(updated.workspaceId, 'conversation_updated', {
+                conversationId,
+                topicCategoryId: updated.topicCategoryId,
+                topicCategory: updated.topicCategory
+            });
+            if (updated.caseId) {
+                emitToWorkspace(updated.workspaceId, 'case_updated', {
+                    caseId: updated.caseId,
+                    categoryId: updated.topicCategoryId,
+                    category: updated.topicCategory
+                });
+            }
+        } catch (_) {}
+
         console.log(`✅ Updated AI analysis for conversation ${conversationId}`);
         res.json({ success: true, topic: updated.aiTopic, summary: updated.aiSummary, topicCategory: updated.topicCategory, branch: updated.branch, branchId: updated.branchId });
     } catch (error) {

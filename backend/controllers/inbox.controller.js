@@ -444,24 +444,10 @@ export async function runChannelPostProcessing(workspaceId, conversationId, cont
       }
     } catch (e) { /* opsiyonel */ }
 
-    // ── 5. Konuşma İçeriğinden Kategori Algılama ────────────
+    // ── 5. Konuşma İçeriğinden Kategori Algılama & Senkronizasyon ────────────
     try {
-        const activeCase = await prisma.case.findFirst({
-            where: { contactId, status: 'ACTIVE' },
-            orderBy: { createdAt: 'desc' },
-            select: { id: true, categoryId: true }
-        });
-        if (activeCase && !activeCase.categoryId) {
-            const { matchCategoryFromConversation } = await import('../services/categoryMatcher.service.js');
-            const match = await matchCategoryFromConversation(workspaceId, conversationId);
-            if (match?.categoryId) {
-                await prisma.case.update({
-                    where: { id: activeCase.id },
-                    data: { categoryId: match.categoryId }
-                });
-                console.log(`📁 [PostProcess] Case kategori atandı: ${match.matchType} → ${match.matchedKeyword || match.matchedProduct}`);
-            }
-        }
+        const { matchCategoryFromConversation } = await import('../services/categoryMatcher.service.js');
+        await matchCategoryFromConversation(workspaceId, conversationId);
     } catch (e) { /* opsiyonel */ }
 
   } catch (err) {

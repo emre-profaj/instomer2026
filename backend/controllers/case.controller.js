@@ -186,10 +186,21 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
         }
         const title = topic || channelLabel;
 
+        let topicCategoryId = conv.topicCategoryId;
+        if (!topicCategoryId) {
+            try {
+                const { matchCategoryFromConversation } = await import('../services/categoryMatcher.service.js');
+                const catMatch = await matchCategoryFromConversation(workspaceId, conversationId);
+                if (catMatch?.categoryId) {
+                    topicCategoryId = catMatch.categoryId;
+                }
+            } catch (_) {}
+        }
+
         let caseTypeId = null;
-        if (conv.topicCategoryId) {
+        if (topicCategoryId) {
             const tc = await prisma.topicCategory.findUnique({
-                where: { id: conv.topicCategoryId },
+                where: { id: topicCategoryId },
                 select: { caseTypeId: true }
             });
             caseTypeId = tc?.caseTypeId || null;
@@ -205,7 +216,7 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 assignedTeamId: conv.assignedTeamId || null,
                 funnelType: conv.funnelType || null,
                 funnelStageId: conv.funnelStageId || null,
-                categoryId: conv.topicCategoryId || null,
+                categoryId: topicCategoryId || null,
                 caseTypeId,
                 campaignId: conv.campaignId || null,
                 priority: 'NORMAL'
@@ -358,6 +369,9 @@ export const getContactCases = async (req, res) => {
                 },
                 campaign: {
                     select: { id: true, name: true }
+                },
+                category: {
+                    select: { id: true, name: true, color: true, icon: true }
                 }
             },
             orderBy: { updatedAt: 'desc' }
@@ -732,7 +746,8 @@ export const updateCase = async (req, res) => {
             where: { id: caseId },
             data: updateData,
             include: {
-                branch: { select: { id: true, name: true } }
+                branch: { select: { id: true, name: true } },
+                category: { select: { id: true, name: true, color: true, icon: true } }
             }
         });
 
@@ -752,6 +767,15 @@ export const updateCase = async (req, res) => {
                 data: { branchId: branchId || null }
             });
             console.log(`🔄 [CaseUpdate] Cascaded branchId → conversation.branchId for case ${caseId}`);
+        }
+
+        // CASCADE: categoryId değiştiyse bağlı conversation'ların topicCategoryId'sini de güncelle
+        if (categoryId !== undefined) {
+            await prisma.conversation.updateMany({
+                where: { caseId },
+                data: { topicCategoryId: categoryId || null }
+            });
+            console.log(`🔄 [CaseUpdate] Cascaded categoryId → conversation.topicCategoryId for case ${caseId}`);
         }
 
         // CASCADE: assignedToId/assignedTeamId değiştiyse conversation + activities güncelle

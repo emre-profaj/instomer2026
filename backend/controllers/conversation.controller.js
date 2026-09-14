@@ -443,6 +443,8 @@ export const getConversations = async (req, res) => {
                         assignedTeamId: true,
                         funnelType: true,
                         funnelStageId: true,
+                        categoryId: true,
+                        category: { select: { id: true, name: true, color: true, icon: true } },
                         assignedTo: { select: { id: true, name: true } }
                     }
                 },
@@ -724,6 +726,8 @@ export const getConversation = async (req, res) => {
                         assignedTeamId: true,
                         funnelType: true,
                         funnelStageId: true,
+                        categoryId: true,
+                        category: { select: { id: true, name: true, color: true, icon: true } },
                         assignedTo: { select: { id: true, name: true } }
                     }
                 },
@@ -746,6 +750,27 @@ export const getConversation = async (req, res) => {
 
         if (!conversation) {
             return res.status(404).json({ error: 'Conversation not found' });
+        }
+
+        // Otomatik Kategori Eşleme (Kategori henüz atanmamışsa)
+        if (!conversation.topicCategoryId && workspaceId) {
+            try {
+                const { matchCategoryFromConversation } = await import('../services/categoryMatcher.service.js');
+                const catMatch = await matchCategoryFromConversation(workspaceId, conversationId);
+                if (catMatch?.categoryId) {
+                    conversation.topicCategoryId = catMatch.categoryId;
+                    conversation.topicCategory = {
+                        id: catMatch.category.id,
+                        name: catMatch.category.name,
+                        icon: catMatch.category.icon,
+                        color: catMatch.category.color
+                    };
+                    if (conversation.case) {
+                        conversation.case.categoryId = catMatch.categoryId;
+                        conversation.case.category = conversation.topicCategory;
+                    }
+                }
+            } catch (_) {}
         }
 
         console.log(`✅ [getConversation] Returning conversation with ${conversation.messages?.length || 0} messages, ${conversation.internalNotes?.length || 0} notes`);
