@@ -8,7 +8,8 @@ import {
   appointmentConfigAPI,
   productAPI,
   teamAPI,
-  funnelAPI
+  funnelAPI,
+  aiAPI
 } from '../../services/api';
 import {
   getTopicCategories,
@@ -39,7 +40,8 @@ import {
   Copy,
   Edit2,
   UserPlus,
-  User
+  User,
+  Bot
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -266,6 +268,40 @@ const SetupWizard = () => {
   const [newUserData, setNewUserData] = useState({ name: '', email: '', password: 'Password123!' });
   const [creatingUser, setCreatingUser] = useState(false);
 
+  // 8. AI Asistanlar State
+  const [bots, setBots] = useState([]);
+  const [botsLoading, setBotsLoading] = useState(false);
+  const [showAddBot, setShowAddBot] = useState(false);
+  const [newBot, setNewBot] = useState({
+    name: '',
+    role: 'Müşteri Temsilcisi (Chat & Ses)',
+    prompt: '',
+    isActive: true,
+    whatsappEnabled: true,
+    instagramEnabled: true,
+    widgetEnabled: true,
+    facebookEnabled: true
+  });
+  const [savingBot, setSavingBot] = useState(false);
+  const [editingBotId, setEditingBotId] = useState(null);
+  const [editBotData, setEditBotData] = useState({
+    name: '',
+    role: '',
+    prompt: '',
+    isActive: true,
+    whatsappEnabled: true,
+    instagramEnabled: true,
+    widgetEnabled: true,
+    facebookEnabled: true,
+    capabilities: {
+      appointment: true,
+      product: true,
+      humanHandoff: true,
+      knowledgeBase: true
+    }
+  });
+  const [savingEditBot, setSavingEditBot] = useState(false);
+
   // Load Initial Workspace Data
   useEffect(() => {
     if (!currentWorkspace?.id) return;
@@ -392,6 +428,23 @@ const SetupWizard = () => {
             setWorkspaceMembers([{ userId: currentUser.id, role: 'OWNER', user: currentUser }]);
           }
         });
+    }
+
+    // Load AI Bots
+    setBotsLoading(true);
+    if (typeof aiAPI?.getBots === 'function') {
+      aiAPI.getBots(wsId)
+        .then(res => {
+          const raw = res.data?.bots || res.data;
+          setBots(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Bots Load error:', err);
+          setBots([]);
+        })
+        .finally(() => setBotsLoading(false));
+    } else {
+      setBotsLoading(false);
     }
 
   }, [currentWorkspace?.id]);
@@ -904,6 +957,137 @@ const SetupWizard = () => {
       showError(err.response?.data?.error || 'Kullanıcı oluşturulurken hata oluştu.');
     } finally {
       setCreatingUser(false);
+    }
+  };
+
+  // ─── AI BOT ACTIONS (CREATE / EDIT / DELETE / STATUS) ─────────────────────
+  const handleStartEditBot = (bot) => {
+    setEditingBotId(bot.id);
+    const defaultCaps = {
+      appointment: true,
+      product: true,
+      humanHandoff: true,
+      knowledgeBase: true
+    };
+    const caps = bot.capabilities && typeof bot.capabilities === 'object' ? { ...defaultCaps, ...bot.capabilities } : defaultCaps;
+    setEditBotData({
+      name: bot.name || '',
+      role: bot.role || 'Müşteri Temsilcisi (Chat & Ses)',
+      prompt: bot.prompt || '',
+      isActive: bot.isActive !== false,
+      whatsappEnabled: bot.whatsappEnabled !== false,
+      instagramEnabled: bot.instagramEnabled !== false,
+      widgetEnabled: bot.widgetEnabled !== false,
+      facebookEnabled: bot.facebookEnabled !== false,
+      capabilities: caps
+    });
+  };
+
+  const handleUpdateBot = async () => {
+    if (!editBotData.name.trim()) {
+      showError('Asistan adı gereklidir.');
+      return;
+    }
+    setSavingEditBot(true);
+    try {
+      const res = await aiAPI.updateBot(currentWorkspace.id, editingBotId, editBotData);
+      const updated = res.data?.bot || res.data;
+      setBots(prev => prev.map(b => b.id === editingBotId ? { ...b, ...editBotData, ...(updated?.id ? updated : {}) } : b));
+      showSuccess('AI Asistan başarıyla güncellendi.');
+      setEditingBotId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Asistan güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditBot(false);
+    }
+  };
+
+  const handleDeleteBot = async (botId) => {
+    if (!window.confirm('Bu AI asistanı silmek istediğinize emin misiniz?')) return;
+    try {
+      await aiAPI.deleteBot(currentWorkspace.id, botId);
+      setBots(prev => prev.filter(b => b.id !== botId));
+      showSuccess('AI Asistan silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Asistan silinirken hata oluştu.');
+    }
+  };
+
+  const handleToggleBotStatus = async (bot) => {
+    const nextStatus = !bot.isActive;
+    try {
+      await aiAPI.toggleStatus(currentWorkspace.id, bot.id, nextStatus);
+      setBots(prev => prev.map(b => b.id === bot.id ? { ...b, isActive: nextStatus } : b));
+      showSuccess(nextStatus ? 'Asistan aktif edildi.' : 'Asistan durduruldu (pasif).');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Durum değiştirilemedi.');
+    }
+  };
+
+  const handleCreateBot = async () => {
+    if (!newBot.name.trim()) {
+      showError('Asistan adı gereklidir.');
+      return;
+    }
+    setSavingBot(true);
+    try {
+      const payload = {
+        ...newBot,
+        capabilities: {
+          appointment: true,
+          product: true,
+          humanHandoff: true,
+          knowledgeBase: true
+        }
+      };
+      const res = await aiAPI.createBot(currentWorkspace.id, payload);
+      const created = res.data?.bot || res.data;
+      if (created) setBots(prev => [created, ...prev]);
+      showSuccess('Yeni AI asistan başarıyla oluşturuldu!');
+      setNewBot({
+        name: '',
+        role: 'Müşteri Temsilcisi (Chat & Ses)',
+        prompt: '',
+        isActive: true,
+        whatsappEnabled: true,
+        instagramEnabled: true,
+        widgetEnabled: true,
+        facebookEnabled: true
+      });
+      setShowAddBot(false);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Asistan oluşturulurken hata oluştu.');
+    } finally {
+      setSavingBot(false);
+    }
+  };
+
+  const handleCreateDefaultBot = async () => {
+    setSavingBot(true);
+    try {
+      const res = await aiAPI.createBot(currentWorkspace.id, {
+        name: 'Insta',
+        role: 'Müşteri Temsilcisi (Chat & Ses)',
+        prompt: 'Sen Instomer yapay zeka müşteri temsilcisisin. Müşterilerin tüm sorularını nazik, kurumsal ve yardımsever bir dille yanıtla. Bilgi bankasındaki verileri kullanarak doğru bilgi sağla, gerektiğinde randevu oluştur veya insan temsilciye yönlendir.',
+        isActive: true,
+        whatsappEnabled: true,
+        instagramEnabled: true,
+        widgetEnabled: true,
+        facebookEnabled: true,
+        capabilities: {
+          appointment: true,
+          product: true,
+          humanHandoff: true,
+          knowledgeBase: true
+        }
+      });
+      const created = res.data?.bot || res.data;
+      if (created) setBots(prev => [created, ...prev]);
+      showSuccess('Varsayılan AI Asistan (Insta) başarıyla oluşturuldu!');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Varsayılan asistan oluşturulamadı.');
+    } finally {
+      setSavingBot(false);
     }
   };
 
@@ -2121,44 +2305,358 @@ const SetupWizard = () => {
     );
   };
 
-  const renderAgentlar = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px' }}>
-      <div>
-        <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>AI Asistanlar</h2>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Instomer yapay zeka asistanının yeteneklerini kontrol edin.</p>
-      </div>
+  const renderAgentlar = () => {
+    const botList = Array.isArray(bots) ? bots : [];
 
-      <div style={{ border: '2px solid #E63B2E', borderRadius: '10px', padding: '18px', background: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '16px', fontWeight: 600 }}>
-            <AIIcon /> Müşteri Temsilcisi (Chat & Ses)
-          </h3>
-          <span style={{ color: '#16a34a', fontSize: '13px', fontWeight: 700, background: '#dcfce7', padding: '3px 10px', borderRadius: '12px' }}>
-            ✅ Sistemde Aktif
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '760px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <label style={labelStyle}>Asistan Yetenekleri</label>
-            <div style={{ display: 'flex', gap: '16px', fontSize: '13px', marginTop: '6px', color: '#334155' }}>
-              <span>✓ Randevu Oluşturma</span>
-              <span>✓ Fiyat Bilgisi Verme</span>
-              <span>✓ İnsan Temsilciye Aktarma</span>
-              <span>✓ Bilgi Bankasından Yanıtlama</span>
-            </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>Sistem Davranışı</label>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b', lineHeight: 1.4 }}>
-              Asistan, Bilgi Bankası adımında eklediğiniz tüm web sitesi ve metin verilerini kullanarak müşterilerin sorularını kurumsal dilde yanıtlar.
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>AI Asistanlar</h2>
+            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
+              Instomer yapay zeka asistanının yeteneklerini, sistem talimatlarını ve kanallarını kontrol edin.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowAddBot(!showAddBot)}
+            style={primaryBtnStyle}
+          >
+            <Plus size={16} /> Yeni Asistan Ekle
+          </button>
         </div>
+
+        {/* Yeni Asistan Ekleme Formu */}
+        {showAddBot && (
+          <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni AI Asistan Oluştur</h4>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <input
+                type="text"
+                placeholder="Asistan Adı (Örn: Insta, Satış Asistanı)*"
+                value={newBot.name}
+                onChange={e => setNewBot({ ...newBot, name: e.target.value })}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <input
+                type="text"
+                placeholder="Rol / Unvan (Örn: Müşteri Temsilcisi)"
+                value={newBot.role}
+                onChange={e => setNewBot({ ...newBot, role: e.target.value })}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+            </div>
+            <div>
+              <label style={{ ...labelStyle, fontSize: '12px' }}>Sistem Talimatı (Prompt)</label>
+              <textarea
+                placeholder="Asistanın müşterilere nasıl hitap edeceği ve davranış kuralları..."
+                value={newBot.prompt}
+                onChange={e => setNewBot({ ...newBot, prompt: e.target.value })}
+                rows={3}
+                style={{ ...inputStyle, resize: 'vertical', marginTop: '4px' }}
+              />
+            </div>
+            <div>
+              <label style={{ ...labelStyle, fontSize: '12px', marginBottom: '6px', display: 'block' }}>Hizmet Vereceği Kanallar</label>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#334155' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={newBot.whatsappEnabled}
+                    onChange={e => setNewBot({ ...newBot, whatsappEnabled: e.target.checked })}
+                  /> WhatsApp
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={newBot.instagramEnabled}
+                    onChange={e => setNewBot({ ...newBot, instagramEnabled: e.target.checked })}
+                  /> Instagram
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={newBot.widgetEnabled}
+                    onChange={e => setNewBot({ ...newBot, widgetEnabled: e.target.checked })}
+                  /> Web Widget
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+              <button type="button" onClick={() => setShowAddBot(false)} style={secondaryBtnStyle}>İptal</button>
+              <button type="button" onClick={handleCreateBot} disabled={savingBot} style={primaryBtnStyle}>
+                {savingBot ? 'Oluşturuluyor...' : 'Asistanı Ekle'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {botsLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', padding: '20px' }}>
+            <Loader2 size={18} className="animate-spin" /> AI Asistanlar yükleniyor...
+          </div>
+        ) : botList.length === 0 ? (
+          <div style={{ padding: '30px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: '#f8fafc' }}>
+            <Bot size={36} color="#94a3b8" />
+            <div>
+              <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Kayıtlı AI Asistan Bulunamadı</div>
+              <div style={{ fontSize: '13px' }}>Çalışma alanınız için hemen varsayılan asistanı oluşturabilir veya yeni bir tane ekleyebilirsiniz.</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateDefaultBot}
+              disabled={savingBot}
+              style={{ ...primaryBtnStyle, marginTop: '8px' }}
+            >
+              {savingBot ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {savingBot ? 'Oluşturuluyor...' : 'Varsayılan AI Asistanı Oluştur (Insta)'}
+            </button>
+          </div>
+        ) : (
+          botList.map(bot => {
+            const isEditing = editingBotId === bot.id;
+            const capabilities = bot.capabilities && typeof bot.capabilities === 'object' ? bot.capabilities : {
+              appointment: true,
+              product: true,
+              humanHandoff: true,
+              knowledgeBase: true
+            };
+
+            return isEditing ? (
+              <div key={bot.id} style={{ border: '2px solid #E63B2E', borderRadius: '10px', padding: '18px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Edit2 size={16} color="#E63B2E" /> Asistanı Düzenle: {bot.name}
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ ...labelStyle, fontSize: '12px' }}>Asistan Adı *</label>
+                    <input
+                      type="text"
+                      value={editBotData.name}
+                      onChange={e => setEditBotData({ ...editBotData, name: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ ...labelStyle, fontSize: '12px' }}>Rol / Unvan</label>
+                    <input
+                      type="text"
+                      value={editBotData.role}
+                      onChange={e => setEditBotData({ ...editBotData, role: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                {/* Yetenekler */}
+                <div>
+                  <label style={{ ...labelStyle, fontSize: '13px', marginBottom: '8px', display: 'block' }}>
+                    Asistan Yetenekleri (Hangi işlemleri yapabilir?)
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.capabilities?.appointment !== false}
+                        onChange={e => setEditBotData({
+                          ...editBotData,
+                          capabilities: { ...editBotData.capabilities, appointment: e.target.checked }
+                        })}
+                      />
+                      <span>📅 Randevu Oluşturma</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.capabilities?.product !== false}
+                        onChange={e => setEditBotData({
+                          ...editBotData,
+                          capabilities: { ...editBotData.capabilities, product: e.target.checked }
+                        })}
+                      />
+                      <span>🏷️ Fiyat & Ürün Bilgisi Verme</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.capabilities?.humanHandoff !== false}
+                        onChange={e => setEditBotData({
+                          ...editBotData,
+                          capabilities: { ...editBotData.capabilities, humanHandoff: e.target.checked }
+                        })}
+                      />
+                      <span>👥 İnsan Temsilciye Aktarma</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.capabilities?.knowledgeBase !== false}
+                        onChange={e => setEditBotData({
+                          ...editBotData,
+                          capabilities: { ...editBotData.capabilities, knowledgeBase: e.target.checked }
+                        })}
+                      />
+                      <span>📚 Bilgi Bankasından Yanıtlama</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Sistem Davranışı / Prompt */}
+                <div>
+                  <label style={{ ...labelStyle, fontSize: '13px', marginBottom: '4px', display: 'block' }}>
+                    Sistem Talimatı (Prompt)
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editBotData.prompt}
+                    onChange={e => setEditBotData({ ...editBotData, prompt: e.target.value })}
+                    placeholder="Müşterilere nasıl hitap etmeli, hangi kurallara uymalı..."
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                  />
+                </div>
+
+                {/* Aktif Kanallar */}
+                <div>
+                  <label style={{ ...labelStyle, fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                    İletişim Kanalları
+                  </label>
+                  <div style={{ display: 'flex', gap: '16px', fontSize: '13px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.whatsappEnabled}
+                        onChange={e => setEditBotData({ ...editBotData, whatsappEnabled: e.target.checked })}
+                      /> WhatsApp
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.instagramEnabled}
+                        onChange={e => setEditBotData({ ...editBotData, instagramEnabled: e.target.checked })}
+                      /> Instagram
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={editBotData.widgetEnabled}
+                        onChange={e => setEditBotData({ ...editBotData, widgetEnabled: e.target.checked })}
+                      /> Web Widget
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                  <button type="button" onClick={() => setEditingBotId(null)} style={secondaryBtnStyle}>İptal</button>
+                  <button type="button" onClick={handleUpdateBot} disabled={savingEditBot} style={primaryBtnStyle}>
+                    {savingEditBot ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={bot.id} style={{ border: '2px solid #E63B2E', borderRadius: '10px', padding: '18px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <AIIcon />
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>{bot.name}</span>
+                        <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                          {bot.role || 'Müşteri Temsilcisi'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        Yapay Zeka Destekli Müşteri Yanıtlama & Karşılama Asistanı
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {bot.isActive ? (
+                      <span style={{ color: '#16a34a', fontSize: '12px', fontWeight: 700, background: '#dcfce7', padding: '3px 10px', borderRadius: '12px' }}>
+                        ✅ Sistemde Aktif
+                      </span>
+                    ) : (
+                      <span style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, background: '#f1f5f9', padding: '3px 10px', borderRadius: '12px' }}>
+                        ⏸️ Pasif
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBotStatus(bot)}
+                      style={{ ...actionBtnStyle, fontSize: '11px' }}
+                      title="Durumu Değiştir"
+                    >
+                      {bot.isActive ? 'Durdur' : 'Aktif Et'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditBot(bot)}
+                      style={actionBtnStyle}
+                      title="Asistanı Düzenle"
+                    >
+                      <Edit2 size={12} /> Düzenle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBot(bot.id)}
+                      style={deleteBtnStyle}
+                      title="Asistanı Sil"
+                    >
+                      <Trash2 size={12} /> Sil
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+                  {/* Yetenekler */}
+                  <div>
+                    <label style={labelStyle}>Asistan Yetenekleri</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px', marginTop: '6px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: '6px', background: capabilities.appointment !== false ? '#ecfdf5' : '#f8fafc', color: capabilities.appointment !== false ? '#065f46' : '#94a3b8', border: `1px solid ${capabilities.appointment !== false ? '#a7f3d0' : '#e2e8f0'}` }}>
+                        {capabilities.appointment !== false ? '✓' : '✗'} Randevu Oluşturma
+                      </span>
+                      <span style={{ padding: '3px 10px', borderRadius: '6px', background: capabilities.product !== false ? '#ecfdf5' : '#f8fafc', color: capabilities.product !== false ? '#065f46' : '#94a3b8', border: `1px solid ${capabilities.product !== false ? '#a7f3d0' : '#e2e8f0'}` }}>
+                        {capabilities.product !== false ? '✓' : '✗'} Fiyat Bilgisi Verme
+                      </span>
+                      <span style={{ padding: '3px 10px', borderRadius: '6px', background: capabilities.humanHandoff !== false ? '#ecfdf5' : '#f8fafc', color: capabilities.humanHandoff !== false ? '#065f46' : '#94a3b8', border: `1px solid ${capabilities.humanHandoff !== false ? '#a7f3d0' : '#e2e8f0'}` }}>
+                        {capabilities.humanHandoff !== false ? '✓' : '✗'} İnsan Temsilciye Aktarma
+                      </span>
+                      <span style={{ padding: '3px 10px', borderRadius: '6px', background: capabilities.knowledgeBase !== false ? '#ecfdf5' : '#f8fafc', color: capabilities.knowledgeBase !== false ? '#065f46' : '#94a3b8', border: `1px solid ${capabilities.knowledgeBase !== false ? '#a7f3d0' : '#e2e8f0'}` }}>
+                        {capabilities.knowledgeBase !== false ? '✓' : '✗'} Bilgi Bankasından Yanıtlama
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sistem Talimatı / Davranışı */}
+                  <div>
+                    <label style={labelStyle}>Sistem Davranışı & Talimatı</label>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b', lineHeight: 1.4, background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      {bot.prompt ? bot.prompt : 'Asistan, Bilgi Bankası adımında eklediğiniz tüm web sitesi ve metin verilerini kullanarak müşterilerin sorularını kurumsal dilde yanıtlar.'}
+                    </p>
+                  </div>
+
+                  {/* Kanallar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                    <span style={{ fontWeight: 600, color: '#475569' }}>Kanallar:</span>
+                    <span style={{ color: bot.whatsappEnabled ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
+                      {bot.whatsappEnabled ? '●' : '○'} WhatsApp
+                    </span>
+                    <span style={{ color: bot.instagramEnabled ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
+                      {bot.instagramEnabled ? '●' : '○'} Instagram
+                    </span>
+                    <span style={{ color: bot.widgetEnabled ? '#16a34a' : '#94a3b8', fontWeight: 500 }}>
+                      {bot.widgetEnabled ? '●' : '○'} Web Widget
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderOzet = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
@@ -2180,7 +2678,7 @@ const SetupWizard = () => {
           { label: 'Ürünler / Portföyler', val: `${(Array.isArray(products) ? products.length : 0)} Ürün Listelendi` },
           { label: 'Akışlar', val: `${(Array.isArray(funnels) ? funnels.length : 0) || 1} Akış Aktif` },
           { label: 'Takımlar', val: `${(Array.isArray(teams) ? teams.length : 0) || 1} Takım Aktif` },
-          { label: 'AI Asistan', val: 'Chat & Voice Aktif' },
+          { label: 'AI Asistan', val: `${(Array.isArray(bots) ? bots.filter(b => b.isActive).length : 0)} Asistan Aktif` },
         ].map((item, i) => (
           <div key={i} style={{ border: '1px solid #e2e8f0', padding: '14px 16px', borderRadius: '8px', background: '#fff' }}>
             <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}>{item.label}</div>
