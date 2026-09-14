@@ -503,9 +503,9 @@ const SetupWizard = () => {
     const compLines = [];
     if (companyName) compLines.push(`Firma Adı: ${companyName}`);
     if (companyIndustry) compLines.push(`Sektör / Alan: ${companyIndustry}`);
-    if (companyDescription) compLines.push(`Hakkında: ${companyDescription}`);
-    if (companyPhone) compLines.push(`İletişim Telefon: ${companyPhone}`);
-    if (companyEmail) compLines.push(`E-posta: ${companyEmail}`);
+    if (currentWorkspace?.companyDescription) compLines.push(`Hakkında: ${currentWorkspace.companyDescription}`);
+    if (currentWorkspace?.companyPhone) compLines.push(`İletişim Telefon: ${currentWorkspace.companyPhone}`);
+    if (currentWorkspace?.companyEmail) compLines.push(`E-posta: ${currentWorkspace.companyEmail}`);
     if (companyWebsite) compLines.push(`Web Sitesi: ${companyWebsite}`);
     if (companyAddress) compLines.push(`Merkez Adres: ${companyAddress}`);
     if (companyHours) {
