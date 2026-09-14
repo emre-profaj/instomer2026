@@ -1,7 +1,10 @@
 import prisma from '../lib/prisma.js';
 import { generateCaseNumber } from '../controllers/case.controller.js';
 
-export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
+// ── In-memory lock: aynı contact için eş zamanlı case açmayı engeller ──
+const pendingLocks = new Map();
+
+async function _autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
   // 1. Aktif case var mı kontrol et
   const activeCase = await prisma.case.findFirst({
     where: { contactId, workspaceId, status: 'ACTIVE' },
@@ -10,7 +13,6 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
   
   // 2. Aktif case varsa conversation'ı ona bağla
   if (activeCase) {
-    // Conversation zaten bağlı mı kontrol et
     const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
     if (conv && !conv.caseId) {
       await prisma.conversation.update({
@@ -64,4 +66,31 @@ export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationI
   
   console.log(`📋 [CaseAutoOpen] Yeni case açıldı: #${nextNumber} (contact: ${contactId})`);
   return newCase;
+}
+
+/**
+ * Aynı contact için eş zamanlı case açmayı engelleyen wrapper.
+ * İlk çağrı case oluşturur, sonraki çağrılar ilk çağrının bitmesini bekler
+ * ve zaten oluşturulmuş case'e bağlanır.
+ */
+export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
+  const lockKey = `${workspaceId}:${contactId}`;
+  
+  // Aynı contact için devam eden bir işlem varsa, onun bitmesini bekle
+  const existing = pendingLocks.get(lockKey);
+  if (existing) {
+    await existing.catch(() => {}); // Önceki hata verse bile devam et
+  }
+  
+  // Yeni promise oluştur ve lock'a kaydet
+  const promise = _autoOpenCaseIfNeeded(workspaceId, contactId, conversationId)
+    .finally(() => {
+      // İşlem bittiğinde lock'u temizle
+      if (pendingLocks.get(lockKey) === promise) {
+        pendingLocks.delete(lockKey);
+      }
+    });
+  
+  pendingLocks.set(lockKey, promise);
+  return promise;
 }
