@@ -5,6 +5,7 @@ import path from 'path';
 import multer from 'multer';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { generateCaseNumber } from './case.controller.js';
+import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -2379,9 +2380,12 @@ export const toggleUnifiedAutomation = async (req, res) => {
             case 'FLOW':
                 await prisma.flow.update({ where: { id, workspaceId }, data: { isActive } });
                 break;
-            case 'RULE':
-                await prisma.workspaceRule.update({ where: { id, workspaceId }, data: { isActive } });
+            case 'RULE': {
+                const updatedRule = await prisma.workspaceRule.update({ where: { id, workspaceId }, data: { isActive } });
+                // Policy cache'i temizle — anahtar anında etkili olsun
+                invalidatePolicyCache(workspaceId, updatedRule.ruleType);
                 break;
+            }
             case 'RETELL_TEMPLATE':
                 await prisma.retellTemplate.update({ where: { id, workspaceId }, data: { isActive } });
                 break;

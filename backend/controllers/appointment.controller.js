@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { isAgentRole, buildAgentAppointmentFilter } from '../utils/rbac.helper.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { executeRule } from '../services/ruleEngine.service.js';
+import { createAppointment as createAppointmentRecord, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from '../services/domain/appointment.domain.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -218,83 +219,56 @@ export const createAppointment = async (req, res) => {
             });
         }
 
-        // Check for conflicts
-        const conflict = await checkAppointmentConflict(assignedToId, start, end);
-        if (conflict) {
-            // Suggest next available slot
-            const suggestion = await suggestNextAvailableSlot(assignedToId, start, end);
-            return res.status(409).json({
-                error: 'Bu zaman diliminde agent meşgul',
-                conflict: true,
-                conflictingAppointment: conflict,
-                suggestion
-            });
-        }
-
-        // Auto-extract doctorName / branch from resource if selected
-        let resolvedDoctorName = doctorName || '';
-        let resolvedBranch = branch || '';
-        if (resourceId) {
-            const resObj = await prisma.calendarResource.findUnique({ where: { id: resourceId } });
-            if (resObj) {
-                if (!resolvedDoctorName && resObj.type === 'PERSON') resolvedDoctorName = resObj.name;
-                if (!resolvedBranch && resObj.description) resolvedBranch = resObj.description;
-            }
-        }
-
-        const appointment = await prisma.appointment.create({
-            data: {
-                workspaceId,
-                title,
-                description,
-                startTime: start,
-                endTime: end,
-                assignedToId: assignedToId || null,
-                contactId: contactId || null,
-                contactName: contactName || '',
-                contactPhone: normalizePhone(contactPhone),
-                contactEmail: contactEmail || null,
-                doctorName: resolvedDoctorName || null,
-                branch: resolvedBranch || null,
-                procedure: procedure || meetingType || null,
-                color: color || '#3b82f6',
-                notes,
-                resourceId: resourceId || null,
-                createdById: req.user.id
-            }
+        // ── TEK KAPI: randevu oluşturma domain servisi ──
+        // Çakışma kontrolü, Google sync, socket, bildirim ve otomasyon hook'u
+        // artık burada değil, appointment.domain.js içinde — tüm yollar için ortak.
+        const outcome = await createAppointmentRecord({
+            workspaceId,
+            source: APPOINTMENT_SOURCE.MANUAL, // Elle oluşturma izin kapısından muaf
+            title,
+            description,
+            startTime: start,
+            endTime: end,
+            assignedToId,
+            resourceId,
+            contactId,
+            contactName,
+            contactPhone,
+            contactEmail,
+            doctorName,
+            branch,
+            procedure: procedure || meetingType || null,
+            color,
+            notes,
+            createdById: req.user.id,
+            syncUserId: assignedToId || req.user.id,
         });
 
-        // 🤖 Otomasyon Hook: Randevu oluşturuldu
-        if (appointment.contactId) {
-            executeRule(workspaceId, 'APPOINTMENT_PLANNED_NOTIFY', { contactId: appointment.contactId }).catch(e => console.error('[AutoHook] APPOINTMENT_PLANNED_NOTIFY error:', e.message));
+        if (!outcome.ok) {
+            if (outcome.result === APPOINTMENT_RESULT.CONFLICT) {
+                const suggestion = assignedToId
+                    ? await suggestNextAvailableSlot(assignedToId, start, end)
+                    : null;
+                return res.status(409).json({
+                    error: 'Bu zaman diliminde takvim dolu',
+                    conflict: true,
+                    conflictingAppointment: outcome.conflict,
+                    suggestion
+                });
+            }
+            if (outcome.result === APPOINTMENT_RESULT.INVALID) {
+                return res.status(400).json({ error: outcome.message });
+            }
+            return res.status(500).json({ error: outcome.message || 'Randevu oluşturulamadı' });
         }
 
-        // 📅 Google Takvim Senkronizasyonu (Temsilcinin kişisel Google Takvimine etkinlik ekle)
-        const targetSyncUserId = appointment.assignedToId || req.user.id;
-        if (targetSyncUserId) {
-            import('../services/googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
-                syncAppointmentToGoogle(appointment.id, targetSyncUserId).catch(e => console.error('[GoogleCalendar Hook] Sync error:', e.message));
-            });
-        }
+        const appointment = outcome.appointment;
 
         // Get agent details
         const agent = assignedToId ? await prisma.user.findUnique({
             where: { id: assignedToId },
             select: { id: true, name: true, avatar: true }
         }) : null;
-
-        // 🔔 WebSocket: Çalışma alanındaki tüm kullanıcılara yeni randevuyu canlı bildir
-        try {
-            const io = req.app.get('io');
-            if (io && workspaceId) {
-                io.to(`workspace_${workspaceId}`).emit('appointment_updated', {
-                    action: 'created',
-                    appointmentId: appointment.id
-                });
-            }
-        } catch (socketErr) {
-            console.error('Appointment socket emit error:', socketErr);
-        }
 
         const resource = resourceId ? await prisma.calendarResource.findUnique({
             where: { id: resourceId }

@@ -8,6 +8,7 @@ import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { executeRule } from '../services/ruleEngine.service.js';
 import { generateCaseNumber } from './case.controller.js';
+import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -150,6 +151,7 @@ export const saveSettings = async (req, res) => {
         if (retellAgentId !== undefined) updateData.retellAgentId = retellAgentId;
         if (retellFromNumber !== undefined) updateData.retellFromNumber = retellFromNumber;
         if (retellAutoCallEnabled !== undefined) updateData.retellAutoCallEnabled = retellAutoCallEnabled;
+        if (retellAutoCallEnabled !== undefined) invalidatePolicyCache(workspaceId);
         if (retellAutoCallTriggers !== undefined) updateData.retellAutoCallTriggers = retellAutoCallTriggers;
         if (retellAutoCallDelay !== undefined) updateData.retellAutoCallDelay = retellAutoCallDelay;
         if (retellAutoCallSchedule !== undefined) updateData.retellAutoCallSchedule = retellAutoCallSchedule;

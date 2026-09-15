@@ -18,6 +18,7 @@
  */
 
 import prisma from '../lib/prisma.js';
+import { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from './domain/appointment.domain.js';
 
 // ─── APPOINTMENT DATE/TIME PARSER ──────────────────────────────────────────
 /**
@@ -926,42 +927,56 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             include: { user: { select: { id: true } } }
         });
 
-        const appointment = await prisma.appointment.create({
-            data: {
-                workspaceId,
-                title:         `${branch || 'Randevu'} — ${patient_name || 'Müşteri'}`,
-                description:   procedure || `${branch || 'Randevu'} randevusu`,
-                startTime,
-                endTime,
-                contactId:     contactId || null,
-                contactName:   patient_name  || '',
-                contactPhone:  patient_phone || '',
-                branch:        branch        || '',
-                procedure:     procedure     || null,
-                doctorName:    doctor_name   || '',
-                resourceId:    resolvedResourceId || null,
-                createdById:   admin?.user?.id || 'system',
-                createdByBotId: botId         || null,
-                conversationId: conversationId || null,
-                status:        'SCHEDULED',
-                color:         '#10b981',
-                notes:         `Tarih: ${date || '?'} | Saat: ${time || '?'}`
+        // ── TEK KAPI: izin kapısı + çakışma + google sync + socket + bildirim ──
+        const outcome = await createAppointment({
+            workspaceId,
+            source: APPOINTMENT_SOURCE.CHAT_BOT,
+            title:          `${branch || 'Randevu'} — ${patient_name || 'Müşteri'}`,
+            description:    procedure || `${branch || 'Randevu'} randevusu`,
+            startTime,
+            endTime,
+            contactId:      contactId || null,
+            contactName:    patient_name  || '',
+            contactPhone:   patient_phone || '',
+            branch:         branch        || '',
+            procedure:      procedure     || null,
+            doctorName:     doctor_name   || '',
+            resourceId:     resolvedResourceId || null,
+            createdById:    admin?.user?.id || 'system',
+            createdByBotId: botId || null,
+            conversationId: conversationId || null,
+            color:          '#10b981',
+            notes:          `Tarih: ${date || '?'} | Saat: ${time || '?'}`,
+        });
+
+        if (!outcome.ok) {
+            // Bu mesaj bota geri verilir, bot da müşteriye iletir.
+            if (outcome.result === APPOINTMENT_RESULT.DISABLED) {
+                console.log('🚫 [AppointmentBot] "Randevu Talebi Algılama" kapalı — randevu oluşturulmadı');
+                return {
+                    success: false,
+                    reason: outcome.result,
+                    message: 'Şu anda sistem üzerinden randevu oluşturamıyorum. Talebinizi ilgili ekibe iletiyorum, en kısa sürede size dönüş yapılacak.'
+                };
             }
-        });
+            if (outcome.result === APPOINTMENT_RESULT.CONFLICT) {
+                console.log('⛔ [AppointmentBot] Seçilen saat dolu — randevu oluşturulmadı');
+                return {
+                    success: false,
+                    reason: outcome.result,
+                    message: 'Seçtiğiniz saat maalesef dolu. Başka bir gün veya saat önerebilir misiniz?'
+                };
+            }
+            console.warn(`⚠️ [AppointmentBot] Randevu oluşturulamadı (${outcome.result}): ${outcome.message || ''}`);
+            return {
+                success: false,
+                reason: outcome.result,
+                message: 'Randevu oluştururken teknik bir sorun yaşadım. Kısa süre sonra tekrar deneyebilir miyiz?'
+            };
+        }
 
+        const appointment = outcome.appointment;
         localAppointmentId = appointment.id;
-        console.log(`✅ [AppointmentBot] Instomer DB randevu kaydedildi: ${appointment.id} | ${patient_name} | ${date} ${time}`);
-
-        // 📅 Google Takvim Senkronizasyonu
-        import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
-            syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AppointmentBot GoogleSync] error:', e.message));
-        });
-
-        // ── Socket ile bildir (Takvim canlı güncellensin) ──
-        try {
-            const { emitToWorkspace } = await import('../socket.js');
-            emitToWorkspace(workspaceId, 'appointment_created', { appointment });
-        } catch (_) {}
 
         if (conversationId) {
             await prisma.conversation.update({
@@ -969,23 +984,6 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                 data: { appointmentState: JSON.stringify({ step: 'COMPLETED', appointmentId: appointment.id }) }
             }).catch(() => {});
         }
-
-        // Bildirim gönder
-        try {
-            const convForNotif = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { assignedToId: true, teamIds: true } });
-            const { createNotification, createTeamNotifications } = await import('../controllers/notification.controller.js');
-            const notifTitle = `📅 Yeni Randevu — ${patient_name}`;
-            const notifBody  = `${date || ''} ${time || ''} | ${branch || ''}`;
-            if (convForNotif?.assignedToId) {
-                await createNotification(workspaceId, convForNotif.assignedToId, 'APPOINTMENT_CREATED', notifTitle, notifBody, { conversationId });
-            } else if (convForNotif?.teamIds) {
-                const teamIds = JSON.parse(convForNotif.teamIds || '[]');
-                if (teamIds.length > 0) await createTeamNotifications(workspaceId, teamIds[0], 'APPOINTMENT_CREATED', notifTitle, notifBody, { conversationId });
-            }
-        } catch (notifErr) {
-            console.warn('⚠️ [AppointmentBot] Bildirim gönderilemedi (non-critical):', notifErr.message);
-        }
-
 
     } catch (localErr) {
         console.error('❌ [AppointmentBot] Instomer DB kayıt hatası:', localErr.message);

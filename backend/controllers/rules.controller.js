@@ -2,6 +2,8 @@ import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { createTeamNotifications, createNotification } from './notification.controller.js';
+import { createAppointment, APPOINTMENT_SOURCE } from '../services/domain/appointment.domain.js';
+import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // SMART TIMING PARSER — Müşteri mesajlarından zamanlama tercihini algıla
@@ -332,6 +334,9 @@ export const upsertRule = async (req, res) => {
                 }
             });
         }
+
+        // Policy cache'i temizle — panelden yapılan değişiklik anında geçerli olsun
+        invalidatePolicyCache(workspaceId, ruleType);
 
         res.json({
             rule: {
@@ -1604,35 +1609,30 @@ export const executeAppointmentPlanning = async (workspaceId, contactId, source 
         });
         console.log(`📅 [RULE:APPOINTMENT] APPOINTMENT activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, team: ${teamId || 'YOK'}, user: ${inheritedAssigneeId || 'HAVUZ'})`);
 
-        // 10b. Create Calendar Appointment & Sync to Google Calendar
+        // 10b. Takvim randevusu — TEK KAPI üzerinden
+        // (izin kapısı zaten yukarıda kontrol edildi, ama domain katmanı da
+        //  bağımsız olarak doğrular; çakışma + google sync + socket orada.)
         try {
             const endApptTime = new Date(dueDate.getTime() + 30 * 60 * 1000);
-            const calendarAppt = await prisma.appointment.create({
-                data: {
-                    workspaceId,
-                    title: appointmentDetails?.title || `Randevu — ${contact.name || contact.fullName || contact.phone || 'Müşteri'}`,
-                    description,
-                    startTime: dueDate,
-                    endTime: endApptTime,
-                    contactId,
-                    contactName: contact.name || contact.fullName || '',
-                    contactPhone: contact.phone || '',
-                    contactEmail: contact.email || null,
-                    assignedToId: inheritedAssigneeId || null,
-                    status: 'SCHEDULED',
-                    createdById: inheritedAssigneeId || 'system',
-                    conversationId: latestConversation?.id || null,
-                    notes: `Otomasyon (APPOINTMENT_AUTO_PLAN) tarafından planlandı.`
-                }
+            const apptOutcome = await createAppointment({
+                workspaceId,
+                source: APPOINTMENT_SOURCE.RULE,
+                title: appointmentDetails?.title || `Randevu — ${contact.name || contact.fullName || contact.phone || 'Müşteri'}`,
+                description,
+                startTime: dueDate,
+                endTime: endApptTime,
+                contactId,
+                contactName: contact.name || contact.fullName || '',
+                contactPhone: contact.phone || '',
+                contactEmail: contact.email || null,
+                assignedToId: inheritedAssigneeId || null,
+                createdById: inheritedAssigneeId || 'system',
+                conversationId: latestConversation?.id || null,
+                notes: `Otomasyon (APPOINTMENT_AUTO_PLAN) tarafından planlandı.`,
             });
-
-            // Google Takvim Senkronizasyonu
-            import('../services/googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
-                syncAppointmentToGoogle(calendarAppt.id).catch(e => console.error('[Rule Appointment GoogleSync] error:', e.message));
-            });
-
-            // Takvim Socket bildirimi
-            emitToWorkspace(workspaceId, 'appointment_created', { appointment: calendarAppt });
+            if (!apptOutcome.ok) {
+                console.warn(`⚠️ [RULE:APPOINTMENT] Takvim randevusu oluşturulamadı (${apptOutcome.result}): ${apptOutcome.message || ''}`);
+            }
         } catch (calApptErr) {
             console.error('⚠️ [RULE:APPOINTMENT] Calendar appointment creation error:', calApptErr.message);
         }

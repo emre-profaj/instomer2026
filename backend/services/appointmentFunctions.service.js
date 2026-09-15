@@ -10,6 +10,7 @@
  * function calling ile çağrılır.
  */
 import prisma from '../lib/prisma.js';
+import { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from './domain/appointment.domain.js';
 
 // ─── Yardımcılar ─────────────────────────────────────────────
 
@@ -530,45 +531,56 @@ export async function bookAppointment(workspaceId, params = {}) {
         });
         const createdById = assignedToId || adminMember?.userId || 'system';
 
-        // ── Randevu oluştur ──
-        const appointment = await prisma.appointment.create({
-            data: {
-                workspaceId,
-                title: params.title || `${params.customer_name} - Randevu`,
-                description: params.notes || null,
-                startTime,
-                endTime,
-                assignedToId,
-                contactId,
-                contactName: params.customer_name,
-                contactPhone: normalizedPhone,
-                contactEmail: params.customer_email || null,
-                status: 'SCHEDULED',
-                notes: params.notes || null,
-                createdById,
-                createdByBotId: params.bot_id || null,
-                conversationId: params.conversation_id || null,
-                branch: params.branch || null,
-                procedure: params.procedure || null,
-                doctorName
+        // ── TEK KAPI: izin kapısı + çakışma + google sync + socket + bildirim ──
+        const outcome = await createAppointment({
+            workspaceId,
+            source: APPOINTMENT_SOURCE.VOICE_BOT,
+            title: params.title || `${params.customer_name} - Randevu`,
+            description: params.notes || null,
+            startTime,
+            endTime,
+            assignedToId,
+            contactId,
+            contactName: params.customer_name,
+            contactPhone: normalizedPhone,
+            contactEmail: params.customer_email || null,
+            notes: params.notes || null,
+            createdById,
+            createdByBotId: params.bot_id || null,
+            conversationId: params.conversation_id || null,
+            branch: params.branch || null,
+            procedure: params.procedure || null,
+            doctorName,
+        });
+
+        if (!outcome.ok) {
+            // Bu metin sesli bota döner ve müşteriye okunur.
+            if (outcome.result === APPOINTMENT_RESULT.DISABLED) {
+                console.log('🚫 [AppointmentFn] "Randevu Talebi Algılama" kapalı — randevu oluşturulmadı');
+                return {
+                    success: false,
+                    error: 'APPOINTMENT_DISABLED',
+                    message: 'Şu anda telefon üzerinden randevu oluşturamıyorum. Talebinizi ekibimize iletiyorum, sizi en kısa sürede arayacaklar.'
+                };
             }
-        });
+            if (outcome.result === APPOINTMENT_RESULT.CONFLICT) {
+                console.log('⛔ [AppointmentFn] Seçilen saat dolu — randevu oluşturulmadı');
+                return {
+                    success: false,
+                    error: 'SLOT_TAKEN',
+                    message: 'Maalesef o saat dolu görünüyor. Size başka bir saat önerebilir miyim?'
+                };
+            }
+            console.warn(`⚠️ [AppointmentFn] Randevu oluşturulamadı (${outcome.result}): ${outcome.message || ''}`);
+            return {
+                success: false,
+                error: outcome.result,
+                message: 'Randevuyu kaydederken bir sorun oluştu. Birazdan tekrar deneyelim.'
+            };
+        }
 
+        const appointment = outcome.appointment;
         console.log(`✅ [AppointmentFn] Randevu oluşturuldu: ${appointment.id} | ${providerName} | ${formatDate(startTime)} ${formatTime(startTime)}`);
-
-        // 📅 Google Takvim Senkronizasyonu
-        import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
-            syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AppointmentFn GoogleSync] error:', e.message));
-        });
-
-        // ── Socket ile bildir ──
-        try {
-            const { emitToWorkspace } = await import('../socket.js');
-            emitToWorkspace(workspaceId, 'appointment_created', {
-                appointment,
-                provider: providerName
-            });
-        } catch (_) {}
 
         return {
             success: true,

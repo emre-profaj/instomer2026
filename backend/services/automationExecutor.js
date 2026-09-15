@@ -8,6 +8,7 @@
  */
 import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
+import { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from './domain/appointment.domain.js';
 
 // ─── Main dispatcher ─────────────────────────────────────────────
 export async function executeAutomationAction(automation, context) {
@@ -137,30 +138,32 @@ async function handleScheduleAppointment(automation, context) {
     // Create appointment record
     const startTime = new Date(Date.now() + (automation.delayMinutes || 60) * 60 * 1000);
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
-    const appointment = await prisma.appointment.create({
-        data: {
-            workspaceId,
-            contactId,
-            title: `Randevu — ${contactRecord.name || 'Müşteri'}`,
-            contactName: contactRecord.name || 'Bilinmiyor',
-            contactPhone: contactRecord.phone || '',
-            contactEmail: contactRecord.email || null,
-            startTime,
-            endTime,
-            status: 'SCHEDULED',
-            createdById: 'system',
-            notes: `Otomasyon: ${automation.name || 'SCHEDULE_APPOINTMENT'}`
-        }
+    // ── TEK KAPI: izin kapısı + çakışma + google sync + socket + bildirim ──
+    const outcome = await createAppointment({
+        workspaceId,
+        source: APPOINTMENT_SOURCE.AUTOMATION,
+        contactId,
+        title: `Randevu — ${contactRecord.name || 'Müşteri'}`,
+        contactName: contactRecord.name || 'Bilinmiyor',
+        contactPhone: contactRecord.phone || '',
+        contactEmail: contactRecord.email || null,
+        startTime,
+        endTime,
+        createdById: 'system',
+        notes: `Otomasyon: ${automation.name || 'SCHEDULE_APPOINTMENT'}`,
     });
 
+    if (!outcome.ok) {
+        const reason = outcome.result === APPOINTMENT_RESULT.DISABLED
+            ? '"Randevu Talebi Algılama" kapalı'
+            : (outcome.message || outcome.result);
+        console.log(`🚫 [AutomationExecutor] SCHEDULE_APPOINTMENT atlandı — ${reason}`);
+        return { success: false, action: 'SCHEDULE_APPOINTMENT', skipped: true, reason: outcome.result };
+    }
+
+    const appointment = outcome.appointment;
     console.log(`🗓️ [AutomationExecutor] SCHEDULE_APPOINTMENT: ${contactRecord.name} → ${startTime.toISOString()}`);
-    
-    // 📅 Google Takvim Senkronizasyonu
-    import('./googleCalendar.service.js').then(({ syncAppointmentToGoogle }) => {
-        syncAppointmentToGoogle(appointment.id).catch(e => console.error('[AutomationExecutor GoogleSync] error:', e.message));
-    });
 
-    emitToWorkspace(workspaceId, 'appointment_created', { appointment });
     return { success: true, action: 'SCHEDULE_APPOINTMENT', appointmentId: appointment.id };
 }
 
