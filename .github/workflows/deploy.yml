@@ -158,17 +158,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: /health
+      - name: Backend sağlığı (SSH ile, içeriden)
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_SSH_PORT }}
+        # NOT: https://app.instomer.com/health KULLANILMIYOR.
+        # Nginx /health'i backend'e yönlendirmiyor, htdocs'tan index.html
+        # döndürüyor — yani dışarıdan çağrı HER ZAMAN 200 verir ve backend
+        # tamamen ölü olsa bile "sağlıklı" görünür. Yalnızca /api/* backend'e
+        # gidiyor, bu yüzden nabzı sunucunun içinden ölçüyoruz.
         run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           for i in $(seq 1 10); do
-            if curl -fsS --max-time 8 "https://app.instomer.com/health" >/dev/null; then
-              echo "✅ /health yanıt verdi (${i}. deneme)"; exit 0
+            OUT=$(ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
+                  'curl -fsS -m 8 http://127.0.0.1:5008/health' 2>/dev/null || true)
+            if echo "$OUT" | grep -q '"status":"ok"'; then
+              echo "✅ Backend sağlıklı (${i}. deneme): $OUT"; exit 0
             fi
             echo "... ${i}/10"; sleep 6
           done
-          echo "❌ /health dışarıdan yanıt vermiyor"; exit 1
+          echo "❌ Backend /health yanıt vermiyor"; exit 1
 
-      - name: /login
+      - name: Frontend dışarıdan erişilebilir mi?
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://app.instomer.com/login")
-          [ "$code" = "200" ] && echo "✅ /login → 200" || { echo "❌ /login → $code"; exit 1; }
+          [ "$code" = "200" ] || { echo "❌ /login → $code"; exit 1; }
+          echo "✅ /login → 200"
+          # Doğru bundle servis ediliyor mu? (Nginx eski dosyayı önbellekten
+          # veriyorsa burada yakalanır.)
+          if curl -s --max-time 10 "https://app.instomer.com/" | grep -qE 'assets/index-[A-Za-z0-9_-]+\.js'; then
+            echo "✅ Bundle referansı bulundu: $(curl -s --max-time 10 https://app.instomer.com/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1)"
+          else
+            echo "❌ index.html içinde bundle referansı yok"; exit 1
+          fi

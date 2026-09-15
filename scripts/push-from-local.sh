@@ -38,9 +38,12 @@ hdr()  { echo ""; echo "${BLU}═══ $* ═══${NC}"; }
    SSH_HOST=<ip> APP_PATH=<yol> ./scripts/push-from-local.sh"
 
 # ── Tek bağlantı paylaşımı: şifre BİR KEZ sorulur ────────────────
-CTL_DIR="$(mktemp -d)"
-CTL="${CTL_DIR}/cm-%r@%h:%p"
-trap 'ssh -O exit -o ControlPath="$CTL" "${SSH_USER}@${SSH_HOST}" 2>/dev/null || true; rm -rf "$CTL_DIR"' EXIT
+# ControlPath Unix soketi 104 karakterle sınırlı; macOS'un mktemp yolu
+# tek başına bunu aşıyor. %C (bağlantı hash'i) ile kısa tutuyoruz.
+CTL_DIR="${HOME}/.ssh/cm"
+mkdir -p "$CTL_DIR" && chmod 700 "$CTL_DIR"
+CTL="${CTL_DIR}/%C"
+trap 'ssh -O exit -o ControlPath="$CTL" "${SSH_USER}@${SSH_HOST}" 2>/dev/null || true' EXIT
 
 SSH_BASE=(-p "$SSH_PORT" -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=10m
           -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
@@ -53,7 +56,7 @@ RSYNC_SHELL="ssh -p ${SSH_PORT} -o ControlMaster=auto -o ControlPath=${CTL} -o C
 case "${1:-}" in
 --discover)
     hdr "SUNUCUDAKİ UYGULAMA DİZİNİ ARANIYOR"
-    warn "Şifre bir kez sorulacak."
+    info "SSH anahtarı ile bağlanılıyor."
     rsh 'bash -s' <<'REMOTE'
 echo "Ev dizini : $HOME"
 echo "Kullanıcı : $(whoami)"
@@ -119,7 +122,7 @@ ok "Randevu oluşturma tek kapıdan geçiyor"
 
 # ── 2 · Hedefi doğrula ───────────────────────────────────────
 hdr "2/4 · HEDEF DOĞRULAMA"
-warn "Şifre bir kez sorulacak (bağlantı sonraki adımlarda paylaşılacak)."
+info "Bağlantı sonraki adımlarda paylaşılacak."
 rsh "test -d '${APP_PATH}'" || die "Sunucuda dizin yok: ${APP_PATH}"
 rsh "test -f '${APP_PATH}/backend/.env'" \
     || die "backend/.env yok: ${APP_PATH}/backend/.env — yanlış APP_PATH olabilir"
