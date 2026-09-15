@@ -260,6 +260,16 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/system', systemAnnouncementRoutes);
 app.use('/api/billing', billingRoutes);
 
+// ─── Health check ────────────────────────────────────────────────────────────
+// DİKKAT: Bu tanım aşağıdaki production catch-all'ından (app.get('*')) ÖNCE
+// gelmek ZORUNDA. Express kuralları yazıldığı sırayla dener; '*' her adresi
+// yakaladığı için aşağıda tanımlandığında buraya hiç sıra gelmiyordu ve
+// /health, olmayan frontend/dist/index.html'i göndermeye çalışıp ENOENT
+// hatası veriyordu. Dağıtım scriptleri ve GitHub Actions bu uca bakıyor.
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Server is running' });
+});
+
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
   const buildPath = path.join(__dirname, '../frontend/dist');
@@ -285,10 +295,6 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
