@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles, UserCog } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, CalendarDays, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles, UserCog } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -58,7 +58,7 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
-        { path: '/activities/calendar', icon: Activity, label: 'Aktiviteler' }
+        { path: '/activities/calendar', icon: CalendarDays, label: 'Takvim' }
     ];
 
     const realEstateSubItems = [
@@ -603,8 +603,8 @@ const Sidebar = () => {
                     to="/activities/calendar"
                     className={`mobile-nav-item ${location.pathname.startsWith('/activities') ? 'active' : ''}`}
                 >
-                    <Activity size={22} />
-                    <span>Aktiviteler</span>
+                    <CalendarDays size={22} />
+                    <span>Takvim</span>
                 </Link>
                 <Link
                     to="/settings"
