@@ -838,13 +838,7 @@ GENEL DAVRANIŞ KURALLARI:
       setAiSetupModalOpen(false);
       setAiSetupResult(null);
       if (typeof refreshWorkspace === 'function') refreshWorkspace();
-      if (currentWorkspace?.id) {
-        loadBranches(currentWorkspace.id);
-        loadCategories(currentWorkspace.id);
-        loadProducts(currentWorkspace.id);
-        loadResources(currentWorkspace.id);
-        loadKnowledgeBaseEntries(currentWorkspace.id);
-      }
+      if (currentWorkspace?.id) loadWorkspaceData(currentWorkspace.id);
     } catch (err) {
       console.error('Apply AI setup error:', err);
       showError('Uygulama hatası: ' + (err.response?.data?.message || err.message));
@@ -861,10 +855,16 @@ GENEL DAVRANIŞ KURALLARI:
   const [savingCompiledKb, setSavingCompiledKb] = useState(false);
   const [compiledKbSaved, setCompiledKbSaved] = useState(false);
 
-  // Load Initial Workspace Data
-  useEffect(() => {
-    if (!currentWorkspace?.id) return;
-    const wsId = currentWorkspace.id;
+  // ─── Workspace verilerini yükler ──────────────────────────────────────────
+  // İSİMLİ OLMASI ŞART: AI kurulumu uygulandıktan sonra da çağrılıyor.
+  // Önceden orada loadBranches / loadCategories / loadProducts / loadResources /
+  // loadKnowledgeBaseEntries çağrılıyordu ama bu isimler hiç tanımlanmamıştı —
+  // yükleme mantığı yalnızca aşağıdaki useEffect içinde isimsiz duruyordu.
+  // Sonuç: kullanıcı "AI Kurulumu tamamlandı" mesajının hemen ardından
+  // "Uygulama hatası: loadBranches is not defined" alıyor ve içe aktarılan
+  // veriler sayfa yenilenene kadar ekranda görünmüyordu.
+  const loadWorkspaceData = (wsId) => {
+    if (!wsId) return;
 
     // Load Company Info
     loadCompanyInfo(wsId);
@@ -1028,6 +1028,12 @@ GENEL DAVRANIŞ KURALLARI:
 
     // Load channels
     loadWizardChannels();
+  };
+
+  // Load Initial Workspace Data
+  useEffect(() => {
+    if (currentWorkspace?.id) loadWorkspaceData(currentWorkspace.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWorkspace?.id]);
 
   // Kanalları API'den yükleme
@@ -5552,7 +5558,7 @@ GENEL DAVRANIŞ KURALLARI:
                 </div>
                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                   <button type="button" onClick={() => setShowCreateNewUserModal(false)} style={secondaryBtnStyle}>İptal</button>
-                  <button type="button" onClick={() => handleCreateNewUserAndAddToTeam(teamList[0]?.id)} disabled={creatingUser} style={primaryBtnStyle}>
+                  <button type="button" onClick={() => handleCreateAndAddUserToTeam(teamList[0]?.id)} disabled={creatingUser} style={primaryBtnStyle}>
                     {creatingUser ? 'Oluşturuluyor...' : 'Personeli Kaydet'}
                   </button>
                 </div>
@@ -6972,7 +6978,7 @@ GENEL DAVRANIŞ KURALLARI:
 Arama başarıyla gerçekleştirildi. Profesyonel yolculuğunuzda, en doğru sonuçlarla yanınızdayız.
 
 🌐 *Web Sitemiz:* ${companyWebsite || 'Web sitemiz'}
-📍 *Kulüp Konumumuz:* ${companyGoogleMaps || companyAddress || 'Harita konumu'}
+📍 *Kulüp Konumumuz:* ${googleMapsUrl || companyAddress || 'Harita konumu'}
 
 Aklınıza takılan her soruda bir mesaj uzağınızdayım. En yakın zamanda görüşmek üzere!`}
               </div>
@@ -6990,7 +6996,7 @@ Aklınıza takılan her soruda bir mesaj uzağınızdayım. En yakın zamanda g�
 Müsait olduğunuzda bu mesaj üzerinden bize yazabilir veya doğrudan web sitemizi ziyaret edebilirsiniz:
 
 🌐 *Web Sitemiz:* ${companyWebsite || 'Web sitemiz'}
-📍 *Kulüp Konumumuz:* ${companyGoogleMaps || companyAddress || 'Harita konumu'}
+📍 *Kulüp Konumumuz:* ${googleMapsUrl || companyAddress || 'Harita konumu'}
 
 Size yardımcı olmaktan mutluluk duyarız!`}
               </div>
@@ -7006,7 +7012,7 @@ Size yardımcı olmaktan mutluluk duyarız!`}
                 {`Merhaba! Şirketimizin / kulübümüzün konum ve adres bilgileri aşağıda yer almaktadır:
 
 🏢 *Adres:* ${companyAddress || 'Adres bilgisi'}
-📍 *Google Haritalar:* ${companyGoogleMaps || 'Harita linki'}
+📍 *Google Haritalar:* ${googleMapsUrl || 'Harita linki'}
 🌐 *Web Sitemiz:* ${companyWebsite || 'Web sitemiz'}
 
 Ziyaretinizi sabırsızlıkla bekliyoruz!`}
