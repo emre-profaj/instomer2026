@@ -222,32 +222,39 @@ git config http.version HTTP/1.1
 
 ### 4.3 Push'tan sonra ne oluyor
 
-`main`'e push, GitHub Actions'ı tetikliyor. Üç iş, sırayla:
+**Push sunucuya DOKUNMAZ.** `main`'e push yalnızca `verify` işini çalıştırır:
 
-**1 · Doğrula** (runner'da, sunucuya dokunmadan)
 `npm install --include=dev` → `prisma generate` → `verify-build.js` →
 frontend build → **randevu izin kapısı bütünlük kontrolü**.
-Derlenmeyen kod sunucuya **hiç gitmiyor**. Bu adımın tek amacı bu.
 
-**2 · Dağıt** (`production` onayından sonra)
-Runner kodu checkout ediyor → `rsync -az --delete` ile sunucuya gönderiyor →
-SSH ile `./scripts/deploy.sh` çalıştırıyor.
+Bu iş runner'da koşar, sunucuya hiç bağlanmaz. Amacı tek: kodun derlenip
+derlenmediğini söylemek. Kırmızıysa sunucuya bir şey gitmemiş olur çünkü
+zaten gitmiyordu.
 
-`--delete` var: depodan silinen dosya sunucuda da siliniyor. Bu yüzden
-**istisna listesi kritik** — her biri ayrı bir arıza:
+### 4.3.1 Dağıtım — senin onayınla
 
-| İstisna | Listede olmazsa |
+Sunucuya bir şey gitmesi için Actions sekmesinden **elle** tetiklemen gerekir:
+
+1. GitHub → depo → **Actions** → sol menüden **Deploy**
+2. Sağ üstte **Run workflow**
+3. Açılan kutuda:
+
+| Alan | Ne yazacaksın |
 |---|---|
-| `.env` | Sunucu bütün sırlarını kaybeder, bir sonraki dağıtım hiç açılmaz |
-| `htdocs/` | Uygulama dizininin içindeyse **yayındaki frontend silinir** |
-| `node_modules` | Her dağıtımda dakikalarca yeniden kurulum |
-| `uploads/`, `logs/` | Müşteri dosyaları ve günlükler gider |
-| `_backups/` | **Bütün geri alma noktaları silinir** |
-| `.git` | 289 MB gereksiz transfer (çalışma ağacı yalnızca 16 MB) |
+| **onay** | `dagit` — bunu yazmazsan dağıtım işi atlanır |
+| **sema_degisti** | Prisma şeması değiştiyse işaretle (`db push` çalışır) |
+| **not** | Kısa açıklama — sunucudaki yedek etiketinde görünür |
 
-**3 · Dışarıdan doğrula**
-`https://app.instomer.com/health` 200 verene kadar 10 deneme, sonra `/login`.
-İçeriden "ayağa kalktı" demek yetmiyor — Nginx ayrı bir arıza yüzeyi.
+4. **Run workflow** → sırayla `verify` → `deploy` → `smoke` çalışır
+
+`onay` kutusuna `dagit` yazılmazsa `deploy` ve `smoke` işleri **skipped**
+görünür ve sunucuya hiçbir şey gitmez. Yanlışlıkla tetiklemenin maliyeti
+sıfır.
+
+**İkinci katman (opsiyonel):** Settings → Environments → `production`
+altına Required reviewers eklersen, `Run workflow`'a bastıktan sonra bir de
+onay bekler. Bu özellik özel depolarda GitHub Pro/Team gerektirir; yoksa
+`onay` kutusu tek başına yeterli koruma.
 
 **Eşzamanlılık:** `cancel-in-progress` **kasıtlı olarak `false`.** Yarıda
 kesilen bir dağıtım, şeması güncellenmiş ama kodu derlenmemiş bir sunucu

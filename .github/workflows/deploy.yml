@@ -1,9 +1,26 @@
 name: Deploy
 
+# ═══════════════════════════════════════════════════════════════
+# Push SUNUCUYA DOKUNMAZ — yalnızca kodu doğrular.
+# Dağıtım için Actions sekmesinden "Run workflow" ile onay vermen gerekir.
+# ═══════════════════════════════════════════════════════════════
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: [main]      # → yalnızca "verify" çalışır
+  workflow_dispatch:      # → "Run workflow" ile dağıtım
+    inputs:
+      onay:
+        description: 'Sunucuya dağıtmak için kutuya  dagit  yaz'
+        required: true
+        default: ''
+      sema_degisti:
+        description: 'Prisma şeması değişti mi? (işaretlersen db push çalışır)'
+        type: boolean
+        default: false
+      not:
+        description: 'Kısa not (yedek etiketinde görünür)'
+        required: false
+        default: ''
 
 concurrency:
   group: deploy-production
@@ -72,6 +89,9 @@ jobs:
   deploy:
     name: Dağıt
     needs: verify
+    # Push ile ASLA çalışmaz. Yalnızca elle tetiklendiğinde ve
+    # onay kutusuna "dagit" yazıldığında.
+    if: github.event_name == 'workflow_dispatch' && inputs.onay == 'dagit'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Settings → Environments → production'a onaylayıcı ekle:
@@ -122,7 +142,8 @@ jobs:
             cd \"$APP\"
             chmod +x scripts/deploy.sh scripts/rollback.sh
             DEPLOY_SHA=\"${{ github.sha }}\" \
-            DEPLOY_SUBJECT=\"$(echo \"${{ github.event.head_commit.message }}\" | head -1)\" \
+            DEPLOY_SUBJECT=\"${{ inputs.not }}\" \
+            ALLOW_DB_PUSH=\"${{ inputs.sema_degisti }}\" \
             ./scripts/deploy.sh
           '"
 
@@ -133,6 +154,7 @@ jobs:
   smoke:
     name: Dışarıdan doğrula
     needs: deploy
+    if: github.event_name == 'workflow_dispatch' && inputs.onay == 'dagit'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
