@@ -10,8 +10,19 @@ import {
   teamAPI,
   funnelAPI,
   aiAPI,
-  resourceAPI
+  resourceAPI,
+  quickReplyAPI,
+  aiSetupAPI,
+  facebookAPI,
+  whatsappAPI,
+  webWidgetAPI,
+  retellAPI,
+  emailAPI
 } from '../../services/api';
+import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
+import RetellSettings from '../../components/Settings/RetellSettings';
+import WebWidgetModal from '../../components/WebWidgetModal';
+import '../Channels/Channels.css';
 import {
   getTopicCategories,
   createTopicCategory,
@@ -46,7 +57,21 @@ import {
   ChevronUp,
   ChevronDown,
   RefreshCw,
-  UserCircle
+  UserCircle,
+  Upload,
+  Image,
+  Phone,
+  Mail,
+  ExternalLink,
+  Zap,
+  MessageCircle,
+  Facebook,
+  Instagram,
+  PhoneCall,
+  CheckCircle,
+  AlertTriangle,
+  Activity,
+  Settings as SettingsIcon
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -70,21 +95,57 @@ const STEPS = [
   { key: 'kategoriler', label: 'Kategoriler', icon: <Folder size={16} /> },
   { key: 'urunler', label: 'Ürünler', icon: <Package size={16} /> },
   { key: 'kaynaklar', label: 'Kaynaklar', icon: <UserCircle size={16} /> },
+  { key: 'kanallar', label: 'Kanallar', icon: <Globe size={16} /> },
   { key: 'akislar', label: 'Akışlar', icon: <Workflow size={16} /> },
+  { key: 'sablonlar', label: 'Şablonlar', icon: <FileText size={16} /> },
   { key: 'takimlar', label: 'Takımlar', icon: <Users size={16} /> },
   { key: 'agentlar', label: 'AI Agentlar', icon: <AIIcon /> },
   { key: 'ozet', label: 'Özet', icon: <CheckCircle2 size={16} /> },
 ];
 
 const DEFAULT_WEEKLY_SCHEDULE = [
-  { key: 'pzt', day: 'Pazartesi', short: 'Pzt', isOpen: true, start: '09:00', end: '18:00' },
-  { key: 'sal', day: 'Salı', short: 'Sal', isOpen: true, start: '09:00', end: '18:00' },
-  { key: 'car', day: 'Çarşamba', short: 'Çar', isOpen: true, start: '09:00', end: '18:00' },
-  { key: 'per', day: 'Perşembe', short: 'Per', isOpen: true, start: '09:00', end: '18:00' },
-  { key: 'cum', day: 'Cuma', short: 'Cum', isOpen: true, start: '09:00', end: '18:00' },
-  { key: 'cmt', day: 'Cumartesi', short: 'Cmt', isOpen: false, start: '10:00', end: '16:00' },
-  { key: 'paz', day: 'Pazar', short: 'Paz', isOpen: false, start: '10:00', end: '16:00' },
+  { day: 0, label: 'Pazartesi', short: 'Pzt', enabled: true, start: '09:00', end: '18:00' },
+  { day: 1, label: 'Salı', short: 'Sal', enabled: true, start: '09:00', end: '18:00' },
+  { day: 2, label: 'Çarşamba', short: 'Çar', enabled: true, start: '09:00', end: '18:00' },
+  { day: 3, label: 'Perşembe', short: 'Per', enabled: true, start: '09:00', end: '18:00' },
+  { day: 4, label: 'Cuma', short: 'Cum', enabled: true, start: '09:00', end: '18:00' },
+  { day: 5, label: 'Cumartesi', short: 'Cmt', enabled: false, start: '09:00', end: '18:00' },
+  { day: 6, label: 'Pazar', short: 'Paz', enabled: false, start: '09:00', end: '18:00' },
 ];
+
+const SECTOR_OPTIONS = [
+  { value: 'GENERAL', label: 'Genel' },
+  { value: 'HEALTHCARE', label: 'Sağlık / Klinik' },
+  { value: 'REAL_ESTATE', label: 'Emlak / Gayrimenkul' },
+  { value: 'AUTOMOTIVE', label: 'Otomotiv' },
+  { value: 'TOURISM', label: 'Turizm / Otelcilik' },
+  { value: 'RETAIL', label: 'Perakende / E-Ticaret' },
+  { value: 'SERVICE', label: 'Hizmet & Danışmanlık' },
+  { value: 'EDUCATION', label: 'Eğitim' },
+  { value: 'TECHNOLOGY', label: 'Teknoloji / Yazılım' },
+  { value: 'FOOD', label: 'Gıda / Restoran' },
+  { value: 'SPA', label: 'Güzellik / SPA' },
+  { value: 'LEGAL', label: 'Hukuk' },
+  { value: 'FINANCE', label: 'Finans' },
+];
+
+const normalizeIndustry = (ind) => {
+  if (!ind) return 'GENERAL';
+  const upper = String(ind).toUpperCase().trim();
+  if (upper.includes('EMLAK') || upper.includes('GAYRIMENKUL') || upper === 'REAL_ESTATE') return 'REAL_ESTATE';
+  if (upper.includes('SAĞLIK') || upper.includes('SAGLIK') || upper.includes('KLINIK') || upper === 'HEALTHCARE') return 'HEALTHCARE';
+  if (upper.includes('OTO') || upper === 'AUTOMOTIVE') return 'AUTOMOTIVE';
+  if (upper.includes('TURIZM') || upper.includes('OTEL') || upper === 'TOURISM') return 'TOURISM';
+  if (upper.includes('PERAKENDE') || upper.includes('TICARET') || upper === 'RETAIL') return 'RETAIL';
+  if (upper.includes('HIZMET') || upper === 'SERVICE') return 'SERVICE';
+  if (upper.includes('EGITIM') || upper.includes('EĞITIM') || upper === 'EDUCATION') return 'EDUCATION';
+  if (upper.includes('TEKNO') || upper.includes('YAZILIM') || upper === 'TECHNOLOGY') return 'TECHNOLOGY';
+  if (upper.includes('GIDA') || upper.includes('RESTORAN') || upper === 'FOOD') return 'FOOD';
+  if (upper.includes('SPA') || upper.includes('GUZELLIK') || upper.includes('GÜZELLIK')) return 'SPA';
+  if (upper.includes('HUKUK') || upper === 'LEGAL') return 'LEGAL';
+  if (upper.includes('FINANS') || upper.includes('MUHASEBE') || upper === 'FINANCE') return 'FINANCE';
+  return SECTOR_OPTIONS.some(o => o.value === ind) ? ind : 'GENERAL';
+};
 
 const parseScheduleFromString = (initialStr) => {
   if (!initialStr || typeof initialStr !== 'string') {
@@ -104,16 +165,16 @@ const parseScheduleFromString = (initialStr) => {
   }
 
   if (s.includes('7 gün') || s.includes('her gün')) {
-    schedule.forEach(d => { d.isOpen = true; });
+    schedule.forEach(d => { d.enabled = true; });
   } else {
     if (s.includes('cumartesi') || s.includes('cmt')) {
       if (!s.includes('cumartesi: kapalı') && !s.includes('cmt: kapalı') && !s.includes('cumartesi kapalı')) {
-        schedule[5].isOpen = true;
+        schedule[5].enabled = true;
       }
     }
     if (s.includes('pazar') || s.includes('paz')) {
       if (!s.includes('pazar: kapalı') && !s.includes('paz: kapalı') && !s.includes('pazar kapalı')) {
-        schedule[6].isOpen = true;
+        schedule[6].enabled = true;
       }
     }
   }
@@ -121,39 +182,16 @@ const parseScheduleFromString = (initialStr) => {
 };
 
 const formatScheduleToString = (schedule) => {
-  const openDays = schedule.filter(d => d.isOpen);
+  if (!Array.isArray(schedule)) return 'Belirtilmedi';
+  const openDays = schedule.filter(d => (d.enabled !== undefined ? d.enabled : d.isOpen));
   if (openDays.length === 0) return 'Tüm günler kapalı';
-
-  const weekdays = schedule.slice(0, 5);
-  const sat = schedule[5];
-  const sun = schedule[6];
-
-  const weekdaysAllOpen = weekdays.every(d => d.isOpen);
-  const weekdaysSameHours = weekdaysAllOpen && weekdays.every(d => d.start === weekdays[0].start && d.end === weekdays[0].end);
-
-  if (weekdaysSameHours) {
-    if (sat.isOpen && sun.isOpen && sat.start === weekdays[0].start && sat.end === weekdays[0].end && sun.start === weekdays[0].start && sun.end === weekdays[0].end) {
-      return `Haftanın 7 günü: ${weekdays[0].start} - ${weekdays[0].end}`;
-    }
-    const parts = [`Pzt - Cum: ${weekdays[0].start} - ${weekdays[0].end}`];
-    if (sat.isOpen && sun.isOpen && sat.start === sun.start && sat.end === sun.end) {
-      parts.push(`Hafta sonu: ${sat.start} - ${sat.end}`);
-    } else {
-      if (sat.isOpen) parts.push(`Cumartesi: ${sat.start} - ${sat.end}`);
-      else parts.push('Cumartesi: Kapalı');
-      if (sun.isOpen) parts.push(`Pazar: ${sun.start} - ${sun.end}`);
-      else parts.push('Pazar: Kapalı');
-    }
-    return parts.join(', ');
-  }
-
-  return schedule.map(d => d.isOpen ? `${d.short}: ${d.start} - ${d.end}` : `${d.short}: Kapalı`).join(', ');
+  return openDays.map(s => `${s.label || s.day}: ${s.start}-${s.end}`).join(', ');
 };
 
 const SetupWizard = () => {
   const [activeStep, setActiveStep] = useState(0);
   const navigate = useNavigate();
-  const { currentWorkspace, user: currentUser } = useAuth();
+  const { currentWorkspace, user: currentUser, refreshWorkspace } = useAuth();
   const toast = useToast();
 
   const showSuccess = (msg) => toast?.showSuccess ? toast.showSuccess(msg) : alert(msg);
@@ -161,11 +199,208 @@ const SetupWizard = () => {
 
   // 1. Firma Form State
   const [companyName, setCompanyName] = useState(currentWorkspace?.name || '');
-  const [companyIndustry, setCompanyIndustry] = useState(currentWorkspace?.industry || 'Emlak / Gayrimenkul');
+  const [companyDescription, setCompanyDescription] = useState(currentWorkspace?.companyDescription || '');
+  const [companyIndustry, setCompanyIndustry] = useState(() => normalizeIndustry(currentWorkspace?.industry));
   const [companyAddress, setCompanyAddress] = useState(currentWorkspace?.companyAddress || '');
+  const [companyPhone, setCompanyPhone] = useState(currentWorkspace?.companyPhone || '');
+  const [companyEmail, setCompanyEmail] = useState(currentWorkspace?.companyEmail || '');
   const [companyWebsite, setCompanyWebsite] = useState(currentWorkspace?.companyWebsite || '');
-  const [weeklySchedule, setWeeklySchedule] = useState(() => parseScheduleFromString(currentWorkspace?.companyWorkingHours));
-  const [companyHours, setCompanyHours] = useState(() => currentWorkspace?.companyWorkingHours || formatScheduleToString(parseScheduleFromString(currentWorkspace?.companyWorkingHours)));
+  const [founder, setFounder] = useState(currentWorkspace?.founder || '');
+  const [businessAreas, setBusinessAreas] = useState(() => {
+    try {
+      return typeof currentWorkspace?.businessAreas === 'string'
+        ? JSON.parse(currentWorkspace.businessAreas || '[]')
+        : (currentWorkspace?.businessAreas || []);
+    } catch {
+      return [];
+    }
+  });
+  const [newBusinessArea, setNewBusinessArea] = useState('');
+  const [serviceRegions, setServiceRegions] = useState(() => {
+    try {
+      return typeof currentWorkspace?.serviceRegions === 'string'
+        ? JSON.parse(currentWorkspace.serviceRegions || '[]')
+        : (currentWorkspace?.serviceRegions || []);
+    } catch {
+      return [];
+    }
+  });
+  const [regionSearchText, setRegionSearchText] = useState('');
+  const [regionSuggestions, setRegionSuggestions] = useState([]);
+  const [showRegionDropdown, setShowRegionDropdown] = useState(false);
+  const [googleMapsUrl, setGoogleMapsUrl] = useState(currentWorkspace?.googleMapsUrl || '');
+  const [logoPreview, setLogoPreview] = useState(currentWorkspace?.companyLogo || '');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [companyInfoLoading, setCompanyInfoLoading] = useState(false);
+
+  const [weeklySchedule, setWeeklySchedule] = useState(() => {
+    if (currentWorkspace?.companyWeeklySchedule) {
+      try {
+        const parsed = typeof currentWorkspace.companyWeeklySchedule === 'string'
+          ? JSON.parse(currentWorkspace.companyWeeklySchedule)
+          : currentWorkspace.companyWeeklySchedule;
+        if (Array.isArray(parsed) && parsed.length === 7) {
+          return parsed.map((s, i) => ({
+            ...DEFAULT_WEEKLY_SCHEDULE[i],
+            ...s,
+            day: i,
+            label: s.label || DEFAULT_WEEKLY_SCHEDULE[i].label,
+            enabled: s.enabled !== undefined ? !!s.enabled : (s.isOpen !== undefined ? !!s.isOpen : DEFAULT_WEEKLY_SCHEDULE[i].enabled),
+            start: s.start || DEFAULT_WEEKLY_SCHEDULE[i].start,
+            end: s.end || DEFAULT_WEEKLY_SCHEDULE[i].end,
+          }));
+        } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.schedule) && parsed.schedule.length === 7) {
+          return parsed.schedule.map((s, i) => ({
+            ...DEFAULT_WEEKLY_SCHEDULE[i],
+            ...s,
+            day: i,
+            label: s.label || DEFAULT_WEEKLY_SCHEDULE[i].label,
+            enabled: s.enabled !== undefined ? !!s.enabled : (s.isOpen !== undefined ? !!s.isOpen : DEFAULT_WEEKLY_SCHEDULE[i].enabled),
+            start: s.start || DEFAULT_WEEKLY_SCHEDULE[i].start,
+            end: s.end || DEFAULT_WEEKLY_SCHEDULE[i].end,
+          }));
+        }
+      } catch {}
+    }
+    return parseScheduleFromString(currentWorkspace?.companyWorkingHours);
+  });
+  const [companyHours, setCompanyHours] = useState(() => currentWorkspace?.companyWorkingHours || formatScheduleToString(weeklySchedule));
+
+  const [holidaysConfig, setHolidaysConfig] = useState(() => {
+    if (currentWorkspace?.companyWeeklySchedule) {
+      try {
+        const parsed = typeof currentWorkspace.companyWeeklySchedule === 'string'
+          ? JSON.parse(currentWorkspace.companyWeeklySchedule)
+          : currentWorkspace.companyWeeklySchedule;
+        if (parsed && typeof parsed === 'object' && parsed.holidays) {
+          return { closedOnPublicHolidays: true, customHolidays: [], note: '', ...parsed.holidays };
+        }
+      } catch {}
+    }
+    return { closedOnPublicHolidays: true, customHolidays: [], note: '' };
+  });
+
+  // AI Auto Setup Modal & States
+  const [aiSetupModalOpen, setAiSetupModalOpen] = useState(false);
+  const [aiSetupLoading, setAiSetupLoading] = useState(false);
+  const [aiSetupUrl, setAiSetupUrl] = useState('');
+  const [aiSetupResult, setAiSetupResult] = useState(null);
+  const [aiSetupApplying, setAiSetupApplying] = useState(false);
+
+  // Kanallar (Channels) State
+  const [channelSettings, setChannelSettings] = useState({
+    whatsapp: { enabled: true, connected: false, phone: '' },
+    instagram: { enabled: true, connected: false, username: '' },
+    webWidget: { enabled: true, connected: true },
+    voice: { enabled: true, connected: false, provider: 'RETELL' },
+  });
+
+  // Real Channels State for Setup Wizard
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [whatsappNumbers, setWhatsappNumbers] = useState([]);
+  const [facebookPages, setFacebookPages] = useState([]);
+  const [webWidgets, setWebWidgets] = useState([]);
+  const [retellSettings, setRetellSettings] = useState(null);
+  const [emailChannels, setEmailChannels] = useState([]);
+
+  // Channels Modals & OAuth states
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showRetellModal, setShowRetellModal] = useState(false);
+  const [showWidgetModal, setShowWidgetModal] = useState(false);
+  const [widgetModalMode, setWidgetModalMode] = useState('create');
+  const [selectedWidget, setSelectedWidget] = useState(null);
+  const [showPageSelectModal, setShowPageSelectModal] = useState(false);
+  const [availablePages, setAvailablePages] = useState([]);
+  const [selectedPages, setSelectedPages] = useState([]);
+  const [connectingPages, setConnectingPages] = useState(false);
+  const [pageSelectChannelType, setPageSelectChannelType] = useState('facebook');
+  const [pageSearchTerm, setPageSearchTerm] = useState('');
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailProvider, setEmailProvider] = useState('');
+  const [imapForm, setImapForm] = useState({
+    preset: 'yandex',
+    email: '',
+    password: '',
+    imapHost: '',
+    imapPort: 993,
+    smtpHost: '',
+    smtpPort: 465
+  });
+  const [connectingEmail, setConnectingEmail] = useState(false);
+  const [copiedWidgetId, setCopiedWidgetId] = useState(null);
+
+  // Hazır Otomasyon Senaryoları State (Akışlar adımı)
+  const [automations, setAutomations] = useState([
+    {
+      id: 'call_success',
+      key: 'CALL_SUCCESS',
+      name: 'Arama Başarılı Mesajı',
+      desc: 'Sesli görüşme tamamlandığında müşteriye otomatik teşekkür ve konum mesajı gönderir.',
+      channel: 'WHATSAPP',
+      enabled: true
+    },
+    {
+      id: 'call_failed',
+      key: 'CALL_FAILED',
+      name: 'Arama Başarısız / Ulaşılamadı Mesajı',
+      desc: 'Müşteriye ulaşılamadığında otomatik bilgilendirme ve randevu linki gönderir.',
+      channel: 'WHATSAPP',
+      enabled: true
+    },
+    {
+      id: 'location_share',
+      key: 'LOCATION_SHARE',
+      name: 'Konum & Yol Tarifi Gönderimi',
+      desc: 'Müşteri adres veya konum sorduğunda harita linkini ve açık adresi iletir.',
+      channel: 'WHATSAPP',
+      enabled: true
+    },
+    {
+      id: 'appointment_reminder',
+      key: 'APPOINTMENT_REMINDER',
+      name: 'Randevu Onay & Hatırlatıcı',
+      desc: 'Randevu günü/öncesi müşteriye otomatik hatırlatma ve teyit mesajı gönderir.',
+      channel: 'WHATSAPP',
+      enabled: true
+    },
+    {
+      id: 'welcome_greeting',
+      key: 'WELCOME_GREETING',
+      name: 'Karşılama & İlk Temas',
+      desc: 'Müşterinin ilk mesajında hoş geldiniz diyerek menü ve uzman seçenekleri sunar.',
+      channel: 'WHATSAPP',
+      enabled: true
+    },
+  ]);
+
+  // Şablonlar State
+  const [wizardTemplates, setWizardTemplates] = useState({
+    callSuccess: {
+      title: 'Arama Başarılı Şablonu',
+      content: `Merhaba, ben {AI_AGENT_ISMI}. Bugün değerli vaktinizi ayırıp bizimle görüştüğünüz için teşekkür ederiz.\n\nArama başarıyla gerçekleştirildi. Profesyonel yolculuğunuzda, en doğru sonuçlarla yanınızdayız.\n\n🌐 *Web Sitemiz:* {WEB_SITESI}\n📍 *Kulüp Konumumuz:* {KONUM_LINKI}\n\nAklınıza takılan her soruda bir mesaj uzağınızdayım. En yakın zamanda görüşmek üzere!`
+    },
+    callFailed: {
+      title: 'Arama Başarısız / Ulaşılamadı Şablonu',
+      content: `Merhaba, ben {AI_AGENT_ISMI}. {FIRMA_ADI} adına sizi aradık ancak müsait olmadığınızı gördük.\n\nSize yardımcı olmaktan mutluluk duyarız. İstediğiniz zaman bu mesaj üzerinden bize yazabilir veya doğrudan web sitemizi ziyaret edebilirsiniz:\n🌐 *Web Sitemiz:* {WEB_SITESI}\n📍 *Konumumuz:* {KONUM_LINKI}\n\nİyi günler dileriz!`
+    },
+    location: {
+      title: 'Konum & Yol Tarifi Şablonu',
+      content: `Merhaba! {FIRMA_ADI} konum ve adres bilgileri:\n\n🏢 *Adres:* {ADRES}\n🗺️ *Google Haritalar:* {KONUM_LINKI}\n🌐 *Web Sitemiz:* {WEB_SITESI}\n🕐 *Çalışma Saatlerimiz:* {CALISMA_SAATLERI}\n\nSizi ağırlamaktan mutluluk duyarız!`
+    },
+    appointmentReminder: {
+      title: 'Randevu Hatırlatıcı Şablonu',
+      content: `Sayın {MUSTERI_ADI},\n\n{TARIH} saat {SAAT} için {UZMAN_ADI} ile olan randevunuzu hatırlatmak isteriz.\n\nDeğişiklik veya teyit için lütfen bu mesaja yanıt veriniz.`
+    },
+    aiCallAppointment: {
+      title: 'AI Sesli Randevu Teyit Senaryosu',
+      beginMessage: 'Merhaba {{customer_name}}, {{company_name}} adına arıyorum. {{appointment_date}} tarihindeki randevunuzu teyit etmek için aradım, müsait miydiniz?',
+      promptSuffix: 'Müşterinin randevusunu teyit et. Gelip gelemeyeceğini sor. Değişiklik veya iptal istiyorsa yeni saat öner. Randevu teyit edilirse teşekkür edip WhatsApptan konum göndereceğini söyle.'
+    }
+  });
+
+  // Takımlar & Kişiler Sub-tab State
+  const [teamActiveTab, setTeamActiveTab] = useState('teams'); // 'teams' | 'members'
 
   const updateDaySchedule = (index, updates) => {
     setWeeklySchedule(prev => {
@@ -179,18 +414,26 @@ const SetupWizard = () => {
     setWeeklySchedule(prev => {
       let next = prev.map(d => ({ ...d }));
       if (presetType === 'weekdays') {
-        next = next.map((d, i) => i < 5 
-          ? { ...d, isOpen: true, start: '09:00', end: '18:00' }
-          : { ...d, isOpen: false }
-        );
+        next = next.map(s => ({
+          ...s,
+          enabled: s.day <= 4,
+          start: '09:00',
+          end: '18:00'
+        }));
       } else if (presetType === 'weekdays_sat') {
-        next = next.map((d, i) => {
-          if (i < 5) return { ...d, isOpen: true, start: '09:00', end: '18:00' };
-          if (i === 5) return { ...d, isOpen: true, start: '10:00', end: '16:00' };
-          return { ...d, isOpen: false };
-        });
+        next = next.map(s => ({
+          ...s,
+          enabled: s.day <= 5,
+          start: '09:00',
+          end: '18:00'
+        }));
       } else if (presetType === 'all_week') {
-        next = next.map(d => ({ ...d, isOpen: true, start: '09:00', end: '18:00' }));
+        next = next.map(s => ({
+          ...s,
+          enabled: true,
+          start: '09:00',
+          end: '18:00'
+        }));
       }
       setCompanyHours(formatScheduleToString(next));
       return next;
@@ -200,11 +443,174 @@ const SetupWizard = () => {
 
   const copyDayTimeToWeekdays = (sourceDay) => {
     setWeeklySchedule(prev => {
-      const next = prev.map((d, i) => i < 5 ? { ...d, isOpen: true, start: sourceDay.start, end: sourceDay.end } : d);
+      const next = prev.map((d, i) => i < 5 ? { ...d, enabled: true, start: sourceDay.start, end: sourceDay.end } : d);
       setCompanyHours(formatScheduleToString(next));
       return next;
     });
     showSuccess('Pazartesi saatleri hafta içi günlere uygulandı.');
+  };
+
+  const loadCompanyInfo = async (wsId) => {
+    try {
+      setCompanyInfoLoading(true);
+      const response = await workspaceAPI.getCompanyInfo(wsId);
+      const info = response.data?.companyInfo;
+      if (!info) return;
+
+      if (info.companyName) setCompanyName(info.companyName);
+      setCompanyDescription(info.companyDescription || '');
+      setCompanyAddress(info.companyAddress || '');
+      setCompanyPhone(info.companyPhone || '');
+      setCompanyEmail(info.companyEmail || '');
+      setCompanyWebsite(info.companyWebsite || '');
+      setFounder(info.founder || '');
+      if (info.industry) setCompanyIndustry(normalizeIndustry(info.industry));
+      setGoogleMapsUrl(info.googleMapsUrl || '');
+      setLogoPreview(info.companyLogo || '');
+
+      // businessAreas
+      let bAreas = [];
+      try {
+        bAreas = typeof info.businessAreas === 'string' ? JSON.parse(info.businessAreas || '[]') : (info.businessAreas || []);
+      } catch (e) {
+        bAreas = [];
+      }
+      setBusinessAreas(Array.isArray(bAreas) ? bAreas : []);
+
+      // serviceRegions
+      let sRegions = [];
+      try {
+        sRegions = typeof info.serviceRegions === 'string' ? JSON.parse(info.serviceRegions || '[]') : (info.serviceRegions || []);
+      } catch (e) {
+        sRegions = [];
+      }
+      setServiceRegions(Array.isArray(sRegions) ? sRegions : []);
+
+      // Weekly schedule
+      let sched = DEFAULT_WEEKLY_SCHEDULE;
+      if (info.companyWeeklySchedule) {
+        try {
+          const parsed = typeof info.companyWeeklySchedule === 'string'
+            ? JSON.parse(info.companyWeeklySchedule)
+            : info.companyWeeklySchedule;
+          if (Array.isArray(parsed) && parsed.length === 7) {
+            sched = parsed.map((s, i) => ({
+              ...DEFAULT_WEEKLY_SCHEDULE[i],
+              ...s,
+              day: i,
+              label: s.label || DEFAULT_WEEKLY_SCHEDULE[i].label,
+              enabled: s.enabled !== undefined ? !!s.enabled : (s.isOpen !== undefined ? !!s.isOpen : DEFAULT_WEEKLY_SCHEDULE[i].enabled),
+              start: s.start || DEFAULT_WEEKLY_SCHEDULE[i].start,
+              end: s.end || DEFAULT_WEEKLY_SCHEDULE[i].end,
+            }));
+          }
+        } catch (e) {
+          sched = DEFAULT_WEEKLY_SCHEDULE;
+        }
+      } else if (info.companyWorkingHours) {
+        sched = parseScheduleFromString(info.companyWorkingHours);
+      }
+      setWeeklySchedule(sched);
+      setCompanyHours(info.companyWorkingHours || formatScheduleToString(sched));
+    } catch (err) {
+      console.error('Error loading company info in wizard:', err);
+    } finally {
+      setCompanyInfoLoading(false);
+    }
+  };
+
+  const handleLogoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentWorkspace?.id) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setLogoPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+
+    try {
+      setLogoUploading(true);
+      const formData = new FormData();
+      formData.append('logo', file);
+      const response = await workspaceAPI.uploadCompanyLogo(currentWorkspace.id, formData);
+      const info = response.data?.companyInfo;
+      if (info?.companyLogo) {
+        setLogoPreview(info.companyLogo);
+      }
+      if (typeof refreshWorkspace === 'function') {
+        await refreshWorkspace();
+      }
+      showSuccess('Logo yüklendi.');
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      showError('Logo yüklenirken hata oluştu.');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleDeleteLogo = async () => {
+    if (!window.confirm('Şirket logosunu silmek istediğinize emin misiniz?')) return;
+    try {
+      setLogoUploading(true);
+      await workspaceAPI.deleteCompanyLogo(currentWorkspace.id);
+      setLogoPreview('');
+      if (typeof refreshWorkspace === 'function') {
+        await refreshWorkspace();
+      }
+      showSuccess('Logo silindi.');
+    } catch (error) {
+      console.error('Error deleting logo:', error);
+      showError('Logo silinirken hata oluştu.');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleSaveCompanyData = async (silent = false) => {
+    if (!currentWorkspace?.id) return false;
+    if (!companyName.trim()) {
+      if (!silent) showError('Lütfen firma adını girin.');
+      return false;
+    }
+
+    try {
+      setSavingCompany(true);
+      const scheduleText = formatScheduleToString(weeklySchedule);
+      const payload = {
+        companyName: companyName.trim(),
+        companyDescription: companyDescription || '',
+        companyAddress: companyAddress || '',
+        companyPhone: companyPhone || '',
+        companyEmail: companyEmail || '',
+        companyWebsite: companyWebsite || '',
+        companyWorkingHours: scheduleText,
+        founder: founder || '',
+        industry: companyIndustry || 'GENERAL',
+        businessAreas: JSON.stringify(businessAreas || []),
+        serviceRegions: JSON.stringify(serviceRegions || []),
+        googleMapsUrl: googleMapsUrl || '',
+        companyWeeklySchedule: weeklySchedule
+      };
+
+      await workspaceAPI.updateCompanyInfo(currentWorkspace.id, payload);
+      if (typeof refreshWorkspace === 'function') {
+        await refreshWorkspace();
+      }
+      if (!silent) {
+        showSuccess('Firma bilgileri kaydedildi!');
+      }
+      return true;
+    } catch (e) {
+      console.error('Save company info error in wizard:', e);
+      if (!silent) {
+        showError('Firma bilgileri kaydedilirken bir hata oluştu.');
+      }
+      return false;
+    } finally {
+      setSavingCompany(false);
+    }
   };
 
   // 2. Bilgi Bankası (KB) State
@@ -348,6 +754,148 @@ const SetupWizard = () => {
   });
   const [savingEditBot, setSavingEditBot] = useState(false);
 
+  // AI Agent Karakter & Amaç Seçimi State
+  const [newBotCharacter, setNewBotCharacter] = useState('PROFESSIONAL');
+  const [newBotPurpose, setNewBotPurpose] = useState('ALL_IN_ONE');
+  const [editBotCharacter, setEditBotCharacter] = useState('PROFESSIONAL');
+  const [editBotPurpose, setEditBotPurpose] = useState('ALL_IN_ONE');
+
+  const handleGenerateBotPrompt = (target = 'new') => {
+    const compName = companyName || currentWorkspace?.companyName || 'Şirketimiz';
+    const sector = companyIndustry || currentWorkspace?.industry || 'Genel';
+    const character = target === 'new' ? newBotCharacter : editBotCharacter;
+    const purpose = target === 'new' ? newBotPurpose : editBotPurpose;
+
+    const toneDescriptions = {
+      PROFESSIONAL: 'Sen son derece profesyonel, kurumsal, saygılı, net ve güven veren bir dille konuşan kıdemli bir temsilcisin. Müşteriye "Siz" diye hitap et, mesafeli ve nazik ol.',
+      FRIENDLY: 'Sen enerjik, samimi, güler yüzlü ve yardımsever bir asistansın. Müşteriyi içtenlikle karşıla, sıcak ve samimi ama saygılı bir dil kullan. Gerektiğinde hafif emojiler kullan.',
+      SOLUTION_ORIENTED: 'Sen son derece hızlı, pratik ve çözüm odaklı bir temsilcisin. Gereksiz uzatmalardan kaçın, net bilgiler ver ve müşteriyi doğrudan aksiyona veya randevuya yönlendir.',
+      SALES_ORIENTED: 'Sen ikna kabiliyeti yüksek, fayda odaklı ve satış danışmanlığı yapan dinamik bir temsilcisin. Müşterinin ihtiyaçlarını tespit et, ürün ve hizmetlerimizin avantajlarını öne çıkar ve teklif/randevu almaya odaklan.',
+      CONSULTANT: 'Sen empatik, dinleyen, sakinleştirici ve uzman bir danışmansın. Müşterinin durumunu özenle dinle, detaylı açıklamalarda bulun ve güven ver.'
+    };
+
+    const purposeDescriptions = {
+      APPOINTMENT: 'Öncelikli amacın müşterilerin müsaitliklerini öğrenmek, uygun uzman/şube ve tarih saat belirleyerek randevu oluşturmak ve randevu teyidi almaktır.',
+      SUPPORT_FAQ: 'Öncelikli amacın şirket, hizmetler, iade koşulları, çalışma saatleri ve sık sorulan sorular hakkında doğru ve eksiksiz bilgi vererek müşteri memnuniyeti sağlamaktır.',
+      SALES_PRODUCT: 'Öncelikli amacın ürün veya hizmet kataloğumuzu tanıtmak, fiyat ve detay paylaşmak, teklif hazırlamak ve satışı sonlandırmaktır.',
+      LEAD_CAPTURE: 'Öncelikli amacın potansiyel müşterinin adını, telefon numarasını, ilgilendiği konuyu ve talebini toplayarak satış ekibine aktarmaktır.',
+      ALL_IN_ONE: 'Sen kurumumuzun tüm operasyonlarını temsil eden genel asistansın. SSS yanıtlama, ürün/hizmet tanıtımı, randevu oluşturma ve şikayet/talep toplama görevlerinin tamamını yürütürsün.'
+    };
+
+    const promptText = `SEN ${compName.toUpperCase()} FİRMASININ RESMİ YAPAY ZEKA TEMSİLCİSİSİN.
+Sektör: ${sector}
+
+ÜSLUP VE KARAKTER:
+${toneDescriptions[character] || toneDescriptions.PROFESSIONAL}
+
+TEMEL AMACIN VE GÖREVLERİN:
+${purposeDescriptions[purpose] || purposeDescriptions.ALL_IN_ONE}
+
+GENEL DAVRANIŞ KURALLARI:
+1. Yalnızca firma bilgi bankasında, ürün listesinde ve çalışma saatlerinde yer alan doğrulanmış bilgileri paylaş. Bilmediğin konularda uydurma bilgi verme, ekibimize yönlendireceğini söyle.
+2. Adres sorulduğunda kayıtlı açık adresi ve konum linkini paylaş.
+3. Çalışma saatleri ve resmi tatiller konusunda güncel takvim ve resmi tatil politikamıza riayet et.
+4. Müşterinin sorularını dikkatle yanıtla ve görüşmeyi olumlu bir sonuca bağla.`;
+
+    if (target === 'new') {
+      setNewBot(prev => ({ ...prev, prompt: promptText }));
+    } else {
+      setEditBotData(prev => ({ ...prev, prompt: promptText }));
+    }
+    showSuccess('🪄 AI Agent sistem promptu başarıyla oluşturuldu!');
+  };
+
+  const handleAiSetupFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      setAiSetupLoading(true);
+      const res = await aiSetupAPI.parseFile(formData);
+      if (res.data?.success) {
+        setAiSetupResult(res.data.data);
+      } else {
+        showError('Belge analiz edilemedi');
+      }
+    } catch (err) {
+      console.error('File parse error in wizard:', err);
+      showError('Belge analizi hatası: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setAiSetupLoading(false);
+    }
+  };
+
+  const handleAiSetupUrlParse = async () => {
+    if (!aiSetupUrl.trim()) {
+      showError('Lütfen bir web sitesi adresi girin.');
+      return;
+    }
+    try {
+      setAiSetupLoading(true);
+      const res = await aiSetupAPI.parseUrl({ url: aiSetupUrl.trim() });
+      if (res.data?.success) {
+        setAiSetupResult(res.data.data);
+      } else {
+        showError('Web sitesi analiz edilemedi');
+      }
+    } catch (err) {
+      console.error('URL parse error in wizard:', err);
+      showError('Web sitesi analizi hatası: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setAiSetupLoading(false);
+    }
+  };
+
+  const handleApplyAiSetupToWizard = async () => {
+    if (!aiSetupResult) return;
+    try {
+      setAiSetupApplying(true);
+      if (currentWorkspace?.id) {
+        await aiSetupAPI.applySetup({
+          workspaceId: currentWorkspace.id,
+          setupData: aiSetupResult
+        });
+      }
+      if (aiSetupResult.company) {
+        const c = aiSetupResult.company;
+        if (c.name) setCompanyName(c.name);
+        if (c.description) setCompanyDescription(c.description);
+        if (c.address) setCompanyAddress(c.address);
+        if (c.phone) setCompanyPhone(c.phone);
+        if (c.email) setCompanyEmail(c.email);
+        if (c.website) setCompanyWebsite(c.website);
+        if (c.founder) setFounder(c.founder);
+        if (c.industry) setCompanyIndustry(normalizeIndustry(c.industry));
+        if (Array.isArray(c.businessAreas)) setBusinessAreas(c.businessAreas);
+        if (Array.isArray(c.serviceRegions)) setServiceRegions(c.serviceRegions);
+        if (c.googleMapsUrl) setGoogleMapsUrl(c.googleMapsUrl);
+      }
+      if (aiSetupResult.weeklySchedule && Array.isArray(aiSetupResult.weeklySchedule.schedule)) {
+        setWeeklySchedule(aiSetupResult.weeklySchedule.schedule);
+        if (aiSetupResult.weeklySchedule.holidays) {
+          setHolidaysConfig(aiSetupResult.weeklySchedule.holidays);
+        }
+      }
+      showSuccess('🪄 AI Kurulumu tamamlandı! Tüm veriler sihirbaza aktarıldı.');
+      setAiSetupModalOpen(false);
+      setAiSetupResult(null);
+      if (typeof refreshWorkspace === 'function') refreshWorkspace();
+      if (currentWorkspace?.id) {
+        loadBranches(currentWorkspace.id);
+        loadCategories(currentWorkspace.id);
+        loadProducts(currentWorkspace.id);
+        loadResources(currentWorkspace.id);
+        loadKnowledgeBaseEntries(currentWorkspace.id);
+      }
+    } catch (err) {
+      console.error('Apply AI setup error:', err);
+      showError('Uygulama hatası: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setAiSetupApplying(false);
+    }
+  };
+
   // 9. Özet & Birleşik Bilgi Bankası State
   const [compiledKb, setCompiledKb] = useState(null);
   const [compiledKbLoading, setCompiledKbLoading] = useState(false);
@@ -360,6 +908,9 @@ const SetupWizard = () => {
   useEffect(() => {
     if (!currentWorkspace?.id) return;
     const wsId = currentWorkspace.id;
+
+    // Load Company Info
+    loadCompanyInfo(wsId);
 
     // Load KB
     setKbLoading(true);
@@ -518,7 +1069,300 @@ const SetupWizard = () => {
       setBotsLoading(false);
     }
 
+    // Load channels
+    loadWizardChannels();
   }, [currentWorkspace?.id]);
+
+  // Kanalları API'den yükleme
+  const loadWizardChannels = async () => {
+    if (!currentWorkspace?.id) return;
+    setChannelsLoading(true);
+    try {
+      const [waRes, fbRes, widgetsRes, retellRes, emailRes] = await Promise.all([
+        whatsappAPI.getPhoneNumbers(currentWorkspace.id).catch(() => ({ data: { phoneNumbers: [] } })),
+        facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
+        webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } })),
+        retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } })),
+        emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } }))
+      ]);
+      setWhatsappNumbers(waRes.data?.phoneNumbers || []);
+      setFacebookPages(fbRes.data?.pages || []);
+      setWebWidgets(widgetsRes.data?.widgets || []);
+      setRetellSettings(retellRes.data?.isConfigured ? retellRes.data : null);
+      setEmailChannels(emailRes.data?.emailChannels || []);
+    } catch (err) {
+      console.error('Error loading wizard channels:', err);
+    } finally {
+      setChannelsLoading(false);
+    }
+  };
+
+  // Kanallar adımına geçildiğinde kanalları tazele
+  useEffect(() => {
+    if (STEPS[activeStep]?.key === 'kanallar' && currentWorkspace?.id) {
+      loadWizardChannels();
+    }
+  }, [activeStep, currentWorkspace?.id]);
+
+  // Facebook & Instagram Meta OAuth bağlantısı
+  const handleOAuthConnect = (channelType = 'facebook') => {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5008/api';
+    const authBaseUrl = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
+    const token = localStorage.getItem('token');
+    const stateObj = { token, workspaceId: currentWorkspace?.id, channelType };
+    const state = encodeURIComponent(JSON.stringify(stateObj));
+
+    localStorage.removeItem('oauth_result');
+
+    const width = 600;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+
+    const processOAuthSuccess = (data) => {
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
+      localStorage.removeItem('oauth_result');
+
+      const pages = data.availablePages || [];
+      const callbackChannelType = data.channelType || channelType;
+
+      let filteredPages = pages;
+      if (callbackChannelType === 'instagram') {
+        filteredPages = pages.filter(p => p.instagram_business_account?.id);
+      }
+
+      if (filteredPages.length > 0) {
+        setAvailablePages(filteredPages);
+        setSelectedPages([]);
+        setPageSelectChannelType(callbackChannelType);
+        setShowPageSelectModal(true);
+      } else {
+        alert(callbackChannelType === 'instagram'
+          ? 'Instagram Business hesabı bulunamadı.'
+          : 'Bağlanabilecek sayfa bulunamadı.');
+        loadWizardChannels();
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(pollInterval);
+    };
+
+    const handleMessage = async (event) => {
+      if (event.data?.type === 'FACEBOOK_AUTH_SUCCESS') {
+        cleanup();
+        processOAuthSuccess(event.data);
+      }
+    };
+
+    const handleStorageChange = (event) => {
+      if (event.key === 'oauth_result' && event.newValue) {
+        try {
+          const result = JSON.parse(event.newValue);
+          if (result.type === 'FACEBOOK_AUTH_SUCCESS') {
+            cleanup();
+            processOAuthSuccess(result);
+          }
+        } catch (e) {
+          console.error('Error parsing OAuth result:', e);
+        }
+      }
+    };
+
+    const pollInterval = setInterval(() => {
+      const result = localStorage.getItem('oauth_result');
+      if (result) {
+        try {
+          const data = JSON.parse(result);
+          if (data.type === 'FACEBOOK_AUTH_SUCCESS') {
+            cleanup();
+            processOAuthSuccess(data);
+          }
+        } catch (e) {}
+      }
+    }, 500);
+
+    window.addEventListener('message', handleMessage);
+    window.addEventListener('storage', handleStorageChange);
+    setTimeout(() => cleanup(), 5 * 60 * 1000);
+
+    window.open(
+      `${authBaseUrl}/auth/facebook?state=${state}`,
+      'Facebook OAuth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+  };
+
+  const togglePageSelection = (pageId) => {
+    setSelectedPages(prev =>
+      prev.includes(pageId)
+        ? prev.filter(id => id !== pageId)
+        : [...prev, pageId]
+    );
+  };
+
+  const handleConnectSelectedPages = async () => {
+    if (selectedPages.length === 0) {
+      showError('Lütfen en az bir sayfa seçin.');
+      return;
+    }
+
+    setConnectingPages(true);
+    try {
+      let hasConversationRoutingWarning = false;
+      for (const pageId of selectedPages) {
+        const page = availablePages.find(p => p.id === pageId);
+        if (page) {
+          const connectData = {
+            pageId: page.id,
+            pageName: page.name,
+            pageAccessToken: page.access_token,
+            workspaceId: currentWorkspace.id,
+            instagramBusinessId: pageSelectChannelType === 'instagram' ? page.instagram_business_account?.id : null,
+            instagramUsername: pageSelectChannelType === 'instagram' ? page.instagram_business_account?.username : null
+          };
+          const result = await facebookAPI.connectPage(connectData);
+          if (result.data?.instagramWarning === 'CONVERSATION_ROUTING_ACTIVE') {
+            hasConversationRoutingWarning = true;
+          }
+        }
+      }
+
+      setShowPageSelectModal(false);
+      setSelectedPages([]);
+      setAvailablePages([]);
+      loadWizardChannels();
+
+      if (hasConversationRoutingWarning) {
+        alert('⚠️ Sayfalar bağlandı ancak Instagram hesabında "Conversation Routing" (İleti Yönlendirme) aktif görünüyor.\n\nBot\'un mesaj gönderebilmesi için Instagram hesap sahibinin şu adımları izlemesi gerekiyor:\n\n1. Meta Business Suite → Gelen Kutusu → Ayarlar\n2. Instagram bölümünde uygulamamıza mesaj erişimi verin\n3. Uygulamamızı birincil alıcı olarak seçin\n\nBu ayar yapılana kadar mesajlar alınır ancak bot otomatik cevap veremez.');
+      } else {
+        showSuccess('Sayfalar başarıyla bağlandı!');
+      }
+    } catch (error) {
+      console.error('Error connecting pages:', error);
+      showError('Sayfa bağlantı hatası: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setConnectingPages(false);
+    }
+  };
+
+  const handleDisconnectPage = async (pageId, channelType = null) => {
+    const page = facebookPages.find(p => p.id === pageId);
+    const hasInstagram = page?.instagramBusinessId;
+
+    let message;
+    if (channelType === 'instagram') {
+      message = 'Instagram bağlantısını kesmek istediğinize emin misiniz?';
+    } else if (channelType === 'facebook' && hasInstagram) {
+      message = 'Facebook sayfa bağlantısını kesmek istediğinize emin misiniz?\n\n⚠️ Bu sayfaya bağlı Instagram hesabı da ayrılacaktır!';
+    } else {
+      message = 'Bu sayfa bağlantısını kesmek istediğinize emin misiniz?';
+    }
+
+    if (!window.confirm(message)) return;
+    try {
+      await facebookAPI.disconnectPage(pageId, channelType);
+      loadWizardChannels();
+      showSuccess('Bağlantı kesildi.');
+    } catch (error) {
+      console.error('Error disconnecting page:', error);
+      showError('Bağlantı kesilemedi.');
+    }
+  };
+
+  const handleDeleteWhatsapp = async (phoneNumberId) => {
+    if (!window.confirm('Bu WhatsApp numarasını kaldırmak istediğinize emin misiniz?')) return;
+    try {
+      await whatsappAPI.disconnect(phoneNumberId);
+      loadWizardChannels();
+      showSuccess('WhatsApp numarası kaldırıldı.');
+    } catch (error) {
+      console.error('Error deleting whatsapp:', error);
+      showError('WhatsApp numarası silinemedi.');
+    }
+  };
+
+  const handleDeleteWebWidget = async (widgetId) => {
+    if (!window.confirm('Bu Web Widget\'ı silmek istediğinize emin misiniz?')) return;
+    try {
+      await webWidgetAPI.delete(widgetId);
+      loadWizardChannels();
+      showSuccess('Web widget silindi.');
+    } catch (error) {
+      console.error('Error deleting web widget:', error);
+      showError('Web widget silinemedi.');
+    }
+  };
+
+  const handleDeleteEmail = async (id) => {
+    if (!window.confirm('Bu e-posta hesabını kaldırmak istediğinize emin misiniz?')) return;
+    try {
+      await emailAPI.delete(id);
+      loadWizardChannels();
+      showSuccess('E-posta hesabı kaldırıldı.');
+    } catch (error) {
+      console.error('Error deleting email channel:', error);
+      showError('E-posta hesabı silinemedi.');
+    }
+  };
+
+  const handleGmailConnect = async () => {
+    try {
+      const response = await emailAPI.getConnectUrl(currentWorkspace.id);
+      window.location.href = response.data.url;
+    } catch (error) {
+      console.error('Error connecting Gmail:', error);
+      showError('Gmail bağlantısı başlatılamadı.');
+    }
+  };
+
+  const handleImapConnect = async () => {
+    if (!imapForm.email || !imapForm.password) {
+      showError('E-posta ve şifre gereklidir.');
+      return;
+    }
+
+    setConnectingEmail(true);
+    try {
+      await emailAPI.connectImap(currentWorkspace.id, {
+        preset: imapForm.preset,
+        email: imapForm.email,
+        password: imapForm.password,
+        imapHost: imapForm.preset === 'custom' ? imapForm.imapHost : undefined,
+        imapPort: imapForm.preset === 'custom' ? imapForm.imapPort : undefined,
+        smtpHost: imapForm.preset === 'custom' ? imapForm.smtpHost : undefined,
+        smtpPort: imapForm.preset === 'custom' ? imapForm.smtpPort : undefined
+      });
+
+      setShowEmailModal(false);
+      loadWizardChannels();
+      showSuccess('E-posta hesabı başarıyla bağlandı!');
+    } catch (error) {
+      console.error('Error connecting IMAP:', error);
+      showError(error.response?.data?.error || 'Bağlantı başarısız. E-posta veya şifre hatalı olabilir.');
+    } finally {
+      setConnectingEmail(false);
+    }
+  };
+
+  const handleImapPresetChange = (preset) => {
+    const presets = {
+      yandex: { imapHost: 'imap.yandex.com', smtpHost: 'smtp.yandex.com', imapPort: 993, smtpPort: 465 },
+      outlook: { imapHost: 'outlook.office365.com', smtpHost: 'smtp.office365.com', imapPort: 993, smtpPort: 587 },
+      custom: { imapHost: '', smtpHost: '', imapPort: 993, smtpPort: 465 }
+    };
+    setImapForm(prev => ({ ...prev, preset, ...(presets[preset] || {}) }));
+  };
+
+  const copyWidgetSnippet = (widgetId, code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedWidgetId(widgetId);
+    setTimeout(() => setCopiedWidgetId(null), 2000);
+  };
 
   // Derlenmiş Birleşik Bilgi Bankası Verisini Getir
   const fetchCompiledKb = () => {
@@ -589,16 +1433,27 @@ const SetupWizard = () => {
     // 1. Şirket Bilgileri & 7 Günlük Çalışma Saatleri
     const compLines = [];
     if (companyName) compLines.push(`Firma Adı: ${companyName}`);
-    if (companyIndustry) compLines.push(`Sektör / Alan: ${companyIndustry}`);
-    if (currentWorkspace?.companyDescription) compLines.push(`Hakkında: ${currentWorkspace.companyDescription}`);
-    if (currentWorkspace?.companyPhone) compLines.push(`İletişim Telefon: ${currentWorkspace.companyPhone}`);
-    if (currentWorkspace?.companyEmail) compLines.push(`E-posta: ${currentWorkspace.companyEmail}`);
+    if (companyIndustry) {
+      const secObj = SECTOR_OPTIONS.find(s => s.value === companyIndustry);
+      compLines.push(`Sektör / Alan: ${secObj ? secObj.label : companyIndustry}`);
+    }
+    if (founder) compLines.push(`Kurucu / Firma Sahibi: ${founder}`);
+    if (companyDescription) compLines.push(`Hakkında / Şirket Açıklaması: ${companyDescription}`);
+    if (companyPhone) compLines.push(`İletişim Telefon: ${companyPhone}`);
+    if (companyEmail) compLines.push(`E-posta: ${companyEmail}`);
     if (companyWebsite) compLines.push(`Web Sitesi: ${companyWebsite}`);
     if (companyAddress) compLines.push(`Merkez Adres: ${companyAddress}`);
+    if (googleMapsUrl) compLines.push(`Google Maps Konum: ${googleMapsUrl}`);
+    if (Array.isArray(businessAreas) && businessAreas.length > 0) {
+      compLines.push(`Faaliyet / Uzmanlık Alanları: ${businessAreas.join(', ')}`);
+    }
+    if (Array.isArray(serviceRegions) && serviceRegions.length > 0) {
+      compLines.push(`Hizmet ve Satış Bölgeleri: ${serviceRegions.join(', ')}`);
+    }
     if (companyHours) {
       compLines.push(`Çalışma Saatleri (7 Gün): ${companyHours}`);
     } else if (Array.isArray(weeklySchedule) && weeklySchedule.length > 0) {
-      const scheduleStr = weeklySchedule.map(d => `${d.day}: ${d.isOpen ? `${d.start} - ${d.end}` : 'Kapalı'}`).join(' | ');
+      const scheduleStr = weeklySchedule.map(d => `${d.label || d.day}: ${(d.enabled ?? d.isOpen) ? `${d.start} - ${d.end}` : 'Kapalı'}`).join(' | ');
       compLines.push(`Çalışma Saatleri (7 Gün): ${scheduleStr}`);
     }
     if (compLines.length > 0) {
@@ -705,17 +1560,11 @@ const SetupWizard = () => {
   const progress = Math.round((activeStep / (STEPS.length - 1)) * 100);
 
   const handleNext = async () => {
-    if (activeStep === 0 && currentWorkspace?.id && companyName) {
-      try {
-        await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
-          companyName,
-          companyAddress,
-          companyWebsite,
-          companyWorkingHours: companyHours,
-          industry: companyIndustry || undefined
-        });
-      } catch (e) {
-        console.warn('Auto-save step 1 warning:', e);
+    if (activeStep === 0) {
+      const ok = await handleSaveCompanyData(true);
+      if (!ok && !companyName.trim()) {
+        showError('Lütfen firma adını girin.');
+        return;
       }
     }
     if (activeStep < STEPS.length - 1) setActiveStep(activeStep + 1);
@@ -727,18 +1576,18 @@ const SetupWizard = () => {
 
   const handleComplete = async () => {
     try {
-      if (currentWorkspace?.id && companyName) {
-        await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
-          companyName,
-          companyAddress,
-          companyWebsite,
-          companyWorkingHours: companyHours,
-          industry: companyIndustry || undefined
-        });
-      }
+      await handleSaveCompanyData(true);
       // Tüm adımları veritabanına birleşik Bilgi Bankası olarak kaydet
       await saveUnifiedKnowledgeBase(null, false);
-      showSuccess('Tüm adımlar başarıyla birleştirildi ve Bilgi Bankası olarak kaydedildi!');
+      // Standart hazır mesajları (Arama Başarılı, Arama Başarısız, Konum) firma verileriyle güncelle/oluştur
+      if (currentWorkspace?.id) {
+        try {
+          await quickReplyAPI.seedDefaults(currentWorkspace.id, true);
+        } catch (qrErr) {
+          console.warn('Standard quick replies auto-seed warning:', qrErr);
+        }
+      }
+      showSuccess('Tüm adımlar başarıyla birleştirildi ve Bilgi Bankası ile standart şablonlar kaydedildi!');
     } catch (e) {
       console.warn('Workspace or KB update warning:', e);
     }
@@ -1590,56 +2439,506 @@ const SetupWizard = () => {
   // ─── RENDERERS ───────────────────────────────────────────────────────────
 
   const renderFirma = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '640px' }}>
-      <div>
-        <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Firma Bilgileri</h2>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>İşletmenizin genel kimlik ve iletişim detaylarını yapılandırın.</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '840px' }}>
+      {/* Header with Save Button */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Firma Bilgileri</h2>
+          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
+            İşletmenizin genel kimlik, iletişim, faaliyet alanları ve 7 günlük çalışma saatlerini yapılandırın.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleSaveCompanyData(false)}
+          disabled={savingCompany}
+          style={{
+            ...primaryBtnStyle,
+            opacity: savingCompany ? 0.7 : 1,
+            cursor: savingCompany ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {savingCompany ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              Kaydediliyor...
+            </>
+          ) : (
+            <>
+              <Check size={16} />
+              Firma Bilgilerini Kaydet
+            </>
+          )}
+        </button>
       </div>
 
+      {/* 🪄 AI ile Tek Tıkla Kurulum Banner */}
+      <div style={{
+        padding: '16px 20px',
+        borderRadius: '12px',
+        background: 'linear-gradient(135deg, #fff7ed 0%, #fff1f2 100%)',
+        border: '1.5px solid #fed7aa',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '14px',
+        boxShadow: '0 2px 8px rgba(249, 115, 22, 0.08)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+            <Sparkles size={22} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '14px', color: '#9a3412' }}>
+              Kurumsal Dokümanınız (PDF, Word, Excel, TXT) veya Web Siteniz Var mı?
+            </div>
+            <div style={{ fontSize: '12px', color: '#7c2d12', marginTop: '2px' }}>
+              AI tüm firma bilgilerinizi, şubelerinizi, ürünlerinizi, doktor/kaynak listenizi ve çalışma saatlerinizi tek tıkla buraya doldursun.
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAiSetupModalOpen(true)}
+          style={{
+            ...primaryBtnStyle,
+            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+            border: 'none',
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: '13px',
+            padding: '8px 16px',
+            boxShadow: '0 2px 6px rgba(249, 115, 22, 0.3)'
+          }}
+        >
+          <Sparkles size={15} /> AI ile Otomatik Doldur
+        </button>
+      </div>
+
+      {/* Logo Section */}
+      <div style={{
+        padding: '18px 20px',
+        border: '1.5px solid #e2e8f0',
+        borderRadius: '10px',
+        background: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '20px',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{
+          width: '72px',
+          height: '72px',
+          borderRadius: '10px',
+          border: '1.5px dashed #cbd5e1',
+          background: '#f8fafc',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          flexShrink: 0
+        }}>
+          {logoPreview ? (
+            <img
+              src={logoPreview.startsWith('data:')
+                ? logoPreview
+                : logoPreview.startsWith('http')
+                  ? logoPreview
+                  : `${import.meta.env.VITE_API_URL || ''}/uploads${logoPreview.replace('/uploads', '')}`
+              }
+              alt="Şirket Logosu"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', color: '#94a3b8' }}>
+              <Building2 size={26} />
+              <span style={{ fontSize: '10px', fontWeight: 600 }}>Logo</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <label style={{
+              ...actionBtnStyle,
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              padding: '7px 14px',
+              fontSize: '13px',
+              cursor: logoUploading ? 'not-allowed' : 'pointer'
+            }}>
+              {logoUploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+              {logoUploading ? 'Yükleniyor...' : 'Logo Yükle'}
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,.gif"
+                onChange={handleLogoChange}
+                disabled={logoUploading}
+                style={{ display: 'none' }}
+              />
+            </label>
+            {logoPreview && (
+              <button
+                type="button"
+                onClick={handleDeleteLogo}
+                disabled={logoUploading}
+                style={deleteBtnStyle}
+              >
+                <Trash2 size={14} /> Kaldır
+              </button>
+            )}
+          </div>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+            Kare veya yatay formatta PNG, JPG veya WEBP logo yükleyebilirsiniz.
+          </p>
+        </div>
+      </div>
+
+      {/* Grid: Firma Adı & Website */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>Firma Adı *</label>
+          <input
+            type="text"
+            value={companyName}
+            onChange={e => setCompanyName(e.target.value)}
+            placeholder="Örn: ABC Teknoloji Ltd."
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>Web Sitesi</label>
+          <input
+            type="url"
+            value={companyWebsite}
+            onChange={e => setCompanyWebsite(e.target.value)}
+            placeholder="https://www.ornek.com"
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      {/* Grid: Telefon & E-posta */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>Telefon</label>
+          <input
+            type="tel"
+            value={companyPhone}
+            onChange={e => setCompanyPhone(e.target.value)}
+            placeholder="+90 212 123 45 67"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>E-posta</label>
+          <input
+            type="email"
+            value={companyEmail}
+            onChange={e => setCompanyEmail(e.target.value)}
+            placeholder="info@ornek.com"
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      {/* Grid: Kurucu / Firma Sahibi & Sektör */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>Kurucu / Firma Sahibi</label>
+          <input
+            type="text"
+            value={founder}
+            onChange={e => setFounder(e.target.value)}
+            placeholder="Örn: Ahmet Yılmaz"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>Sektör</label>
+          <select
+            value={companyIndustry}
+            onChange={e => setCompanyIndustry(e.target.value)}
+            style={inputStyle}
+          >
+            {SECTOR_OPTIONS.map(sec => (
+              <option key={sec.value} value={sec.value}>{sec.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Faaliyet Alanları (Tag Input) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <label style={labelStyle}>Firma Adı *</label>
-        <input
-          type="text"
-          value={companyName}
-          onChange={e => setCompanyName(e.target.value)}
-          placeholder="Örn: Instomer Real Estate"
-          style={inputStyle}
-        />
+        <label style={labelStyle}>Faaliyet Alanları</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '28px' }}>
+          {businessAreas.map((area, idx) => (
+            <span
+              key={idx}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                padding: '4px 10px',
+                borderRadius: '16px',
+                fontSize: '13px',
+                fontWeight: 500
+              }}
+            >
+              {area}
+              <button
+                type="button"
+                onClick={() => setBusinessAreas(prev => prev.filter((_, i) => i !== idx))}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#1d4ed8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '16px',
+                  lineHeight: 1
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            value={newBusinessArea}
+            onChange={e => setNewBusinessArea(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && newBusinessArea.trim()) {
+                e.preventDefault();
+                if (!businessAreas.includes(newBusinessArea.trim())) {
+                  setBusinessAreas(prev => [...prev, newBusinessArea.trim()]);
+                }
+                setNewBusinessArea('');
+              }
+            }}
+            placeholder="Yeni alan yazıp Enter'a basın (Örn: Diş Hekimliği, Villa Satışı, Kurumsal Sigorta)"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (newBusinessArea.trim() && !businessAreas.includes(newBusinessArea.trim())) {
+                setBusinessAreas(prev => [...prev, newBusinessArea.trim()]);
+                setNewBusinessArea('');
+              }
+            }}
+            style={actionBtnStyle}
+          >
+            <Plus size={14} /> Ekle
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <label style={labelStyle}>Sektör</label>
-        <select value={companyIndustry} onChange={e => setCompanyIndustry(e.target.value)} style={inputStyle}>
-          <option value="Emlak / Gayrimenkul">Emlak / Gayrimenkul</option>
-          <option value="Otomotiv">Otomotiv</option>
-          <option value="Sağlık / Klinik">Sağlık / Klinik</option>
-          <option value="Turizm & Otelcilik">Turizm & Otelcilik</option>
-          <option value="Perakende / E-Ticaret">Perakende / E-Ticaret</option>
-          <option value="Hizmet & Danışmanlık">Hizmet & Danışmanlık</option>
-        </select>
-      </div>
-
-      <div style={{ display: 'flex', gap: '16px' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={labelStyle}>Lokasyon / Adres</label>
+      {/* Grid: Adres & Google Maps Linki */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>Adres</label>
           <input
             type="text"
             value={companyAddress}
             onChange={e => setCompanyAddress(e.target.value)}
-            placeholder="Örn: Maslak, Sarıyer / İstanbul"
+            placeholder="Örn: Maslak, Sarıyer / İstanbul, Türkiye"
             style={inputStyle}
           />
         </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={labelStyle}>Web Sitesi</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={labelStyle}>📍 Google Maps Linki</label>
           <input
-            type="text"
-            value={companyWebsite}
-            onChange={e => setCompanyWebsite(e.target.value)}
-            placeholder="https://www.firma-adiniz.com"
+            type="url"
+            value={googleMapsUrl}
+            onChange={e => setGoogleMapsUrl(e.target.value)}
+            placeholder="https://maps.google.com/..."
             style={inputStyle}
           />
+          {googleMapsUrl && (
+            <a
+              href={googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}
+            >
+              <ExternalLink size={12} /> Haritada Görüntüle
+            </a>
+          )}
         </div>
+      </div>
+
+      {/* Hizmet ve Satış Bölgeleri (İl / İlçe Autocomplete) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
+        <label style={labelStyle}>Hizmet ve Satış Bölgeleri</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '28px' }}>
+          {serviceRegions.map((region, idx) => (
+            <span
+              key={idx}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#f0fdf4',
+                color: '#15803d',
+                padding: '4px 10px',
+                borderRadius: '16px',
+                fontSize: '13px',
+                fontWeight: 500
+              }}
+            >
+              📍 {region}
+              <button
+                type="button"
+                onClick={() => setServiceRegions(prev => prev.filter((_, i) => i !== idx))}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#15803d',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '16px',
+                  lineHeight: 1
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              type="text"
+              value={regionSearchText}
+              onChange={async (e) => {
+                const val = e.target.value;
+                setRegionSearchText(val);
+                if (val.length >= 2) {
+                  try {
+                    const resp = await fetch(`https://turkiyeapi.dev/api/v1/provinces?name=${encodeURIComponent(val)}`);
+                    const data = await resp.json();
+                    const suggestions = [];
+                    if (data.data) {
+                      data.data.forEach(p => {
+                        suggestions.push(p.name);
+                        if (p.districts) {
+                          p.districts.forEach(d => {
+                            if (d.name.toLowerCase().includes(val.toLowerCase()) || p.name.toLowerCase().includes(val.toLowerCase())) {
+                              suggestions.push(`${p.name} / ${d.name}`);
+                            }
+                          });
+                        }
+                      });
+                    }
+                    if (suggestions.length < 3) {
+                      const resp2 = await fetch('https://turkiyeapi.dev/api/v1/provinces');
+                      const data2 = await resp2.json();
+                      if (data2.data) {
+                        data2.data.forEach(p => {
+                          if (p.districts) {
+                            p.districts.forEach(d => {
+                              if (d.name.toLowerCase().includes(val.toLowerCase())) {
+                                const entry = `${p.name} / ${d.name}`;
+                                if (!suggestions.includes(entry)) suggestions.push(entry);
+                              }
+                            });
+                          }
+                        });
+                      }
+                    }
+                    setRegionSuggestions(suggestions.slice(0, 10));
+                    setShowRegionDropdown(true);
+                  } catch (err) {
+                    console.warn('Region API error:', err);
+                    setRegionSuggestions([]);
+                  }
+                } else {
+                  setRegionSuggestions([]);
+                  setShowRegionDropdown(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && regionSearchText.trim()) {
+                  e.preventDefault();
+                  if (!serviceRegions.includes(regionSearchText.trim())) {
+                    setServiceRegions(prev => [...prev, regionSearchText.trim()]);
+                  }
+                  setRegionSearchText('');
+                  setShowRegionDropdown(false);
+                }
+              }}
+              onBlur={() => setTimeout(() => setShowRegionDropdown(false), 200)}
+              placeholder="İl veya ilçe yazın (Örn: Kadıköy, Maslak, Beşiktaş, İzmir)"
+              style={inputStyle}
+            />
+            {showRegionDropdown && regionSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                zIndex: 50,
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                marginTop: '4px'
+              }}>
+                {regionSuggestions.map((s, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      borderBottom: '1px solid #f1f5f9',
+                      color: '#1e293b'
+                    }}
+                    onMouseDown={() => {
+                      if (!serviceRegions.includes(s)) {
+                        setServiceRegions(prev => [...prev, s]);
+                      }
+                      setRegionSearchText('');
+                      setShowRegionDropdown(false);
+                    }}
+                    onMouseEnter={(e) => { e.target.style.background = '#f8fafc'; }}
+                    onMouseLeave={(e) => { e.target.style.background = 'transparent'; }}
+                  >
+                    📍 {s}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (regionSearchText.trim() && !serviceRegions.includes(regionSearchText.trim())) {
+                setServiceRegions(prev => [...prev, regionSearchText.trim()]);
+                setRegionSearchText('');
+                setShowRegionDropdown(false);
+              }
+            }}
+            style={actionBtnStyle}
+          >
+            <Plus size={14} /> Ekle
+          </button>
+        </div>
+        <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>
+          İl veya ilçe yazarak arayın, listeden seçin veya Enter'a basın.
+        </p>
       </div>
 
       {/* 7 Günlük Çalışma Saatleri */}
@@ -1654,56 +2953,29 @@ const SetupWizard = () => {
               Haftanın 7 günü için çalışma ve randevu saatlerini ayrı ayrı belirleyin.
             </p>
           </div>
-          
+
           {/* Hızlı Şablonlar */}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={() => applySchedulePreset('weekdays')}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: '#334155',
-                cursor: 'pointer'
-              }}
+              style={actionBtnStyle}
             >
               Hafta İçi (Pzt-Cum)
             </button>
             <button
               type="button"
               onClick={() => applySchedulePreset('weekdays_sat')}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: '#334155',
-                cursor: 'pointer'
-              }}
+              style={actionBtnStyle}
             >
               + Cumartesi
             </button>
             <button
               type="button"
               onClick={() => applySchedulePreset('all_week')}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                padding: '4px 10px',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: '#334155',
-                cursor: 'pointer'
-              }}
+              style={actionBtnStyle}
             >
-              7 Gün Açık
+              7 Gün
             </button>
           </div>
         </div>
@@ -1717,138 +2989,272 @@ const SetupWizard = () => {
           display: 'flex',
           flexDirection: 'column'
         }}>
-          {weeklySchedule.map((item, idx) => (
-            <div
-              key={item.key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '9px 14px',
-                borderBottom: idx < weeklySchedule.length - 1 ? '1px solid #f1f5f9' : 'none',
-                background: item.isOpen ? '#fff' : '#fbfcfd',
-                transition: 'background 0.15s ease',
-                flexWrap: 'wrap',
-                gap: '8px'
-              }}
-            >
-              {/* Sol: Checkbox + Gün Adı + Rozet */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '170px' }}>
-                <input
-                  type="checkbox"
-                  id={`day-toggle-${item.key}`}
-                  checked={item.isOpen}
-                  onChange={e => updateDaySchedule(idx, { isOpen: e.target.checked })}
-                  style={{
-                    width: '16px',
-                    height: '16px',
-                    cursor: 'pointer',
-                    accentColor: '#E63B2E'
-                  }}
-                />
-                <label
-                  htmlFor={`day-toggle-${item.key}`}
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: item.isOpen ? 600 : 500,
-                    color: item.isOpen ? '#1e293b' : '#64748b',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    minWidth: '75px'
-                  }}
-                >
-                  {item.day}
-                </label>
-                <span
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    background: item.isOpen ? '#dcfce7' : '#f1f5f9',
-                    color: item.isOpen ? '#166534' : '#64748b',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: item.isOpen ? '#22c55e' : '#94a3b8'
-                  }} />
-                  {item.isOpen ? 'Açık' : 'Kapalı'}
-                </span>
-              </div>
-
-              {/* Sağ: Saat Seçiciler veya Kapalı Bildirimi */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {item.isOpen ? (
-                  <>
-                    <input
-                      type="time"
-                      value={item.start}
-                      onChange={e => updateDaySchedule(idx, { start: e.target.value })}
-                      style={{
-                        padding: '5px 8px',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        fontFamily: 'inherit',
-                        outline: 'none',
-                        color: '#0f172a',
-                        background: '#fff'
-                      }}
-                    />
-                    <span style={{ color: '#94a3b8', fontWeight: 600 }}>-</span>
-                    <input
-                      type="time"
-                      value={item.end}
-                      onChange={e => updateDaySchedule(idx, { end: e.target.value })}
-                      style={{
-                        padding: '5px 8px',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        fontFamily: 'inherit',
-                        outline: 'none',
-                        color: '#0f172a',
-                        background: '#fff'
-                      }}
-                    />
-                    {idx === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => copyDayTimeToWeekdays(item)}
-                        title="Bu saatleri hafta içi günlere (Salı - Cuma) uygula"
-                        style={{
-                          background: '#f8fafc',
-                          border: '1px dashed #cbd5e1',
-                          borderRadius: '4px',
-                          padding: '4px 8px',
-                          fontSize: '11px',
-                          color: '#475569',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <Copy size={12} /> Hafta İçine Yay
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic', paddingRight: '8px' }}>
-                    Kapalı (Randevu ve arama kabul edilmez)
+          {weeklySchedule.map((item, idx) => {
+            const isDayOpen = item.enabled !== undefined ? item.enabled : item.isOpen;
+            const dayLabel = item.label || item.day;
+            return (
+              <div
+                key={item.key || idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '9px 14px',
+                  borderBottom: idx < weeklySchedule.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  background: isDayOpen ? '#fff' : '#fbfcfd',
+                  transition: 'background 0.15s ease',
+                  flexWrap: 'wrap',
+                  gap: '8px'
+                }}
+              >
+                {/* Sol: Checkbox + Gün Adı + Rozet */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '170px' }}>
+                  <input
+                    type="checkbox"
+                    id={`day-toggle-${item.key || idx}`}
+                    checked={isDayOpen}
+                    onChange={e => updateDaySchedule(idx, { enabled: e.target.checked, isOpen: e.target.checked })}
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      cursor: 'pointer',
+                      accentColor: '#2563eb'
+                    }}
+                  />
+                  <label
+                    htmlFor={`day-toggle-${item.key || idx}`}
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: isDayOpen ? 600 : 500,
+                      color: isDayOpen ? '#1e293b' : '#64748b',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      minWidth: '85px'
+                    }}
+                  >
+                    {dayLabel}
+                  </label>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: isDayOpen ? '#dcfce7' : '#f1f5f9',
+                      color: isDayOpen ? '#166534' : '#64748b',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <span style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: isDayOpen ? '#22c55e' : '#94a3b8'
+                    }} />
+                    {isDayOpen ? 'Açık' : 'Kapalı'}
                   </span>
-                )}
+                </div>
+
+                {/* Sağ: Saat Seçiciler veya Kapalı Bildirimi */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isDayOpen ? (
+                    <>
+                      <input
+                        type="time"
+                        value={item.start}
+                        onChange={e => updateDaySchedule(idx, { start: e.target.value })}
+                        style={{
+                          padding: '5px 8px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                          color: '#0f172a',
+                          background: '#fff'
+                        }}
+                      />
+                      <span style={{ color: '#94a3b8', fontWeight: 600 }}>—</span>
+                      <input
+                        type="time"
+                        value={item.end}
+                        onChange={e => updateDaySchedule(idx, { end: e.target.value })}
+                        style={{
+                          padding: '5px 8px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                          color: '#0f172a',
+                          background: '#fff'
+                        }}
+                      />
+                      {idx === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => copyDayTimeToWeekdays(item)}
+                          title="Bu saatleri hafta içi günlere (Salı - Cuma) uygula"
+                          style={{
+                            background: '#f8fafc',
+                            border: '1px dashed #cbd5e1',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            color: '#475569',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Copy size={12} /> Hafta İçine Yay
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic', paddingRight: '8px' }}>
+                      Kapalı (Randevu ve arama kabul edilmez)
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
+        {/* Resmi Tatil & Bayram Günleri Politikası */}
+        <div style={{
+          border: '1.5px solid #e2e8f0',
+          borderRadius: '10px',
+          background: '#f8fafc',
+          padding: '16px',
+          marginTop: '12px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>🎉</span>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
+                  Resmi Tatil & Dini Bayramlar Politikası
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>
+                  AI Agent resmi tatillerde ve dini bayramlarda bu ayara göre randevu ve arama yanıtı verir.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: holidaysConfig?.closedOnPublicHolidays ? '#dc2626' : '#16a34a' }}>
+                {holidaysConfig?.closedOnPublicHolidays ? '🔴 Resmi Tatillerde KAPALI' : '🟢 Resmi Tatillerde AÇIK'}
+              </span>
+              <label style={{ position: 'relative', display: 'inline-block', width: '42px', height: '24px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!holidaysConfig?.closedOnPublicHolidays}
+                  onChange={e => {
+                    setHolidaysConfig(prev => ({
+                      ...prev,
+                      closedOnPublicHolidays: !e.target.checked
+                    }));
+                  }}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span style={{
+                  position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                  backgroundColor: !holidaysConfig?.closedOnPublicHolidays ? '#16a34a' : '#cbd5e1',
+                  transition: '0.2s', borderRadius: '24px'
+                }}>
+                  <span style={{
+                    position: 'absolute', height: '18px', width: '18px', left: !holidaysConfig?.closedOnPublicHolidays ? '20px' : '3px',
+                    bottom: '3px', backgroundColor: '#fff', transition: '0.2s', borderRadius: '50%'
+                  }} />
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '8px 0' }}>
+            {[
+              '1 Ocak (Yılbaşı)',
+              '23 Nisan (Çocuk Bayramı)',
+              '1 Mayıs (Emek Günü)',
+              '19 Mayıs (Gençlik Bayramı)',
+              '15 Temmuz (Demokrasi Günü)',
+              '30 Ağustos (Zafer Bayramı)',
+              '29 Ekim (Cumhuriyet Bayramı)',
+              'Ramazan Bayramı',
+              'Kurban Bayramı'
+            ].map((hol, hIdx) => (
+              <span
+                key={hIdx}
+                style={{
+                  padding: '3px 8px',
+                  background: holidaysConfig?.closedOnPublicHolidays ? '#fee2e2' : '#f0fdf4',
+                  color: holidaysConfig?.closedOnPublicHolidays ? '#991b1b' : '#166534',
+                  border: `1px solid ${holidaysConfig?.closedOnPublicHolidays ? '#fca5a5' : '#bbf7d0'}`,
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  fontWeight: 500
+                }}
+              >
+                {hol}
+              </span>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '10px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+              Özel Tatil / Bayram Notu (AI Agent için)
+            </label>
+            <input
+              type="text"
+              placeholder="Örn: Bayramın 1. ve 2. günü kapalı, 3. gün acil nöbetçi servis açıktır."
+              value={holidaysConfig?.note || ''}
+              onChange={e => setHolidaysConfig(prev => ({ ...prev, note: e.target.value }))}
+              style={{ ...inputStyle, fontSize: '12px', background: '#fff' }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Şirket Açıklaması (Textarea) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <label style={labelStyle}>Şirket Açıklaması</label>
+        <textarea
+          rows={4}
+          value={companyDescription}
+          onChange={e => setCompanyDescription(e.target.value)}
+          placeholder="Şirketiniz hakkında kısa bir açıklama. AI bu bilgiyi müşterilerle paylaşabilir."
+          style={{ ...inputStyle, resize: 'vertical' }}
+        />
+      </div>
+
+      {/* Bottom Save Notification / Action Button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '10px' }}>
+        <button
+          type="button"
+          onClick={() => handleSaveCompanyData(false)}
+          disabled={savingCompany}
+          style={{
+            ...primaryBtnStyle,
+            opacity: savingCompany ? 0.7 : 1,
+            cursor: savingCompany ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {savingCompany ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              Kaydediliyor...
+            </>
+          ) : (
+            <>
+              <Check size={16} />
+              Firma Bilgilerini Kaydet
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -1938,11 +3344,11 @@ const SetupWizard = () => {
         )}
       </div>
 
-      {/* Manuel Ekle */}
+      {/* Metin Ekle / SSS */}
       <div style={{ padding: '20px', border: '1.5px solid #e2e8f0', borderRadius: '10px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FileText size={18} color="#E63B2E" />
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#1e293b' }}>Manuel Ekle</h3>
+          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#1e293b' }}>Metin Ekle / SSS</h3>
         </div>
         <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
           Şirket politikaları, iade şartları, sık sorulan sorular veya ürün detaylarını buraya doğrudan yazabilir veya yapıştırabilirsiniz.
@@ -2835,6 +4241,562 @@ const SetupWizard = () => {
     </div>
   );
 
+  const renderKanallar = () => {
+    const igPages = facebookPages.filter(p => p.instagramBusinessId);
+    const fbPages = facebookPages;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '840px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>İletişim Kanalları</h2>
+            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
+              AI Agent'ın müşterilerinizle otomatik iletişim kuracağı gerçek kanalları bağlayın. Her kanal CRM gelen kutunuza ve AI Agent'a entegre olur.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadWizardChannels}
+            disabled={channelsLoading}
+            style={secondaryBtnStyle}
+            title="Kanal durumlarını yenile"
+          >
+            <RefreshCw size={14} className={channelsLoading ? 'animate-spin' : ''} />
+            Yenile
+          </button>
+        </div>
+
+        {/* Canlı Durum Özeti */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          flexWrap: 'wrap',
+          padding: '12px 18px',
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '10px',
+          fontSize: '13px'
+        }}>
+          <span style={{ fontWeight: 600, color: '#334155' }}>Bağlı Kanallar:</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: whatsappNumbers.length > 0 ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>
+            <MessageCircle size={15} /> WhatsApp: {whatsappNumbers.length > 0 ? `${whatsappNumbers.length} Bağlı` : 'Yok'}
+          </span>
+          <span style={{ color: '#cbd5e1' }}>•</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: igPages.length > 0 ? '#e1306c' : '#94a3b8', fontWeight: 600 }}>
+            <Instagram size={15} /> Instagram: {igPages.length > 0 ? `${igPages.length} Bağlı` : 'Yok'}
+          </span>
+          <span style={{ color: '#cbd5e1' }}>•</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: fbPages.length > 0 ? '#1877f2' : '#94a3b8', fontWeight: 600 }}>
+            <Facebook size={15} /> Facebook: {fbPages.length > 0 ? `${fbPages.length} Bağlı` : 'Yok'}
+          </span>
+          <span style={{ color: '#cbd5e1' }}>•</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: webWidgets.length > 0 ? '#2563eb' : '#94a3b8', fontWeight: 600 }}>
+            <Globe size={15} /> Web Widget: {webWidgets.length > 0 ? `${webWidgets.length} Aktif` : 'Yok'}
+          </span>
+          <span style={{ color: '#cbd5e1' }}>•</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: retellSettings?.isConfigured ? '#0d9488' : '#94a3b8', fontWeight: 600 }}>
+            <Phone size={15} /> Sesli AI: {retellSettings?.isConfigured ? 'Yapılandırıldı' : 'Yok'}
+          </span>
+          <span style={{ color: '#cbd5e1' }}>•</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: emailChannels.length > 0 ? '#ea4335' : '#94a3b8', fontWeight: 600 }}>
+            <Mail size={15} /> E-posta: {emailChannels.length > 0 ? `${emailChannels.length} Bağlı` : 'Yok'}
+          </span>
+        </div>
+
+        {/* Kanal Kartları */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* 1. WhatsApp Business */}
+          <div style={{
+            border: whatsappNumbers.length > 0 ? '1.5px solid #22c55e' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            background: '#fff',
+            boxShadow: whatsappNumbers.length > 0 ? '0 2px 8px rgba(34, 197, 94, 0.08)' : 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                  <MessageCircle size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>WhatsApp Business</h4>
+                    <span style={{ fontSize: '11px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>Meta Cloud API</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Müşterilerinize 7/24 anında otomatik yanıt verin, randevu oluşturun ve katalog sunun.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {whatsappNumbers.length > 0 ? (
+                  <span style={{ fontSize: '12px', background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={13} /> {whatsappNumbers.length} Numara Bağlı
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '12px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    Bağlı Değil
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Bağlı Numaralar Listesi */}
+            {whatsappNumbers.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Bağlı WhatsApp Numaraları</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {whatsappNumbers.map(num => (
+                    <div key={num.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}>
+                      <Phone size={14} color="#16a34a" />
+                      <strong style={{ color: '#0f172a' }}>{num.displayPhoneNumber || num.phoneNumber}</strong>
+                      {num.verifiedName && <span style={{ fontSize: '11px', color: '#64748b' }}>({num.verifiedName})</span>}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWhatsapp(num.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', marginLeft: '4px' }}
+                        title="Numarayı Kaldır"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowWhatsAppModal(true)}
+                style={{ ...primaryBtnStyle, background: '#16a34a' }}
+              >
+                <MessageCircle size={15} />
+                {whatsappNumbers.length > 0 ? 'WhatsApp Numaralarını Yönet' : '+ WhatsApp Bağla (Meta API)'}
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Instagram Direct */}
+          <div style={{
+            border: igPages.length > 0 ? '1.5px solid #e1306c' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            background: '#fff',
+            boxShadow: igPages.length > 0 ? '0 2px 8px rgba(225, 48, 108, 0.08)' : 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#e1306c' }}>
+                  <Instagram size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Instagram Direct</h4>
+                    <span style={{ fontSize: '11px', background: '#fdf2f8', color: '#e1306c', border: '1px solid #fbcfe8', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>DM Otomasyonu</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Hikaye yanıtları ve DM mesajlarını AI Agent karşılasın, randevu oluştursun.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {igPages.length > 0 ? (
+                  <span style={{ fontSize: '12px', background: '#fdf2f8', color: '#be185d', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={13} /> {igPages.length} Hesap Bağlı
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '12px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    Bağlı Değil
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Bağlı Instagram Hesapları */}
+            {igPages.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Bağlı Instagram Hesapları</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {igPages.map(page => (
+                    <div key={page.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}>
+                      <Instagram size={14} color="#e1306c" />
+                      <strong style={{ color: '#0f172a' }}>@{page.instagramUsername || 'Instagram Hesabı'}</strong>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>({page.name || page.pageName})</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnectPage(page.id, 'instagram')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', marginLeft: '4px' }}
+                        title="Bağlantıyı Kes"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => handleOAuthConnect('instagram')}
+                style={{ ...primaryBtnStyle, background: 'linear-gradient(135deg, #e1306c 0%, #c13584 100%)' }}
+              >
+                <Instagram size={15} />
+                + Instagram Hesabı Bağla (Meta OAuth)
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Facebook Messenger */}
+          <div style={{
+            border: fbPages.length > 0 ? '1.5px solid #1877f2' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            background: '#fff',
+            boxShadow: fbPages.length > 0 ? '0 2px 8px rgba(24, 119, 242, 0.08)' : 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1877f2' }}>
+                  <Facebook size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Facebook Messenger</h4>
+                    <span style={{ fontSize: '11px', background: '#eff6ff', color: '#1877f2', border: '1px solid #bfdbfe', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>Sayfa Mesajları</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Facebook işletme sayfanıza gelen mesajları AI Agent anında karşılar.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {fbPages.length > 0 ? (
+                  <span style={{ fontSize: '12px', background: '#eff6ff', color: '#1e40af', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={13} /> {fbPages.length} Sayfa Bağlı
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '12px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    Bağlı Değil
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Bağlı Facebook Sayfaları */}
+            {fbPages.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Bağlı Facebook Sayfaları</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {fbPages.map(page => (
+                    <div key={page.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}>
+                      <Facebook size={14} color="#1877f2" />
+                      <strong style={{ color: '#0f172a' }}>{page.pageName || page.name}</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnectPage(page.id, 'facebook')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', marginLeft: '4px' }}
+                        title="Bağlantıyı Kes"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => handleOAuthConnect('facebook')}
+                style={{ ...primaryBtnStyle, background: '#1877f2' }}
+              >
+                <Facebook size={15} />
+                + Facebook Sayfası Bağla (Meta OAuth)
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Web Canlı Sohbet (Widget) */}
+          <div style={{
+            border: webWidgets.length > 0 ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            background: '#fff',
+            boxShadow: webWidgets.length > 0 ? '0 2px 8px rgba(59, 130, 246, 0.08)' : 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
+                  <Globe size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Web Canlı Sohbet (Widget)</h4>
+                    <span style={{ fontSize: '11px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>Web Sitesi Balonu</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Web sitenize tek satır kodla eklenen, ziyaretçilerle 7/24 konuşan AI chat penceresi.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {webWidgets.length > 0 ? (
+                  <span style={{ fontSize: '12px', background: '#dbeafe', color: '#1e40af', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={13} /> {webWidgets.length} Widget Aktif
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '12px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    Henüz Oluşturulmadı
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Mevcut Widgetlar */}
+            {webWidgets.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {webWidgets.map(widget => {
+                  const widgetCode = `<script src="${window.location.origin}/widget.js" data-widget-id="${widget.id}"></script>`;
+                  const isCopied = copiedWidgetId === widget.id;
+                  return (
+                    <div key={widget.id} style={{ padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <strong style={{ fontSize: '13px', color: '#0f172a' }}>{widget.name || 'Web Destek Widget'}</strong>
+                          {widget.siteUrl && <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>({widget.siteUrl})</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedWidget(widget);
+                              setWidgetModalMode('edit');
+                              setShowWidgetModal(true);
+                            }}
+                            style={actionBtnStyle}
+                            title="Düzenle"
+                          >
+                            <Edit2 size={12} /> Düzenle
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteWebWidget(widget.id)}
+                            style={deleteBtnStyle}
+                            title="Sil"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ flex: 1, background: '#1e293b', color: '#e2e8f0', padding: '8px 12px', borderRadius: '6px', fontSize: '11px', fontFamily: 'monospace', overflowX: 'auto' }}>
+                          {widgetCode}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyWidgetSnippet(widget.id, widgetCode)}
+                          style={{
+                            ...primaryBtnStyle,
+                            padding: '8px 14px',
+                            background: isCopied ? '#16a34a' : '#2563eb',
+                            fontSize: '12px',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {isCopied ? <Check size={14} /> : <Copy size={14} />}
+                          {isCopied ? 'Kopyalandı!' : 'Kodu Kopyala'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px dashed #cbd5e1', fontSize: '12px', color: '#64748b' }}>
+                💡 Henüz bir Web Widget oluşturmadınız. "+ Yeni Web Widget Oluştur" butonuna tıklayarak renk, başlık ve selamlama mesajınızı belirleyip hemen sitenize ekleyebilirsiniz.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedWidget(null);
+                  setWidgetModalMode('create');
+                  setShowWidgetModal(true);
+                }}
+                style={{ ...primaryBtnStyle, background: '#2563eb' }}
+              >
+                <Plus size={15} />
+                + Yeni Web Widget Oluştur
+              </button>
+            </div>
+          </div>
+
+          {/* 5. Retell AI Sesli Arama */}
+          <div style={{
+            border: retellSettings?.isConfigured ? '1.5px solid #0d9488' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            background: '#fff',
+            boxShadow: retellSettings?.isConfigured ? '0 2px 8px rgba(13, 148, 136, 0.08)' : 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d9488' }}>
+                  <Phone size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Retell AI Sesli Arama (Voice AI)</h4>
+                    <span style={{ fontSize: '11px', background: '#f0fdfa', color: '#0d9488', border: '1px solid #99f6e4', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>Telefon Görüşmesi</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Müşterilerinizi telefonla arayan veya gelen çağrıları karşılayan yapay zeka sesli asistanı.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {retellSettings?.isConfigured ? (
+                  <span style={{ fontSize: '12px', background: '#ccfbf1', color: '#115e59', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={13} /> Yapılandırıldı
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '12px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    Yapılandırılmadı
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {retellSettings?.isConfigured && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
+                <PhoneCall size={16} color="#0d9488" />
+                <span>
+                  Arama Numarası: <strong>{retellSettings.retellFromNumber || 'Varsayılan Numara'}</strong>
+                </span>
+                {retellSettings.retellAgentId && (
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>(Agent ID: {retellSettings.retellAgentId})</span>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowRetellModal(true)}
+                style={{ ...primaryBtnStyle, background: '#0d9488' }}
+              >
+                <Phone size={15} />
+                {retellSettings?.isConfigured ? 'Sesli Arama Ayarlarını Düzenle' : '📞 Sesli Arama Yapılandır (Retell AI)'}
+              </button>
+            </div>
+          </div>
+
+          {/* 6. E-posta (Gmail / IMAP) */}
+          <div style={{
+            border: emailChannels.length > 0 ? '1.5px solid #EA4335' : '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            background: '#fff',
+            boxShadow: emailChannels.length > 0 ? '0 2px 8px rgba(234, 67, 53, 0.08)' : 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EA4335' }}>
+                  <Mail size={24} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>E-posta Kutusu</h4>
+                    <span style={{ fontSize: '11px', background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>Gmail & IMAP</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Google Workspace, Yandex veya kurumsal e-postanızı bağlayarak gelen e-postaları CRM'de yönetin.
+                  </p>
+                </div>
+              </div>
+              <div>
+                {emailChannels.length > 0 ? (
+                  <span style={{ fontSize: '12px', background: '#fee2e2', color: '#991b1b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <CheckCircle size={13} /> {emailChannels.length} E-posta Bağlı
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '12px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    Bağlı Değil
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Bağlı E-postalar */}
+            {emailChannels.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', textTransform: 'uppercase' }}>Bağlı E-posta Hesapları</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {emailChannels.map(email => (
+                    <div key={email.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}>
+                      <Mail size={14} color="#EA4335" />
+                      <strong style={{ color: '#0f172a' }}>{email.email}</strong>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>({email.provider})</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEmail(email.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px', marginLeft: '4px' }}
+                        title="Hesabı Kaldır"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailProvider('');
+                  setShowEmailModal(true);
+                }}
+                style={{ ...primaryBtnStyle, background: '#EA4335' }}
+              >
+                <Mail size={15} />
+                + E-posta Hesabı Bağla
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
   const renderAkislar = () => {
     const funnelList = Array.isArray(funnels) ? funnels : [];
     const defaultFunnel = funnelList.find(f => f && (f.funnelType === 'MAIN' || f.name === 'Genel Akış' || f.name === 'Genel' || f.name === 'Genel Müşteri Akışı'));
@@ -3078,6 +5040,70 @@ const SetupWizard = () => {
           </button>
         </div>
 
+        {/* Hazır Otomasyon Senaryoları Seçimi */}
+        <div style={{
+          border: '1.5px solid #cbd5e1',
+          borderRadius: '10px',
+          padding: '16px',
+          background: '#f8fafc',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Zap size={18} color="#eab308" />
+            <div>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+                ⚡ Hazır Otomasyon Senaryoları
+              </h3>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                AI Agent ve sesli arama sonrası otomatik devreye girecek hazır tetikleyicileri seçin. Bu seçimler bir sonraki adımda şablonları otomatik üretecektir.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {automations.map((auto) => (
+              <label
+                key={auto.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  background: auto.enabled ? '#fff' : '#f1f5f9',
+                  border: `1.5px solid ${auto.enabled ? '#3b82f6' : '#e2e8f0'}`,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input
+                    type="checkbox"
+                    checked={auto.enabled}
+                    onChange={(e) => {
+                      setAutomations(prev => prev.map(a => a.id === auto.id ? { ...a, enabled: e.target.checked } : a));
+                    }}
+                    style={{ width: '16px', height: '16px', accentColor: '#2563eb', cursor: 'pointer' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
+                      {auto.name}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>
+                      {auto.desc}
+                    </div>
+                  </div>
+                </div>
+                <span style={{ fontSize: '11px', background: '#eff6ff', color: '#2563eb', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                  {auto.channel}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {showAddFunnel && (
           <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px', boxShadow: '0 4px 12px rgba(230, 59, 46, 0.08)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3303,6 +5329,240 @@ const SetupWizard = () => {
     );
   };
 
+  const renderSablonlar = () => {
+    const resolveTemplateVariables = (text) => {
+      if (!text) return '';
+      const agentName = bots?.[0]?.name || newBot?.name || 'Insta';
+      const fName = companyName || currentWorkspace?.companyName || currentWorkspace?.name || 'Firmamız';
+      const web = companyWebsite || currentWorkspace?.companyWebsite || 'www.firma.com';
+      const maps = googleMapsUrl || currentWorkspace?.googleMapsUrl || 'https://maps.google.com';
+      const addr = companyAddress || currentWorkspace?.companyAddress || 'Merkez Ofis Adresi';
+      const hours = companyHours || currentWorkspace?.companyWorkingHours || 'Hafta içi 09:00 - 18:00';
+
+      return text
+        .replace(/\{AI_AGENT_ISMI\}|\{AI Agent İsmi\}|\{\{agent_name\}\}|\{ASISTAN_ADI\}/gi, agentName)
+        .replace(/\{FIRMA_ADI\}|\{Firma Adı\}|\{\{company_name\}\}/gi, fName)
+        .replace(/\{WEB_SITESI\}|\{web site linki\}|\{\{website\}\}/gi, web)
+        .replace(/\{KONUM_LINKI\}|\{konum\}|\{\{location\}\}/gi, maps)
+        .replace(/\{ADRES\}|\{adres\}|\{\{address\}\}/gi, addr)
+        .replace(/\{CALISMA_SAATLERI\}|\{çalışma saatleri\}|\{calisma_saatleri\}|\{\{working_hours\}\}/gi, hours);
+    };
+
+    const handleAutoFillWithCompanyData = () => {
+      setWizardTemplates(prev => ({
+        ...prev,
+        callSuccess: {
+          ...prev.callSuccess,
+          content: resolveTemplateVariables(prev.callSuccess.content)
+        },
+        callFailed: {
+          ...prev.callFailed,
+          content: resolveTemplateVariables(prev.callFailed.content)
+        },
+        location: {
+          ...prev.location,
+          content: resolveTemplateVariables(prev.location.content)
+        }
+      }));
+      showSuccess('🪄 Firma bilgileriniz (Adres, Harita, Web, Çalışma Saatleri) şablonlara otomatik aktarıldı!');
+    };
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '740px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+          <div>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Şablonlar & Hazır Mesajlar</h2>
+            <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
+              Akış ve otomasyonlarda kullanılacak hazır WhatsApp ve AI Arama şablonlarını özelleştirin.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAutoFillWithCompanyData}
+            style={{
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Sparkles size={14} /> 🪄 Firma Bilgilerimle Otomatik Doldur
+          </button>
+        </div>
+
+        {/* Bilgilendirme Notu */}
+        <div style={{ padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '12px', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={16} color="#2563eb" />
+          <span>
+            <strong>Otomatik Değişken Doldurma:</strong> {`Parantez içindeki {ADRES}, {KONUM_LINKI}, {WEB_SITESI}, {CALISMA_SAATLERI}, {FIRMA_ADI} etiketleri 1. Adımda girdiğiniz verilerden otomatik olarak çekilir. İsterseniz yukarıdaki butona basarak metin kutularını hemen doldurabilirsiniz.`}
+          </span>
+        </div>
+
+        {/* 1. Arama Başarılı Şablonu */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>📞</span>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                Arama Başarılı Şablonu
+              </h4>
+            </div>
+            <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/arama-basarili</span>
+          </div>
+          <textarea
+            rows={5}
+            value={wizardTemplates.callSuccess.content}
+            onChange={e => setWizardTemplates({
+              ...wizardTemplates,
+              callSuccess: { ...wizardTemplates.callSuccess, content: e.target.value }
+            })}
+            style={{ ...inputStyle, resize: 'vertical', fontSize: '12px', lineHeight: 1.5 }}
+          />
+          {/* Canlı Önizleme */}
+          <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '12px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+              <span>📱</span> Müşteriye Gidecek Canlı Mesaj (Otomatik Çözümlenmiş Hali):
+            </div>
+            <div style={{ color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.4, fontSize: '12px' }}>
+              {resolveTemplateVariables(wizardTemplates.callSuccess.content)}
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Arama Başarısız Şablonu */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>📵</span>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                Arama Başarısız / Ulaşılamadı Şablonu
+              </h4>
+            </div>
+            <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/arama-basarisiz</span>
+          </div>
+          <textarea
+            rows={4}
+            value={wizardTemplates.callFailed.content}
+            onChange={e => setWizardTemplates({
+              ...wizardTemplates,
+              callFailed: { ...wizardTemplates.callFailed, content: e.target.value }
+            })}
+            style={{ ...inputStyle, resize: 'vertical', fontSize: '12px', lineHeight: 1.5 }}
+          />
+          {/* Canlı Önizleme */}
+          <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '12px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+              <span>📱</span> Müşteriye Gidecek Canlı Mesaj (Otomatik Çözümlenmiş Hali):
+            </div>
+            <div style={{ color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.4, fontSize: '12px' }}>
+              {resolveTemplateVariables(wizardTemplates.callFailed.content)}
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Konum & Yol Tarifi Şablonu */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>📍</span>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                Konum & Adres Şablonu
+              </h4>
+            </div>
+            <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/konum</span>
+          </div>
+          <textarea
+            rows={5}
+            value={wizardTemplates.location.content}
+            onChange={e => setWizardTemplates({
+              ...wizardTemplates,
+              location: { ...wizardTemplates.location, content: e.target.value }
+            })}
+            style={{ ...inputStyle, resize: 'vertical', fontSize: '12px', lineHeight: 1.5 }}
+          />
+          {/* Canlı Önizleme */}
+          <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '10px 12px', fontSize: '12px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+              <span>📱</span> Müşteriye Gidecek Canlı Mesaj (Otomatik Çözümlenmiş Hali):
+            </div>
+            <div style={{ color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.4, fontSize: '12px' }}>
+              {resolveTemplateVariables(wizardTemplates.location.content)}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Randevu Onay & Hatırlatıcı Şablonu */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>⏰</span>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                Randevu Hatırlatıcı Şablonu
+              </h4>
+            </div>
+            <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/randevu-hatirlatma</span>
+          </div>
+          <textarea
+            rows={4}
+            value={wizardTemplates.appointmentReminder.content}
+            onChange={e => setWizardTemplates({
+              ...wizardTemplates,
+              appointmentReminder: { ...wizardTemplates.appointmentReminder, content: e.target.value }
+            })}
+            style={{ ...inputStyle, resize: 'vertical', fontSize: '12px', lineHeight: 1.5 }}
+          />
+        </div>
+
+        {/* 5. AI Sesli Arama Şablonu */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '16px' }}>🎙️</span>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+              AI Sesli Arama Senaryosu (Retell Call)
+            </h4>
+          </div>
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+              Açılış Cümlesi
+            </label>
+            <input
+              type="text"
+              value={wizardTemplates.aiCallAppointment.beginMessage}
+              onChange={e => setWizardTemplates({
+                ...wizardTemplates,
+                aiCallAppointment: { ...wizardTemplates.aiCallAppointment, beginMessage: e.target.value }
+              })}
+              style={{ ...inputStyle, fontSize: '12px' }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+              AI Agent Konuşma Talimatı
+            </label>
+            <textarea
+              rows={3}
+              value={wizardTemplates.aiCallAppointment.promptSuffix}
+              onChange={e => setWizardTemplates({
+                ...wizardTemplates,
+                aiCallAppointment: { ...wizardTemplates.aiCallAppointment, promptSuffix: e.target.value }
+              })}
+              style={{ ...inputStyle, resize: 'vertical', fontSize: '12px' }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderTakimlar = () => {
     const teamList = Array.isArray(teams) ? teams : [];
     return (
@@ -3321,6 +5581,193 @@ const SetupWizard = () => {
           </button>
         </div>
 
+        {/* Sub-tabs: Takımlar vs Kişiler */}
+        <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setTeamActiveTab('teams')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              background: teamActiveTab === 'teams' ? '#0f172a' : '#f1f5f9',
+              color: teamActiveTab === 'teams' ? '#fff' : '#475569',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            👥 Takımlar & Ekipler ({teamList.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setTeamActiveTab('members')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              background: teamActiveTab === 'members' ? '#0f172a' : '#f1f5f9',
+              color: teamActiveTab === 'members' ? '#fff' : '#475569',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            👤 Kişiler & Personel ({workspaceMembers.length})
+          </button>
+        </div>
+
+        {teamActiveTab === 'members' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>
+                Kullanıcıları birden fazla takıma ve şubeye atayabilirsiniz.
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateNewUserModal(true)}
+                style={{ ...primaryBtnStyle, fontSize: '12px', padding: '6px 12px' }}
+              >
+                <UserPlus size={14} /> Yeni Kullanıcı / Personel Ekle
+              </button>
+            </div>
+
+            {showCreateNewUserModal && (
+              <div style={{ border: '1.5px solid #2563eb', borderRadius: '8px', padding: '14px', background: '#eff6ff', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e40af' }}>Yeni Personel Hesabı Oluştur</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Ad Soyad*"
+                    value={newUserData.name}
+                    onChange={e => setNewUserData({ ...newUserData, name: e.target.value })}
+                    style={{ ...inputStyle, fontSize: '12px' }}
+                  />
+                  <input
+                    type="email"
+                    placeholder="E-posta Adresi*"
+                    value={newUserData.email}
+                    onChange={e => setNewUserData({ ...newUserData, email: e.target.value })}
+                    style={{ ...inputStyle, fontSize: '12px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setShowCreateNewUserModal(false)} style={secondaryBtnStyle}>İptal</button>
+                  <button type="button" onClick={() => handleCreateNewUserAndAddToTeam(teamList[0]?.id)} disabled={creatingUser} style={primaryBtnStyle}>
+                    {creatingUser ? 'Oluşturuluyor...' : 'Personeli Kaydet'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {workspaceMembers.length === 0 ? (
+              <div style={{ padding: '24px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center' }}>
+                Kayıtlı kullanıcı bulunamadı.
+              </div>
+            ) : (
+              workspaceMembers.map(wm => {
+                const uid = wm.user?.id || wm.userId || wm.id;
+                const uname = wm.user?.name || wm.name || wm.user?.email || 'Personel';
+                const uemail = wm.user?.email || wm.email || '';
+                const urole = wm.role || wm.user?.role || 'AGENT';
+
+                return (
+                  <div key={uid} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#475569', fontSize: '14px' }}>
+                          {uname.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{uname}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>{uemail}</div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                        {urole}
+                      </span>
+                    </div>
+
+                    {/* Takım Atamaları (Multi-select Chips) */}
+                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                        👥 Bağlı Olduğu Takımlar:
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {teamList.map(t => {
+                          const isInTeam = (t.members || []).some(m => (m.user?.id || m.userId) === uid);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                if (isInTeam) {
+                                  handleRemoveMemberFromTeam(t.id, uid);
+                                } else {
+                                  setSelectedMemberUserId(uid);
+                                  handleAddMemberToTeam(t.id);
+                                }
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 10px',
+                                borderRadius: '16px',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                border: isInTeam ? '1.5px solid #2563eb' : '1px dashed #cbd5e1',
+                                background: isInTeam ? '#eff6ff' : '#fff',
+                                color: isInTeam ? '#1d4ed8' : '#64748b'
+                              }}
+                            >
+                              {isInTeam ? <Check size={12} /> : <Plus size={12} />}
+                              {t.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Şube Atamaları */}
+                    {branches.length > 0 && (
+                      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                          🏬 Bağlı Olduğu Şubeler:
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {branches.map(b => (
+                            <span
+                              key={b.id}
+                              style={{
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                background: '#fef3c7',
+                                color: '#92400e',
+                                border: '1px solid #fde68a'
+                              }}
+                            >
+                              📍 {b.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          <>
         {showAddTeam && (
           <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni Takım Oluştur</h4>
@@ -3569,6 +6016,8 @@ const SetupWizard = () => {
             );
           })
         )}
+        </>
+        )}
       </div>
     );
   };
@@ -3580,9 +6029,9 @@ const SetupWizard = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '760px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>AI Asistanlar</h2>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>AI Agentlar</h2>
             <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>
-              Instomer yapay zeka asistanının yeteneklerini, sistem talimatlarını ve kanallarını kontrol edin.
+              Instomer yapay zeka agentının yeteneklerini, karakterini, amacını ve sistem talimatlarını yapılandırın.
             </p>
           </div>
           <button
@@ -3590,44 +6039,101 @@ const SetupWizard = () => {
             onClick={() => setShowAddBot(!showAddBot)}
             style={primaryBtnStyle}
           >
-            <Plus size={16} /> Yeni Asistan Ekle
+            <Plus size={16} /> Yeni AI Agent Ekle
           </button>
         </div>
 
-        {/* Yeni Asistan Ekleme Formu */}
+        {/* Yeni Agent Ekleme Formu */}
         {showAddBot && (
           <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni AI Asistan Oluştur</h4>
+            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Yeni AI Agent Oluştur</h4>
             <div style={{ display: 'flex', gap: '12px' }}>
               <input
                 type="text"
-                placeholder="Asistan Adı (Örn: Insta, Satış Asistanı)*"
+                placeholder="Agent Adı (Örn: Insta, Satış Temsilcisi)*"
                 value={newBot.name}
                 onChange={e => setNewBot({ ...newBot, name: e.target.value })}
                 style={{ ...inputStyle, flex: 1 }}
               />
               <input
                 type="text"
-                placeholder="Rol / Unvan (Örn: Müşteri Temsilcisi)"
+                placeholder="Rol / Unvan (Örn: Müşteri Temsilcisi, Danışman)"
                 value={newBot.role}
                 onChange={e => setNewBot({ ...newBot, role: e.target.value })}
                 style={{ ...inputStyle, flex: 1 }}
               />
             </div>
-            <div>
-              <label style={{ ...labelStyle, fontSize: '12px' }}>Sistem Talimatı (Prompt)</label>
-              <textarea
-                placeholder="Asistanın müşterilere nasıl hitap edeceği ve davranış kuralları..."
-                value={newBot.prompt}
-                onChange={e => setNewBot({ ...newBot, prompt: e.target.value })}
-                rows={3}
-                style={{ ...inputStyle, resize: 'vertical', marginTop: '4px' }}
-              />
+
+            {/* Karakter ve Amaç Seçimi */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div>
+                <label style={{ ...labelStyle, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                  🎭 Agent Karakteri & Üslubu
+                </label>
+                <select
+                  value={newBotCharacter}
+                  onChange={e => setNewBotCharacter(e.target.value)}
+                  style={{ ...inputStyle, fontSize: '12px', padding: '8px' }}
+                >
+                  <option value="PROFESSIONAL">👔 Profesyonel & Kurumsal (Siz dili, mesafeli)</option>
+                  <option value="FRIENDLY">😊 Samimi & Güler Yüzlü (Sıcak, emojili)</option>
+                  <option value="SOLUTION_ORIENTED">⚡ Hızlı & Çözüm Odaklı (Net, pratik)</option>
+                  <option value="SALES_ORIENTED">🎯 Satış & İkna Odaklı (Fayda odaklı)</option>
+                  <option value="CONSULTANT">🩺 Uzman Danışman (Empatik, sakin)</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ ...labelStyle, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                  🎯 Agent Amacı & Temel Görevi
+                </label>
+                <select
+                  value={newBotPurpose}
+                  onChange={e => setNewBotPurpose(e.target.value)}
+                  style={{ ...inputStyle, fontSize: '12px', padding: '8px' }}
+                >
+                  <option value="ALL_IN_ONE">🌐 Genel Temsilci (Tüm Görevler)</option>
+                  <option value="APPOINTMENT">📅 Randevu Oluşturma & Teyit</option>
+                  <option value="SUPPORT_FAQ">💬 SSS & Müşteri Desteği</option>
+                  <option value="SALES_PRODUCT">🏷️ Ürün & Satış Danışmanı</option>
+                  <option value="LEAD_CAPTURE">📋 İletişim & Talep Toplama (Lead)</option>
+                </select>
+              </div>
             </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ ...labelStyle, fontSize: '12px' }}>Sistem Talimatı (Prompt)</label>
+              <button
+                type="button"
+                onClick={() => handleGenerateBotPrompt('new')}
+                style={{
+                  background: 'linear-gradient(135deg, #E63B2E 0%, #FF4521 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Sparkles size={12} /> 🪄 AI ile Akıllı Prompt Üret
+              </button>
+            </div>
+            <textarea
+              placeholder="Agentın müşterilere nasıl hitap edeceği ve davranış kuralları... (Yukarıdaki 'AI ile Akıllı Prompt Üret' butonunu kullanarak otomatik oluşturabilirsiniz)"
+              value={newBot.prompt}
+              onChange={e => setNewBot({ ...newBot, prompt: e.target.value })}
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
+
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
               <button type="button" onClick={() => setShowAddBot(false)} style={secondaryBtnStyle}>İptal</button>
               <button type="button" onClick={handleCreateBot} disabled={savingBot} style={primaryBtnStyle}>
-                {savingBot ? 'Oluşturuluyor...' : 'Asistanı Ekle'}
+                {savingBot ? 'Oluşturuluyor...' : 'AI Agentı Ekle'}
               </button>
             </div>
           </div>
@@ -3635,14 +6141,14 @@ const SetupWizard = () => {
 
         {botsLoading ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', padding: '20px' }}>
-            <Loader2 size={18} className="animate-spin" /> AI Asistanlar yükleniyor...
+            <Loader2 size={18} className="animate-spin" /> AI Agentlar yükleniyor...
           </div>
         ) : botList.length === 0 ? (
           <div style={{ padding: '30px', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', background: '#f8fafc' }}>
             <Bot size={36} color="#94a3b8" />
             <div>
-              <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Kayıtlı AI Asistan Bulunamadı</div>
-              <div style={{ fontSize: '13px' }}>Çalışma alanınız için hemen varsayılan asistanı oluşturabilir veya yeni bir tane ekleyebilirsiniz.</div>
+              <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>Kayıtlı AI Agent Bulunamadı</div>
+              <div style={{ fontSize: '13px' }}>Çalışma alanınız için hemen varsayılan AI agentı oluşturabilir veya yeni bir tane ekleyebilirsiniz.</div>
             </div>
             <button
               type="button"
@@ -3651,7 +6157,7 @@ const SetupWizard = () => {
               style={{ ...primaryBtnStyle, marginTop: '8px' }}
             >
               {savingBot ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              {savingBot ? 'Oluşturuluyor...' : 'Varsayılan AI Asistanı Oluştur (Insta)'}
+              {savingBot ? 'Oluşturuluyor...' : 'Varsayılan AI Agentı Oluştur (Insta)'}
             </button>
           </div>
         ) : (
@@ -3667,12 +6173,12 @@ const SetupWizard = () => {
             return isEditing ? (
               <div key={bot.id} style={{ border: '2px solid #E63B2E', borderRadius: '10px', padding: '18px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div style={{ fontWeight: 700, fontSize: '15px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Edit2 size={16} color="#E63B2E" /> Asistanı Düzenle: {bot.name}
+                  <Edit2 size={16} color="#E63B2E" /> AI Agentı Düzenle: {bot.name}
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ ...labelStyle, fontSize: '12px' }}>Asistan Adı *</label>
+                    <label style={{ ...labelStyle, fontSize: '12px' }}>Agent Adı *</label>
                     <input
                       type="text"
                       value={editBotData.name}
@@ -3691,10 +6197,46 @@ const SetupWizard = () => {
                   </div>
                 </div>
 
+                {/* Karakter ve Amaç Seçimi */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div>
+                    <label style={{ ...labelStyle, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                      🎭 Agent Karakteri & Üslubu
+                    </label>
+                    <select
+                      value={editBotCharacter}
+                      onChange={e => setEditBotCharacter(e.target.value)}
+                      style={{ ...inputStyle, fontSize: '12px', padding: '8px' }}
+                    >
+                      <option value="PROFESSIONAL">👔 Profesyonel & Kurumsal (Siz dili)</option>
+                      <option value="FRIENDLY">😊 Samimi & Güler Yüzlü (Sıcak, emojili)</option>
+                      <option value="SOLUTION_ORIENTED">⚡ Hızlı & Çözüm Odaklı (Net, pratik)</option>
+                      <option value="SALES_ORIENTED">🎯 Satış & İkna Odaklı (Fayda odaklı)</option>
+                      <option value="CONSULTANT">🩺 Uzman Danışman (Empatik, sakin)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...labelStyle, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                      🎯 Agent Amacı & Temel Görevi
+                    </label>
+                    <select
+                      value={editBotPurpose}
+                      onChange={e => setEditBotPurpose(e.target.value)}
+                      style={{ ...inputStyle, fontSize: '12px', padding: '8px' }}
+                    >
+                      <option value="ALL_IN_ONE">🌐 Genel Temsilci (Tüm Görevler)</option>
+                      <option value="APPOINTMENT">📅 Randevu Oluşturma & Teyit</option>
+                      <option value="SUPPORT_FAQ">💬 SSS & Müşteri Desteği</option>
+                      <option value="SALES_PRODUCT">🏷️ Ürün & Satış Danışmanı</option>
+                      <option value="LEAD_CAPTURE">📋 İletişim & Talep Toplama (Lead)</option>
+                    </select>
+                  </div>
+                </div>
+
                 {/* Yetenekler */}
                 <div>
                   <label style={{ ...labelStyle, fontSize: '13px', marginBottom: '8px', display: 'block' }}>
-                    Asistan Yetenekleri (Hangi işlemleri yapabilir?)
+                    AI Agent Yetenekleri (Hangi işlemleri yapabilir?)
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
@@ -3746,11 +6288,32 @@ const SetupWizard = () => {
 
                 {/* Sistem Davranışı / Prompt */}
                 <div>
-                  <label style={{ ...labelStyle, fontSize: '13px', marginBottom: '4px', display: 'block' }}>
-                    Sistem Talimatı (Prompt)
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ ...labelStyle, fontSize: '13px', margin: 0 }}>
+                      Sistem Talimatı (Prompt)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateBotPrompt('edit')}
+                      style={{
+                        background: 'linear-gradient(135deg, #E63B2E 0%, #FF4521 100%)',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Sparkles size={12} /> 🪄 AI ile Akıllı Prompt Üret
+                    </button>
+                  </div>
                   <textarea
-                    rows={4}
+                    rows={5}
                     value={editBotData.prompt}
                     onChange={e => setEditBotData({ ...editBotData, prompt: e.target.value })}
                     placeholder="Müşterilere nasıl hitap etmeli, hangi kurallara uymalı..."
@@ -3778,7 +6341,7 @@ const SetupWizard = () => {
                         </span>
                       </div>
                       <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                        Yapay Zeka Destekli Müşteri Yanıtlama & Karşılama Asistanı
+                        Yapay Zeka Destekli Müşteri Yanıtlama & Karşılama Agentı
                       </div>
                     </div>
                   </div>
@@ -3805,7 +6368,7 @@ const SetupWizard = () => {
                       type="button"
                       onClick={() => handleStartEditBot(bot)}
                       style={actionBtnStyle}
-                      title="Asistanı Düzenle"
+                      title="Agentı Düzenle"
                     >
                       <Edit2 size={12} /> Düzenle
                     </button>
@@ -3813,7 +6376,7 @@ const SetupWizard = () => {
                       type="button"
                       onClick={() => handleDeleteBot(bot.id)}
                       style={deleteBtnStyle}
-                      title="Asistanı Sil"
+                      title="Agentı Sil"
                     >
                       <Trash2 size={12} /> Sil
                     </button>
@@ -3823,7 +6386,7 @@ const SetupWizard = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
                   {/* Yetenekler */}
                   <div>
-                    <label style={labelStyle}>Asistan Yetenekleri</label>
+                    <label style={labelStyle}>AI Agent Yetenekleri</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px', marginTop: '6px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: '6px', background: capabilities.appointment !== false ? '#ecfdf5' : '#f8fafc', color: capabilities.appointment !== false ? '#065f46' : '#94a3b8', border: `1px solid ${capabilities.appointment !== false ? '#a7f3d0' : '#e2e8f0'}` }}>
                         {capabilities.appointment !== false ? '✓' : '✗'} Randevu Oluşturma
@@ -3842,9 +6405,9 @@ const SetupWizard = () => {
 
                   {/* Sistem Talimatı / Davranışı */}
                   <div>
-                    <label style={labelStyle}>Sistem Davranışı & Talimatı</label>
+                    <label style={labelStyle}>AI Agent Sistem Davranışı & Talimatı</label>
                     <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b', lineHeight: 1.4, background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      {bot.prompt ? bot.prompt : 'Asistan, Bilgi Bankası adımında eklediğiniz tüm web sitesi ve metin verilerini kullanarak müşterilerin sorularını kurumsal dilde yanıtlar.'}
+                      {bot.prompt ? bot.prompt : 'AI Agent, Bilgi Bankası adımında eklediğiniz tüm web sitesi ve metin verilerini kullanarak müşterilerin sorularını kurumsal dilde yanıtlar.'}
                     </p>
                   </div>
                 </div>
@@ -4121,27 +6684,50 @@ const SetupWizard = () => {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', fontSize: '13px' }}>
                     <div><span style={{ color: '#64748b' }}>Firma: </span><strong>{companyName || currentWorkspace?.name || 'Belirtilmedi'}</strong></div>
-                    <div><span style={{ color: '#64748b' }}>Sektör: </span><strong>{companyIndustry || 'Emlak / Hizmet'}</strong></div>
+                    <div><span style={{ color: '#64748b' }}>Sektör: </span><strong>{SECTOR_OPTIONS.find(s => s.value === companyIndustry)?.label || companyIndustry || 'Genel'}</strong></div>
+                    {founder && <div><span style={{ color: '#64748b' }}>Kurucu: </span><strong>{founder}</strong></div>}
+                    {companyPhone && <div><span style={{ color: '#64748b' }}>Telefon: </span><strong>{companyPhone}</strong></div>}
+                    {companyEmail && <div><span style={{ color: '#64748b' }}>E-posta: </span><strong>{companyEmail}</strong></div>}
                     <div><span style={{ color: '#64748b' }}>Web: </span><strong>{companyWebsite || '—'}</strong></div>
                     <div><span style={{ color: '#64748b' }}>Adres: </span><strong>{companyAddress || '—'}</strong></div>
                   </div>
+                  {businessAreas.length > 0 && (
+                    <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Faaliyet Alanları:</span>
+                      {businessAreas.map((area, i) => (
+                        <span key={i} style={{ fontSize: '11px', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '12px', fontWeight: 500 }}>{area}</span>
+                      ))}
+                    </div>
+                  )}
+                  {serviceRegions.length > 0 && (
+                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Hizmet Bölgeleri:</span>
+                      {serviceRegions.map((reg, i) => (
+                        <span key={i} style={{ fontSize: '11px', background: '#f0fdf4', color: '#15803d', padding: '2px 8px', borderRadius: '12px', fontWeight: 500 }}>📍 {reg}</span>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
                     <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Haftalık Çalışma Saatleri:</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {Array.isArray(weeklySchedule) && weeklySchedule.length > 0 ? (
-                        weeklySchedule.map((d, idx) => (
-                          <span key={idx} style={{
-                            fontSize: '11px',
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            background: d.isOpen ? '#ecfdf5' : '#f1f5f9',
-                            color: d.isOpen ? '#047857' : '#64748b',
-                            border: '1px solid ' + (d.isOpen ? '#a7f3d0' : '#e2e8f0'),
-                            fontWeight: 600
-                          }}>
-                            {d.day}: {d.isOpen ? `${d.start} - ${d.end}` : 'Kapalı'}
-                          </span>
-                        ))
+                        weeklySchedule.map((d, idx) => {
+                          const isOpen = d.enabled !== undefined ? d.enabled : d.isOpen;
+                          const dayName = d.label || d.day;
+                          return (
+                            <span key={idx} style={{
+                              fontSize: '11px',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              background: isOpen ? '#ecfdf5' : '#f1f5f9',
+                              color: isOpen ? '#047857' : '#64748b',
+                              border: '1px solid ' + (isOpen ? '#a7f3d0' : '#e2e8f0'),
+                              fontWeight: 600
+                            }}>
+                              {dayName}: {isOpen ? `${d.start} - ${d.end}` : 'Kapalı'}
+                            </span>
+                          );
+                        })
                       ) : (
                         <span style={{ fontSize: '12px', color: '#0f172a' }}>{companyHours || 'Her gün 09:00 - 18:00'}</span>
                       )}
@@ -4460,6 +7046,88 @@ const SetupWizard = () => {
             )}
           </div>
         </div>
+
+        {/* STANDART HAZIR MESAJLAR & META ŞABLONLARI ÖNİZLEMESİ */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', background: '#fff', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap size={18} color="#E63B2E" />
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+                  Standart İletişim & Meta Şablonları (Hazır Mesajlar)
+                </h3>
+              </div>
+              <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                Girdiğiniz firma bilgileri ve AI Asistanınız ile dinamik olarak derlenen, sohbet ve arama sonrası otomatik kullanılacak şablonlar:
+              </p>
+            </div>
+            <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1d4ed8', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
+              Otomatik Aktif
+            </span>
+          </div>
+
+          <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+            {/* Arama Başarılı */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '13px', color: '#1e293b' }}>📞 Arama Başarılı</strong>
+                <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/arama-basarili</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', whiteSpace: 'pre-wrap' }}>
+                {`Merhaba, ben ${bots?.[0]?.name || 'Insta'}. Bugün değerli vaktinizi ayırıp bizimle görüştüğünüz için teşekkür ederiz.
+
+Arama başarıyla gerçekleştirildi. Profesyonel yolculuğunuzda, en doğru sonuçlarla yanınızdayız.
+
+🌐 *Web Sitemiz:* ${companyWebsite || 'Web sitemiz'}
+📍 *Kulüp Konumumuz:* ${companyGoogleMaps || companyAddress || 'Harita konumu'}
+
+Aklınıza takılan her soruda bir mesaj uzağınızdayım. En yakın zamanda görüşmek üzere!`}
+              </div>
+            </div>
+
+            {/* Arama Başarısız */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '13px', color: '#1e293b' }}>❌ Arama Başarısız</strong>
+                <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/arama-basarisiz</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', whiteSpace: 'pre-wrap' }}>
+                {`Merhaba, ben ${bots?.[0]?.name || 'Insta'}. Size telefon üzerinden ulaşmaya çalıştık ancak görüşme sağlayamadık.
+
+Müsait olduğunuzda bu mesaj üzerinden bize yazabilir veya doğrudan web sitemizi ziyaret edebilirsiniz:
+
+🌐 *Web Sitemiz:* ${companyWebsite || 'Web sitemiz'}
+📍 *Kulüp Konumumuz:* ${companyGoogleMaps || companyAddress || 'Harita konumu'}
+
+Size yardımcı olmaktan mutluluk duyarız!`}
+              </div>
+            </div>
+
+            {/* Konum ve Adres */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '13px', color: '#1e293b' }}>📍 Konum & Adres</strong>
+                <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/konum</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', whiteSpace: 'pre-wrap' }}>
+                {`Merhaba! Şirketimizin / kulübümüzün konum ve adres bilgileri aşağıda yer almaktadır:
+
+🏢 *Adres:* ${companyAddress || 'Adres bilgisi'}
+📍 *Google Haritalar:* ${companyGoogleMaps || 'Harita linki'}
+🌐 *Web Sitemiz:* ${companyWebsite || 'Web sitemiz'}
+
+Ziyaretinizi sabırsızlıkla bekliyoruz!`}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '10px 20px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0', fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>ℹ️</span>
+            <span>
+              Bu şablonlar "Hazır Mesajlar" veritabanına otomatik olarak işlenir. WhatsApp hattınız bağlandığında Şablonlar sayfasından tek tıkla Meta onayına da aktarabilirsiniz.
+            </span>
+          </div>
+        </div>
       </div>
     );
   };
@@ -4472,7 +7140,9 @@ const SetupWizard = () => {
       case 'kategoriler': return renderKategoriler();
       case 'urunler': return renderUrunler();
       case 'kaynaklar': return renderKaynaklar();
+      case 'kanallar': return renderKanallar();
       case 'akislar': return renderAkislar();
+      case 'sablonlar': return renderSablonlar();
       case 'takimlar': return renderTakimlar();
       case 'agentlar': return renderAgentlar();
       case 'ozet': return renderOzet();
@@ -4503,7 +7173,12 @@ const SetupWizard = () => {
             return (
               <div
                 key={step.key}
-                onClick={() => setActiveStep(index)}
+                onClick={() => {
+                  if (activeStep === 0 && index !== 0) {
+                    handleSaveCompanyData(true);
+                  }
+                  setActiveStep(index);
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -4596,6 +7271,381 @@ const SetupWizard = () => {
           )}
         </div>
       </div>
+
+      {/* AI Kurulum Modal */}
+      {aiSetupModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '620px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #E63B2E 0%, #FF4521 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>AI ile Otomatik Kurulum</h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Kurumsal belge yükleyin veya web sitenizi taratın</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setAiSetupModalOpen(false); setAiSetupResult(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {/* Belge Yükleme */}
+              <div style={{ border: '2px dashed #cbd5e1', borderRadius: '12px', padding: '24px', textAlign: 'center', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                <Upload size={32} color="#E63B2E" />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>Kurumsal Belge Yükleyin</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    PDF, Word (.docx), Excel (.xlsx), CSV veya TXT dosyanızı yükleyin. AI tüm şube, doktor, ürün ve bilgileri otomatik ayrıştırsın.
+                  </div>
+                </div>
+                <label style={{ ...primaryBtnStyle, cursor: 'pointer', marginTop: '6px' }}>
+                  {aiSetupLoading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                  {aiSetupLoading ? 'Belge Analiz Ediliyor...' : 'Dosya Seç & Analiz Et'}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt"
+                    onChange={handleAiSetupFileUpload}
+                    disabled={aiSetupLoading}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </div>
+
+              {/* Veya Web URL */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>VEYA</span>
+                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="url"
+                  placeholder="Web sitenizin adresi (Örn: https://www.firma.com)"
+                  value={aiSetupUrl}
+                  onChange={e => setAiSetupUrl(e.target.value)}
+                  style={{ ...inputStyle, flex: 1, fontSize: '13px' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAiSetupUrlParse}
+                  disabled={aiSetupLoading || !aiSetupUrl.trim()}
+                  style={primaryBtnStyle}
+                >
+                  {aiSetupLoading ? <Loader2 size={16} className="animate-spin" /> : <Globe size={16} />}
+                  {aiSetupLoading ? 'Taranıyor...' : 'Webden Tara'}
+                </button>
+              </div>
+
+              {/* Ayrıştırma Sonuç Önizlemesi */}
+              {aiSetupResult && (
+                <div style={{ border: '1.5px solid #bbf7d0', borderRadius: '10px', padding: '16px', background: '#f0fdf4' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: 700, fontSize: '14px', marginBottom: '10px' }}>
+                    <CheckCircle2 size={18} /> Veriler Başarıyla Çıkarıldı!
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#1e293b', lineHeight: 1.7, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    <div><strong>🏢 Firma:</strong> {aiSetupResult.company?.name || 'Belirlenemedi'}</div>
+                    <div><strong>🏷️ Sektör:</strong> {aiSetupResult.company?.industry || '-'}</div>
+                    <div><strong>📍 Şubeler:</strong> {aiSetupResult.branches?.length || 0} şube bulundu</div>
+                    <div><strong>📁 Kategoriler:</strong> {aiSetupResult.categories?.length || 0} kategori bulundu</div>
+                    <div><strong>📦 Ürünler:</strong> {aiSetupResult.products?.length || 0} ürün/hizmet</div>
+                    <div><strong>👤 Uzman/Doktor:</strong> {aiSetupResult.resources?.length || 0} kişi bulundu</div>
+                    <div><strong>💬 SSS / Bilgiler:</strong> {aiSetupResult.faq?.length || 0} soru-cevap</div>
+                    <div><strong>🕒 Çalışma Saatleri:</strong> {aiSetupResult.weeklySchedule?.schedule ? 'Mevcut' : 'Varsayılan'}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f8fafc' }}>
+              <button
+                type="button"
+                onClick={() => { setAiSetupModalOpen(false); setAiSetupResult(null); }}
+                style={secondaryBtnStyle}
+              >
+                İptal
+              </button>
+              {aiSetupResult && (
+                <button
+                  type="button"
+                  onClick={handleApplyAiSetupToWizard}
+                  disabled={aiSetupApplying}
+                  style={{ ...primaryBtnStyle, background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' }}
+                >
+                  {aiSetupApplying ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                  {aiSetupApplying ? 'Uygulanıyor...' : 'Tüm Verileri Sihirbaza Aktar'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Modal */}
+      {showWhatsAppModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }} onClick={() => setShowWhatsAppModal(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '750px', width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', padding: '24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageCircle size={22} color="#25D366" />
+                WhatsApp Business Ayarları
+              </h3>
+              <button type="button" onClick={() => setShowWhatsAppModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <WhatsAppSettings
+              workspaceId={currentWorkspace?.id}
+              aiBots={bots}
+              onClose={() => {
+                setShowWhatsAppModal(false);
+                loadWizardChannels();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Retell Modal */}
+      {showRetellModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }} onClick={() => setShowRetellModal(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '850px', width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', padding: '24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Phone size={22} color="#0d9488" />
+                Retell AI Sesli Arama Ayarları
+              </h3>
+              <button type="button" onClick={() => setShowRetellModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <RetellSettings
+              onSave={() => loadWizardChannels()}
+              hideAgentManager={true}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Web Widget Modal */}
+      {showWidgetModal && (
+        <WebWidgetModal
+          workspaceId={currentWorkspace?.id}
+          mode={widgetModalMode}
+          widget={selectedWidget}
+          onClose={() => { setShowWidgetModal(false); setSelectedWidget(null); }}
+          onSave={() => { setShowWidgetModal(false); loadWizardChannels(); }}
+        />
+      )}
+
+      {/* Facebook / Instagram Page Selection Modal */}
+      {showPageSelectModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }} onClick={() => setShowPageSelectModal(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '560px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {pageSelectChannelType === 'instagram' ? <Instagram size={20} color="#E4405F" /> : <Facebook size={20} color="#1877F2" />}
+                {pageSelectChannelType === 'instagram' ? 'Instagram Hesabı Seçin' : 'Facebook Sayfası Seçin'}
+              </h3>
+              <button type="button" onClick={() => setShowPageSelectModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+              <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748b' }}>
+                Bağlamak istediğiniz {pageSelectChannelType === 'instagram' ? 'Instagram işletme hesaplarını' : 'Facebook sayfalarını'} seçin:
+              </p>
+              <input
+                type="text"
+                placeholder="Sayfa ara..."
+                value={pageSearchTerm}
+                onChange={(e) => setPageSearchTerm(e.target.value)}
+                style={{ ...inputStyle, marginBottom: '14px', fontSize: '13px' }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+                {availablePages
+                  .filter(page =>
+                    page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) ||
+                    page.id.includes(pageSearchTerm)
+                  )
+                  .map(page => {
+                    const isSelected = selectedPages.includes(page.id);
+                    return (
+                      <div
+                        key={page.id}
+                        onClick={() => togglePageSelection(page.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          padding: '12px 14px',
+                          borderRadius: '10px',
+                          border: isSelected ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
+                          background: isSelected ? '#eff6ff' : '#fff',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ width: '20px', height: '20px', borderRadius: '4px', border: isSelected ? 'none' : '2px solid #cbd5e1', background: isSelected ? '#2563eb' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                          {isSelected && <Check size={14} />}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{page.name}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>ID: {page.id}</div>
+                          {pageSelectChannelType === 'instagram' && page.instagram_business_account && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#e1306c', fontWeight: 600, marginTop: '2px' }}>
+                              <Instagram size={13} />
+                              @{page.instagram_business_account.username}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: '#f8fafc' }}>
+              <button type="button" onClick={() => setShowPageSelectModal(false)} style={secondaryBtnStyle}>
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={handleConnectSelectedPages}
+                disabled={selectedPages.length === 0 || connectingPages}
+                style={{ ...primaryBtnStyle, background: '#2563eb' }}
+              >
+                {connectingPages ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                {connectingPages ? 'Bağlanıyor...' : `${selectedPages.length} Sayfayı Bağla`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }} onClick={() => setShowEmailModal(false)}>
+          <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '480px', width: '100%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', padding: '24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Mail size={20} color="#EA4335" />
+                E-posta Hesabı Bağla
+              </h3>
+              <button type="button" onClick={() => setShowEmailModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={18} />
+              </button>
+            </div>
+            {!emailProvider ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ margin: '0 0 4px 0', fontSize: '13px', color: '#64748b' }}>Hangi e-posta sağlayıcısını kullanıyorsunuz?</p>
+                <button
+                  type="button"
+                  onClick={handleGmailConnect}
+                  style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EA4335' }}>
+                    <Mail size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>Google Workspace / Gmail</div>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Google OAuth ile tek tıkla güvenli bağlantı</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmailProvider('imap')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}>
+                    <SettingsIcon size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>Yandex / Outlook / Diğer IMAP</div>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Kurumsal e-posta veya webmail bağlantısı</div>
+                  </div>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>E-posta Sağlayıcı</label>
+                  <select
+                    value={imapForm.preset}
+                    onChange={(e) => handleImapPresetChange(e.target.value)}
+                    style={{ ...inputStyle, marginTop: '4px' }}
+                  >
+                    <option value="yandex">Yandex</option>
+                    <option value="outlook">Outlook / Hotmail</option>
+                    <option value="custom">Özel (Webmail)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>E-posta Adresi</label>
+                  <input
+                    type="email"
+                    placeholder="ornek@sirket.com"
+                    value={imapForm.email}
+                    onChange={(e) => setImapForm(prev => ({ ...prev, email: e.target.value }))}
+                    style={{ ...inputStyle, marginTop: '4px' }}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Şifre / Uygulama Şifresi</label>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={imapForm.password}
+                    onChange={(e) => setImapForm(prev => ({ ...prev, password: e.target.value }))}
+                    style={{ ...inputStyle, marginTop: '4px' }}
+                  />
+                </div>
+                {imapForm.preset === 'custom' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: '8px' }}>
+                    <div>
+                      <label style={labelStyle}>IMAP Host</label>
+                      <input
+                        type="text"
+                        placeholder="mail.domain.com"
+                        value={imapForm.imapHost}
+                        onChange={(e) => setImapForm(prev => ({ ...prev, imapHost: e.target.value }))}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Port</label>
+                      <input
+                        type="number"
+                        value={imapForm.imapPort}
+                        onChange={(e) => setImapForm(prev => ({ ...prev, imapPort: parseInt(e.target.value) || 993 }))}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                  <button type="button" onClick={() => setEmailProvider('')} style={secondaryBtnStyle}>Geri</button>
+                  <button
+                    type="button"
+                    onClick={handleImapConnect}
+                    disabled={connectingEmail || !imapForm.email || !imapForm.password}
+                    style={{ ...primaryBtnStyle, background: '#EA4335' }}
+                  >
+                    {connectingEmail ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                    {connectingEmail ? 'Bağlanıyor...' : 'Bağlan'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

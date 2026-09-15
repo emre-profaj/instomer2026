@@ -143,6 +143,8 @@ export const authAPI = {
     register: (data) => api.post('/auth/register', data),
     login: (data) => api.post('/auth/login', data),
     getCurrentUser: () => api.get('/auth/me'),
+    updateProfile: (data) => api.put('/auth/profile', data),
+    changePassword: (data) => api.put('/auth/change-password', data),
     facebookLogin: () => {
         window.location.href = `${API_URL}/auth/facebook`;
     }
@@ -812,7 +814,19 @@ export const quickReplyAPI = {
     getAll: (workspaceId) => api.get(`/workspaces/${workspaceId}/quick-replies`),
     create: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/quick-replies`, data),
     update: (workspaceId, id, data) => api.put(`/workspaces/${workspaceId}/quick-replies/${id}`, data),
-    delete: (workspaceId, id) => api.delete(`/workspaces/${workspaceId}/quick-replies/${id}`)
+    delete: (workspaceId, id) => api.delete(`/workspaces/${workspaceId}/quick-replies/${id}`),
+    seedDefaults: (workspaceId, overwrite = false) => api.post(`/workspaces/${workspaceId}/quick-replies/seed-defaults`, { overwrite }),
+    pushToMeta: (workspaceId, id, whatsappPhoneNumberId) => api.post(`/workspaces/${workspaceId}/quick-replies/${id}/push-to-meta`, { whatsappPhoneNumberId })
+};
+
+// AI Setup & Intelligent Document Parser API
+export const aiSetupAPI = {
+    parseFile: (workspaceId, formData) => api.post(`/workspaces/${workspaceId}/ai-setup/parse-file`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    parseUrl: (workspaceId, url) => api.post(`/workspaces/${workspaceId}/ai-setup/parse-url`, { url }),
+    applySetup: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/ai-setup/apply`, data),
+    instructUpdate: (workspaceId, instruction) => api.post(`/workspaces/${workspaceId}/ai-setup/instruct`, { instruction })
 };
 
 // Workspace Automation Rules (Kurallar)

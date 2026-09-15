@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI } from '../../services/api';
+import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI, aiSetupAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
 import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search, Wand2 } from 'lucide-react';
 import Products from '../Sales/Products';
@@ -12,7 +12,7 @@ import './KnowledgeBase.css';
 const KnowledgeBase = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const { currentWorkspace, user } = useAuth();
+    const { currentWorkspace, user, refreshWorkspace } = useAuth();
     const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
     const canManage = user?.role === 'SUPER_ADMIN';
     const labels = getSectorLabels(currentWorkspace?.industry);
@@ -100,13 +100,27 @@ const KnowledgeBase = () => {
             { day: 4, label: 'Cuma', enabled: true, start: '09:00', end: '18:00' },
             { day: 5, label: 'Cumartesi', enabled: false, start: '09:00', end: '18:00' },
             { day: 6, label: 'Pazar', enabled: false, start: '09:00', end: '18:00' },
-        ]
+        ],
+        holidaysConfig: {
+            closedOnPublicHolidays: true,
+            customHolidays: [],
+            note: ''
+        }
     });
     const [savingCompany, setSavingCompany] = useState(false);
     const [newBusinessArea, setNewBusinessArea] = useState('');
     const [regionSearchText, setRegionSearchText] = useState('');
     const [regionSuggestions, setRegionSuggestions] = useState([]);
     const [showRegionDropdown, setShowRegionDropdown] = useState(false);
+
+    // AI Interactive Update & Setup States
+    const [instructText, setInstructText] = useState('');
+    const [instructLoading, setInstructLoading] = useState(false);
+    const [showAiSetupModal, setShowAiSetupModal] = useState(false);
+    const [aiSetupLoading, setAiSetupLoading] = useState(false);
+    const [aiSetupResult, setAiSetupResult] = useState(null);
+    const [aiSetupApplying, setAiSetupApplying] = useState(false);
+    const [aiSetupUrl, setAiSetupUrl] = useState('');
 
     // Branches (Lokasyonlar / Şubeler) States
     const [branches, setBranches] = useState([]);
@@ -383,14 +397,22 @@ const KnowledgeBase = () => {
             try { businessAreas = JSON.parse(info.businessAreas || '[]'); } catch(e) { businessAreas = []; }
             let serviceRegions = [];
             try { serviceRegions = JSON.parse(info.serviceRegions || '[]'); } catch(e) { serviceRegions = []; }
-            // weeklySchedule
+            // weeklySchedule & holidaysConfig
             let weeklySchedule = defaultSchedule;
+            let holidaysConfig = { closedOnPublicHolidays: true, customHolidays: [], note: '' };
             if (info.companyWeeklySchedule) {
                 try {
                     const parsed = typeof info.companyWeeklySchedule === 'string'
                         ? JSON.parse(info.companyWeeklySchedule) : info.companyWeeklySchedule;
                     if (Array.isArray(parsed) && parsed.length === 7) {
                         weeklySchedule = parsed.map((s, i) => ({ ...defaultSchedule[i], ...s }));
+                    } else if (parsed && typeof parsed === 'object') {
+                        if (Array.isArray(parsed.schedule) && parsed.schedule.length === 7) {
+                            weeklySchedule = parsed.schedule.map((s, i) => ({ ...defaultSchedule[i], ...s }));
+                        }
+                        if (parsed.holidays) {
+                            holidaysConfig = { ...holidaysConfig, ...parsed.holidays };
+                        }
                     }
                 } catch(e) { /* fallback to default */ }
             }
@@ -409,7 +431,8 @@ const KnowledgeBase = () => {
                 businessAreas,
                 serviceRegions,
                 googleMapsUrl: info.googleMapsUrl || '',
-                weeklySchedule
+                weeklySchedule,
+                holidaysConfig
             });
         } catch (error) {
             console.error('Error loading company info:', error);
@@ -424,6 +447,11 @@ const KnowledgeBase = () => {
                 .filter(s => s.enabled)
                 .map(s => `${s.label}: ${s.start}-${s.end}`)
                 .join(', ') || 'Belirtilmedi';
+            const holidayText = companyInfo.holidaysConfig?.closedOnPublicHolidays
+                ? 'Resmi tatil ve bayramlarda KAPALI'
+                : 'Resmi tatil ve bayramlarda AÇIK';
+            const fullWorkingHours = `${scheduleText} | ${holidayText}${companyInfo.holidaysConfig?.note ? ` (${companyInfo.holidaysConfig.note})` : ''}`;
+
             await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
                 companyName: companyInfo.name,
                 companyDescription: companyInfo.description,
@@ -431,20 +459,117 @@ const KnowledgeBase = () => {
                 companyPhone: companyInfo.phone,
                 companyEmail: companyInfo.email,
                 companyWebsite: companyInfo.website,
-                companyWorkingHours: scheduleText,
+                companyWorkingHours: fullWorkingHours,
                 founder: companyInfo.founder,
                 industry: companyInfo.industry,
                 businessAreas: JSON.stringify(companyInfo.businessAreas),
                 serviceRegions: JSON.stringify(companyInfo.serviceRegions),
                 googleMapsUrl: companyInfo.googleMapsUrl,
-                companyWeeklySchedule: companyInfo.weeklySchedule
+                companyWeeklySchedule: {
+                    schedule: companyInfo.weeklySchedule,
+                    holidays: companyInfo.holidaysConfig
+                }
             });
+            if (typeof refreshWorkspace === 'function') {
+                await refreshWorkspace();
+            }
             alert(t('knowledgeBase.saved'));
         } catch (error) {
             console.error('Error saving company info:', error);
             alert('Şirket bilgileri kaydedilirken hata oluştu');
         } finally {
             setSavingCompany(false);
+        }
+    };
+
+    const handleInstructUpdate = async () => {
+        if (!instructText.trim()) return alert('Lütfen güncellenecek talimatı yazın');
+        try {
+            setInstructLoading(true);
+            const res = await aiSetupAPI.instructUpdate({
+                workspaceId: currentWorkspace.id,
+                instruction: instructText.trim()
+            });
+            alert('✅ AI Bilgi Bankası Başarıyla Güncellendi: ' + (res.data?.summary || 'İşlem tamamlandı'));
+            setInstructText('');
+            await loadCompanyInfo();
+            await loadBranches();
+            await loadProducts();
+            await loadResources();
+            await loadCategories();
+            await loadKnowledgeBase();
+            if (typeof refreshWorkspace === 'function') refreshWorkspace();
+        } catch (err) {
+            console.error('Instruct update error:', err);
+            alert('Güncelleme hatası: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setInstructLoading(false);
+        }
+    };
+
+    const handleAiSetupFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            setAiSetupLoading(true);
+            const res = await aiSetupAPI.parseFile(formData);
+            if (res.data?.success) {
+                setAiSetupResult(res.data.data);
+            } else {
+                alert('Belge analiz edilemedi');
+            }
+        } catch (err) {
+            console.error('File parse error:', err);
+            alert('Belge ayrıştırma hatası: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setAiSetupLoading(false);
+        }
+    };
+
+    const handleAiSetupUrlParse = async () => {
+        if (!aiSetupUrl.trim()) return alert('Lütfen bir web sitesi adresi girin');
+        try {
+            setAiSetupLoading(true);
+            const res = await aiSetupAPI.parseUrl({ url: aiSetupUrl.trim() });
+            if (res.data?.success) {
+                setAiSetupResult(res.data.data);
+            } else {
+                alert('Web sitesi analiz edilemedi');
+            }
+        } catch (err) {
+            console.error('URL parse error:', err);
+            alert('Web sitesi analizi hatası: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setAiSetupLoading(false);
+        }
+    };
+
+    const handleApplyAiSetup = async () => {
+        if (!aiSetupResult) return;
+        try {
+            setAiSetupApplying(true);
+            await aiSetupAPI.applySetup({
+                workspaceId: currentWorkspace.id,
+                setupData: aiSetupResult
+            });
+            alert('🎉 AI Kurulumu ve veriler çalışma alanınıza başarıyla uygulandı!');
+            setShowAiSetupModal(false);
+            setAiSetupResult(null);
+            setAiSetupUrl('');
+            await loadCompanyInfo();
+            await loadBranches();
+            await loadProducts();
+            await loadResources();
+            await loadCategories();
+            await loadKnowledgeBase();
+            if (typeof refreshWorkspace === 'function') refreshWorkspace();
+        } catch (err) {
+            console.error('Apply setup error:', err);
+            alert('Uygulama hatası: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setAiSetupApplying(false);
         }
     };
 
@@ -464,6 +589,9 @@ const KnowledgeBase = () => {
             const response = await workspaceAPI.uploadCompanyLogo(currentWorkspace.id, formData);
             const info = response.data.companyInfo;
             setCompanyInfo(prev => ({ ...prev, logoPreview: info.companyLogo }));
+            if (typeof refreshWorkspace === 'function') {
+                await refreshWorkspace();
+            }
             alert('Logo uploaded');
         } catch (error) {
             console.error('Error uploading logo:', error);
@@ -477,6 +605,9 @@ const KnowledgeBase = () => {
         try {
             await workspaceAPI.deleteCompanyLogo(currentWorkspace.id);
             setCompanyInfo(prev => ({ ...prev, logoPreview: '' }));
+            if (typeof refreshWorkspace === 'function') {
+                await refreshWorkspace();
+            }
             alert('Logo silindi');
         } catch (error) {
             console.error('Error deleting logo:', error);
@@ -720,7 +851,7 @@ const KnowledgeBase = () => {
                         <UserCircle size={16} /> Kaynaklar
                     </button>
                     <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
-                        <FileText size={16} /> Metin Ekle
+                        <FileText size={16} /> Metin Ekle / SSS
                     </button>
                     <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => handleSelectTab('files')}>
                         <Upload size={16} /> Dosya Ekle
@@ -735,6 +866,31 @@ const KnowledgeBase = () => {
                     <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => handleSelectTab('list')}>
                         <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
                     </button>
+                    <div style={{ padding: '8px 12px', marginTop: '12px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setShowAiSetupModal(true)}
+                            className="btn btn-primary"
+                            style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                fontSize: '12px',
+                                padding: '8px 12px',
+                                background: 'linear-gradient(135deg, #E63B2E 0%, #f97316 100%)',
+                                border: 'none',
+                                borderRadius: '8px',
+                                color: '#fff',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 8px rgba(230, 59, 46, 0.25)'
+                            }}
+                        >
+                            <Sparkles size={14} /> AI ile Yapılandır
+                        </button>
+                    </div>
                 </nav>
             </div>
 
@@ -1132,6 +1288,112 @@ const KnowledgeBase = () => {
                                     )}
                                 </div>
                             ))}
+                        </div>
+
+                        {/* Resmi Tatil & Bayram Günleri Tanımlama Alanı */}
+                        <div style={{ marginTop: '16px', padding: '16px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '20px' }}>🎉</span>
+                                    <div>
+                                        <div style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b' }}>
+                                            Resmi Tatil & Bayram Günleri Politikası
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#64748b' }}>
+                                            AI Agent bayram ve tatillerde müşterilere bu kurala göre yanıt verir.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 600, color: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#dc2626' : '#16a34a' }}>
+                                        {companyInfo.holidaysConfig?.closedOnPublicHolidays ? '🔴 Resmi Tatillerde KAPALIYIZ' : '🟢 Resmi Tatillerde AÇIĞIZ'}
+                                    </span>
+                                    <label style={{ position: 'relative', display: 'inline-block', width: '42px', height: '24px', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={!companyInfo.holidaysConfig?.closedOnPublicHolidays}
+                                            onChange={(e) => {
+                                                setCompanyInfo(prev => ({
+                                                    ...prev,
+                                                    holidaysConfig: {
+                                                        ...prev.holidaysConfig,
+                                                        closedOnPublicHolidays: !e.target.checked
+                                                    }
+                                                }));
+                                            }}
+                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                        />
+                                        <span style={{
+                                            position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                                            backgroundColor: !companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#16a34a' : '#cbd5e1',
+                                            transition: '0.2s', borderRadius: '24px'
+                                        }}>
+                                            <span style={{
+                                                position: 'absolute', height: '18px', width: '18px', left: !companyInfo.holidaysConfig?.closedOnPublicHolidays ? '20px' : '3px',
+                                                bottom: '3px', backgroundColor: '#fff', transition: '0.2s', borderRadius: '50%'
+                                            }} />
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Standart Resmi Tatiller Listesi */}
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Kapsanan Resmi Tatiller & Dini Bayramlar
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    {[
+                                        '1 Ocak (Yılbaşı)',
+                                        '23 Nisan (Ulusal Egemenlik ve Çocuk Bayramı)',
+                                        '1 Mayıs (Emek ve Dayanışma Günü)',
+                                        '19 Mayıs (Atatürk\'ü Anma, Gençlik ve Spor Bayramı)',
+                                        '15 Temmuz (Demokrasi ve Milli Birlik Günü)',
+                                        '30 Ağustos (Zafer Bayramı)',
+                                        '29 Ekim (Cumhuriyet Bayramı)',
+                                        'Ramazan Bayramı (Arife + 3 Gün)',
+                                        'Kurban Bayramı (Arife + 4 Gün)'
+                                    ].map((hol, hIdx) => (
+                                        <span
+                                            key={hIdx}
+                                            style={{
+                                                padding: '4px 10px',
+                                                background: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#fee2e2' : '#f0fdf4',
+                                                color: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#991b1b' : '#166534',
+                                                border: `1px solid ${companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#fca5a5' : '#bbf7d0'}`,
+                                                borderRadius: '16px',
+                                                fontSize: '11px',
+                                                fontWeight: 500
+                                            }}
+                                        >
+                                            {hol}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Özel Tatil Notu */}
+                            <div style={{ marginTop: '12px' }}>
+                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                                    Özel Tatil / Bayram Notu (AI Agent için)
+                                </label>
+                                <input
+                                    type="text"
+                                    className="input"
+                                    style={{ fontSize: '13px', background: '#fff' }}
+                                    placeholder="Örn: Bayramın 1. günü kapalıyız, diğer günler nöbetçi servisimiz açıktır."
+                                    value={companyInfo.holidaysConfig?.note || ''}
+                                    onChange={(e) => {
+                                        setCompanyInfo(prev => ({
+                                            ...prev,
+                                            holidaysConfig: {
+                                                ...prev.holidaysConfig,
+                                                note: e.target.value
+                                            }
+                                        }));
+                                    }}
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -1968,9 +2230,164 @@ C: [Cevap 1]
                 </div>
             )}
 
-            {/* List Tab */}
+            {/* List Tab - Merkezi AI Belleği & Tüm Bilgiler */}
             {activeTab === 'list' && (
                 <>
+                    {/* Doğal Dille AI Bilgi Bankasını Güncelleme Kutusu */}
+                    <div className="card" style={{ marginBottom: '20px', border: '1.5px solid #E63B2E', background: 'linear-gradient(180deg, #fff9f8 0%, #ffffff 100%)', boxShadow: '0 4px 16px rgba(230, 59, 46, 0.08)', borderRadius: '12px', padding: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Sparkles size={20} color="#E63B2E" />
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+                                        🪄 AI ile Bilgi Bankasını Güncelle (Yazılı / Sözlü Talimat)
+                                    </h3>
+                                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                                        Bilgi bankasına veya çalışma saatlerine dair değişiklikleri serbest dille yazın; AI Agent gerekli alanları otomatik güncellesin.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowAiSetupModal(true)}
+                                className="btn btn-outline"
+                                style={{ fontSize: '12px', padding: '6px 12px', gap: '6px', color: '#E63B2E', borderColor: '#fca5a5', background: '#fff' }}
+                            >
+                                <Upload size={14} /> Doküman / Web ile Yapılandır
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                            <textarea
+                                value={instructText}
+                                onChange={(e) => setInstructText(e.target.value)}
+                                placeholder="Örnek: 'Kadıköy şubesini Cumartesi günleri de 10:00-18:00 arası açık yaptık. Dr. Ayşe artık Salı günleri çalışmıyor. İade süremiz 14 günden 30 güne uzatıldı...'"
+                                rows={3}
+                                className="input"
+                                style={{ flex: 1, minWidth: '280px', fontSize: '13px', background: '#fff' }}
+                            />
+                            <button
+                                type="button"
+                                onClick={handleInstructUpdate}
+                                disabled={instructLoading || !instructText.trim()}
+                                className="btn btn-primary"
+                                style={{
+                                    alignSelf: 'stretch',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                    padding: '0 20px',
+                                    background: 'linear-gradient(135deg, #E63B2E 0%, #dc2626 100%)',
+                                    fontWeight: 600,
+                                    fontSize: '13px'
+                                }}
+                            >
+                                {instructLoading ? <RefreshCw size={16} className="spinning" /> : <Sparkles size={16} />}
+                                {instructLoading ? 'AI İşliyor...' : 'AI ile Güncelle'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Merkezi AI Bilgi & Bellek Özeti (AI Agent'ın Bildiği Tüm Veriler) */}
+                    <div className="card" style={{ marginBottom: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Database size={18} color="#2563eb" />
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+                                        🧠 Merkezi AI Bellek Özeti (AI Agent Hafızası)
+                                    </h3>
+                                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                                        AI Agent müşterilerle iletişim kurarken aşağıdaki tüm statik ve dinamik bilgi kaynaklarını kullanır.
+                                    </p>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    className="btn btn-retell-sync"
+                                    onClick={handleRetellSync}
+                                    disabled={syncingRetell || knowledgeEntries.length === 0}
+                                    title="Bilgi bankasını AI sesli asistana senkronize et"
+                                    style={{ margin: 0, fontSize: '12px', padding: '6px 12px' }}
+                                >
+                                    {syncingRetell ? <RefreshCw size={14} className="spinning" /> : <Phone size={14} />}
+                                    {syncingRetell ? 'Senkronize Ediliyor...' : 'Sesli Asistana Sync Et'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+                            {/* 1. Firma Künyesi */}
+                            <div style={{ background: '#fff', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Building2 size={14} color="#2563eb" /> Şirket Künyesi
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                                    <div><strong>Firma:</strong> {companyInfo.name || 'Belirtilmedi'}</div>
+                                    <div><strong>Sektör:</strong> {labels.sectorName || companyInfo.industry}</div>
+                                    {companyInfo.founder && <div><strong>Kurucu:</strong> {companyInfo.founder}</div>}
+                                    {companyInfo.phone && <div><strong>Tel:</strong> {companyInfo.phone}</div>}
+                                    {companyInfo.address && <div><strong>Adres:</strong> {companyInfo.address}</div>}
+                                </div>
+                            </div>
+
+                            {/* 2. Çalışma Saatleri & Bayramlar */}
+                            <div style={{ background: '#fff', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Clock size={14} color="#16a34a" /> Çalışma Saatleri & Tatiller
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                                    <div>
+                                        <strong>Saatler:</strong> {companyInfo.weeklySchedule.filter(s => s.enabled).map(s => `${s.short || s.label.slice(0,3)}: ${s.start}-${s.end}`).join(', ') || 'Belirtilmedi'}
+                                    </div>
+                                    <div style={{ marginTop: '4px' }}>
+                                        <strong>Resmi Tatil & Bayram:</strong>{' '}
+                                        <span style={{ fontWeight: 600, color: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#dc2626' : '#16a34a' }}>
+                                            {companyInfo.holidaysConfig?.closedOnPublicHolidays ? 'Resmi Tatillerde KAPALI' : 'Resmi Tatillerde AÇIK'}
+                                        </span>
+                                    </div>
+                                    {companyInfo.holidaysConfig?.note && (
+                                        <div style={{ fontStyle: 'italic', fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                            "{companyInfo.holidaysConfig.note}"
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 3. Şubeler & Lokasyonlar */}
+                            <div style={{ background: '#fff', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <MapPin size={14} color="#d97706" /> {labels.branchesTab || 'Şubeler'} ({branches.length})
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#475569' }}>
+                                    {branches.length > 0 ? (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                            {branches.map(b => (
+                                                <span key={b.id} style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500 }}>
+                                                    {b.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <span style={{ color: '#94a3b8' }}>Kayıtlı şube bulunmuyor</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 4. Ürünler, Kategoriler ve Kaynaklar */}
+                            <div style={{ background: '#fff', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Package size={14} color="#8b5cf6" /> Ürünler & Uzmanlar
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                                    <div><strong>{labels.productsTab || 'Ürünler'}:</strong> {products.length} ürün (Statik + Dinamik feed)</div>
+                                    <div><strong>{labels.resourcesTab || 'Kaynaklar/Doktorlar'}:</strong> {resources.length} uzman/doktor/kaynak</div>
+                                    <div><strong>{labels.categoriesTab || 'Kategoriler'}:</strong> {categories.length} kategori</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Sync header bar */}
                     <div style={{
                         display: 'flex',
@@ -1983,17 +2400,14 @@ C: [Cevap 1]
                         border: '1px solid #e2e8f0'
                     }}>
                         <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
-                            📚 Toplam {knowledgeEntries.length} bilgi kaydı
+                            📚 Metin, Doküman, Web & SSS Kayıtları ({knowledgeEntries.length})
                         </div>
                         <button
-                            className="btn btn-retell-sync"
-                            onClick={handleRetellSync}
-                            disabled={syncingRetell || knowledgeEntries.length === 0}
-                            title="Bilgi bankasını AI sesli asistana senkronize et"
-                            style={{ margin: 0 }}
+                            className="btn btn-outline"
+                            onClick={() => handleSelectTab('text')}
+                            style={{ fontSize: '12px', padding: '6px 12px' }}
                         >
-                            {syncingRetell ? <RefreshCw size={16} className="spinning" /> : <Phone size={16} />}
-                            {syncingRetell ? 'Gönderiliyor...' : 'Sesli Asistana Sync Et'}
+                            + Yeni Metin / SSS Ekle
                         </button>
                     </div>
                     {kbLoading ? (
@@ -2121,6 +2535,112 @@ C: [Cevap 1]
                             >
                                 {saving ? 'Kaydediliyor...' : 'Kaydet'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* AI ile Otomatik Yapılandırma Modal */}
+            {showAiSetupModal && (
+                <div className="modal-overlay" onClick={() => setShowAiSetupModal(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', width: '100%' }}>
+                        <div className="modal-header">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Sparkles size={20} color="#E63B2E" />
+                                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>🪄 AI ile Tek Tıkla Kurulum</h2>
+                            </div>
+                            <button className="btn-icon" onClick={() => setShowAiSetupModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                                Kurumsal tanıtım dosyanızı (PDF, Word, Excel, TXT) yükleyin veya web sitenizin adresini girin.
+                                AI şirket bilgilerinizi, çalışma saatlerini, tatil kurallarını, şubelerinizi, ürünlerinizi ve doktor/kaynak listenizi otomatik ayrıştırır.
+                            </p>
+
+                            {/* Dosya Yükleme Alanı */}
+                            <div style={{ border: '2px dashed #cbd5e1', borderRadius: '10px', padding: '20px', textAlign: 'center', background: '#f8fafc' }}>
+                                <Upload size={32} color="#64748b" style={{ margin: '0 auto 8px auto', display: 'block' }} />
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>
+                                    Kurumsal Tanıtım / Bilgi Dosyası Yükleyin
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '12px' }}>
+                                    PDF, DOCX, XLSX, CSV veya TXT (Maks. 20MB)
+                                </div>
+                                <label className="btn btn-outline" style={{ cursor: 'pointer', display: 'inline-block' }}>
+                                    {aiSetupLoading ? 'Belge Analiz Ediliyor...' : 'Dosya Seç'}
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt"
+                                        onChange={handleAiSetupFileUpload}
+                                        disabled={aiSetupLoading}
+                                        style={{ display: 'none' }}
+                                    />
+                                </label>
+                            </div>
+
+                            {/* Veya Web URL */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0' }}>
+                                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                                <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>VEYA</span>
+                                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <input
+                                    type="url"
+                                    className="input"
+                                    placeholder="Web sitenizin adresi (Örn: https://www.firma.com)"
+                                    value={aiSetupUrl}
+                                    onChange={(e) => setAiSetupUrl(e.target.value)}
+                                    style={{ flex: 1, fontSize: '13px' }}
+                                />
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    onClick={handleAiSetupUrlParse}
+                                    disabled={aiSetupLoading || !aiSetupUrl.trim()}
+                                    style={{ fontSize: '13px', whiteSpace: 'nowrap' }}
+                                >
+                                    {aiSetupLoading ? <RefreshCw size={14} className="spinning" /> : <Globe size={14} />}
+                                    {aiSetupLoading ? 'Taranıyor...' : 'Webden Tara'}
+                                </button>
+                            </div>
+
+                            {/* Ayrıştırma Sonuç Önizlemesi */}
+                            {aiSetupResult && (
+                                <div style={{ border: '1.5px solid #bbf7d0', borderRadius: '10px', padding: '14px', background: '#f0fdf4' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>
+                                        <CheckCircle2 size={16} /> Veriler Başarıyla Çıkarıldı!
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#1e293b', lineHeight: 1.6 }}>
+                                        <div><strong>Firma:</strong> {aiSetupResult.company?.name || 'Belirlenemedi'}</div>
+                                        <div><strong>Sektör:</strong> {aiSetupResult.company?.industry || '-'}</div>
+                                        <div><strong>Şubeler:</strong> {aiSetupResult.branches?.length || 0} şube bulundu</div>
+                                        <div><strong>Kategoriler:</strong> {aiSetupResult.categories?.length || 0} kategori bulundu</div>
+                                        <div><strong>Ürünler:</strong> {aiSetupResult.products?.length || 0} ürün/hizmet bulundu</div>
+                                        <div><strong>Uzman/Doktorlar:</strong> {aiSetupResult.resources?.length || 0} kişi bulundu</div>
+                                        <div><strong>SSS / Bilgiler:</strong> {aiSetupResult.faq?.length || 0} soru-cevap bulundu</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-outline" onClick={() => { setShowAiSetupModal(false); setAiSetupResult(null); }}>
+                                İptal
+                            </button>
+                            {aiSetupResult && (
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleApplyAiSetup}
+                                    disabled={aiSetupApplying}
+                                    style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', borderColor: '#16a34a' }}
+                                >
+                                    {aiSetupApplying ? <RefreshCw size={14} className="spinning" /> : <CheckCircle2 size={14} />}
+                                    {aiSetupApplying ? 'Uygulanıyor...' : 'Çalışma Alanına Uygula ve Kaydet'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

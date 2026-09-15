@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { ensureDefaultQuickReplies } from '../services/defaultQuickReplies.service.js';
 
 // Get templates by type
 export const getTemplates = async (req, res) => {
@@ -20,13 +21,34 @@ export const getTemplates = async (req, res) => {
         } else if (type === 'WHATSAPP') {
             data = await prisma.whatsappTemplate.findMany({
                 where: { workspaceId },
-                orderBy: { createdAt: 'desc' }
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    whatsappPhoneNumber: {
+                        select: { id: true, name: true, displayPhoneNumber: true }
+                    }
+                }
             });
         } else if (type === 'QUICK_REPLY') {
-            data = await prisma.quickReply.findMany({
+            let replies = await prisma.quickReply.findMany({
                 where: { workspaceId },
                 orderBy: { createdAt: 'desc' }
             });
+
+            if (replies.length === 0) {
+                await ensureDefaultQuickReplies(workspaceId, req.user?.id);
+                replies = await prisma.quickReply.findMany({
+                    where: { workspaceId },
+                    orderBy: { createdAt: 'desc' }
+                });
+            }
+
+            // Map for backward-compat with frontend fields (message <-> content, name <-> title)
+            data = replies.map(r => ({
+                ...r,
+                name: r.title,
+                message: r.content,
+                bodyText: r.content
+            }));
         } else {
             return res.status(400).json({ success: false, message: 'Invalid template type' });
         }
@@ -68,13 +90,30 @@ export const createTemplate = async (req, res) => {
                 }
             });
         } else if (type === 'QUICK_REPLY') {
+            const finalContent = payload.content || payload.message || payload.bodyText;
+            if (!finalContent) {
+                return res.status(400).json({ success: false, message: 'İçerik zorunludur' });
+            }
+            const finalTitle = payload.title || payload.name || finalContent.substring(0, 30);
+            const creatorId = req.user?.id || (await prisma.user.findFirst({ select: { id: true } }))?.id;
+
             data = await prisma.quickReply.create({
                 data: {
                     workspaceId,
-                    shortcut: payload.shortcut,
-                    message: payload.message
+                    title: finalTitle,
+                    content: finalContent,
+                    shortcut: payload.shortcut || null,
+                    createdById: creatorId
                 }
             });
+
+            // Map aliases
+            data = {
+                ...data,
+                name: data.title,
+                message: data.content,
+                bodyText: data.content
+            };
         } else {
             return res.status(400).json({ success: false, message: 'Cannot create this template type directly' });
         }
@@ -116,13 +155,24 @@ export const updateTemplate = async (req, res) => {
                 }
             });
         } else if (type === 'QUICK_REPLY') {
+            const finalContent = payload.content || payload.message || payload.bodyText;
+            const finalTitle = payload.title || payload.name;
+
             data = await prisma.quickReply.update({
                 where: { id, workspaceId },
                 data: {
-                    shortcut: payload.shortcut,
-                    message: payload.message
+                    ...(finalContent && { content: finalContent }),
+                    ...(finalTitle && { title: finalTitle }),
+                    ...(payload.shortcut !== undefined && { shortcut: payload.shortcut || null })
                 }
             });
+
+            data = {
+                ...data,
+                name: data.title,
+                message: data.content,
+                bodyText: data.content
+            };
         } else {
             return res.status(400).json({ success: false, message: 'Cannot update this template type' });
         }

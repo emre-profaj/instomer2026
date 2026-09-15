@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getTemplates, createTemplate, updateTemplate, deleteTemplate } from '../../services/template.api';
-import api, { automationAPI, contactAPI, whatsappAPI, retellAPI } from '../../services/api';
+import api, { automationAPI, contactAPI, whatsappAPI, retellAPI, quickReplyAPI } from '../../services/api';
 import {
     Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle2, Clock, XCircle, Globe, Search, X,
@@ -10,6 +10,64 @@ import {
     ExternalLink, PhoneCall, Sparkles, Filter
 } from 'lucide-react';
 import './Templates.css';
+
+const CALL_SCENARIOS = [
+    {
+        id: 'appointment_confirm',
+        title: 'Randevu Teyit & Hatırlatma',
+        icon: '📅',
+        badge: 'En Çok Kullanılan',
+        description: 'Yaklaşan randevuyu teyit eder, katılım onayı alır veya erteleme talebini yönetir.',
+        name: 'Randevu Teyit ve Hatırlatma',
+        desc: 'Yaklaşan randevusu olan müşteriyi arayarak randevu saatini teyit eden ve onay alan sesli arama senaryosu.',
+        beginMessage: 'Merhaba {{customer_name}}, {{company_name}} adına arıyorum. {{appointment_date}} tarihindeki randevunuzu teyit etmek için rahatsız ettim. Randevunuza katılım sağlayabilecek misiniz?',
+        promptSuffix: 'Sen randevu teyidi yapan profesyonel bir AI temsilcisisin. Müşteri evet derse teşekkür et ve şube adresini kısaca hatırlat. Eğer müsait değilim ya da ertelemek istiyorum derse, yeni bir tarih/saat öner veya danışmanımızın en kısa sürede geri döneceğini ilet. Nezaketi elden bırakma.'
+    },
+    {
+        id: 'campaign_offer',
+        title: 'Kampanya & Özel Fırsat',
+        icon: '🎁',
+        badge: 'Satış & Pazarlama',
+        description: 'Müşterilere güncel indirim, kampanya veya yeni ürün fırsatlarını tanıtır.',
+        name: 'Kampanya & Özel Fırsat Duyurusu',
+        desc: 'Mevcut veya potansiyel müşterilere güncel indirim, avantaj ve yeni ürün kampanyalarını tanıtan arama.',
+        beginMessage: "İyi günler {{customer_name}}, {{company_name}}'dan arıyorum. Size özel hazırladığımız güncel fırsat ve kampanyalarımız hakkında kısa bir bilgi paylaşmak istemiştim, 1 dakikanız müsait miydi?",
+        promptSuffix: "Sen satış ve pazarlama konusunda dinamik ve samimi bir AI temsilcisisin. Müşteri müsait olduğunu belirtirse kampanyanın temel avantajlarını ve son başvuru tarihini aktar. İlgilenirse detaylı bilgi ve randevu/sipariş linkini WhatsApp'tan göndermeyi teklif et. Müşteri meşgulse kibarca vedalaş."
+    },
+    {
+        id: 'satisfaction_survey',
+        title: 'Memnuniyet & Geri Bildirim',
+        icon: '⭐',
+        badge: 'Müşteri Deneyimi',
+        description: 'Hizmet veya işlem sonrası memnuniyet puanı toplar ve değerlendirme alır.',
+        name: 'Müşteri Memnuniyet & Geri Bildirim',
+        desc: 'Hizmet veya ürün satın alımı sonrası müşteri memnuniyetini ölçen ve geri bildirim toplayan senaryo.',
+        beginMessage: 'Merhaba {{customer_name}}, {{company_name}} müşteri deneyimi ekibinden arıyorum. Yakın zamanda aldığınız hizmetimizden memnun kaldınız mı, deneyiminizi 1 ile 5 arasında nasıl değerlendirirsiniz?',
+        promptSuffix: 'Sen empatik, dinleyen ve müşteri deneyimini önemseyen bir temsilcisin. Müşterinin verdiği puanı ve yorumu not al. Memnun kalmadıysa sebebi nazikçe sor ve konuyu derhal yetkili ekibe ileteceğini belirt. Memnun ise teşekkür ederek iyi günler dile.'
+    },
+    {
+        id: 'location_info',
+        title: 'Adres & Ulaşım Bilgilendirme',
+        icon: '📍',
+        badge: 'Operasyon',
+        description: 'Randevu öncesi açık adres, navigasyon ve otopark bilgilerini aktarır.',
+        name: 'Adres ve Konum Bilgilendirmesi',
+        desc: 'Randevu öncesinde müşteriye ulaşım, otopark ve adres tarifini sesli olarak özetleyen arama.',
+        beginMessage: "Merhaba {{customer_name}}, {{company_name}}'dan arıyorum. Randevunuz öncesi şubemize ulaşım ve adres detaylarını sizinle paylaşmak için aradım.",
+        promptSuffix: "Müşteriye şubenin açık adresini, varsa otopark imkanını ve en kolay ulaşım yolunu anlat. Ayrıca adres ve konum linkini birazdan WhatsApp üzerinden de ileteceğini söyle. Sorusu olup olmadığını öğren ve teşekkür et."
+    },
+    {
+        id: 'missed_callback',
+        title: 'Geri Dönüş / Kaçırılan Çağrı',
+        icon: '📞',
+        badge: 'Hızlı İletişim',
+        description: 'Web sitesi formu dolduran veya çağrısı kaçan müşteriye anında geri arama yapar.',
+        name: 'Geri Dönüş & Çağrı Karşılama',
+        desc: 'Bize ulaşmaya çalışan veya form dolduran müşteriye otomatik geri dönüş senaryosu.',
+        beginMessage: "Merhaba {{customer_name}}, {{company_name}}'dan arıyorum. Bize bırakmış olduğunuz çağrı / talep formu üzerine size geri dönüş yapıyorum. Size nasıl yardımcı olabilirim?",
+        promptSuffix: 'Müşterinin talebini dikkatle dinle. İhtiyacına göre bilgi bankasından doğru bilgiyi ver, randevu oluştur veya ilgili departmana not oluşturarak aktar.'
+    }
+];
 
 const Templates = () => {
     const { currentWorkspace } = useAuth();
@@ -154,7 +212,15 @@ const Templates = () => {
     const handleSimpleSave = async (e) => {
         e.preventDefault();
         try {
-            const data = { ...formData, type: activeTab };
+            const data = {
+                ...formData,
+                title: formData.name || formData.title,
+                name: formData.name || formData.title,
+                content: formData.message || formData.bodyText,
+                message: formData.message || formData.bodyText,
+                bodyText: formData.message || formData.bodyText,
+                type: activeTab
+            };
             if (editId) {
                 await updateTemplate(workspaceId, editId, data);
             } else {
@@ -172,15 +238,98 @@ const Templates = () => {
 
     const handleSimpleEdit = (t) => {
         setFormData({
-            name: t.name || '',
+            name: t.name || t.title || '',
+            title: t.title || t.name || '',
             subject: t.subject || '',
-            bodyText: t.bodyText || '',
+            bodyText: t.bodyText || t.content || t.message || '',
             bodyHtml: t.bodyHtml || '',
             shortcut: t.shortcut || '',
-            message: t.message || ''
+            message: t.message || t.content || t.bodyText || '',
+            content: t.content || t.message || t.bodyText || ''
         });
         setEditId(t.id);
         setShowSimpleModal(true);
+    };
+
+    const handleSeedDefaultQuickReplies = async (overwrite = false) => {
+        setLoading(true);
+        try {
+            const res = await quickReplyAPI.seedDefaults(workspaceId, overwrite);
+            alert(res.data?.message || 'Standart hazır mesajlar başarıyla yüklendi.');
+            await fetchSimpleTemplates('QUICK_REPLY');
+            await fetchAllCounts();
+        } catch (err) {
+            console.error('Seed defaults error:', err);
+            alert('Standart şablonlar yüklenirken hata: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePushQuickReplyToMeta = async (qrId) => {
+        if (phoneNumbers.length === 0) {
+            alert('Meta şablonu oluşturmak için önce Kanallar sayfasından bir WhatsApp Business numarası bağlamalısınız.');
+            return;
+        }
+        const confirmed = window.confirm('Bu hazır mesaj Meta WhatsApp Şablonu olarak kaydedilip onaya (PENDING) gönderilsin mi?');
+        if (!confirmed) return;
+
+        setLoading(true);
+        try {
+            const phoneId = phoneNumbers[0]?.id;
+            const res = await quickReplyAPI.pushToMeta(workspaceId, qrId, phoneId);
+            alert(res.data?.message || 'Şablon Meta onay sürecine gönderildi!');
+            await fetchWaTemplates();
+            await fetchAllCounts();
+        } catch (err) {
+            console.error('Push to Meta error:', err);
+            alert('Meta şablonu oluşturulamadı: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePushAllStandardToMeta = async () => {
+        if (phoneNumbers.length === 0) {
+            alert('Meta şablonu oluşturmak için önce Kanallar sayfasından bir WhatsApp Business numarası bağlamalısınız.');
+            return;
+        }
+        const confirmed = window.confirm('Standart hazır mesajlar (Arama Başarılı, Arama Başarısız, Konum) Meta onayına gönderilsin mi?');
+        if (!confirmed) return;
+
+        setSyncing(true);
+        try {
+            const res = await quickReplyAPI.getAll(workspaceId);
+            const list = res.data || [];
+            const standardQrs = list.filter(qr =>
+                ['/arama-basarili', '/arama-basarisiz', '/konum', '/merhaba'].includes(qr.shortcut) ||
+                qr.title?.includes('Arama') || qr.title?.includes('Konum')
+            );
+
+            if (standardQrs.length === 0) {
+                alert('Önce Hazır Mesajlar sekmesinden standart şablonları yükleyiniz.');
+                return;
+            }
+
+            let successCount = 0;
+            for (const qr of standardQrs) {
+                try {
+                    await quickReplyAPI.pushToMeta(workspaceId, qr.id, phoneNumbers[0]?.id);
+                    successCount++;
+                } catch (e) {
+                    console.warn('Could not push qr to Meta:', qr.title, e.message);
+                }
+            }
+
+            alert(`${successCount} adet standart şablon Meta onayına gönderildi!`);
+            await fetchWaTemplates();
+            await fetchAllCounts();
+        } catch (err) {
+            console.error('Batch push to Meta error:', err);
+            alert('Hata: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setSyncing(false);
+        }
     };
 
     const handleSimpleDelete = async (id) => {
@@ -484,14 +633,39 @@ const Templates = () => {
 
                 <div className="tpl-header-actions">
                     {activeTab === 'WHATSAPP' && (
+                        <>
+                            <button
+                                onClick={handleSyncTemplates}
+                                disabled={syncing}
+                                className="tpl-btn tpl-btn-secondary"
+                                title="Meta sunucularındaki şablonları senkronize et"
+                            >
+                                <RefreshCw size={16} className={syncing ? 'tpl-spin' : ''} />
+                                {syncing ? 'Eşitleniyor...' : 'Şablonları Eşitle'}
+                            </button>
+                            <button
+                                onClick={handlePushAllStandardToMeta}
+                                disabled={syncing}
+                                className="tpl-btn tpl-btn-secondary"
+                                style={{ borderColor: '#25D366', color: '#16a34a' }}
+                                title="Arama Başarılı, Arama Başarısız ve Konum hazır mesajlarını Meta'ya şablon olarak gönder"
+                            >
+                                <Sparkles size={16} color="#16a34a" />
+                                Standart Şablonları Meta'ya Aktar
+                            </button>
+                        </>
+                    )}
+
+                    {activeTab === 'QUICK_REPLY' && (
                         <button
-                            onClick={handleSyncTemplates}
-                            disabled={syncing}
+                            onClick={() => handleSeedDefaultQuickReplies(false)}
+                            disabled={loading}
                             className="tpl-btn tpl-btn-secondary"
-                            title="Meta sunucularındaki şablonları senkronize et"
+                            style={{ borderColor: '#3b82f6', color: '#2563eb' }}
+                            title="Arama Başarılı, Arama Başarısız, Konum ve Hoşgeldiniz standart şablonlarını yükle"
                         >
-                            <RefreshCw size={16} className={syncing ? 'tpl-spin' : ''} />
-                            {syncing ? 'Eşitleniyor...' : 'Şablonları Eşitle'}
+                            <Sparkles size={16} color="#2563eb" />
+                            Standart Şablonları Yükle
                         </button>
                     )}
 
@@ -770,6 +944,85 @@ const Templates = () => {
                     {/* ==================== AI CALL Templates Grid ==================== */}
                     {activeTab === 'AI_CALL' && (
                         <div>
+                            {/* Senaryo Bazlı Hazır Şablonlar */}
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18, marginBottom: 20 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <Sparkles size={18} color="#6366f1" />
+                                        <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
+                                            Senaryo Bazlı AI Arama Şablonları
+                                        </h4>
+                                        <span style={{ fontSize: 11, background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                                            Hazır Senaryolar
+                                        </span>
+                                    </div>
+                                    <span style={{ fontSize: 12, color: '#64748b' }}>
+                                        Kartlardan birine tıklayarak arama formunu tek tıkla doldurun
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+                                    {CALL_SCENARIOS.map(sc => (
+                                        <div
+                                            key={sc.id}
+                                            onClick={() => {
+                                                const defaultAgent = retellAgents && retellAgents.length > 0 ? retellAgents[0].agent_id : '';
+                                                setCallForm({
+                                                    name: sc.name,
+                                                    description: sc.desc,
+                                                    agentId: callForm.agentId || defaultAgent,
+                                                    beginMessage: sc.beginMessage,
+                                                    promptSuffix: sc.promptSuffix,
+                                                    isActive: true
+                                                });
+                                                setEditingCall(null);
+                                                setShowCallForm(true);
+                                            }}
+                                            style={{
+                                                background: '#fff',
+                                                border: '1px solid #cbd5e1',
+                                                borderRadius: 10,
+                                                padding: '12px 14px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                justifyContent: 'space-between',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                            }}
+                                            onMouseEnter={e => {
+                                                e.currentTarget.style.borderColor = '#6366f1';
+                                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.12)';
+                                            }}
+                                            onMouseLeave={e => {
+                                                e.currentTarget.style.borderColor = '#cbd5e1';
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.03)';
+                                            }}
+                                        >
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                    <span style={{ fontSize: 20 }}>{sc.icon}</span>
+                                                    <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                                                        {sc.badge}
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', marginBottom: 4 }}>
+                                                    {sc.title}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
+                                                    {sc.description}
+                                                </div>
+                                            </div>
+                                            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4, color: '#6366f1', fontSize: 11, fontWeight: 600 }}>
+                                                <Plus size={13} /> Şablonu Kullan
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* Form */}
                             {showCallForm && (
                                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20, marginBottom: 16 }}>
@@ -938,8 +1191,20 @@ const Templates = () => {
                                     <div key={t.id} className="tpl-card">
                                         <div className="tpl-card-header">
                                             {activeTab === 'QUICK_REPLY' ? (
-                                                <div className="tpl-shortcut-pill">
-                                                    <Zap size={13} /> {t.shortcut}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div className="tpl-shortcut-pill">
+                                                            <Zap size={13} /> {t.shortcut}
+                                                        </div>
+                                                        {['/arama-basarili', '/arama-basarisiz', '/konum', '/merhaba'].includes(t.shortcut) && (
+                                                            <span style={{ fontSize: '10px', background: '#dbeafe', color: '#1d4ed8', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                                                ⭐ Standart
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <h3 className="tpl-card-title" style={{ fontSize: '14px', marginTop: '2px' }}>
+                                                        {t.title || t.name}
+                                                    </h3>
                                                 </div>
                                             ) : (
                                                 <h3 className="tpl-card-title">{t.name}</h3>
@@ -979,6 +1244,28 @@ const Templates = () => {
                                             </span>
                                             {activeTab === 'SMS' && t.bodyText && (
                                                 <span className="tpl-char-count">{t.bodyText.length} karakter</span>
+                                            )}
+                                            {activeTab === 'QUICK_REPLY' && (
+                                                <button
+                                                    onClick={() => handlePushQuickReplyToMeta(t.id)}
+                                                    style={{
+                                                        background: '#f0fdf4',
+                                                        color: '#16a34a',
+                                                        border: '1px solid #bbf7d0',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 8px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 600,
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                    title="Bu hazır mesajı Meta WhatsApp Şablonuna aktar"
+                                                >
+                                                    <Send size={11} /> Meta'ya Aktar
+                                                </button>
                                             )}
                                         </div>
                                     </div>
@@ -1398,6 +1685,17 @@ const Templates = () => {
                                 {activeTab === 'QUICK_REPLY' ? (
                                     <>
                                         <div className="tpl-form-group">
+                                            <label>Şablon Başlığı *</label>
+                                            <input
+                                                required
+                                                type="text"
+                                                value={formData.name || formData.title || ''}
+                                                onChange={e => setFormData({ ...formData, name: e.target.value, title: e.target.value })}
+                                                className="tpl-input"
+                                                placeholder="Örn: Arama Başarılı, Konum Paylaşımı"
+                                            />
+                                        </div>
+                                        <div className="tpl-form-group">
                                             <label>Kısayol (/ ile başlar) *</label>
                                             <input
                                                 required
@@ -1405,19 +1703,58 @@ const Templates = () => {
                                                 value={formData.shortcut}
                                                 onChange={e => setFormData({ ...formData, shortcut: e.target.value })}
                                                 className="tpl-input"
-                                                placeholder="/merhaba veya /fiyat"
+                                                placeholder="/arama-basarili veya /konum"
                                             />
                                             <small className="tpl-field-hint">Sohbette bu komutu yazdığınızda mesaj otomatik önerilir.</small>
                                         </div>
                                         <div className="tpl-form-group">
-                                            <label>Mesaj İçeriği *</label>
+                                            <div className="tpl-label-row">
+                                                <label>Mesaj İçeriği *</label>
+                                                <div className="tpl-var-suggestions" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, message: (formData.message || '') + ' {AI Agent İsmi}' })}
+                                                    >
+                                                        + {'{AI Agent İsmi}'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, message: (formData.message || '') + ' {web site linki}' })}
+                                                    >
+                                                        + {'{web site linki}'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, message: (formData.message || '') + ' {konum}' })}
+                                                    >
+                                                        + {'{konum}'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, message: (formData.message || '') + ' {adres}' })}
+                                                    >
+                                                        + {'{adres}'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="tpl-chip-btn"
+                                                        onClick={() => setFormData({ ...formData, message: (formData.message || '') + ' {Firma Adı}' })}
+                                                    >
+                                                        + {'{Firma Adı}'}
+                                                    </button>
+                                                </div>
+                                            </div>
                                             <textarea
                                                 required
-                                                rows={5}
+                                                rows={6}
                                                 value={formData.message}
-                                                onChange={e => setFormData({ ...formData, message: e.target.value })}
+                                                onChange={e => setFormData({ ...formData, message: e.target.value, content: e.target.value })}
                                                 className="tpl-textarea"
-                                                placeholder="Merhaba, size nasıl yardımcı olabilirim?"
+                                                placeholder="Merhaba, ben {AI Agent İsmi}..."
                                             />
                                         </div>
                                     </>

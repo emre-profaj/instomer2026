@@ -5,7 +5,9 @@ import {
     register,
     login,
     facebookCallback,
-    getCurrentUser
+    getCurrentUser,
+    updateProfile,
+    changePassword
 } from '../controllers/auth.controller.js';
 import { authenticateJWT } from '../middleware/auth.middleware.js';
 
@@ -109,5 +111,9 @@ router.get(
 
 // Get current user
 router.get('/me', authenticateJWT, getCurrentUser);
+
+// Update profile & password
+router.put('/profile', authenticateJWT, updateProfile);
+router.put('/change-password', authenticateJWT, changePassword);
 
 export default router;

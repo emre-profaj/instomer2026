@@ -38,13 +38,19 @@ export async function getBaseKnowledgeContext(workspaceId) {
             prisma.workspace.findUnique({
                 where: { id: workspaceId },
                 select: {
+                    name: true,
                     companyName: true,
+                    founder: true,
                     companyDescription: true,
                     companyAddress: true,
+                    googleMapsUrl: true,
                     companyPhone: true,
                     companyEmail: true,
                     companyWebsite: true,
                     companyWorkingHours: true,
+                    businessAreas: true,
+                    serviceRegions: true,
+                    companyWeeklySchedule: true,
                     industry: true
                 }
             }),
@@ -102,7 +108,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
                     members: {
                         select: {
                             id: true,
-                            isLeader: true,
+                            role: true,
                             user: { select: { id: true, name: true, email: true } }
                         }
                     }
@@ -147,13 +153,56 @@ export async function getBaseKnowledgeContext(workspaceId) {
         // 1. Şirket Bilgileri & Çalışma Saatleri
         if (workspace) {
             const lines = [];
-            if (workspace.companyName) lines.push(`Firma Adı: ${workspace.companyName}`);
-            if (workspace.companyDescription) lines.push(`Hakkında: ${workspace.companyDescription}`);
+            const firmName = workspace.companyName || workspace.name;
+            if (firmName) lines.push(`Firma Adı: ${firmName}`);
+            if (workspace.founder) lines.push(`Kurucu / Firma Sahibi: ${workspace.founder}`);
+            if (workspace.companyDescription) lines.push(`Hakkında / Açıklama: ${workspace.companyDescription}`);
             if (workspace.companyPhone) lines.push(`Telefon: ${workspace.companyPhone}`);
             if (workspace.companyEmail) lines.push(`E-posta: ${workspace.companyEmail}`);
-            if (workspace.companyWebsite) lines.push(`Website: ${workspace.companyWebsite}`);
-            if (workspace.companyAddress) lines.push(`Merkez Adres: ${workspace.companyAddress}`);
-            if (workspace.companyWorkingHours) lines.push(`Çalışma Saatleri (7 Gün): ${workspace.companyWorkingHours}`);
+            if (workspace.companyWebsite) lines.push(`Web Sitesi: ${workspace.companyWebsite}`);
+            if (workspace.companyAddress) lines.push(`Merkez Adresi: ${workspace.companyAddress}`);
+            if (workspace.googleMapsUrl) lines.push(`Google Haritalar / Konum Linki: ${workspace.googleMapsUrl}`);
+
+            // Faaliyet ve Hizmet Bölgeleri
+            try {
+                const bAreas = typeof workspace.businessAreas === 'string' ? JSON.parse(workspace.businessAreas) : workspace.businessAreas;
+                if (Array.isArray(bAreas) && bAreas.length > 0) lines.push(`Faaliyet Alanları: ${bAreas.join(', ')}`);
+            } catch {}
+            try {
+                const sRegions = typeof workspace.serviceRegions === 'string' ? JSON.parse(workspace.serviceRegions) : workspace.serviceRegions;
+                if (Array.isArray(sRegions) && sRegions.length > 0) lines.push(`Hizmet ve Satış Bölgeleri: ${sRegions.join(', ')}`);
+            } catch {}
+
+            // Çalışma Saatleri ve Resmi Tatil Politikası
+            if (workspace.companyWorkingHours) {
+                lines.push(`Haftalık Çalışma Saatleri Özeti: ${workspace.companyWorkingHours}`);
+            }
+
+            // Yapılandırılmış 7 Günlük Tablo
+            if (workspace.companyWeeklySchedule) {
+                try {
+                    const schedData = typeof workspace.companyWeeklySchedule === 'string'
+                        ? JSON.parse(workspace.companyWeeklySchedule)
+                        : workspace.companyWeeklySchedule;
+                    const days = Array.isArray(schedData) ? schedData : (schedData.schedule || []);
+                    if (days.length > 0) {
+                        const schedLines = days.map(d => {
+                            const label = d.label || ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][d.day] || `Gün ${d.day}`;
+                            return d.enabled ? `  • ${label}: ${d.start || '09:00'} - ${d.end || '18:00'}` : `  • ${label}: KAPALI`;
+                        });
+                        lines.push(`Detaylı 7 Günlük Çalışma Çizelgesi:\n${schedLines.join('\n')}`);
+                    }
+                    if (schedData.holidays) {
+                        if (schedData.holidays.closedOnPublicHolidays !== false) {
+                            lines.push(`Resmi Tatiller & Bayramlar: Resmi tatil günlerinde ve dini bayramlarda (1 Ocak, 23 Nisan, 1 Mayıs, 19 Mayıs, 15 Temmuz, 30 Ağustos, 29 Ekim, Ramazan Bayramı, Kurban Bayramı) firmamız KAPALIDIR / hizmet vermemektedir.`);
+                        } else {
+                            lines.push(`Resmi Tatiller & Bayramlar: Resmi tatil günlerinde hizmet verilmektedir (${schedData.holidays.holidayWorkingHours || 'Özel saatler geçerlidir'}).`);
+                        }
+                    } else {
+                        lines.push(`Resmi Tatiller: Resmi tatiller ve bayram günlerinde kapalıdır.`);
+                    }
+                } catch {}
+            }
 
             if (lines.length > 0) {
                 sections.push(`🏢 ŞİRKET BİLGİLERİ VE ÇALIŞMA SAATLERİ:\n${lines.join('\n')}`);
@@ -210,7 +259,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
         // 6. Takımlar ve Departmanlar
         if (teams.length > 0) {
             const teamLines = teams.map(t => {
-                const memberNames = (t.members || []).map(m => `${m.user?.name || m.user?.email}${m.isLeader ? ' (Lider)' : ''}`).join(', ');
+                const memberNames = (t.members || []).map(m => `${m.user?.name || m.user?.email}${(m.role === 'LEADER' || m.role === 'ADMIN') ? ' (Lider)' : ''}`).join(', ');
                 return `- ${t.name}: ${t.description || 'Genel Departman'}${memberNames ? ` | Üyeler: ${memberNames}` : ''}`;
             });
             sections.push(`👥 TAKIMLAR VE DEPARTMANLAR:\n${teamLines.join('\n')}`);
@@ -223,7 +272,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
                 if (b.prompt) info += ` | Sistem Talimatı: "${b.prompt.substring(0, 300)}"`;
                 return info;
             });
-            sections.push(`🤖 AI ASİSTAN DAVRANIŞ KURALLARI VE TALİMATLARI:\n${botLines.join('\n')}`);
+            sections.push(`🧠 AI AGENT DAVRANIŞ KURALLARI VE TALİMATLARI:\n${botLines.join('\n')}`);
         }
 
         // 8. Uzmanlar, Doktorlar ve Personel

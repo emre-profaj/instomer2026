@@ -553,3 +553,71 @@ export const getCurrentUser = async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch user' });
     }
 };
+
+export const updateProfile = async (req, res) => {
+    try {
+        const { name, avatar } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'İsim alanı boş bırakılamaz' });
+        }
+
+        const updated = await prisma.user.update({
+            where: { id: req.user.id },
+            data: {
+                name: name.trim(),
+                ...(avatar !== undefined ? { avatar } : {})
+            },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                avatar: true,
+                role: true,
+                createdAt: true
+            }
+        });
+
+        res.json({ success: true, user: updated, message: 'Profil başarıyla güncellendi' });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Profil güncellenirken hata oluştu' });
+    }
+};
+
+export const changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (!newPassword || newPassword.length < 6) {
+            return res.status(400).json({ error: 'Yeni şifre en az 6 karakter olmalıdır' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.id }
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+        }
+
+        if (user.password) {
+            if (!currentPassword) {
+                return res.status(400).json({ error: 'Lütfen mevcut şifrenizi girin' });
+            }
+            const isMatch = await bcrypt.compare(currentPassword, user.password);
+            if (!isMatch) {
+                return res.status(400).json({ error: 'Mevcut şifreniz hatalı' });
+            }
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { id: req.user.id },
+            data: { password: hashedPassword }
+        });
+
+        res.json({ success: true, message: 'Şifreniz başarıyla değiştirildi' });
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({ error: 'Şifre değiştirilirken hata oluştu' });
+    }
+};

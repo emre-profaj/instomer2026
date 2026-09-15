@@ -62,6 +62,7 @@ import AppNotes from './pages/AppNotes/AppNotes';
 import FlowTest from './pages/FlowTest/FlowTest';
 import SetupWizard from './pages/Settings/SetupWizard';
 import AIAgents from './pages/AIAgents/AIAgents';
+import ProfileSettings from './pages/Settings/ProfileSettings';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -161,6 +162,8 @@ function App() {
               <Route path="automations-hub" element={<OtomasyonlarHub />} />
               <Route path="automations" element={<Navigate to="/automations-hub" replace />} />
               <Route path="notification-settings" element={<NotificationSettings />} />
+              <Route path="profile" element={<ProfileSettings />} />
+              <Route path="profile-settings" element={<Navigate to="/profile" replace />} />
               {/* Functions route removed - merged into Integrations */}
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />

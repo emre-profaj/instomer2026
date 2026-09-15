@@ -12,6 +12,7 @@ import {
     DEFAULT_BOT_PROMPT,
     DEFAULT_AUTOMATION_RULES
 } from '../utils/universalDefaults.js';
+import { ensureDefaultQuickReplies } from './defaultQuickReplies.service.js';
 
 /**
  * Tüm default verileri tek seferde oluşturur.
@@ -104,9 +105,17 @@ export async function applyUniversalDefaults(workspaceId) {
                 });
                 result.categories++;
             }
-            console.log(`🌱 [Onboarding] ${result.categories} default kategori oluşturuldu`);
         } else {
             console.log(`⏭️ [Onboarding] Workspace ${workspaceId} zaten ${existingCats} kategoriye sahip, atlanıyor`);
+        }
+
+        // ── 3. Default Hazır Mesaj Şablonları (Arama Başarılı, Arama Başarısız, Konum vb.) ──
+        try {
+            const defaultQRs = await ensureDefaultQuickReplies(workspaceId);
+            result.quickReplies = defaultQRs?.length || 0;
+            console.log(`🌱 [Onboarding] ${result.quickReplies} default hazır mesaj şablonu oluşturuldu`);
+        } catch (qrErr) {
+            console.warn(`⚠️ [Onboarding] Hazır mesaj seeding hatası:`, qrErr.message);
         }
 
         console.log(`✅ [Onboarding] Evrensel taban kurulumu tamamlandı:`, result);

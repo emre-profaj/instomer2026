@@ -47,7 +47,8 @@
     "slugify": "^1.6.6",
     "socket.io": "^4.6.1",
     "@socket.io/redis-adapter": "^8.3.0",
-    "redis": "^4.7.0"
+    "redis": "^4.7.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",

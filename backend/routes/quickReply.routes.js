@@ -4,7 +4,9 @@ import {
     getQuickReplies,
     createQuickReply,
     updateQuickReply,
-    deleteQuickReply
+    deleteQuickReply,
+    seedDefaultTemplates,
+    pushToMetaTemplate
 } from '../controllers/quickReply.controller.js';
 
 const router = express.Router();
@@ -15,5 +17,9 @@ router.get('/workspaces/:workspaceId/quick-replies', auth, getQuickReplies);
 router.post('/workspaces/:workspaceId/quick-replies', auth, createQuickReply);
 router.put('/workspaces/:workspaceId/quick-replies/:id', auth, updateQuickReply);
 router.delete('/workspaces/:workspaceId/quick-replies/:id', auth, deleteQuickReply);
+
+// Standard templates & Meta push routes
+router.post('/workspaces/:workspaceId/quick-replies/seed-defaults', auth, seedDefaultTemplates);
+router.post('/workspaces/:workspaceId/quick-replies/:id/push-to-meta', auth, pushToMetaTemplate);
 
 export default router;
