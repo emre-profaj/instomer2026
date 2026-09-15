@@ -1,33 +1,21 @@
-# GitHub Actions iş akışı — henüz devrede değil
+# GitHub Actions — devrede
 
-`deploy.yml` burada duruyor çünkü push için kullanılan Personal Access
-Token'da **`workflow` yetkisi yok**. GitHub, workflow dosyalarını ayrı bir
-izin olarak koruyor:
+İş akışı `.github/workflows/deploy.yml` altında ve aktif.
 
-```
-refusing to allow a Personal Access Token to create or update workflow
-`.github/workflows/deploy.yml` without `workflow` scope
-```
+Bir süre bu klasörde bekledi çünkü push için kullanılan token'da `workflow`
+yetkisi yoktu; GitHub workflow dosyalarını ayrı bir izin olarak koruyor ve
+o dosya yüzünden **bütün push** düşüyordu.
 
-## Devreye almak için — iki yoldan biri
+## Çalışması için kalan adımlar
 
-**A · Token'a yetki ekle** (tercih edilen)
+`docs/DEPLOYMENT.md` §2.2 ve §3:
 
-GitHub → Settings → Developer settings → Personal access tokens → token'ı
-düzenle → **`workflow`** kutusunu işaretle. Sonra yerelde:
+1. **5 secret** — Settings → Secrets and variables → Actions
+   `VPS_HOST`, `VPS_USER`, `VPS_SSH_PORT`, `VPS_SSH_KEY`, `VPS_APP_PATH`
+2. **production environment** — Settings → Environments → `production`
+   → Required reviewers ekle
+3. **(B) SSH anahtarı** — Mac'te üret, `ssh-copy-id` ile sunucuya kur,
+   özel yarısını `VPS_SSH_KEY` secret'ına yapıştır
 
-```bash
-git mv docs/github-actions/deploy.yml .github/workflows/deploy.yml
-git commit -m "ci: iş akışını devreye al" && git push origin main
-```
-
-**B · GitHub web arayüzünden ekle**
-
-Depo → Actions → set up a workflow yourself → `deploy.yml` içeriğini
-yapıştır → Commit. Web arayüzü token yetkisine takılmaz.
-
-## Sonra yapılacaklar
-
-Kurulum adımları `docs/DEPLOYMENT.md` §2.2 ve §3'te:
-5 secret (`VPS_HOST`, `VPS_USER`, `VPS_SSH_PORT`, `VPS_SSH_KEY`,
-`VPS_APP_PATH`) ve `production` environment'ına onaylayıcı.
+Bunlar tamamlanana kadar `deploy` işi başarısız olur; `verify` işi
+(derleme + kod bütünlüğü kontrolü) her push'ta çalışmaya devam eder.
