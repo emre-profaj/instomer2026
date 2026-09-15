@@ -330,49 +330,6 @@ const SetupWizard = () => {
   const [connectingEmail, setConnectingEmail] = useState(false);
   const [copiedWidgetId, setCopiedWidgetId] = useState(null);
 
-  // Hazır Otomasyon Senaryoları State (Akışlar adımı)
-  const [automations, setAutomations] = useState([
-    {
-      id: 'call_success',
-      key: 'CALL_SUCCESS',
-      name: 'Arama Başarılı Mesajı',
-      desc: 'Sesli görüşme tamamlandığında müşteriye otomatik teşekkür ve konum mesajı gönderir.',
-      channel: 'WHATSAPP',
-      enabled: true
-    },
-    {
-      id: 'call_failed',
-      key: 'CALL_FAILED',
-      name: 'Arama Başarısız / Ulaşılamadı Mesajı',
-      desc: 'Müşteriye ulaşılamadığında otomatik bilgilendirme ve randevu linki gönderir.',
-      channel: 'WHATSAPP',
-      enabled: true
-    },
-    {
-      id: 'location_share',
-      key: 'LOCATION_SHARE',
-      name: 'Konum & Yol Tarifi Gönderimi',
-      desc: 'Müşteri adres veya konum sorduğunda harita linkini ve açık adresi iletir.',
-      channel: 'WHATSAPP',
-      enabled: true
-    },
-    {
-      id: 'appointment_reminder',
-      key: 'APPOINTMENT_REMINDER',
-      name: 'Randevu Onay & Hatırlatıcı',
-      desc: 'Randevu günü/öncesi müşteriye otomatik hatırlatma ve teyit mesajı gönderir.',
-      channel: 'WHATSAPP',
-      enabled: true
-    },
-    {
-      id: 'welcome_greeting',
-      key: 'WELCOME_GREETING',
-      name: 'Karşılama & İlk Temas',
-      desc: 'Müşterinin ilk mesajında hoş geldiniz diyerek menü ve uzman seçenekleri sunar.',
-      channel: 'WHATSAPP',
-      enabled: true
-    },
-  ]);
 
   // Şablonlar State
   const [wizardTemplates, setWizardTemplates] = useState({
@@ -5038,70 +4995,6 @@ GENEL DAVRANIŞ KURALLARI:
           >
             <Plus size={16} /> Yeni Akış Ekle
           </button>
-        </div>
-
-        {/* Hazır Otomasyon Senaryoları Seçimi */}
-        <div style={{
-          border: '1.5px solid #cbd5e1',
-          borderRadius: '10px',
-          padding: '16px',
-          background: '#f8fafc',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Zap size={18} color="#eab308" />
-            <div>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                ⚡ Hazır Otomasyon Senaryoları
-              </h3>
-              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
-                AI Agent ve sesli arama sonrası otomatik devreye girecek hazır tetikleyicileri seçin. Bu seçimler bir sonraki adımda şablonları otomatik üretecektir.
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {automations.map((auto) => (
-              <label
-                key={auto.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  background: auto.enabled ? '#fff' : '#f1f5f9',
-                  border: `1.5px solid ${auto.enabled ? '#3b82f6' : '#e2e8f0'}`,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <input
-                    type="checkbox"
-                    checked={auto.enabled}
-                    onChange={(e) => {
-                      setAutomations(prev => prev.map(a => a.id === auto.id ? { ...a, enabled: e.target.checked } : a));
-                    }}
-                    style={{ width: '16px', height: '16px', accentColor: '#2563eb', cursor: 'pointer' }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
-                      {auto.name}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>
-                      {auto.desc}
-                    </div>
-                  </div>
-                </div>
-                <span style={{ fontSize: '11px', background: '#eff6ff', color: '#2563eb', padding: '3px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                  {auto.channel}
-                </span>
-              </label>
-            ))}
-          </div>
         </div>
 
         {showAddFunnel && (
