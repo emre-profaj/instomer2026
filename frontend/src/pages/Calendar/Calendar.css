@@ -2303,6 +2303,7 @@
 .activities-agent-badge {
     display: inline-flex;
     align-items: center;
+    gap: 5px;
     padding: 4px 10px;
     background: #f1f5f9;
     color: #475569;
@@ -2310,6 +2311,20 @@
     font-size: 12px;
     font-weight: 500;
     white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.activities-agent-badge.badge-ai-agent {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+    font-weight: 600;
+}
+
+.activities-agent-badge.badge-human-agent {
+    background: #eff6ff;
+    color: #1e40af;
+    border-color: #bfdbfe;
 }
 
 /* ── Resource Badge ── */

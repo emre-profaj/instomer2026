@@ -174,6 +174,35 @@ export async function createAppointment(input = {}) {
     }
 
     // ── 4. Kayıt ─────────────────────────────────────────────────
+    let resolvedBotId = createdByBotId || null;
+    if (!resolvedBotId && (source === APPOINTMENT_SOURCE.CHAT_BOT || source === APPOINTMENT_SOURCE.VOICE_BOT || createdById === 'system')) {
+        try {
+            if (conversationId) {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { assignedBotId: true }
+                });
+                resolvedBotId = conv?.assignedBotId || null;
+            }
+            if (!resolvedBotId && source === APPOINTMENT_SOURCE.VOICE_BOT) {
+                const tmpl = await prisma.retellTemplate.findFirst({
+                    where: { workspaceId },
+                    select: { agentId: true }
+                });
+                resolvedBotId = tmpl?.agentId || null;
+            }
+            if (!resolvedBotId) {
+                const activeBot = await prisma.aIBot.findFirst({
+                    where: { workspaceId, isActive: true },
+                    select: { id: true }
+                });
+                resolvedBotId = activeBot?.id || null;
+            }
+        } catch (botLookupErr) {
+            console.warn('⚠️ [Appointment] Bot lookup failed:', botLookupErr.message);
+        }
+    }
+
     let appointment;
     try {
         appointment = await prisma.appointment.create({
@@ -196,7 +225,7 @@ export async function createAppointment(input = {}) {
                 notes,
                 status,
                 createdById: createdById || 'system',
-                createdByBotId: createdByBotId || null,
+                createdByBotId: resolvedBotId || null,
                 conversationId: conversationId || null,
             },
         });

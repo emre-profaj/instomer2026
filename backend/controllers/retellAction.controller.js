@@ -169,13 +169,17 @@ export const handleRetellAction = async (req, res) => {
                     if (customerPhone) fnParams.customer_phone = customerPhone;
                 }
                 
-                // conversation_id bul (eğer varsa)
-                if (!fnParams.conversation_id && callId) {
-                    const callRecord = await prisma.retellCall.findFirst({ where: { callId, workspaceId } });
-                    if (callRecord?.contactId) {
+                // conversation_id ve bot_id bul (eğer varsa)
+                let callRecord = null;
+                if (callId) {
+                    callRecord = await prisma.retellCall.findFirst({ where: { callId, workspaceId } });
+                    if (!fnParams.conversation_id && callRecord?.contactId) {
                         const conv = await prisma.conversation.findFirst({ where: { workspaceId, contactId: callRecord.contactId } });
                         if (conv) fnParams.conversation_id = conv.id;
                     }
+                }
+                if (!fnParams.bot_id) {
+                    fnParams.bot_id = callRecord?.agentId || call?.agent_id || body?.agent_id || null;
                 }
 
                 const result = await executeAppointmentFunction(actionKey, workspaceId, fnParams);

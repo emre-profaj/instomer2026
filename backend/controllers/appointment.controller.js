@@ -71,13 +71,46 @@ export const getAppointments = async (req, res) => {
 
         // Get agent details for each appointment (filter out nulls to prevent Prisma error)
         const agentIds = [...new Set(appointments.map(a => a.assignedToId).filter(id => id))];
-        const creatorIds = [...new Set(appointments.map(a => a.createdById).filter(id => id))];
+        const creatorIds = [...new Set(appointments.map(a => a.createdById).filter(id => id && id !== 'system'))];
         const allUserIds = [...new Set([...agentIds, ...creatorIds])];
         const users = await prisma.user.findMany({
             where: { id: { in: allUserIds } },
             select: { id: true, name: true, avatar: true }
         });
         const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+        // Get AI Bots for appointments
+        const botIds = [...new Set(appointments.map(a => a.createdByBotId).filter(id => id))];
+        const aiBots = await prisma.aIBot.findMany({
+            where: {
+                OR: [
+                    { id: { in: botIds } },
+                    { workspaceId }
+                ]
+            },
+            select: { id: true, name: true, role: true, workspaceId: true }
+        });
+        const botMap = Object.fromEntries(aiBots.map(b => [b.id, b]));
+
+        // Get Retell templates (voice agents)
+        const retellTemplates = await prisma.retellTemplate.findMany({
+            where: { workspaceId },
+            select: { agentId: true, name: true }
+        });
+        const retellMap = Object.fromEntries(retellTemplates.map(t => [t.agentId, t.name]));
+
+        // Check conversations for assignedBot if createdByBotId is null
+        const convIds = [...new Set(appointments.filter(a => !a.createdByBotId && a.conversationId).map(a => a.conversationId))];
+        let convBotMap = {};
+        if (convIds.length > 0) {
+            const convs = await prisma.conversation.findMany({
+                where: { id: { in: convIds } },
+                select: { id: true, assignedBot: { select: { id: true, name: true, role: true } } }
+            });
+            convs.forEach(c => {
+                if (c.assignedBot) convBotMap[c.id] = c.assignedBot;
+            });
+        }
 
         // Get all workspace resources to enrich appointments with doctor / resource details
         const allResources = await prisma.calendarResource.findMany({
@@ -112,14 +145,67 @@ export const getAppointments = async (req, res) => {
                 }
             }
 
+            // ── AI Agent mı yoksa İnsan Temsilci mi verdi? ──
+            // Kural: "verilen randevularda ai agent verdiyse agent ismini yazsın temsilciye. İnsan verdiyse insan agent ismi yazsın"
+            let botInfo = null;
+            if (appointment.createdByBotId) {
+                if (botMap[appointment.createdByBotId]) {
+                    botInfo = botMap[appointment.createdByBotId];
+                } else if (retellMap[appointment.createdByBotId]) {
+                    botInfo = { id: appointment.createdByBotId, name: retellMap[appointment.createdByBotId], role: 'AI Sesli Asistan' };
+                } else if (appointment.createdByBotId.startsWith('agent_')) {
+                    botInfo = { id: appointment.createdByBotId, name: 'AI Sesli Asistan', role: 'AI Asistan' };
+                } else {
+                    botInfo = { id: appointment.createdByBotId, name: 'AI Asistan', role: 'AI Asistan' };
+                }
+            } else if (appointment.conversationId && convBotMap[appointment.conversationId]) {
+                botInfo = convBotMap[appointment.conversationId];
+            } else if (appointment.createdById === 'system' || appointment.createdById === 'bot') {
+                const defaultBot = aiBots.find(b => b.workspaceId === workspaceId) || aiBots[0];
+                if (defaultBot) {
+                    botInfo = defaultBot;
+                } else {
+                    botInfo = { id: 'ai-agent', name: 'AI Asistan', role: 'AI Asistan' };
+                }
+            }
+
+            const assignedUser = userMap[appointment.assignedToId] || null;
+            const creatorUser = userMap[appointment.createdById] || null;
+
+            let representative = null;
+            if (botInfo) {
+                // AI Agent verdi -> AI Agent adı yaz
+                representative = {
+                    id: botInfo.id,
+                    name: botInfo.name,
+                    role: botInfo.role || 'AI Asistan',
+                    isBot: true,
+                    avatar: null
+                };
+            } else if (assignedUser) {
+                // İnsan verdi / atandı -> İnsan temsilci adı yaz
+                representative = {
+                    ...assignedUser,
+                    isBot: false
+                };
+            } else if (creatorUser) {
+                // İnsan oluşturdu -> İnsan temsilci adı yaz
+                representative = {
+                    ...creatorUser,
+                    isBot: false
+                };
+            }
+
             return {
                 ...appointment,
                 resourceId: appointment.resourceId || matchedResource?.id || null,
                 resource: matchedResource || null,
                 doctorName: appointment.doctorName || (matchedResource?.type === 'PERSON' ? matchedResource.name : ''),
                 branch: appointment.branch || matchedResource?.description || '',
-                assignedTo: userMap[appointment.assignedToId] || null,
-                createdBy: userMap[appointment.createdById] || null
+                assignedTo: representative,
+                assignedUser,
+                createdBy: creatorUser,
+                bot: botInfo ? { ...botInfo, isBot: true } : null
             };
         });
 
@@ -144,10 +230,54 @@ export const getAppointment = async (req, res) => {
         }
 
         // Get agent details
-        const agent = appointment.assignedToId ? await prisma.user.findUnique({
+        const assignedUser = appointment.assignedToId ? await prisma.user.findUnique({
             where: { id: appointment.assignedToId },
             select: { id: true, name: true, avatar: true }
         }) : null;
+
+        const creatorUser = appointment.createdById && appointment.createdById !== 'system' ? await prisma.user.findUnique({
+            where: { id: appointment.createdById },
+            select: { id: true, name: true, avatar: true }
+        }) : null;
+
+        // Check if AI Agent gave the appointment
+        let botInfo = null;
+        if (appointment.createdByBotId) {
+            botInfo = await prisma.aIBot.findUnique({
+                where: { id: appointment.createdByBotId },
+                select: { id: true, name: true, role: true }
+            });
+            if (!botInfo) {
+                const tmpl = await prisma.retellTemplate.findFirst({
+                    where: { workspaceId, agentId: appointment.createdByBotId },
+                    select: { agentId: true, name: true }
+                });
+                if (tmpl) botInfo = { id: tmpl.agentId, name: tmpl.name, role: 'AI Sesli Asistan' };
+                else if (appointment.createdByBotId.startsWith('agent_')) botInfo = { id: appointment.createdByBotId, name: 'AI Sesli Asistan', role: 'AI Asistan' };
+                else botInfo = { id: appointment.createdByBotId, name: 'AI Asistan', role: 'AI Asistan' };
+            }
+        } else if (appointment.conversationId) {
+            const conv = await prisma.conversation.findUnique({
+                where: { id: appointment.conversationId },
+                select: { assignedBot: { select: { id: true, name: true, role: true } } }
+            });
+            if (conv?.assignedBot) botInfo = conv.assignedBot;
+        } else if (appointment.createdById === 'system' || appointment.createdById === 'bot') {
+            const defaultBot = await prisma.aIBot.findFirst({
+                where: { workspaceId, isActive: true },
+                select: { id: true, name: true, role: true }
+            });
+            botInfo = defaultBot || { id: 'ai-agent', name: 'AI Asistan', role: 'AI Asistan' };
+        }
+
+        let representative = null;
+        if (botInfo) {
+            representative = { id: botInfo.id, name: botInfo.name, role: botInfo.role || 'AI Asistan', isBot: true };
+        } else if (assignedUser) {
+            representative = { ...assignedUser, isBot: false };
+        } else if (creatorUser) {
+            representative = { ...creatorUser, isBot: false };
+        }
 
         // Resource details
         let resource = appointment.resourceId ? await prisma.calendarResource.findUnique({
@@ -175,7 +305,10 @@ export const getAppointment = async (req, res) => {
         res.json({ 
             appointment: { 
                 ...appointment, 
-                assignedTo: agent,
+                assignedTo: representative,
+                assignedUser,
+                createdBy: creatorUser,
+                bot: botInfo ? { ...botInfo, isBot: true } : null,
                 resource,
                 resourceId: appointment.resourceId || resource?.id || null,
                 doctorName: appointment.doctorName || resource?.name || '',

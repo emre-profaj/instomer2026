@@ -2181,7 +2181,12 @@ function formatDoctorDisplayName(rawName) {
                                             <span className="todo-title">{apt.title}</span>
                                             <span className="todo-agent" style={{ color: mType.color, fontWeight: 500 }}>{mType.icon} {mType.label}</span>
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
-                                            {apt.assignedTo?.name && <span className="todo-agent">👤 {apt.assignedTo.name}</span>}
+                                            {apt.assignedTo?.name && (
+                                                <span className="todo-agent">
+                                                    {apt.assignedTo.isBot ? '🤖 ' : '👤 '}
+                                                    {apt.assignedTo.name}
+                                                </span>
+                                            )}
                                             {apt.isGoogleEvent && <span className="todo-agent" style={{ color: gColor, fontWeight: 500 }}>Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
                                             {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {formatDoctorDisplayName(apt.doctorName)}</span>}
                                         </div>
@@ -2512,8 +2517,18 @@ function formatDoctorDisplayName(rawName) {
                                                                 {apt.contactName && <div className="tooltip-row"><User size={14} /><span>{apt.contactName}</span></div>}
                                                                 {apt.location && <div className="tooltip-row"><Building2 size={14} /><span>{apt.location}</span></div>}
                                                                 {apt.contactPhone && <div className="tooltip-row"><Phone size={14} /><span>{apt.contactPhone}</span></div>}
-                                                                {apt.assignedTo && <div className="tooltip-row tooltip-agent"><User size={14} /><span>Temsilci: {apt.assignedTo.name}</span></div>}
-                                                                {apt.createdBy && <div className="tooltip-row" style={{ color: '#8b5cf6' }}><User size={14} /><span>Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span></div>}
+                                                                {apt.assignedTo && (
+                                                                    <div className="tooltip-row tooltip-agent">
+                                                                        {apt.assignedTo.isBot ? <span>🤖</span> : <User size={14} />}
+                                                                        <span>Temsilci: <strong>{apt.assignedTo.name}</strong> {apt.assignedTo.isBot ? '(AI Asistan)' : ''}</span>
+                                                                    </div>
+                                                                )}
+                                                                {apt.createdBy && !apt.assignedTo?.isBot && (
+                                                                    <div className="tooltip-row" style={{ color: '#8b5cf6' }}>
+                                                                        <User size={14} />
+                                                                        <span>Oluşturan: {apt.createdBy.name}</span>
+                                                                    </div>
+                                                                )}
                                                                 {apt.doctorName && <div className="tooltip-row" style={{ color: '#059669' }}><User size={14} /><span>🩺 Dr. {formatDoctorDisplayName(apt.doctorName)}</span></div>}
                                                                 {aptResource && <div className="tooltip-row"><Building2 size={14} /><span>{aptResource.name}</span></div>}
                                                                 {apt.notes && <div className="tooltip-notes"><FileText size={14} /><span>{apt.notes}</span></div>}
@@ -2637,7 +2652,7 @@ function formatDoctorDisplayName(rawName) {
                                                 startTime: sc.scheduledAt,
                                                 endTime: sc.scheduledAt,
                                                 status: sc.status || 'PENDING',
-                                                assignedTo: null,
+                                                assignedTo: sc.agentId ? { id: sc.agentId, name: 'AI Sesli Arama', isBot: true } : null,
                                                 resourceId: null,
                                                 color: '#f97316'
                                             })));
@@ -2732,7 +2747,10 @@ function formatDoctorDisplayName(rawName) {
                                                     </td>
                                                     <td>
                                                         {item.assignedTo ? (
-                                                            <span className="activities-agent-badge">{item.assignedTo.name}</span>
+                                                            <span className={`activities-agent-badge ${item.assignedTo.isBot ? 'badge-ai-agent' : 'badge-human-agent'}`}>
+                                                                {item.assignedTo.isBot ? '🤖 ' : '👤 '}
+                                                                {item.assignedTo.name}
+                                                            </span>
                                                         ) : (
                                                             <span className="activities-empty">—</span>
                                                         )}
@@ -2999,8 +3017,8 @@ function formatDoctorDisplayName(rawName) {
 
                                             {selectedAppointment.assignedTo?.name && (
                                                 <div className="google-event-meta-item">
-                                                    <User size={16} />
-                                                    <span>Temsilci: <strong>{selectedAppointment.assignedTo.name}</strong></span>
+                                                    {selectedAppointment.assignedTo.isBot ? <span>🤖</span> : <User size={16} />}
+                                                    <span>Temsilci: <strong>{selectedAppointment.assignedTo.name}</strong> {selectedAppointment.assignedTo.isBot ? '(AI Asistan)' : ''}</span>
                                                 </div>
                                             )}
 
@@ -3207,6 +3225,11 @@ function formatDoctorDisplayName(rawName) {
                                                         <option key={agent.id} value={agent.id}>{agent.name}</option>
                                                     ))}
                                                 </select>
+                                                {selectedAppointment?.assignedTo?.isBot && (
+                                                    <div style={{ fontSize: 11, color: '#059669', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontWeight: 600 }}>
+                                                        🤖 {selectedAppointment.assignedTo.name} (AI Asistan tarafından verildi)
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 

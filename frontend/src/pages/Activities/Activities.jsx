@@ -565,8 +565,8 @@ const Activities = () => {
                                                     <Bot size={10} /> AI Arama
                                                 </span>
                                             ) : activity.assignee ? (
-                                                <span className="activity-meta-tag assignee">
-                                                    <User size={10} /> {activity.assignee.name}
+                                                <span className={`activity-meta-tag assignee ${activity.assignee.isBot ? 'bot-assignee' : ''}`} style={activity.assignee.isBot ? { background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' } : {}}>
+                                                    {activity.assignee.isBot ? <Bot size={10} /> : <User size={10} />} {activity.assignee.name}
                                                 </span>
                                             ) : null}
                                             {due && (
@@ -631,7 +631,13 @@ const Activities = () => {
                             </div>
                             <div className="act-detail-row">
                                 <span className="act-detail-label">Atanan</span>
-                                <span className="act-detail-value">{selectedActivity.assignee?.name || 'Atanmadı'}</span>
+                                <span className="act-detail-value">
+                                    {selectedActivity.assignee ? (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            {selectedActivity.assignee.isBot ? '🤖' : '👤'} {selectedActivity.assignee.name} {selectedActivity.assignee.isBot ? '(AI Asistan)' : ''}
+                                        </span>
+                                    ) : 'Atanmadı'}
+                                </span>
                             </div>
                             <div className="act-detail-row">
                                 <span className="act-detail-label">Öncelik</span>
