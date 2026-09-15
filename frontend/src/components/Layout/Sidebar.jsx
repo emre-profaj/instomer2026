@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles, UserCog } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -82,19 +82,20 @@ const Sidebar = () => {
     ];
 
     const settingsSubItems = [
-        // BASE
-        { group: 'BASE', path: '/base', icon: Building2, label: 'Firma & Bilgi Bankası' },
-        { group: 'BASE', path: '/templates', icon: FileSignature, label: 'Şablonlar' },
-        { group: 'BASE', path: '/integrations', icon: Settings, label: 'Entegrasyonlar' },
-        // AKIŞ & SÜREÇ
-        { group: 'AKIŞ & SÜREÇ', path: '/funnels', icon: Kanban, label: 'Akışlar & Vaka Tipleri' },
-        { group: 'AKIŞ & SÜREÇ', path: '/channels', icon: Radio, label: 'Kanallar & Yönlendirme' },
+        // FİRMA
+        { group: 'FİRMA', path: '/base', icon: Building2, label: 'Firma Bilgileri' },
+        // KANALLAR & SÜREÇ
+        { group: 'KANALLAR & SÜREÇ', path: '/channels', icon: Radio, label: 'Kanallar' },
+        { group: 'KANALLAR & SÜREÇ', path: '/funnels', icon: Kanban, label: 'Akışlar & Vaka Tipleri' },
         // TAKIM & EKİP
-        { group: 'TAKIM & EKİP', path: '/teams', icon: Users, label: 'Takımlar' },
+        { group: 'TAKIM & EKİP', path: '/teams', icon: Users, label: 'Takım ve Üyeler' },
         { group: 'TAKIM & EKİP', path: '/ai-agents', icon: Sparkles, label: 'AI Agentlar' },
-        // OTOMASYON
-        { group: 'OTOMASYON', path: '/automations-hub', icon: Zap, label: 'Otomasyonlar' },
-        { group: 'OTOMASYON', path: '/notification-settings', icon: Bell, label: 'Bildirimler' },
+        // ARAÇLAR
+        { group: 'ARAÇLAR', path: '/templates', icon: FileSignature, label: 'Şablonlar' },
+        { group: 'ARAÇLAR', path: '/automations-hub', icon: Zap, label: 'Otomasyonlar' },
+        // DİĞER
+        { group: 'DİĞER', path: '/notification-settings', icon: Bell, label: 'Bildirimler' },
+        { group: 'DİĞER', path: '/profile', icon: UserCog, label: 'Profil Ayarları' },
     ];
 
     const isSettingsPath = (path) => {
@@ -103,7 +104,7 @@ const Sidebar = () => {
         return ['/settings', '/channels', '/channels2', '/classifier', '/funnels',
              '/casetypes', '/topic-categories', '/templates', '/teams', '/users',
              '/assistants', '/integrations', '/notification-settings', '/app-notes',
-             '/flow-test', '/firm-settings', '/workspace-settings'
+             '/flow-test', '/firm-settings', '/workspace-settings', '/profile'
             ].some(p => path === p || path.startsWith(p + '/'));
     };
 

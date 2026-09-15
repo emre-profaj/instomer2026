@@ -645,11 +645,12 @@ const SetupWizard = () => {
   const handleNext = async () => {
     if (activeStep === 0 && currentWorkspace?.id && companyName) {
       try {
-        await workspaceAPI.update(currentWorkspace.id, {
-          name: companyName,
+        await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
+          companyName,
           companyAddress,
           companyWebsite,
-          companyWorkingHours: companyHours
+          companyWorkingHours: companyHours,
+          industry: companyIndustry || undefined
         });
       } catch (e) {
         console.warn('Auto-save step 1 warning:', e);
@@ -665,11 +666,12 @@ const SetupWizard = () => {
   const handleComplete = async () => {
     try {
       if (currentWorkspace?.id && companyName) {
-        await workspaceAPI.update(currentWorkspace.id, {
-          name: companyName,
+        await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
+          companyName,
           companyAddress,
           companyWebsite,
-          companyWorkingHours: companyHours
+          companyWorkingHours: companyHours,
+          industry: companyIndustry || undefined
         });
       }
       // Tüm adımları veritabanına birleşik Bilgi Bankası olarak kaydet

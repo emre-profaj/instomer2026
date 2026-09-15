@@ -37,7 +37,8 @@ import {
     testNetgsmSms,
     getNetgsmBalance,
     getChannelPricing,
-    updateChannelPricing
+    updateChannelPricing,
+    patchWorkspaceSettings
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/roleAuth.js';
@@ -118,6 +119,9 @@ router.get('/:workspaceId/company', requireWorkspaceAccess, getCompanyInfo);
 router.put('/:workspaceId/company', requireWorkspaceAccess, updateCompanyInfo);
 router.post('/:workspaceId/company/logo', requireWorkspaceAccess, logoUpload.single('logo'), uploadCompanyLogo);
 router.delete('/:workspaceId/company/logo', requireWorkspaceAccess, deleteCompanyLogo);
+
+// Generic workspace settings PATCH
+router.patch('/:workspaceId', requireWorkspaceAccess, patchWorkspaceSettings);
 
 // ==================== ALT WORKSPACE (SUB-WORKSPACE) ROUTES ====================
 

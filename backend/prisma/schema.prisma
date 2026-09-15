@@ -104,6 +104,12 @@ model Workspace {
   companyWebsite      String?
   companyWorkingHours String?
   companyLogo         String?
+  // Firma Profili — Ek Alanlar
+  founder               String?              // Kurucu / Firma sahibi
+  businessAreas         String   @default("[]") // Faaliyet alanları JSON array
+  serviceRegions        String   @default("[]") // Hizmet ve satış bölgeleri JSON array ["İstanbul / Kadıköy", ...]
+  googleMapsUrl         String?              // Google Maps konum linki
+  companyWeeklySchedule Json?               // Yapılandırılmış 7 günlük çalışma saatleri [{day,enabled,start,end}]
 
   // Fatura ayarları
   invoiceTaxOffice String? // Vergi Dairesi
@@ -972,8 +978,9 @@ model AppointmentBranch {
   conversations    Conversation[]      @relation("ConversationBranch")
 
   // Şube adresi ve iletişim
-  address String?
-  phone   String?
+  address       String?
+  phone         String?
+  googleMapsUrl String? // Şube Google Maps konum linki
 
   @@index([workspaceId])
   @@map("appointment_branches")

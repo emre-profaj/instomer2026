@@ -608,7 +608,13 @@ export const getCompanyInfo = async (req, res) => {
                 companyLogo: true,
                 invoiceTaxOffice: true,
                 invoiceTaxNumber: true,
-                invoiceIban: true
+                invoiceIban: true,
+                industry: true,
+                founder: true,
+                businessAreas: true,
+                serviceRegions: true,
+                googleMapsUrl: true,
+                companyWeeklySchedule: true
             }
         });
 
@@ -634,27 +640,38 @@ export const updateCompanyInfo = async (req, res) => {
             companyPhone,
             companyEmail,
             companyWebsite,
-            invoiceTaxOffice,
-            invoiceTaxNumber,
-            invoiceIban,
-            industry
-        } = req.body;
-
-        const updateData = {
-            companyName,
-            companyDescription,
-            companyAddress,
-            companyPhone,
-            companyEmail,
-            companyWebsite,
             companyWorkingHours,
             invoiceTaxOffice,
             invoiceTaxNumber,
-            invoiceIban
-        };
-        if (industry !== undefined) {
-            updateData.industry = industry;
-        }
+            invoiceIban,
+            industry,
+            // Yeni alanlar
+            founder,
+            businessAreas,
+            serviceRegions,
+            googleMapsUrl,
+            companyWeeklySchedule
+        } = req.body;
+
+        const updateData = {};
+        // Mevcut alanlar
+        if (companyName !== undefined) updateData.companyName = companyName;
+        if (companyDescription !== undefined) updateData.companyDescription = companyDescription;
+        if (companyAddress !== undefined) updateData.companyAddress = companyAddress;
+        if (companyPhone !== undefined) updateData.companyPhone = companyPhone;
+        if (companyEmail !== undefined) updateData.companyEmail = companyEmail;
+        if (companyWebsite !== undefined) updateData.companyWebsite = companyWebsite;
+        if (companyWorkingHours !== undefined) updateData.companyWorkingHours = companyWorkingHours;
+        if (invoiceTaxOffice !== undefined) updateData.invoiceTaxOffice = invoiceTaxOffice;
+        if (invoiceTaxNumber !== undefined) updateData.invoiceTaxNumber = invoiceTaxNumber;
+        if (invoiceIban !== undefined) updateData.invoiceIban = invoiceIban;
+        if (industry !== undefined) updateData.industry = industry;
+        // Yeni alanlar
+        if (founder !== undefined) updateData.founder = founder;
+        if (businessAreas !== undefined) updateData.businessAreas = typeof businessAreas === 'string' ? businessAreas : JSON.stringify(businessAreas);
+        if (serviceRegions !== undefined) updateData.serviceRegions = typeof serviceRegions === 'string' ? serviceRegions : JSON.stringify(serviceRegions);
+        if (googleMapsUrl !== undefined) updateData.googleMapsUrl = googleMapsUrl;
+        if (companyWeeklySchedule !== undefined) updateData.companyWeeklySchedule = companyWeeklySchedule;
 
         const workspace = await prisma.workspace.update({
             where: { id: workspaceId },
@@ -671,7 +688,12 @@ export const updateCompanyInfo = async (req, res) => {
                 invoiceTaxOffice: true,
                 invoiceTaxNumber: true,
                 invoiceIban: true,
-                industry: true
+                industry: true,
+                founder: true,
+                businessAreas: true,
+                serviceRegions: true,
+                googleMapsUrl: true,
+                companyWeeklySchedule: true
             }
         });
 
@@ -679,6 +701,34 @@ export const updateCompanyInfo = async (req, res) => {
     } catch (error) {
         console.error('Update company info error:', error);
         res.status(500).json({ error: 'Failed to update company info' });
+    }
+};
+
+// Generic PATCH for workspace settings (agentDataVisibility, timezone, leadScoringTemplate, etc.)
+export const patchWorkspaceSettings = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const allowedFields = [
+            'agentDataVisibility', 'leadScoringTemplate', 'timezone', 'channelPricing',
+            'defaultLanguage', 'industry', 'defaultFunnelId'
+        ];
+        const updateData = {};
+        for (const field of allowedFields) {
+            if (req.body[field] !== undefined) {
+                updateData[field] = req.body[field];
+            }
+        }
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ error: 'Güncellenecek alan bulunamadı' });
+        }
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: updateData
+        });
+        res.json({ success: true, workspace });
+    } catch (error) {
+        console.error('Patch workspace settings error:', error);
+        res.status(500).json({ error: 'Failed to update settings' });
     }
 };
 

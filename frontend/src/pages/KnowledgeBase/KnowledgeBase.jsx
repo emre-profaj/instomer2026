@@ -85,9 +85,28 @@ const KnowledgeBase = () => {
         website: '',
         workingHours: '',
         logo: null,
-        logoPreview: ''
+        logoPreview: '',
+        // Yeni alanlar
+        founder: '',
+        industry: 'GENERAL',
+        businessAreas: [],
+        serviceRegions: [],
+        googleMapsUrl: '',
+        weeklySchedule: [
+            { day: 0, label: 'Pazartesi', enabled: true, start: '09:00', end: '18:00' },
+            { day: 1, label: 'Salı', enabled: true, start: '09:00', end: '18:00' },
+            { day: 2, label: 'Çarşamba', enabled: true, start: '09:00', end: '18:00' },
+            { day: 3, label: 'Perşembe', enabled: true, start: '09:00', end: '18:00' },
+            { day: 4, label: 'Cuma', enabled: true, start: '09:00', end: '18:00' },
+            { day: 5, label: 'Cumartesi', enabled: false, start: '09:00', end: '18:00' },
+            { day: 6, label: 'Pazar', enabled: false, start: '09:00', end: '18:00' },
+        ]
     });
     const [savingCompany, setSavingCompany] = useState(false);
+    const [newBusinessArea, setNewBusinessArea] = useState('');
+    const [regionSearchText, setRegionSearchText] = useState('');
+    const [regionSuggestions, setRegionSuggestions] = useState([]);
+    const [showRegionDropdown, setShowRegionDropdown] = useState(false);
 
     // Branches (Lokasyonlar / Şubeler) States
     const [branches, setBranches] = useState([]);
@@ -345,10 +364,36 @@ const KnowledgeBase = () => {
         }
     };
 
+    const defaultSchedule = [
+        { day: 0, label: 'Pazartesi', enabled: true, start: '09:00', end: '18:00' },
+        { day: 1, label: 'Salı', enabled: true, start: '09:00', end: '18:00' },
+        { day: 2, label: 'Çarşamba', enabled: true, start: '09:00', end: '18:00' },
+        { day: 3, label: 'Perşembe', enabled: true, start: '09:00', end: '18:00' },
+        { day: 4, label: 'Cuma', enabled: true, start: '09:00', end: '18:00' },
+        { day: 5, label: 'Cumartesi', enabled: false, start: '09:00', end: '18:00' },
+        { day: 6, label: 'Pazar', enabled: false, start: '09:00', end: '18:00' },
+    ];
+
     const loadCompanyInfo = async () => {
         try {
             const response = await workspaceAPI.getCompanyInfo(currentWorkspace.id);
             const info = response.data.companyInfo;
+            // businessAreas ve serviceRegions JSON string olarak gelir
+            let businessAreas = [];
+            try { businessAreas = JSON.parse(info.businessAreas || '[]'); } catch(e) { businessAreas = []; }
+            let serviceRegions = [];
+            try { serviceRegions = JSON.parse(info.serviceRegions || '[]'); } catch(e) { serviceRegions = []; }
+            // weeklySchedule
+            let weeklySchedule = defaultSchedule;
+            if (info.companyWeeklySchedule) {
+                try {
+                    const parsed = typeof info.companyWeeklySchedule === 'string'
+                        ? JSON.parse(info.companyWeeklySchedule) : info.companyWeeklySchedule;
+                    if (Array.isArray(parsed) && parsed.length === 7) {
+                        weeklySchedule = parsed.map((s, i) => ({ ...defaultSchedule[i], ...s }));
+                    }
+                } catch(e) { /* fallback to default */ }
+            }
             setCompanyInfo({
                 name: info.companyName || '',
                 description: info.companyDescription || '',
@@ -358,7 +403,13 @@ const KnowledgeBase = () => {
                 website: info.companyWebsite || '',
                 workingHours: info.companyWorkingHours || '',
                 logo: null,
-                logoPreview: info.companyLogo || ''
+                logoPreview: info.companyLogo || '',
+                founder: info.founder || '',
+                industry: info.industry || 'GENERAL',
+                businessAreas,
+                serviceRegions,
+                googleMapsUrl: info.googleMapsUrl || '',
+                weeklySchedule
             });
         } catch (error) {
             console.error('Error loading company info:', error);
@@ -368,6 +419,11 @@ const KnowledgeBase = () => {
     const handleSaveCompanyInfo = async () => {
         try {
             setSavingCompany(true);
+            // Yapılandırılmış saatten okunabilir string oluştur
+            const scheduleText = companyInfo.weeklySchedule
+                .filter(s => s.enabled)
+                .map(s => `${s.label}: ${s.start}-${s.end}`)
+                .join(', ') || 'Belirtilmedi';
             await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
                 companyName: companyInfo.name,
                 companyDescription: companyInfo.description,
@@ -375,7 +431,13 @@ const KnowledgeBase = () => {
                 companyPhone: companyInfo.phone,
                 companyEmail: companyInfo.email,
                 companyWebsite: companyInfo.website,
-                companyWorkingHours: companyInfo.workingHours
+                companyWorkingHours: scheduleText,
+                founder: companyInfo.founder,
+                industry: companyInfo.industry,
+                businessAreas: JSON.stringify(companyInfo.businessAreas),
+                serviceRegions: JSON.stringify(companyInfo.serviceRegions),
+                googleMapsUrl: companyInfo.googleMapsUrl,
+                companyWeeklySchedule: companyInfo.weeklySchedule
             });
             alert(t('knowledgeBase.saved'));
         } catch (error) {
@@ -768,26 +830,309 @@ const KnowledgeBase = () => {
                         </div>
                     </div>
 
+                    <div className="company-form-grid">
+                        <div className="form-group">
+                            <label>Kurucu / Firma Sahibi</label>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="Örn: Ahmet Yılmaz"
+                                value={companyInfo.founder}
+                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, founder: e.target.value }))}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Sektör</label>
+                            <select
+                                className="input"
+                                value={companyInfo.industry}
+                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, industry: e.target.value }))}
+                            >
+                                <option value="GENERAL">Genel</option>
+                                <option value="HEALTHCARE">Sağlık</option>
+                                <option value="REAL_ESTATE">Emlak</option>
+                                <option value="AUTOMOTIVE">Otomotiv</option>
+                                <option value="TOURISM">Turizm / Otelcilik</option>
+                                <option value="RETAIL">Perakende</option>
+                                <option value="SERVICE">Hizmet</option>
+                                <option value="EDUCATION">Eğitim</option>
+                                <option value="TECHNOLOGY">Teknoloji</option>
+                                <option value="FOOD">Gıda / Restoran</option>
+                                <option value="SPA">Güzellik / SPA</option>
+                                <option value="LEGAL">Hukuk</option>
+                                <option value="FINANCE">Finans</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Faaliyet Alanları - Tag Input */}
+                    <div className="form-group">
+                        <label>Faaliyet Alanları</label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                            {companyInfo.businessAreas.map((area, idx) => (
+                                <span key={idx} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    background: '#eff6ff', color: '#1d4ed8', padding: '4px 10px',
+                                    borderRadius: '16px', fontSize: '13px', fontWeight: 500
+                                }}>
+                                    {area}
+                                    <button onClick={() => setCompanyInfo(prev => ({
+                                        ...prev, businessAreas: prev.businessAreas.filter((_, i) => i !== idx)
+                                    }))} style={{ background: 'none', border: 'none', color: '#1d4ed8', cursor: 'pointer', padding: '0 2px', fontSize: '16px', lineHeight: 1 }}>×</button>
+                                </span>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="Yeni alan yazıp Enter'a basın (Örn: Diş Hekimliği)"
+                                value={newBusinessArea}
+                                onChange={(e) => setNewBusinessArea(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && newBusinessArea.trim()) {
+                                        e.preventDefault();
+                                        if (!companyInfo.businessAreas.includes(newBusinessArea.trim())) {
+                                            setCompanyInfo(prev => ({ ...prev, businessAreas: [...prev.businessAreas, newBusinessArea.trim()] }));
+                                        }
+                                        setNewBusinessArea('');
+                                    }
+                                }}
+                                style={{ flex: 1 }}
+                            />
+                            <button
+                                className="btn btn-outline"
+                                onClick={() => {
+                                    if (newBusinessArea.trim() && !companyInfo.businessAreas.includes(newBusinessArea.trim())) {
+                                        setCompanyInfo(prev => ({ ...prev, businessAreas: [...prev.businessAreas, newBusinessArea.trim()] }));
+                                        setNewBusinessArea('');
+                                    }
+                                }}
+                                style={{ whiteSpace: 'nowrap' }}
+                            >Ekle</button>
+                        </div>
+                    </div>
+
+                    {/* Adres + Google Maps */}
                     <div className="form-group">
                         <label>Adres</label>
                         <input
                             type="text"
                             className="input"
-                            placeholder="Örn: İstanbul, Türkiye"
+                            placeholder="Örn: Kadıköy, İstanbul, Türkiye"
                             value={companyInfo.address}
                             onChange={(e) => setCompanyInfo(prev => ({ ...prev, address: e.target.value }))}
                         />
                     </div>
-
                     <div className="form-group">
-                        <label>{t('users.workingHoursTitle')}</label>
+                        <label>📍 Google Maps Linki</label>
                         <input
-                            type="text"
+                            type="url"
                             className="input"
-                            placeholder="Örn: Pazartesi-Cuma 09:00-18:00"
-                            value={companyInfo.workingHours}
-                            onChange={(e) => setCompanyInfo(prev => ({ ...prev, workingHours: e.target.value }))}
+                            placeholder="https://maps.google.com/..."
+                            value={companyInfo.googleMapsUrl}
+                            onChange={(e) => setCompanyInfo(prev => ({ ...prev, googleMapsUrl: e.target.value }))}
                         />
+                        {companyInfo.googleMapsUrl && (
+                            <a href={companyInfo.googleMapsUrl} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px', display: 'inline-block' }}>
+                                🔗 Haritada Görüntüle
+                            </a>
+                        )}
+                    </div>
+
+                    {/* Hizmet ve Satış Bölgeleri - İl/İlçe Autocomplete */}
+                    <div className="form-group" style={{ position: 'relative' }}>
+                        <label>Hizmet ve Satış Bölgeleri</label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                            {companyInfo.serviceRegions.map((region, idx) => (
+                                <span key={idx} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    background: '#f0fdf4', color: '#15803d', padding: '4px 10px',
+                                    borderRadius: '16px', fontSize: '13px', fontWeight: 500
+                                }}>
+                                    📍 {region}
+                                    <button onClick={() => setCompanyInfo(prev => ({
+                                        ...prev, serviceRegions: prev.serviceRegions.filter((_, i) => i !== idx)
+                                    }))} style={{ background: 'none', border: 'none', color: '#15803d', cursor: 'pointer', padding: '0 2px', fontSize: '16px', lineHeight: 1 }}>×</button>
+                                </span>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <div style={{ flex: 1, position: 'relative' }}>
+                                <input
+                                    type="text"
+                                    className="input"
+                                    placeholder="İl veya ilçe yazın (Örn: Kadıköy)"
+                                    value={regionSearchText}
+                                    onChange={async (e) => {
+                                        const val = e.target.value;
+                                        setRegionSearchText(val);
+                                        if (val.length >= 2) {
+                                            try {
+                                                const resp = await fetch(`https://turkiyeapi.dev/api/v1/provinces?name=${encodeURIComponent(val)}`);
+                                                const data = await resp.json();
+                                                const suggestions = [];
+                                                if (data.data) {
+                                                    data.data.forEach(p => {
+                                                        suggestions.push(p.name);
+                                                        if (p.districts) {
+                                                            p.districts.forEach(d => {
+                                                                if (d.name.toLowerCase().includes(val.toLowerCase()) || p.name.toLowerCase().includes(val.toLowerCase())) {
+                                                                    suggestions.push(`${p.name} / ${d.name}`);
+                                                                }
+                                                            });
+                                                        }
+                                                    });
+                                                }
+                                                // İlçe araması için de dene
+                                                if (suggestions.length < 3) {
+                                                    const resp2 = await fetch('https://turkiyeapi.dev/api/v1/provinces');
+                                                    const data2 = await resp2.json();
+                                                    if (data2.data) {
+                                                        data2.data.forEach(p => {
+                                                            if (p.districts) {
+                                                                p.districts.forEach(d => {
+                                                                    if (d.name.toLowerCase().includes(val.toLowerCase())) {
+                                                                        const entry = `${p.name} / ${d.name}`;
+                                                                        if (!suggestions.includes(entry)) suggestions.push(entry);
+                                                                    }
+                                                                });
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                                setRegionSuggestions(suggestions.slice(0, 10));
+                                                setShowRegionDropdown(true);
+                                            } catch(err) {
+                                                console.warn('Region API error:', err);
+                                                setRegionSuggestions([]);
+                                            }
+                                        } else {
+                                            setRegionSuggestions([]);
+                                            setShowRegionDropdown(false);
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && regionSearchText.trim()) {
+                                            e.preventDefault();
+                                            if (!companyInfo.serviceRegions.includes(regionSearchText.trim())) {
+                                                setCompanyInfo(prev => ({ ...prev, serviceRegions: [...prev.serviceRegions, regionSearchText.trim()] }));
+                                            }
+                                            setRegionSearchText('');
+                                            setShowRegionDropdown(false);
+                                        }
+                                    }}
+                                    onBlur={() => setTimeout(() => setShowRegionDropdown(false), 200)}
+                                />
+                                {showRegionDropdown && regionSuggestions.length > 0 && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                                        background: 'var(--bg-primary, #fff)', border: '1px solid var(--border, #e5e7eb)',
+                                        borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                        maxHeight: '200px', overflowY: 'auto'
+                                    }}>
+                                        {regionSuggestions.map((s, i) => (
+                                            <div key={i}
+                                                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px',
+                                                    borderBottom: '1px solid var(--border, #f3f4f6)' }}
+                                                onMouseDown={() => {
+                                                    if (!companyInfo.serviceRegions.includes(s)) {
+                                                        setCompanyInfo(prev => ({ ...prev, serviceRegions: [...prev.serviceRegions, s] }));
+                                                    }
+                                                    setRegionSearchText('');
+                                                    setShowRegionDropdown(false);
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.background = 'var(--bg-secondary, #f9fafb)'}
+                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                            >📍 {s}</div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                            İl veya ilçe yazarak arayın, listeden seçin veya Enter'a basın.
+                        </p>
+                    </div>
+
+                    {/* Çalışma Saatleri - 7 Gün */}
+                    <div className="form-group">
+                        <label style={{ marginBottom: '12px', display: 'block' }}>🕐 Çalışma Saatleri</label>
+                        <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                            <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
+                                onClick={() => setCompanyInfo(prev => ({
+                                    ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
+                                        ...s, enabled: s.day <= 4, start: '09:00', end: '18:00'
+                                    }))
+                                }))}>Hafta İçi (Pzt-Cum)</button>
+                            <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
+                                onClick={() => setCompanyInfo(prev => ({
+                                    ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
+                                        ...s, enabled: s.day <= 5, start: '09:00', end: '18:00'
+                                    }))
+                                }))}>+ Cumartesi</button>
+                            <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
+                                onClick={() => setCompanyInfo(prev => ({
+                                    ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
+                                        ...s, enabled: true, start: '09:00', end: '18:00'
+                                    }))
+                                }))}>7 Gün</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {companyInfo.weeklySchedule.map((slot, idx) => (
+                                <div key={idx} style={{
+                                    display: 'flex', alignItems: 'center', gap: '12px',
+                                    padding: '8px 12px', borderRadius: '8px',
+                                    background: slot.enabled ? 'var(--bg-secondary, #f9fafb)' : 'transparent',
+                                    border: '1px solid var(--border, #e5e7eb)',
+                                    opacity: slot.enabled ? 1 : 0.5,
+                                    transition: 'all 0.15s ease'
+                                }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', minWidth: '120px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={slot.enabled}
+                                            onChange={(e) => {
+                                                const updated = [...companyInfo.weeklySchedule];
+                                                updated[idx] = { ...updated[idx], enabled: e.target.checked };
+                                                setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
+                                            }}
+                                            style={{ accentColor: '#2563eb' }}
+                                        />
+                                        <span style={{ fontWeight: 600, fontSize: '13px' }}>{slot.label}</span>
+                                    </label>
+                                    {slot.enabled && (
+                                        <>
+                                            <input
+                                                type="time"
+                                                value={slot.start}
+                                                onChange={(e) => {
+                                                    const updated = [...companyInfo.weeklySchedule];
+                                                    updated[idx] = { ...updated[idx], start: e.target.value };
+                                                    setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
+                                                }}
+                                                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border, #d1d5db)', fontSize: '13px' }}
+                                            />
+                                            <span style={{ color: '#9ca3af', fontSize: '13px' }}>—</span>
+                                            <input
+                                                type="time"
+                                                value={slot.end}
+                                                onChange={(e) => {
+                                                    const updated = [...companyInfo.weeklySchedule];
+                                                    updated[idx] = { ...updated[idx], end: e.target.value };
+                                                    setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
+                                                }}
+                                                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border, #d1d5db)', fontSize: '13px' }}
+                                            />
+                                        </>
+                                    )}
+                                    {!slot.enabled && (
+                                        <span style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>Kapalı</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="form-group">
@@ -1780,7 +2125,7 @@ C: [Cevap 1]
                     </div>
                 </div>
             )}
-            </div> {/* base-content */}
+            </div>
         </div>
     );
 };
