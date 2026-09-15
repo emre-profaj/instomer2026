@@ -1,55 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-# Instomer ChatCRM - Sıfır Kesinti & Otomatik Korumalı Deploy Scripti
+# ⚠️  BU SCRIPT ARTIK KULLANILMIYOR
 # ═══════════════════════════════════════════════════════════════
-
-set -e
-
-echo "🚀 [1/5] Mevcut commit kaydediliyor ve son değişiklikler çekiliyor..."
-PREV_COMMIT=$(git rev-parse HEAD)
-git pull origin main || git pull
-
-echo "📦 [2/5] Bağımlılıklar kontrol ediliyor..."
-npm install --omit=dev
-
-echo "🔍 [3/5] Kod güvenliği, sözdizimi ve importlar denetleniyor (Pre-flight Check)..."
-if ! node scripts/verify-build.js; then
-    echo ""
-    echo "❌ 🚨 [KRİTİK HATA] Çekilen kodda sözdizimi veya import hatası tespit edildi!"
-    echo "🛡️ PM2 YENİDEN BAŞLATILMADI! Canlı sistem kesintisiz korunuyor."
-    echo "↩️ Eski çalışan kararlı sürüme ($PREV_COMMIT) geri dönülüyor..."
-    git reset --hard "$PREV_COMMIT"
-    echo "✅ Sistem güvenle önceki çalışan sürümde tutuldu. Canlı sistem çalışmaya devam ediyor."
-    exit 1
-fi
-
-echo "🗄️ [4/5] Prisma şeması güncelleniyor..."
-npx prisma generate
-npx prisma db push --accept-data-loss || npx prisma migrate deploy || true
-
-echo "🌐 [Frontend] htdocs senkronizasyonu yapılıyor..."
-if [ -d "../htdocs" ] && [ -d "../frontend/dist" ]; then
-    cp -rf ../frontend/dist/* ../htdocs/
-    chmod -R 755 ../htdocs/
-elif [ -d "/home/instomer-chatcrm/htdocs" ] && [ -d "/home/instomer-chatcrm/frontend/dist" ]; then
-    cp -rf /home/instomer-chatcrm/frontend/dist/* /home/instomer-chatcrm/htdocs/
-    chmod -R 755 /home/instomer-chatcrm/htdocs/
-fi
-
-echo "🔄 [5/5] PM2 Cluster Sıfır Kesinti ile Yenileniyor (Zero-Downtime Reload)..."
-if pm2 describe instomer 2>&1 | grep -q "your-username"; then
-    echo "🧹 Eski/geçersiz instomer tanımı temizleniyor..."
-    pm2 delete instomer || true
-fi
-
-if pm2 describe chatcrm-api > /dev/null 2>&1 && ! pm2 describe instomer > /dev/null 2>&1; then
-    echo "🔄 PM2 servis adı chatcrm-api -> instomer olarak güncelleniyor..."
-    pm2 delete chatcrm-api || true
-    pm2 start ecosystem.config.cjs
-    pm2 save
-else
-    pm2 reload ecosystem.config.cjs --update-env || pm2 reload instomer --update-env || pm2 start ecosystem.config.cjs || pm2 reload chatcrm-api --update-env
-fi
-
-echo "🎉 ✅ Güncelleme başarıyla tamamlandı! Kesinti süresi: 0 saniye."
-
+# Dağıtım depo kökündeki scripts/deploy.sh'a taşındı.
+# Sebep: root reddi, .env güvenlik taraması, dağıtım öncesi veritabanı
+# yedeği ve geri alma orada var — burada yoktu.
+#
+# Kullanım:
+#   cd ~/htdocs/app.instomer.com && ./scripts/deploy.sh
+#
+# Belge: docs/DEPLOYMENT.md
+# ═══════════════════════════════════════════════════════════════
+echo "⚠️  backend/deploy.sh kullanımdan kaldırıldı."
+echo "   Bunun yerine depo kökünden:  ./scripts/deploy.sh"
+echo "   Belge: docs/DEPLOYMENT.md"
+exit 1

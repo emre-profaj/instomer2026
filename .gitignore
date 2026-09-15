@@ -34,6 +34,7 @@ debug_*.cjs
 
 # Docs (optional - keep only README)
 DEPLOYMENT*.md
+!docs/DEPLOYMENT.md
 DOMAIN_CONFIG.md
 MULTI_TENANT_SYSTEM.md
 PM2_DEPLOYMENT.md
@@ -43,3 +44,9 @@ ADMIN_FACEBOOK_SETUP.md
 # Prisma generated
 backend/prisma/*.db
 backend/prisma/*.db-journal
+
+# Deploy — sunucuda oluşan, depoya girmemesi gerekenler
+.last-deployed-sha
+_backups/
+
+scripts/.deploy-target

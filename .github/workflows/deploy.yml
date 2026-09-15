@@ -1,0 +1,152 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  # KASITLI OLARAK false. Yarıda kesilen bir dağıtım, şeması güncellenmiş ama
+  # kodu derlenmemiş bir sunucu bırakabiliyor.
+  cancel-in-progress: false
+
+jobs:
+  # ═══════════════════════════════════════════════════════════
+  # 1 · DOĞRULA — runner'da, sunucuya DOKUNMADAN
+  # Derlenmeyen kod sunucuya hiç gitmiyor. Bu adımın tek amacı bu.
+  # ═══════════════════════════════════════════════════════════
+  verify:
+    name: Doğrula
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Backend bağımlılıkları
+        working-directory: backend
+        run: npm install --include=dev --no-audit --no-fund
+
+      - name: Prisma client
+        working-directory: backend
+        # Şemanın kendisi geçerli mi? DB'ye bağlanmaz.
+        run: npx prisma generate
+
+      - name: Kod bütünlüğü (sözdizimi + import yolları)
+        working-directory: backend
+        run: node scripts/verify-build.js
+
+      - name: Frontend bağımlılıkları
+        working-directory: frontend
+        run: npm install --include=dev --no-audit --no-fund
+
+      - name: Frontend derleme
+        working-directory: frontend
+        run: npm run build
+
+      - name: Randevu izin kapısı bütünlüğü
+        # prisma.appointment.create SADECE domain katmanında olmalı.
+        # Yeni bir kopya eklenirse izin kapısı atlanabilir — burada yakalıyoruz.
+        run: |
+          COUNT=$(grep -rl "prisma\.appointment\.create" \
+            backend/controllers backend/services backend/utils backend/adapters backend/helpers \
+            2>/dev/null | grep -v "services/domain/appointment.domain.js" | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne 0 ]; then
+            echo "❌ prisma.appointment.create domain katmanı DIŞINDA kullanılmış:"
+            grep -rn "prisma\.appointment\.create" \
+              backend/controllers backend/services backend/utils backend/adapters backend/helpers \
+              2>/dev/null | grep -v "services/domain/appointment.domain.js"
+            echo ""
+            echo "Randevu oluşturmak için services/domain/appointment.domain.js → createAppointment() kullan."
+            exit 1
+          fi
+          echo "✅ Randevu oluşturma tek kapıdan geçiyor"
+
+  # ═══════════════════════════════════════════════════════════
+  # 2 · DAĞIT — SSH ile
+  # ═══════════════════════════════════════════════════════════
+  deploy:
+    name: Dağıt
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Settings → Environments → production'a onaylayıcı ekle:
+    # main'e yanlışlıkla push etmenin maliyetini bir onay tıklamasına indiriyor.
+    environment: production
+    steps:
+      - name: SSH anahtarını yükle
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.VPS_SSH_PORT }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - uses: actions/checkout@v4
+
+      - name: Dosyaları sunucuya gönder (rsync)
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_SSH_PORT }}
+          APP:  ${{ secrets.VPS_APP_PATH }}
+        # Sunucunun GitHub'a erişimi YOK ve olmasına gerek de yok.
+        # Kodu bu runner zaten checkout etti; oradan doğrudan gönderiyoruz.
+        # --delete ile silinen dosyalar sunucuda da siliniyor; aşağıdaki
+        # istisnalar sunucuya ait olan ve depoda bulunmayan şeyleri koruyor.
+        run: |
+          rsync -az --delete --info=stats1 \
+            -e "ssh -i ~/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=yes" \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude '.env' \
+            --exclude 'logs/' \
+            --exclude 'uploads/' \
+            --exclude 'htdocs/' \
+            --exclude '_backups/' \
+            --exclude '.last-deployed-sha' \
+            ./ "$USER@$HOST:$APP/"
+
+      - name: Sunucuda dağıt
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ secrets.VPS_SSH_PORT }}
+          APP:  ${{ secrets.VPS_APP_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" bash -lc "'
+            set -Eeuo pipefail
+            cd \"$APP\"
+            chmod +x scripts/deploy.sh scripts/rollback.sh
+            DEPLOY_SHA=\"${{ github.sha }}\" \
+            DEPLOY_SUBJECT=\"$(echo \"${{ github.event.head_commit.message }}\" | head -1)\" \
+            ./scripts/deploy.sh
+          '"
+
+  # ═══════════════════════════════════════════════════════════
+  # 3 · DIŞARIDAN DOĞRULA
+  # İçeriden "ayağa kalktı" demek yetmiyor — Nginx ayrı bir arıza yüzeyi.
+  # ═══════════════════════════════════════════════════════════
+  smoke:
+    name: Dışarıdan doğrula
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: /health
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS --max-time 8 "https://app.instomer.com/health" >/dev/null; then
+              echo "✅ /health yanıt verdi (${i}. deneme)"; exit 0
+            fi
+            echo "... ${i}/10"; sleep 6
+          done
+          echo "❌ /health dışarıdan yanıt vermiyor"; exit 1
+
+      - name: /login
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://app.instomer.com/login")
+          [ "$code" = "200" ] && echo "✅ /login → 200" || { echo "❌ /login → $code"; exit 1; }
