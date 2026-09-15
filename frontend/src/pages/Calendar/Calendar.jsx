@@ -2747,9 +2747,9 @@ function formatDoctorDisplayName(rawName) {
                                                     </td>
                                                     <td>
                                                         {item.assignedTo ? (
-                                                            <span className={`activities-agent-badge ${item.assignedTo.isBot ? 'badge-ai-agent' : 'badge-human-agent'}`}>
-                                                                {item.assignedTo.isBot ? '🤖 ' : '👤 '}
-                                                                {item.assignedTo.name}
+                                                            <span className={`activities-agent-badge ${item.assignedTo?.isBot ? 'badge-ai-agent' : 'badge-human-agent'}`}>
+                                                                {item.assignedTo?.isBot ? '🤖 ' : '👤 '}
+                                                                {item.assignedTo?.name || (typeof item.assignedTo === 'string' ? item.assignedTo : '')}
                                                             </span>
                                                         ) : (
                                                             <span className="activities-empty">—</span>

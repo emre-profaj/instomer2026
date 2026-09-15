@@ -81,13 +81,11 @@ export const getAppointments = async (req, res) => {
 
         // Get AI Bots for appointments
         const botIds = [...new Set(appointments.map(a => a.createdByBotId).filter(id => id))];
+        const botWhere = botIds.length > 0
+            ? { OR: [{ id: { in: botIds } }, { workspaceId }] }
+            : { workspaceId };
         const aiBots = await prisma.aIBot.findMany({
-            where: {
-                OR: [
-                    { id: { in: botIds } },
-                    { workspaceId }
-                ]
-            },
+            where: botWhere,
             select: { id: true, name: true, role: true, workspaceId: true }
         });
         const botMap = Object.fromEntries(aiBots.map(b => [b.id, b]));
