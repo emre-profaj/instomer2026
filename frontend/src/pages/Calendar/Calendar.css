@@ -3658,3 +3658,70 @@
     padding: 2px 7px;
     border-radius: 6px;
 }
+
+/* ════════════════════════════════════════════
+   Calendar Contact Sidebar Drawer (Option 2)
+   ════════════════════════════════════════════ */
+
+.calendar-contact-sidebar-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 420px;
+    max-width: 90vw;
+    height: 100vh;
+    background: #ffffff;
+    z-index: 2200;
+    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.22);
+    display: flex;
+    flex-direction: column;
+    animation: drawerSlideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes drawerSlideInRight {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
+}
+
+/* Activity detail popup styling */
+.calendar-activity-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1500;
+    backdrop-filter: blur(2px);
+}
+
+.calendar-activity-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border-radius: 16px;
+    padding: 0;
+    z-index: 1600;
+    width: 440px;
+    max-width: 90vw;
+    max-height: 85vh;
+    overflow: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: fadeInScale 0.2s ease;
+    transition: left 0.25s ease;
+}
+
+/* On large screens, adjust modals so they smoothly center to the left of the right drawer */
+@media (min-width: 1200px) {
+    .calendar-page.has-sidebar-drawer .modal-overlay {
+        padding-right: 420px;
+        transition: padding-right 0.25s ease;
+    }
+
+    .calendar-page.has-sidebar-drawer .calendar-activity-popup {
+        left: calc(50% - 210px);
+    }
+}

@@ -4172,7 +4172,6 @@ export const scheduleCall = async (req, res) => {
 export const getScheduledCalls = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const now = new Date();
         const calls = await prisma.scheduledCall.findMany({
             where: {
                 workspaceId,
@@ -4180,7 +4179,40 @@ export const getScheduledCalls = async (req, res) => {
             },
             orderBy: { scheduledAt: 'asc' }
         });
-        res.json({ scheduledCalls: calls });
+
+        // Enrich calls with contactId and contact details if missing
+        const enrichedCalls = await Promise.all(calls.map(async (call) => {
+            if (!call.contactId && call.toNumber) {
+                try {
+                    const cleanNumber = call.toNumber.replace(/[^0-9]/g, '');
+                    const last10 = cleanNumber.slice(-10);
+                    if (last10.length >= 7) {
+                        const contact = await prisma.contact.findFirst({
+                            where: {
+                                workspaceId,
+                                OR: [
+                                    { phone: { contains: last10 } },
+                                    { phones: { contains: last10 } }
+                                ]
+                            },
+                            select: { id: true, name: true, fullName: true, phone: true }
+                        });
+                        if (contact) {
+                            return {
+                                ...call,
+                                contactId: contact.id,
+                                contactName: call.contactName || contact.fullName || contact.name
+                            };
+                        }
+                    }
+                } catch (lookupErr) {
+                    console.error('Scheduled call contact enrichment error:', lookupErr);
+                }
+            }
+            return call;
+        }));
+
+        res.json({ scheduledCalls: enrichedCalls });
     } catch (error) {
         console.error('❌ [Retell] Get scheduled calls error:', error);
         res.status(500).json({ error: 'Failed to fetch scheduled calls' });

@@ -789,6 +789,46 @@ function formatDoctorDisplayName(rawName) {
         }
     };
 
+    const resolveAndSetContact = async (contactId, phone, name) => {
+        if (contactId) {
+            setSelectedContactId(contactId);
+            return;
+        }
+        if (!currentWorkspace?.id) return;
+
+        // 1. Try search by phone
+        if (phone) {
+            const cleanPhone = phone.replace(/[^0-9]/g, '');
+            const last10 = cleanPhone.slice(-10);
+            if (last10.length >= 7) {
+                try {
+                    const res = await contactAPI.getAll(currentWorkspace.id, { search: last10, limit: 1 });
+                    const contacts = res.data.contacts || [];
+                    if (contacts.length > 0) {
+                        setSelectedContactId(contacts[0].id);
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Error resolving contact by phone:', err);
+                }
+            }
+        }
+
+        // 2. Try search by name
+        if (name && name.trim()) {
+            try {
+                const res = await contactAPI.getAll(currentWorkspace.id, { search: name.trim(), limit: 1 });
+                const contacts = res.data.contacts || [];
+                if (contacts.length > 0) {
+                    setSelectedContactId(contacts[0].id);
+                    return;
+                }
+            } catch (err) {
+                console.error('Error resolving contact by name:', err);
+            }
+        }
+    };
+
     const openScheduledCallModal = (sc) => {
         setSelectedScheduledCall(sc);
         // Pre-fill with current scheduled time
@@ -796,6 +836,21 @@ function formatDoctorDisplayName(rawName) {
         const offset = d.getTimezoneOffset();
         const local = new Date(d.getTime() - (offset * 60 * 1000));
         setRescheduleDate(local.toISOString().slice(0, 16));
+
+        // Eşzamanlı kişi kartını aç (Option 2)
+        resolveAndSetContact(sc.contactId, sc.toNumber, sc.contactName);
+    };
+
+    const openActivityModal = (act) => {
+        setSelectedActivity(act);
+        if (act) {
+            // Eşzamanlı kişi kartını aç (Option 2)
+            resolveAndSetContact(
+                act.contactId || act.contact?.id,
+                act.contact?.phone,
+                act.contact?.name
+            );
+        }
     };
 
     const handleRescheduleCall = async () => {
@@ -1220,6 +1275,13 @@ function formatDoctorDisplayName(rawName) {
         setIsGoogleEventEditMode(false);
         setConflict(null);
         setIsModalOpen(true);
+
+        // Eşzamanlı kişi kartını aç (Option 2)
+        resolveAndSetContact(
+            appointment.contactId || appointment.contact?.id,
+            appointment.contactPhone,
+            appointment.contactName
+        );
     };
 
     const formatDateTimeLocal = (date) => {
@@ -1556,7 +1618,7 @@ function formatDoctorDisplayName(rawName) {
     };
 
     return (
-        <div className={`calendar-page ${layoutMode === 'list' ? 'calendar-page-list-mode' : ''}`}>
+        <div className={`calendar-page ${layoutMode === 'list' ? 'calendar-page-list-mode' : ''} ${selectedContactId ? 'has-sidebar-drawer' : ''}`}>
             {/* Full-width Header */}
             <div className="calendar-header">
 
@@ -2079,7 +2141,7 @@ function formatDoctorDisplayName(rawName) {
                                 const actMType = getMeetingType(act);
                                 const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
                                 return (
-                                    <div key={act.id} className="todo-item" onClick={() => setSelectedActivity(act)}>
+                                    <div key={act.id} className="todo-item" onClick={() => openActivityModal(act)}>
                                         <div className="todo-icon" style={{ backgroundColor: isMeetingAct ? actMType.color : cfg.color }}>
                                             {isMeetingAct ? actMType.icon : cfg.icon}
                                         </div>
@@ -2493,7 +2555,7 @@ function formatDoctorDisplayName(rawName) {
                                                     <div key={`act-${act.id}`}
                                                         className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
                                                         style={{ backgroundColor: isMeetingAct ? (actMType.color || cfg.color) : cfg.color, cursor: 'pointer' }}
-                                                        onClick={(e) => { e.stopPropagation(); setSelectedActivity(act); }}
+                                                        onClick={(e) => { e.stopPropagation(); openActivityModal(act); }}
                                                     >
                                                         {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
                                                         {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
@@ -2653,30 +2715,9 @@ function formatDoctorDisplayName(rawName) {
                                                         {item.contactName ? (
                                                             <button
                                                                 className="activities-contact-link"
-                                                                onClick={async (e) => {
+                                                                onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    // Search contact by phone or name
-                                                                    if (item.contactPhone && currentWorkspace?.id) {
-                                                                        try {
-                                                                            const res = await contactAPI.getAll(currentWorkspace.id, { search: item.contactPhone, limit: 1 });
-                                                                            const contacts = res.data.contacts || [];
-                                                                            if (contacts.length > 0) {
-                                                                                setSelectedContactId(contacts[0].id);
-                                                                                return;
-                                                                            }
-                                                                        } catch {}
-                                                                    }
-                                                                    if (item.contactName && currentWorkspace?.id) {
-                                                                        try {
-                                                                            const res = await contactAPI.getAll(currentWorkspace.id, { search: item.contactName, limit: 1 });
-                                                                            const contacts = res.data.contacts || [];
-                                                                            if (contacts.length > 0) {
-                                                                                setSelectedContactId(contacts[0].id);
-                                                                                return;
-                                                                            }
-                                                                        } catch {}
-                                                                    }
-                                                                    alert('Bu kişi rehberde bulunamadı.');
+                                                                    resolveAndSetContact(null, item.contactPhone, item.contactName);
                                                                 }}
                                                             >
                                                                 <User size={13} />
@@ -3402,92 +3443,243 @@ function formatDoctorDisplayName(rawName) {
             )}
 
             {/* Scheduled Call Edit Modal */}
-            {selectedScheduledCall && (
-                <div className="modal-overlay" onClick={() => setSelectedScheduledCall(null)}>
-                    <div className="apt-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                        <div className="apt-modal-header">
-                            <h2>📞 Planlanmış Arama</h2>
-                            <button className="apt-modal-close" onClick={() => setSelectedScheduledCall(null)} style={{ color: '#ffffff' }}>
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="apt-modal-body" style={{ padding: '20px' }}>
-                            {/* Contact Info */}
-                            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                    <User size={16} style={{ color: '#64748b' }} />
-                                    <span style={{ fontWeight: 600, color: '#1e293b' }}>{selectedScheduledCall.contactName || 'İsimsiz'}</span>
-                                </div>
+            {selectedScheduledCall && (() => {
+                let parsedVars = {};
+                if (selectedScheduledCall.dynamicVariables) {
+                    try {
+                        parsedVars = typeof selectedScheduledCall.dynamicVariables === 'string'
+                            ? JSON.parse(selectedScheduledCall.dynamicVariables)
+                            : selectedScheduledCall.dynamicVariables;
+                    } catch {}
+                }
+                const topic = parsedVars.interest_topic || parsedVars.topic || selectedScheduledCall.topic || selectedScheduledCall.interestTopic;
+                const instruction = parsedVars.custom_instruction || parsedVars.instruction || selectedScheduledCall.customInstruction;
+                const source = parsedVars.source || selectedScheduledCall.source;
+                const cleanPhone = selectedScheduledCall.toNumber ? selectedScheduledCall.toNumber.replace(/[^0-9]/g, '') : '';
+
+                return (
+                    <div className="modal-overlay" onClick={() => { setSelectedScheduledCall(null); setSelectedContactId(null); }}>
+                        <div className="apt-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+                            <div className="apt-modal-header">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <Phone size={16} style={{ color: '#64748b' }} />
-                                    <span style={{ color: '#475569' }}>{selectedScheduledCall.toNumber}</span>
+                                    <h2>📞 Planlanmış Arama</h2>
+                                    {selectedContactId && (
+                                        <span style={{
+                                            fontSize: 10.5,
+                                            fontWeight: 600,
+                                            background: 'rgba(255,255,255,0.22)',
+                                            color: '#fff',
+                                            padding: '2px 8px',
+                                            borderRadius: 12,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 4
+                                        }}>
+                                            👉 Kişi Kartı Açık
+                                        </span>
+                                    )}
+                                </div>
+                                <button className="apt-modal-close" onClick={() => setSelectedScheduledCall(null)} style={{ color: '#ffffff' }}>
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="apt-modal-body" style={{ padding: '20px' }}>
+                                {/* Contact Info + Quick Communication */}
+                                <div style={{ marginBottom: 14, padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <User size={16} style={{ color: '#64748b' }} />
+                                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>
+                                                {selectedScheduledCall.contactName || 'İsimsiz'}
+                                            </span>
+                                        </div>
+                                        {selectedScheduledCall.contactId && !selectedContactId && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedContactId(selectedScheduledCall.contactId)}
+                                                style={{
+                                                    fontSize: 11,
+                                                    fontWeight: 600,
+                                                    color: '#2563eb',
+                                                    background: '#eff6ff',
+                                                    border: '1px solid #bfdbfe',
+                                                    borderRadius: 6,
+                                                    padding: '2px 8px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Kişiyi Aç
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <Phone size={15} style={{ color: '#64748b' }} />
+                                            <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 13 }}>
+                                                {selectedScheduledCall.toNumber}
+                                            </span>
+                                        </div>
+                                        {cleanPhone && (
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                <a
+                                                    href={`tel:${selectedScheduledCall.toNumber}`}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                        fontSize: 11,
+                                                        fontWeight: 600,
+                                                        color: '#16a34a',
+                                                        background: '#dcfce7',
+                                                        border: '1px solid #86efac',
+                                                        padding: '3px 8px',
+                                                        borderRadius: 6,
+                                                        textDecoration: 'none'
+                                                    }}
+                                                    title="Telefonla Ara"
+                                                >
+                                                    <Phone size={11} /> Ara
+                                                </a>
+                                                <a
+                                                    href={`https://wa.me/${cleanPhone}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                        fontSize: 11,
+                                                        fontWeight: 600,
+                                                        color: '#15803d',
+                                                        background: '#dcfce7',
+                                                        border: '1px solid #86efac',
+                                                        padding: '3px 8px',
+                                                        borderRadius: 6,
+                                                        textDecoration: 'none'
+                                                    }}
+                                                    title="WhatsApp Sohbeti Aç"
+                                                >
+                                                    💬 WA
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Neden Arıyoruz? / Konu & Talimat */}
+                                {(topic || instruction || source) ? (
+                                    <div style={{
+                                        marginBottom: 14,
+                                        padding: '12px 14px',
+                                        background: '#fffbeb',
+                                        borderRadius: 10,
+                                        border: '1px solid #fde68a'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <span>🎯 NEDEN ARIYORUZ?</span>
+                                            </div>
+                                            {source && (
+                                                <span style={{ fontSize: 10, fontWeight: 600, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, border: '1px solid #fde68a' }}>
+                                                    Kaynak: {source}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {topic && (
+                                            <div style={{ fontSize: 13, fontWeight: 700, color: '#78350f', marginBottom: instruction ? 4 : 0 }}>
+                                                {topic}
+                                            </div>
+                                        )}
+                                        {instruction && (
+                                            <div style={{ fontSize: 12, color: '#92400e', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
+                                                {instruction}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        marginBottom: 14,
+                                        padding: '10px 14px',
+                                        background: '#f8fafc',
+                                        borderRadius: 10,
+                                        border: '1px solid #e2e8f0',
+                                        fontSize: 12,
+                                        color: '#64748b',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6
+                                    }}>
+                                        <span>ℹ️</span> Kişinin tüm geçmişi, konuşmaları ve detayları sağdaki kişi kartında yüklendi.
+                                    </div>
+                                )}
+
+                                {/* Current Time */}
+                                <div style={{ marginBottom: 14, padding: '10px 16px', background: '#fff7ed', borderRadius: 8, border: '1px solid #fed7aa' }}>
+                                    <div style={{ fontSize: 11, color: '#9a3412', fontWeight: 600, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                        Mevcut Planlanan Saat
+                                    </div>
+                                    <div style={{ fontSize: 15, color: '#c2410c', fontWeight: 700 }}>
+                                        <Clock size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+                                        {new Date(selectedScheduledCall.scheduledAt).toLocaleString('tr-TR', {
+                                            day: '2-digit', month: '2-digit', year: 'numeric',
+                                            hour: '2-digit', minute: '2-digit'
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Reschedule Date */}
+                                <div style={{ marginBottom: 8 }}>
+                                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                        Yeni Tarih / Saat
+                                    </label>
+                                    <input
+                                        type="datetime-local"
+                                        value={rescheduleDate}
+                                        onChange={(e) => setRescheduleDate(e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '10px 12px', border: '1.5px solid #d1d5db',
+                                            borderRadius: 8, fontSize: 14, outline: 'none',
+                                            transition: 'border-color 0.2s', boxSizing: 'border-box'
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                                        onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                    />
                                 </div>
                             </div>
 
-                            {/* Current Time */}
-                            <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fff7ed', borderRadius: 8, border: '1px solid #fed7aa' }}>
-                                <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 600, marginBottom: 4 }}>Mevcut Planlanan Saat</div>
-                                <div style={{ fontSize: 15, color: '#c2410c', fontWeight: 600 }}>
-                                    <Clock size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
-                                    {new Date(selectedScheduledCall.scheduledAt).toLocaleString('tr-TR', {
-                                        day: '2-digit', month: '2-digit', year: 'numeric',
-                                        hour: '2-digit', minute: '2-digit'
-                                    })}
+                            {/* Footer */}
+                            <div className="apt-modal-footer">
+                                <button
+                                    type="button"
+                                    className="apt-btn-delete"
+                                    onClick={() => handleCancelScheduledCall(selectedScheduledCall)}
+                                    disabled={cancellingCallId === selectedScheduledCall.id}
+                                >
+                                    <Trash2 size={15} />
+                                    {cancellingCallId === selectedScheduledCall.id ? 'İptal ediliyor...' : 'Aramayı İptal Et'}
+                                </button>
+                                <div className="apt-footer-right">
+                                    <button
+                                        type="button"
+                                        className="apt-btn-cancel"
+                                        onClick={() => setSelectedScheduledCall(null)}
+                                    >
+                                        Kapat
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="apt-btn-save"
+                                        onClick={handleRescheduleCall}
+                                        disabled={rescheduling}
+                                    >
+                                        {rescheduling ? 'Güncelleniyor...' : 'Saati Güncelle'}
+                                    </button>
                                 </div>
-                            </div>
-
-                            {/* Reschedule Date */}
-                            <div style={{ marginBottom: 20 }}>
-                                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-                                    Yeni Tarih / Saat
-                                </label>
-                                <input
-                                    type="datetime-local"
-                                    value={rescheduleDate}
-                                    onChange={(e) => setRescheduleDate(e.target.value)}
-                                    style={{
-                                        width: '100%', padding: '10px 12px', border: '1.5px solid #d1d5db',
-                                        borderRadius: 8, fontSize: 14, outline: 'none',
-                                        transition: 'border-color 0.2s'
-                                    }}
-                                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="apt-modal-footer">
-                            <button
-                                type="button"
-                                className="apt-btn-delete"
-                                onClick={() => handleCancelScheduledCall(selectedScheduledCall)}
-                                disabled={cancellingCallId === selectedScheduledCall.id}
-                            >
-                                <Trash2 size={15} />
-                                {cancellingCallId === selectedScheduledCall.id ? 'İptal ediliyor...' : 'Aramayı İptal Et'}
-                            </button>
-                            <div className="apt-footer-right">
-                                <button
-                                    type="button"
-                                    className="apt-btn-cancel"
-                                    onClick={() => setSelectedScheduledCall(null)}
-                                >
-                                    Kapat
-                                </button>
-                                <button
-                                    type="button"
-                                    className="apt-btn-save"
-                                    onClick={handleRescheduleCall}
-                                    disabled={rescheduling}
-                                >
-                                    {rescheduling ? 'Güncelleniyor...' : 'Saati Güncelle'}
-                                </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* Day Popup — hücrede sığmayan öğeleri gösterir */}
             {dayPopup && (
@@ -3569,7 +3761,7 @@ function formatDoctorDisplayName(rawName) {
                                         render: (
                                             <div key={`dp-act-${act.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
                                                 style={{ borderLeftColor: isMeetingAct ? actMType.color : cfg.color }}
-                                                onClick={() => { setSelectedActivity(act); setDayPopup(null); }}
+                                                onClick={() => { openActivityModal(act); setDayPopup(null); }}
                                             >
                                                 {isMeetingAct && <span className="popup-badge meeting-type" style={{ background: actMType.color, color: '#fff' }}>{actMType.icon} {actMType.label}</span>}
                                                 {isOverdue && <span className="popup-badge overdue">⚠️</span>}
@@ -3600,13 +3792,8 @@ function formatDoctorDisplayName(rawName) {
                 const sent = sentimentMap[act.callSentiment];
                 return (
                     <>
-                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9998, backdropFilter: 'blur(2px)' }} onClick={() => setSelectedActivity(null)} />
-                        <div style={{
-                            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                            background: '#fff', borderRadius: 16, padding: 0, zIndex: 9999,
-                            width: 420, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto',
-                            boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'fadeInScale 0.2s ease'
-                        }}>
+                        <div className="calendar-activity-overlay" onClick={() => { setSelectedActivity(null); setSelectedContactId(null); }} />
+                        <div className="calendar-activity-popup">
                             {/* Header */}
                             <div style={{
                                 padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9',
@@ -3617,7 +3804,22 @@ function formatDoctorDisplayName(rawName) {
                                     background: cfg.color + '20', fontSize: 20
                                 }}>{cfg.icon}</div>
                                 <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{act.title || cfg.label}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{act.title || cfg.label}</span>
+                                        {selectedContactId && (
+                                            <span style={{
+                                                fontSize: 10.5,
+                                                fontWeight: 600,
+                                                background: '#eff6ff',
+                                                color: '#2563eb',
+                                                padding: '2px 8px',
+                                                borderRadius: 12,
+                                                border: '1px solid #bfdbfe'
+                                            }}>
+                                                👉 Kişi Kartı Açık
+                                            </span>
+                                        )}
+                                    </div>
                                     <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{cfg.label}</div>
                                 </div>
                                 <button onClick={() => setSelectedActivity(null)} style={{
@@ -3646,12 +3848,67 @@ function formatDoctorDisplayName(rawName) {
                                     )}
                                 </div>
 
-                                {/* Kişi */}
-                                {act.contact?.name && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <User size={14} style={{ color: '#94a3b8' }} />
-                                        <span style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>{act.contact.name}</span>
-                                        {act.contact.phone && <span style={{ fontSize: 12, color: '#94a3b8' }}>• {act.contact.phone}</span>}
+                                {/* Kişi & Hızlı İletişim */}
+                                {(act.contact?.name || act.contactName) && (
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        background: '#f8fafc', padding: '10px 14px', borderRadius: 10, border: '1px solid #e2e8f0'
+                                    }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <User size={15} style={{ color: '#64748b' }} />
+                                                <span style={{ fontSize: 13, color: '#1e293b', fontWeight: 600 }}>{act.contact?.name || act.contactName}</span>
+                                            </div>
+                                            {(act.contact?.phone || act.contactPhone) && (
+                                                <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace', marginTop: 2, marginLeft: 23 }}>
+                                                    {act.contact?.phone || act.contactPhone}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {(act.contact?.phone || act.contactPhone) && (
+                                            <div style={{ display: 'flex', gap: 6 }}>
+                                                <a
+                                                    href={`tel:${act.contact?.phone || act.contactPhone}`}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 3,
+                                                        fontSize: 11,
+                                                        fontWeight: 600,
+                                                        color: '#16a34a',
+                                                        background: '#dcfce7',
+                                                        border: '1px solid #86efac',
+                                                        padding: '3px 8px',
+                                                        borderRadius: 6,
+                                                        textDecoration: 'none'
+                                                    }}
+                                                    title="Telefonla Ara"
+                                                >
+                                                    <Phone size={11} /> Ara
+                                                </a>
+                                                <a
+                                                    href={`https://wa.me/${(act.contact?.phone || act.contactPhone).replace(/[^0-9]/g, '')}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 3,
+                                                        fontSize: 11,
+                                                        fontWeight: 600,
+                                                        color: '#15803d',
+                                                        background: '#dcfce7',
+                                                        border: '1px solid #86efac',
+                                                        padding: '3px 8px',
+                                                        borderRadius: 6,
+                                                        textDecoration: 'none'
+                                                    }}
+                                                    title="WhatsApp Sohbeti Aç"
+                                                >
+                                                    💬 WA
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -3720,9 +3977,9 @@ function formatDoctorDisplayName(rawName) {
                                 padding: '14px 24px', borderTop: '1px solid #f1f5f9',
                                 display: 'flex', gap: 8, justifyContent: 'flex-end'
                             }}>
-                                {(act.contactId || act.contact?.id) && (
+                                {(act.contactId || act.contact?.id) && !selectedContactId && (
                                     <button
-                                        onClick={() => { setSelectedContactId(act.contactId || act.contact?.id); setSelectedActivity(null); }}
+                                        onClick={() => { setSelectedContactId(act.contactId || act.contact?.id); }}
                                         style={{
                                             padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0',
                                             background: '#fff', color: '#475569', fontSize: 13, fontWeight: 500,
@@ -3746,17 +4003,19 @@ function formatDoctorDisplayName(rawName) {
                 );
             })()}
 
-            {/* ContactSidebar — opens from list view */}
+            {/* ContactSidebar — opens simultaneously with activities / scheduled calls */}
             {selectedContactId && (
-                <ContactSidebar
-                    contactId={selectedContactId}
-                    isOpen={!!selectedContactId}
-                    onClose={() => setSelectedContactId(null)}
-                    members={agents}
-                    teams={[]}
-                    isOwner={true}
-                    currentUserId={null}
-                />
+                <div className="calendar-contact-sidebar-drawer">
+                    <ContactSidebar
+                        contactId={selectedContactId}
+                        isOpen={!!selectedContactId}
+                        onClose={() => setSelectedContactId(null)}
+                        members={agents}
+                        teams={[]}
+                        isOwner={true}
+                        currentUserId={null}
+                    />
+                </div>
             )}
 
             {/* ContactSidebar — hızlı eylem butonlarından açılır, initialAction ile */}
