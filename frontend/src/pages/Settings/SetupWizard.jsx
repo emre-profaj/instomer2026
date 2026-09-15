@@ -9,7 +9,8 @@ import {
   productAPI,
   teamAPI,
   funnelAPI,
-  aiAPI
+  aiAPI,
+  resourceAPI
 } from '../../services/api';
 import {
   getTopicCategories,
@@ -44,7 +45,8 @@ import {
   Bot,
   ChevronUp,
   ChevronDown,
-  RefreshCw
+  RefreshCw,
+  UserCircle
 } from 'lucide-react';
 
 const AIIcon = () => (
@@ -67,6 +69,7 @@ const STEPS = [
   { key: 'subeler', label: 'Şubeler', icon: <MapPin size={16} /> },
   { key: 'kategoriler', label: 'Kategoriler', icon: <Folder size={16} /> },
   { key: 'urunler', label: 'Ürünler', icon: <Package size={16} /> },
+  { key: 'kaynaklar', label: 'Kaynaklar', icon: <UserCircle size={16} /> },
   { key: 'akislar', label: 'Akışlar', icon: <Workflow size={16} /> },
   { key: 'takimlar', label: 'Takımlar', icon: <Users size={16} /> },
   { key: 'agentlar', label: 'AI Agentlar', icon: <AIIcon /> },
@@ -244,6 +247,36 @@ const SetupWizard = () => {
   const [editProductData, setEditProductData] = useState({ name: '', price: '', categoryId: '' });
   const [savingEditProduct, setSavingEditProduct] = useState(false);
 
+  // 5.5 Kaynaklar (Resources / Doktorlar / Uzmanlar / Alanlar) State
+  const [resources, setResources] = useState([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [showAddResource, setShowAddResource] = useState(false);
+  const [newResource, setNewResource] = useState({
+    name: '',
+    title: '',
+    description: '',
+    type: 'PERSON',
+    availableStart: '09:00',
+    availableEnd: '18:00',
+    slotMinutes: 30,
+    branchIds: [],
+    syncProvider: 'WORKSPACE_DEFAULT'
+  });
+  const [savingResource, setSavingResource] = useState(false);
+  const [editingResourceId, setEditingResourceId] = useState(null);
+  const [editResourceData, setEditResourceData] = useState({
+    name: '',
+    title: '',
+    description: '',
+    type: 'PERSON',
+    availableStart: '09:00',
+    availableEnd: '18:00',
+    slotMinutes: 30,
+    branchIds: [],
+    syncProvider: 'WORKSPACE_DEFAULT'
+  });
+  const [savingEditResource, setSavingEditResource] = useState(false);
+
   // 6. Akışlar State
   const [funnels, setFunnels] = useState([]);
   const [showAddFunnel, setShowAddFunnel] = useState(false);
@@ -394,6 +427,23 @@ const SetupWizard = () => {
         .finally(() => setProductsLoading(false));
     } else {
       setProductsLoading(false);
+    }
+
+    // Load Resources (Kaynaklar)
+    setResourcesLoading(true);
+    if (typeof resourceAPI?.getAll === 'function') {
+      resourceAPI.getAll(wsId)
+        .then(res => {
+          const raw = res.data?.resources || res.data;
+          setResources(Array.isArray(raw) ? raw : []);
+        })
+        .catch(err => {
+          console.error('Resources Load error:', err);
+          setResources([]);
+        })
+        .finally(() => setResourcesLoading(false));
+    } else {
+      setResourcesLoading(false);
     }
 
     // Load Funnels
@@ -594,6 +644,18 @@ const SetupWizard = () => {
         return `${idx + 1}. ${p.name || 'Ürün'}${priceStr}${catStr}${descStr}`;
       });
       sections.push(`📦 ÜRÜN VE HİZMET PORTFÖYÜ (${products.length} Kalem):\n${pLines.join('\n')}`);
+    }
+
+    // 5.5. Kaynaklar (Doktorlar, Uzmanlar, Odalar & Alanlar)
+    if (Array.isArray(resources) && resources.length > 0) {
+      const rLines = resources.map((r, idx) => {
+        const titleStr = r.title ? ` [${r.title}]` : '';
+        const descStr = r.description ? ` (${r.description})` : '';
+        const typeStr = r.type ? ` [Tip: ${r.type}]` : '';
+        const workStr = (r.availableStart && r.availableEnd) ? ` | Mesai: ${r.availableStart} - ${r.availableEnd} (${r.slotMinutes || 30} dk)` : '';
+        return `${idx + 1}. ${r.name}${titleStr}${typeStr}${descStr}${workStr}`;
+      });
+      sections.push(`🩺 KAYNAKLAR, UZMANLAR VE HİZMET ALANLARI (${resources.length} Kaynak):\n${rLines.join('\n')}`);
     }
 
     // 6. Akışlar & Aşamalar
@@ -940,6 +1002,106 @@ const SetupWizard = () => {
       showSuccess('Ürün silindi.');
     } catch (err) {
       showError(err.response?.data?.error || 'Ürün silinirken hata oluştu.');
+    }
+  };
+
+  // ─── RESOURCE ACTIONS (CREATE / EDIT / DELETE) ───────────────────────────
+  const handleCreateResource = async () => {
+    if (!newResource.name.trim()) {
+      showError('Kaynak adı / Ad Soyad gereklidir.');
+      return;
+    }
+    setSavingResource(true);
+    try {
+      const res = await resourceAPI.create(currentWorkspace.id, {
+        ...newResource,
+        name: newResource.name.trim(),
+        slotMinutes: parseInt(newResource.slotMinutes, 10) || 30
+      });
+      const created = res.data?.resource || res.data;
+      if (created?.id) {
+        setResources(prev => [...prev, created]);
+      } else {
+        const allRes = await resourceAPI.getAll(currentWorkspace.id);
+        const list = allRes.data?.resources || allRes.data;
+        if (Array.isArray(list)) setResources(list);
+      }
+      showSuccess('Kaynak başarıyla eklendi!');
+      setNewResource({
+        name: '',
+        title: '',
+        description: '',
+        type: 'PERSON',
+        availableStart: '09:00',
+        availableEnd: '18:00',
+        slotMinutes: 30,
+        branchIds: [],
+        syncProvider: 'WORKSPACE_DEFAULT'
+      });
+      setShowAddResource(false);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kaynak eklenirken hata oluştu.');
+    } finally {
+      setSavingResource(false);
+    }
+  };
+
+  const handleStartEditResource = (resource) => {
+    setEditingResourceId(resource.id);
+    const branchIds = (resource.resourceBranches && resource.resourceBranches.length > 0)
+      ? resource.resourceBranches.map(rb => rb.branchId)
+      : (resource.branchIds || (resource.branchId ? [resource.branchId] : []));
+
+    setEditResourceData({
+      name: resource.name || '',
+      title: resource.title || '',
+      description: resource.description || '',
+      type: resource.type || 'PERSON',
+      availableStart: resource.availableStart || '09:00',
+      availableEnd: resource.availableEnd || '18:00',
+      slotMinutes: resource.slotMinutes || 30,
+      branchIds: branchIds,
+      syncProvider: resource.syncProvider || 'WORKSPACE_DEFAULT'
+    });
+  };
+
+  const handleUpdateResource = async () => {
+    if (!editResourceData.name.trim()) {
+      showError('Kaynak adı / Ad Soyad gereklidir.');
+      return;
+    }
+    setSavingEditResource(true);
+    try {
+      const res = await resourceAPI.update(currentWorkspace.id, editingResourceId, {
+        ...editResourceData,
+        name: editResourceData.name.trim(),
+        slotMinutes: parseInt(editResourceData.slotMinutes, 10) || 30
+      });
+      const updated = res.data?.resource || res.data;
+      const allRes = await resourceAPI.getAll(currentWorkspace.id);
+      const list = allRes.data?.resources || allRes.data;
+      if (Array.isArray(list)) {
+        setResources(list);
+      } else {
+        setResources(prev => prev.map(r => r.id === editingResourceId ? (updated?.id ? updated : { ...r, ...editResourceData }) : r));
+      }
+      showSuccess('Kaynak güncellendi.');
+      setEditingResourceId(null);
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kaynak güncellenirken hata oluştu.');
+    } finally {
+      setSavingEditResource(false);
+    }
+  };
+
+  const handleDeleteResource = async (resourceId, name) => {
+    if (!window.confirm(`"${name || 'Bu kaynağı'}" silmek istediğinize emin misiniz?`)) return;
+    try {
+      await resourceAPI.delete(currentWorkspace.id, resourceId);
+      setResources(prev => prev.filter(r => r.id !== resourceId));
+      showSuccess('Kaynak silindi.');
+    } catch (err) {
+      showError(err.response?.data?.error || 'Kaynak silinirken hata oluştu.');
     }
   };
 
@@ -2271,6 +2433,408 @@ const SetupWizard = () => {
     </div>
   );
 
+  const RESOURCE_TYPE_MAP = {
+    PERSON: 'Kişi / Doktor',
+    SPECIALIST: 'Uzman',
+    THERAPIST: 'Terapist',
+    STAFF: 'Personel',
+    ROOM: 'Oda / Alan',
+    EQUIPMENT: 'Cihaz / Ekipman',
+    OTHER: 'Diğer'
+  };
+
+  const renderKaynaklar = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '820px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>Kaynaklar / Doktorlar & Hizmet Alanları</h2>
+          <p style={{ color: '#64748b', margin: 0, fontSize: '14px' }}>Randevu ve rezervasyon verilen doktorlar, uzmanlar, terapistler, odalar veya ekipmanlar.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddResource(!showAddResource)}
+          style={primaryBtnStyle}
+        >
+          <Plus size={16} /> Yeni Kaynak Ekle
+        </button>
+      </div>
+
+      {showAddResource && (
+        <div style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '18px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a' }}>Yeni Kaynak / Doktor Ekle</h4>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>* Zorunlu alan</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Ad Soyad / Kaynak Adı *</label>
+              <input
+                type="text"
+                placeholder="Örn: Dr. Ahmet Yılmaz / Lazer Odası 1"
+                value={newResource.name}
+                onChange={e => setNewResource({ ...newResource, name: e.target.value })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Ünvan (Opsiyonel)</label>
+              <input
+                type="text"
+                placeholder="Örn: Uzm. Dr. / Fizyoterapist"
+                value={newResource.title}
+                onChange={e => setNewResource({ ...newResource, title: e.target.value })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Bölüm / Uzmanlık / Alan</label>
+              <input
+                type="text"
+                placeholder="Örn: Dermatoloji / Cilt Bakımı"
+                value={newResource.description}
+                onChange={e => setNewResource({ ...newResource, description: e.target.value })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Kaynak Tipi</label>
+              <select
+                value={newResource.type}
+                onChange={e => setNewResource({ ...newResource, type: e.target.value })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              >
+                <option value="PERSON">Kişi / Doktor</option>
+                <option value="SPECIALIST">Uzman</option>
+                <option value="THERAPIST">Terapist</option>
+                <option value="STAFF">Personel</option>
+                <option value="ROOM">Oda / Alan</option>
+                <option value="EQUIPMENT">Ekipman / Cihaz</option>
+                <option value="OTHER">Diğer</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Mesai Başlangıç</label>
+              <input
+                type="time"
+                value={newResource.availableStart}
+                onChange={e => setNewResource({ ...newResource, availableStart: e.target.value })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Mesai Bitiş</label>
+              <input
+                type="time"
+                value={newResource.availableEnd}
+                onChange={e => setNewResource({ ...newResource, availableEnd: e.target.value })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Randevu Süresi</label>
+              <select
+                value={newResource.slotMinutes}
+                onChange={e => setNewResource({ ...newResource, slotMinutes: parseInt(e.target.value, 10) })}
+                style={{ ...inputStyle, marginTop: '4px' }}
+              >
+                <option value={15}>15 Dakika</option>
+                <option value={20}>20 Dakika</option>
+                <option value={30}>30 Dakika</option>
+                <option value={45}>45 Dakika</option>
+                <option value={60}>60 Dakika (1 Saat)</option>
+                <option value={90}>90 Dakika (1.5 Saat)</option>
+                <option value={120}>120 Dakika (2 Saat)</option>
+              </select>
+            </div>
+          </div>
+
+          {branches.length > 0 && (
+            <div>
+              <label style={labelStyle}>Hizmet Verdiği Şubeler</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                {branches.map(b => {
+                  const isSelected = newResource.branchIds.includes(b.id);
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => {
+                        setNewResource(prev => ({
+                          ...prev,
+                          branchIds: isSelected
+                            ? prev.branchIds.filter(id => id !== b.id)
+                            : [...prev.branchIds, b.id]
+                        }));
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: isSelected ? '1.5px solid #E63B2E' : '1px solid #cbd5e1',
+                        background: isSelected ? '#fef2f2' : '#fff',
+                        color: isSelected ? '#E63B2E' : '#475569',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {isSelected ? <Check size={12} /> : <MapPin size={12} />}
+                      {b.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+            <button type="button" onClick={() => setShowAddResource(false)} style={secondaryBtnStyle}>İptal</button>
+            <button type="button" onClick={handleCreateResource} disabled={savingResource} style={primaryBtnStyle}>
+              {savingResource ? 'Kaydediliyor...' : 'Kaynağı Ekle'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {resourcesLoading ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b' }}>
+          <Loader2 size={16} className="animate-spin" /> Kaynaklar yükleniyor...
+        </div>
+      ) : resources.length === 0 ? (
+        <div style={{ padding: '32px 24px', textAlign: 'center', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#64748b', background: '#fafafa' }}>
+          <UserCircle size={32} color="#94a3b8" style={{ marginBottom: '8px' }} />
+          <div style={{ fontWeight: 600, color: '#334155', marginBottom: '4px' }}>Henüz kayıtlı kaynak bulunmuyor</div>
+          <div style={{ fontSize: '13px' }}>Randevu alan doktor, terapist veya odalarınız varsa "Yeni Kaynak Ekle" butonuna basarak ilk kaynağınızı oluşturabilirsiniz.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {resources.map(resource => {
+            const branchNames = (resource.resourceBranches && resource.resourceBranches.length > 0)
+              ? resource.resourceBranches.map(rb => rb.branch?.name).filter(Boolean)
+              : (resource.branchIds || (resource.branchId ? [resource.branchId] : [])).map(id => branches.find(b => b.id === id)?.name).filter(Boolean);
+
+            if (editingResourceId === resource.id) {
+              return (
+                <div key={resource.id} style={{ border: '1.5px solid #E63B2E', borderRadius: '8px', padding: '18px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>Kaynağı Düzenle</div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Ad Soyad / Kaynak Adı *</label>
+                      <input
+                        type="text"
+                        value={editResourceData.name}
+                        onChange={e => setEditResourceData({ ...editResourceData, name: e.target.value })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Ünvan</label>
+                      <input
+                        type="text"
+                        value={editResourceData.title}
+                        onChange={e => setEditResourceData({ ...editResourceData, title: e.target.value })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Bölüm / Uzmanlık</label>
+                      <input
+                        type="text"
+                        value={editResourceData.description}
+                        onChange={e => setEditResourceData({ ...editResourceData, description: e.target.value })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Kaynak Tipi</label>
+                      <select
+                        value={editResourceData.type}
+                        onChange={e => setEditResourceData({ ...editResourceData, type: e.target.value })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      >
+                        <option value="PERSON">Kişi / Doktor</option>
+                        <option value="SPECIALIST">Uzman</option>
+                        <option value="THERAPIST">Terapist</option>
+                        <option value="STAFF">Personel</option>
+                        <option value="ROOM">Oda / Alan</option>
+                        <option value="EQUIPMENT">Ekipman / Cihaz</option>
+                        <option value="OTHER">Diğer</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Mesai Başlangıç</label>
+                      <input
+                        type="time"
+                        value={editResourceData.availableStart}
+                        onChange={e => setEditResourceData({ ...editResourceData, availableStart: e.target.value })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Mesai Bitiş</label>
+                      <input
+                        type="time"
+                        value={editResourceData.availableEnd}
+                        onChange={e => setEditResourceData({ ...editResourceData, availableEnd: e.target.value })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Randevu Süresi</label>
+                      <select
+                        value={editResourceData.slotMinutes}
+                        onChange={e => setEditResourceData({ ...editResourceData, slotMinutes: parseInt(e.target.value, 10) })}
+                        style={{ ...inputStyle, marginTop: '4px' }}
+                      >
+                        <option value={15}>15 Dakika</option>
+                        <option value={20}>20 Dakika</option>
+                        <option value={30}>30 Dakika</option>
+                        <option value={45}>45 Dakika</option>
+                        <option value={60}>60 Dakika (1 Saat)</option>
+                        <option value={90}>90 Dakika (1.5 Saat)</option>
+                        <option value={120}>120 Dakika (2 Saat)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {branches.length > 0 && (
+                    <div>
+                      <label style={labelStyle}>Hizmet Verdiği Şubeler</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                        {branches.map(b => {
+                          const isSelected = (editResourceData.branchIds || []).includes(b.id);
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => {
+                                setEditResourceData(prev => ({
+                                  ...prev,
+                                  branchIds: isSelected
+                                    ? prev.branchIds.filter(id => id !== b.id)
+                                    : [...(prev.branchIds || []), b.id]
+                                }));
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '20px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                border: isSelected ? '1.5px solid #E63B2E' : '1px solid #cbd5e1',
+                                background: isSelected ? '#fef2f2' : '#fff',
+                                color: isSelected ? '#E63B2E' : '#475569',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              {isSelected ? <Check size={12} /> : <MapPin size={12} />}
+                              {b.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={() => setEditingResourceId(null)} style={secondaryBtnStyle}>İptal</button>
+                    <button type="button" onClick={handleUpdateResource} disabled={savingEditResource} style={primaryBtnStyle}>
+                      {savingEditResource ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={resource.id}
+                style={{
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  background: '#f8fafc',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: '15px', color: '#0f172a' }}>
+                      {resource.title ? `${resource.title} ` : ''}{resource.name}
+                    </span>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: '#e0f2fe', color: '#0369a1', fontWeight: 600 }}>
+                      {RESOURCE_TYPE_MAP[resource.type] || resource.type || 'Kişi'}
+                    </span>
+                    <span style={{ color: '#16a34a', fontSize: '11px', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>
+                      Aktif
+                    </span>
+                  </div>
+
+                  {resource.description && (
+                    <div style={{ fontSize: '13px', color: '#0284c7', fontWeight: 500 }}>
+                      Bölüm / Uzmanlık: {resource.description}
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                    <span>⏰ Mesai: {resource.availableStart || '09:00'} - {resource.availableEnd || '18:00'}</span>
+                    <span>⏱️ Randevu: {resource.slotMinutes || 30} dk</span>
+                  </div>
+
+                  {branchNames.length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#E63B2E', fontWeight: 500, marginTop: '2px' }}>
+                      📍 Şubeler: {branchNames.join(', ')}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditResource(resource)}
+                    style={actionBtnStyle}
+                    title="Düzenle"
+                  >
+                    <Edit2 size={12} /> Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteResource(resource.id, resource.name)}
+                    style={deleteBtnStyle}
+                    title="Sil"
+                  >
+                    <Trash2 size={12} /> Sil
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   const renderAkislar = () => {
     const funnelList = Array.isArray(funnels) ? funnels : [];
     const defaultFunnel = funnelList.find(f => f && (f.funnelType === 'MAIN' || f.name === 'Genel Akış' || f.name === 'Genel' || f.name === 'Genel Müşteri Akışı'));
@@ -3313,6 +3877,10 @@ const SetupWizard = () => {
       ? compiledKb.structuredData.products
       : (Array.isArray(products) ? products : []);
 
+    const displayResources = (compiledKb?.structuredData?.resources && compiledKb.structuredData.resources.length > 0)
+      ? compiledKb.structuredData.resources
+      : (Array.isArray(resources) ? resources : []);
+
     const displayFunnels = (compiledKb?.structuredData?.funnels && compiledKb.structuredData.funnels.length > 0)
       ? compiledKb.structuredData.funnels
       : (Array.isArray(funnels) ? funnels : []);
@@ -3335,13 +3903,13 @@ const SetupWizard = () => {
           <div style={{ flex: 1 }}>
             <h2 style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 700, color: '#14532d' }}>Harika! Kurulumunuz Başarıyla Hazırlandı</h2>
             <p style={{ margin: 0, fontSize: '13px', color: '#166534', lineHeight: 1.5 }}>
-              Tüm adımlarda girdiğiniz firma detayları, çalışma saatleri, belgeler, şubeler, kategoriler, ürünler, akışlar ve takımlar <strong>birleşik Bilgi Bankası (AI Hafızası)</strong> olarak derlendi.
+              Tüm adımlarda girdiğiniz firma detayları, çalışma saatleri, belgeler, şubeler, kategoriler, ürünler, kaynaklar, akışlar ve takımlar <strong>birleşik Bilgi Bankası (AI Hafızası)</strong> olarak derlendi.
             </p>
           </div>
         </div>
 
-        {/* 9 Adım Özet Metrikleri */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        {/* 10 Adım Özet Metrikleri */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
           {[
             { label: 'Firma Adı', val: companyName || currentWorkspace?.name || 'Instomer', icon: <Building2 size={15} color="#64748b" /> },
             { label: 'Çalışma Saatleri (7 Gün)', val: companyHours ? (companyHours.length > 28 ? companyHours.slice(0, 26) + '...' : companyHours) : 'Tanımlı', icon: <Clock size={15} color="#64748b" /> },
@@ -3349,6 +3917,7 @@ const SetupWizard = () => {
             { label: 'Şubeler', val: `${displayBranches.length} Şube`, icon: <MapPin size={15} color="#64748b" /> },
             { label: 'Kategoriler', val: `${displayCategories.length} Kategori`, icon: <Folder size={15} color="#64748b" /> },
             { label: 'Ürün & Portföy', val: `${displayProducts.length} Kalem`, icon: <Package size={15} color="#64748b" /> },
+            { label: 'Kaynaklar & Uzmanlar', val: `${displayResources.length} Kaynak`, icon: <UserCircle size={15} color="#64748b" /> },
             { label: 'Satış Akışları', val: `${displayFunnels.length || 1} Akış Aktif`, icon: <Workflow size={15} color="#64748b" /> },
             { label: 'Departman & Ekipler', val: `${displayTeams.length || 1} Takım`, icon: <Users size={15} color="#64748b" /> },
             { label: 'AI Asistan', val: `${displayBots.filter(b => b.isActive).length} Asistan Aktif`, icon: <Bot size={15} color="#64748b" /> },
@@ -3705,12 +4274,45 @@ const SetupWizard = () => {
                   )}
                 </div>
 
-                {/* 6. ADIM: AKIŞLAR & AŞAMALAR */}
+                {/* 6. ADIM: KAYNAKLAR / DOKTORLAR & HİZMET ALANLARI */}
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
+                      <UserCircle size={16} color="#E63B2E" />
+                      <span>6. Adım: Kaynaklar / Doktorlar & Hizmet Alanları</span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayResources.length} Kaynak</span>
+                  </div>
+                  {displayResources.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Özel kaynak tanımlanmadı (Genel rezervasyon geçerli).</p>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+                      {displayResources.map((r, idx) => (
+                        <div key={r.id || idx} style={{ background: '#fff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
+                              {r.title ? `${r.title} ` : ''}{r.name}
+                            </span>
+                            <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
+                              {RESOURCE_TYPE_MAP[r.type] || r.type || 'Kişi'}
+                            </span>
+                          </div>
+                          {r.description && <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: 500 }}>{r.description}</div>}
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            Mesai: {r.availableStart || '09:00'} - {r.availableEnd || '18:00'} ({r.slotMinutes || 30} dk)
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 7. ADIM: AKIŞLAR & AŞAMALAR */}
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
                       <Workflow size={16} color="#E63B2E" />
-                      <span>6. Adım: Satış & Müşteri Aşamaları (Akışlar)</span>
+                      <span>7. Adım: Satış & Müşteri Aşamaları (Akışlar)</span>
                     </div>
                     <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayFunnels.length || 1} Akış</span>
                   </div>
@@ -3740,12 +4342,12 @@ const SetupWizard = () => {
                   </div>
                 </div>
 
-                {/* 7. ADIM: TAKIMLAR & EKİPLER */}
+                {/* 8. ADIM: TAKIMLAR & EKİPLER */}
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
                       <Users size={16} color="#E63B2E" />
-                      <span>7. Adım: Departmanlar & Uzman Takımlar</span>
+                      <span>8. Adım: Departmanlar & Uzman Takımlar</span>
                     </div>
                     <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{displayTeams.length || 1} Takım</span>
                   </div>
@@ -3765,12 +4367,12 @@ const SetupWizard = () => {
                   </div>
                 </div>
 
-                {/* 8. ADIM: AI ASİSTAN */}
+                {/* 9. ADIM: AI ASİSTAN */}
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fafafa' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700, fontSize: '14px' }}>
                       <Bot size={16} color="#E63B2E" />
-                      <span>8. Adım: Yetkili AI Asistan</span>
+                      <span>9. Adım: Yetkili AI Asistan</span>
                     </div>
                     <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 700, background: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
                       ● Aktif
@@ -3869,6 +4471,7 @@ const SetupWizard = () => {
       case 'subeler': return renderSubeler();
       case 'kategoriler': return renderKategoriler();
       case 'urunler': return renderUrunler();
+      case 'kaynaklar': return renderKaynaklar();
       case 'akislar': return renderAkislar();
       case 'takimlar': return renderTakimlar();
       case 'agentlar': return renderAgentlar();
