@@ -207,7 +207,14 @@ fi
 # 7 · PRISMA
 # ─────────────────────────────────────────────────────────────
 step "7/9 · Prisma"
-set -a; . "$ENV_FILE"; set +a     # Prisma CLI ortam değişkenini dosyadan önce okur
+# .env'i `. ./.env` ile SOURCE ETMİYORUZ. Tırnak içindeki bir değerde $ geçiyorsa
+# bash onu genişletir ve parolayı sessizce bozar; sonuç "Authentication failed"
+# olur ve .env dosyası gözle bakıldığında kusursuz görünür. (Canlıda yaşandı.)
+# Satırı ham okuyup yalnızca tırnakları soyuyoruz.
+DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' "$ENV_FILE" | head -1 \
+    | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")"
+export DATABASE_URL
+[ -n "$DATABASE_URL" ] || die "DATABASE_URL okunamadı: $ENV_FILE"
 npx prisma generate
 ok "Prisma client üretildi"
 
@@ -215,14 +222,31 @@ ok "Prisma client üretildi"
 # yalnızca manuel SQL dosyaları var). Bu yüzden `migrate deploy` boş geçer ve
 # şema `db push` ile senkronlanıyor. Veri kaybettirebileceği için bilinçli
 # bir bayrak olmadan çalışmıyor — yukarıda DB yedeği alındı.
-if npx prisma migrate deploy 2>/dev/null; then
-    ok "migrate deploy uygulandı"
-elif [ "${ALLOW_DB_PUSH:-false}" = "true" ]; then
-    warn "Migration geçmişi yok → db push (yedek: ${STAMP})"
-    npx prisma db push --accept-data-loss
-    ok "Şema db push ile senkronlandı"
+# Şema ile veritabanı arasındaki farkı ÖNCE göster — kör uygulama yapma.
+DRIFT="$(npx prisma migrate diff --from-url "$DATABASE_URL" \
+        --to-schema-datamodel prisma/schema.prisma --script 2>/dev/null \
+        | grep -E "^ALTER|^CREATE|^DROP" || true)"
+
+if [ -z "$DRIFT" ]; then
+    ok "Veritabanı şema ile uyumlu — değişiklik gerekmiyor"
 else
-    warn "Şema DEĞİŞTİRİLMEDİ. Şema değişikliği gerekiyorsa:  ALLOW_DB_PUSH=true ./scripts/deploy.sh"
+    echo ""
+    warn "ŞEMA FARKI TESPİT EDİLDİ:"
+    echo "$DRIFT" | sed 's/^/     /'
+    echo ""
+    if echo "$DRIFT" | grep -qE "^DROP|DROP COLUMN|DROP TABLE"; then
+        warn "⛔ Fark SİLME içeriyor — otomatik uygulanmayacak."
+        warn "   Elle incele:  npx prisma migrate diff --from-url \"\$DATABASE_URL\" --to-schema-datamodel prisma/schema.prisma --script"
+    elif [ "${ALLOW_DB_PUSH:-false}" = "true" ]; then
+        warn "Uygulanıyor (yedek: ${STAMP})"
+        npx prisma db push --accept-data-loss
+        ok "Şema senkronlandı"
+    else
+        warn "Şema DEĞİŞTİRİLMEDİ."
+        warn "Kod bu alanları isterse çalışma anında P2022 hatası verir ve"
+        warn "AI yanıtları sessizce çöker. Uygulamak için:"
+        warn "  ALLOW_DB_PUSH=true ./scripts/deploy.sh"
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────
