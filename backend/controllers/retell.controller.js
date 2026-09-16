@@ -515,6 +515,20 @@ function calculateScheduledAt(preferredWindow, schedule, baseDate = new Date()) 
  *   without risking false positives from date strings inside system-generated message content.
  */
 export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date(), explicitPreferredWindow = null, extraDynamicVariables = null) => {
+    // ── AI ARAMA KAPISI ──────────────────────────────────────────────────
+    // Bu fonksiyon şu an hiçbir yerden çağrılmıyor (bkz. af58329, 21 Tem 2026).
+    // Yeniden devreye alındığında vanayı atlamasın diye kapı şimdiden burada.
+    try {
+        const { canScheduleAiCall, CALL_SOURCE } = await import('../services/policy/automationPolicy.service.js');
+        if (!(await canScheduleAiCall(workspaceId, CALL_SOURCE.AUTO_TRIGGER)).allowed) {
+            console.log(`🚫 [AutoCall] Planlanmadı — "AI Arama İzni" kapalı (ws: ${workspaceId})`);
+            return;
+        }
+    } catch (gateErr) {
+        console.error('⚠️ [AutoCall] Kapı okunamadı, arama atlandı:', gateErr.message);
+        return;
+    }
+
     // ─── CONCURRENCY LOCK (DB-level) ──────────────────────────────────────────
     // Prevent race condition: multiple triggers firing in parallel for the same
     // phone create multiple ScheduledCall rows because they all pass the PENDING
@@ -1600,6 +1614,14 @@ async function checkOverdueAgentCalls() {
             if (activity.description) dynVars.call_description = activity.description.substring(0, 500);
 
             try {
+                // ── AI ARAMA KAPISI ─────────────────────────────────────────
+                // Temsilci aramadı, AI devralıyor — bu otomatik bir arama.
+                const { canScheduleAiCall, CALL_SOURCE } = await import('../services/policy/automationPolicy.service.js');
+                if (!(await canScheduleAiCall(activity.workspaceId, CALL_SOURCE.AI_FALLBACK)).allowed) {
+                    console.log(`🚫 [CallRouter] AI devralma atlandı — "AI Arama İzni" kapalı (activity ${activity.id})`);
+                    continue;
+                }
+
                 // retrySteps'tan maxAttempts ve ilk gecikmeyi belirle
                 const retrySteps = agentCfg?.retrySteps || [{ delay: 60 }, { delay: 240 }, { delay: 1440 }];
                 const maxAttempts = retrySteps.length + 1; // 1 asıl + N retry
@@ -3465,6 +3487,15 @@ async function handleCallEnded(call) {
                             });
                             console.log(`📋 [Retry] Görev açık bırakıldı, not güncellendi: ${activityId} — Deneme ${currentAttempt}/${scheduledCall.maxAttempts}`);
                         } catch (_) {}
+                    }
+
+                    // ── AI ARAMA KAPISI ─────────────────────────────────
+                    // Tekrar denemesi de otomatik bir arama. Vana zincirin
+                    // ortasında kapatıldıysa devam eden denemeler de durur.
+                    const { canScheduleAiCall: gateRetry, CALL_SOURCE: SRC_RETRY } = await import('../services/policy/automationPolicy.service.js');
+                    if (!(await gateRetry(scheduledCall.workspaceId, SRC_RETRY.RETRY)).allowed) {
+                        console.log(`🚫 [Retry] Tekrar arama planlanmadı — "AI Arama İzni" kapalı (${scheduledCall.toNumber})`);
+                        return;
                     }
 
                     // 2. YENİ ScheduledCall oluştur (aynı activity üzerinden)

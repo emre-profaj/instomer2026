@@ -121,3 +121,44 @@ export async function isAiCallingEnabled(workspaceId) {
     cache.set(key, { value, config: {}, expiresAt: Date.now() + TTL_MS });
     return value;
 }
+
+// ─────────────────────────────────────────────────────────────────
+// AI ARAMA KAPISI
+// ─────────────────────────────────────────────────────────────────
+// Panelde "AI Arama İzni" ANA VANA olarak gösteriliyor:
+//   "Tüm AI aramaları durduruldu — hiçbir ajan otomatik arama yapamaz."
+// Ama ScheduledCall oluşturan yolların hiçbiri bu ayarı okumuyordu.
+// Ölçüm (16 Eylül 2026): retellAutoCallEnabled = true olan çalışma alanı 0,
+// buna rağmen son 7 günde 333 gerçek çağrı yapılmış.
+//
+// Randevu izin kapısındaki desenin aynısı: elle başlatılan aramalar muaf,
+// otomatik olanlar vanaya tabi.
+
+/** Otomatik arama kaynakları — hepsi vanaya tabi. */
+export const CALL_SOURCE = {
+    ACTIVITY_BOT: 'ACTIVITY_BOT',   // CALL görevi bota atandı
+    AUTO_TRIGGER: 'AUTO_TRIGGER',   // triggerAutoCall
+    AI_FALLBACK: 'AI_FALLBACK',     // temsilci aramadı, AI devraldı
+    RETRY: 'RETRY',                 // başarısız aramanın tekrarı
+    MANUAL: 'MANUAL',               // temsilci butona bastı — MUAF
+};
+
+const CALL_GATE_EXEMPT = new Set([CALL_SOURCE.MANUAL]);
+
+/**
+ * Bu kaynaktan otomatik arama planlanabilir mi?
+ * Elle başlatılan aramalar (MANUAL) her zaman serbest — vana "otomatik
+ * arama"yı kapatıyor, temsilcinin iradesini değil.
+ *
+ * @returns {Promise<{allowed: boolean, reason?: string}>}
+ */
+export async function canScheduleAiCall(workspaceId, source = CALL_SOURCE.AUTO_TRIGGER) {
+    if (CALL_GATE_EXEMPT.has(source)) return { allowed: true };
+
+    const enabled = await isAiCallingEnabled(workspaceId);
+    if (!enabled) {
+        console.log(`🚫 [CallGate] ${source} araması ENGELLENDİ — "AI Arama İzni" kapalı (ws: ${workspaceId})`);
+        return { allowed: false, reason: 'AI_CALLING_DISABLED' };
+    }
+    return { allowed: true };
+}

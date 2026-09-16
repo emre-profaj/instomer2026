@@ -892,7 +892,27 @@ export const updateActivity = async (req, res) => {
         const isCallableActivity = existing.type === 'CALL' && existing.status === 'PLANNED' && !existing.aiFallbackTriggered;
         const contactPhone = existing.contact?.phone?.trim();
 
+        // ── AI ARAMA KAPISI ──────────────────────────────────────────────
+        // Panelde "AI Arama İzni" kapalıysa otomatik arama planlanmaz. Bu ayar
+        // daha önce HİÇBİR arama yolunda okunmuyordu: 44 çalışma alanının
+        // hepsinde kapalı olmasına rağmen son 7 günde 333 çağrı yapılmıştı.
+        // Temsilcinin elle başlattığı aramalar muaf (ayrı uçlardan geçiyorlar).
+        let aiCallAllowed = false;
         if (botJustAssigned && isCallableActivity && contactPhone) {
+            try {
+                const { canScheduleAiCall, CALL_SOURCE } = await import('../services/policy/automationPolicy.service.js');
+                aiCallAllowed = (await canScheduleAiCall(existing.workspaceId, CALL_SOURCE.ACTIVITY_BOT)).allowed;
+                if (!aiCallAllowed) {
+                    console.log(`🚫 [Activity] AI arama planlanmadı — "AI Arama İzni" kapalı (activity ${activityId})`);
+                }
+            } catch (gateErr) {
+                // Kapı okunamadıysa GÜVENLİ TARAF: arama planlama.
+                console.error('⚠️ [Activity] AI arama kapısı okunamadı, arama atlandı:', gateErr.message);
+                aiCallAllowed = false;
+            }
+        }
+
+        if (botJustAssigned && isCallableActivity && contactPhone && aiCallAllowed) {
             try {
                 // Daha önce bu activity için ScheduledCall var mı?
                 const existingSC = await prisma.scheduledCall.findFirst({
