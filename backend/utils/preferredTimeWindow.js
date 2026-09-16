@@ -116,6 +116,10 @@ export function extractPreferredWindowFromLead(fieldData) {
     const entries = Object.entries(data).filter(([, v]) => v && !isTestValue(v));
 
     // 1. kademe — anahtarda saat ipucu
+    // DİKKAT: aralık ayrıştırılamasa bile kaydı DÖNDÜRÜYORUZ (window: null).
+    // Cevap "14:00" gibi tek bir saat olabilir; çağıran taraf ham değeri
+    // kendi mantığıyla işleyebilsin diye kaybetmiyoruz.
+    let hintMatch = null;
     for (const [key, value] of entries) {
         const nk = normalizeKey(key);
         if (CONTACT_KEYS.some(c => nk === normalizeKey(c))) continue;
@@ -123,6 +127,10 @@ export function extractPreferredWindowFromLead(fieldData) {
 
         const win = parseTimeWindow(String(value));
         if (win) return { window: win, fieldKey: key, rawValue: String(value) };
+        // Aralık değil ama alan saat sorusu — ilkini aklımızda tut
+        if (!hintMatch && /\d/.test(String(value))) {
+            hintMatch = { window: null, fieldKey: key, rawValue: String(value) };
+        }
     }
 
     // 2. kademe — değeri saat aralığına benzeyen herhangi bir alan
@@ -134,7 +142,9 @@ export function extractPreferredWindowFromLead(fieldData) {
         if (win) return { window: win, fieldKey: key, rawValue: String(value) };
     }
 
-    return null;
+    // Aralık çözülemedi ama saat sorusu olduğu belli bir alan bulunduysa
+    // ham değerle dön — çağıran kendi ayrıştırmasını yapabilir.
+    return hintMatch;
 }
 
 /** Günlüğe basmak için okunabilir biçim: "12:00–15:00" */

@@ -3611,41 +3611,6 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('⚠️ [LEADGEN] Channel routing error:', chRoutingErr.message);
         }
 
-        // ─── TERCİH EDİLEN SAATTE OTOMATİK ARAMA ────────────────────────────
-        // Lead formunda "Size Hangi Saat Diliminde Ulaşalım?" gibi bir soru
-        // varsa cevabı (örn. "12:00-15:00") fieldData içinde duruyordu ama
-        // HİÇ OKUNMUYORDU — yalnızca isim, e-posta ve telefon çıkarılıyordu.
-        // Sonuç: müşteri saat seçiyor, sistem görmezden geliyordu.
-        //
-        // triggerAutoCall bu aralığı zaten işleyebiliyor (explicitPreferredWindow
-        // → calculateScheduledAt). Eksik olan tek şey bu bağlantıydı.
-        // AI Arama İzni vanası triggerAutoCall'un içinde kontrol ediliyor.
-        try {
-            const { extractPreferredWindowFromLead, formatWindow } = await import('../utils/preferredTimeWindow.js');
-            const found = extractPreferredWindowFromLead(fieldData);
-
-            if (found && leadPhone) {
-                const { triggerAutoCall } = await import('./retell.controller.js');
-                console.log(`🕐 [LEADGEN] Tercih edilen arama saati: ${formatWindow(found.window)} (alan: "${found.fieldKey}")`);
-
-                triggerAutoCall(
-                    facebookPage.workspaceId,
-                    leadPhone,
-                    contact?.id,
-                    leadName || leadPhone,
-                    'FACEBOOK_LEAD',
-                    null,            // messageContent — saat zaten yapılandırılmış alandan geldi
-                    new Date(),
-                    found.window     // explicitPreferredWindow
-                ).catch(e => console.warn(`ℹ️ [LEADGEN] Arama planlanamadı (kritik değil): ${e.message}`));
-            } else if (leadPhone) {
-                console.log(`ℹ️ [LEADGEN] Formda saat tercihi yok — otomatik arama planlanmadı`);
-            }
-        } catch (callErr) {
-            // Arama planlanamasa bile lead kaydı bozulmamalı
-            console.error('⚠️ [LEADGEN] Tercih edilen saat işlenemedi:', callErr.message);
-        }
-
         // Post-processing pipeline (Lead scoring, auto-case, auto-category sync)
         try {
             const { runChannelPostProcessing } = await import('./inbox.controller.js');
@@ -3723,16 +3688,19 @@ async function handleLeadgenEvent(leadValue, entryId) {
         // Böylece müşterinin tercih ettiği saat korunur, Flow'un AI_CALL'ı dedup ile skip olur
         if (leadPhone) {
             try {
-                // Tercih edilen arama zamanını form verilerinden çıkar
-                let preferredTimeStr = null;
-                for (const [key, value] of Object.entries(fieldData)) {
-                    const lk = key.toLowerCase();
-                    if (lk.includes('zaman') || lk.includes('saat') || lk.includes('time') || lk.includes('when') || lk.includes('ara')) {
-                        if (value) {
-                            preferredTimeStr = String(value).replace(/_/g, ' ').trim();
-                            break;
-                        }
-                    }
+                // Tercih edilen arama zamanını form verilerinden çıkar.
+                // Ortak yardımcı (utils/preferredTimeWindow.js) buradaki elle
+                // yazılmış aramaya göre üç şey daha yapıyor:
+                //   • Facebook'un "<test lead: dummy data…>" değerlerini eliyor
+                //   • isim/telefon/e-posta alanlarını açıkça dışlıyor
+                //     ("ara" ipucu "kullanici_adi" gibi alanlara da uyuyordu)
+                //   • anahtarından anlaşılmayan formlarda DEĞERE bakıyor:
+                //     "13:00-16:00" biçimindeki bir cevap hangi alanda olursa olsun
+                const { extractPreferredWindowFromLead, formatWindow } = await import('../utils/preferredTimeWindow.js');
+                const preferredFound = extractPreferredWindowFromLead(fieldData);
+                const preferredTimeStr = preferredFound ? preferredFound.rawValue : null;
+                if (preferredFound) {
+                    console.log(`🕐 [LEADGEN] Saat tercihi bulundu: ${formatWindow(preferredFound.window)} (alan: "${preferredFound.fieldKey}")`);
                 }
 
                 const ws = await prisma.workspace.findUnique({
@@ -3767,13 +3735,24 @@ async function handleLeadgenEvent(leadValue, entryId) {
 
                     // ─── MÜŞTERİ SAAT TERCİHİ → dueDate OVERRIDE ──────────────
                     if (preferredTimeStr) {
-                        const ptLower = preferredTimeStr.toLowerCase();
-                        const rangeMatch = ptLower.match(/(\d{1,2})[.:]\s?(\d{2})\s*[-–]\s*(\d{1,2})[.:]\s?(\d{2})/);
-                        const singleMatch = !rangeMatch ? ptLower.match(/(\d{1,2})[.:]\s?(\d{2})/) : null;
-                        const timeMatch = rangeMatch || singleMatch;
-                        if (timeMatch) {
-                            const prefH = parseInt(timeMatch[1]);
-                            const prefM = parseInt(timeMatch[2]);
+                        // Öncelik: ortak ayrıştırıcının çözdüğü pencere.
+                        // Aşağıdaki regex yalnızca HH:MM biçimini tanıyor;
+                        // "saat 10-13 arası" gibi serbest cevaplar ona takılıyordu.
+                        let prefH = null, prefM = null;
+                        if (preferredFound?.window) {
+                            prefH = preferredFound.window.startHour;
+                            prefM = preferredFound.window.startMinute;
+                        } else {
+                            const ptLower = preferredTimeStr.toLowerCase();
+                            const rangeMatch = ptLower.match(/(\d{1,2})[.:]\s?(\d{2})\s*[-–]\s*(\d{1,2})[.:]\s?(\d{2})/);
+                            const singleMatch = !rangeMatch ? ptLower.match(/(\d{1,2})[.:]\s?(\d{2})/) : null;
+                            const timeMatch = rangeMatch || singleMatch;
+                            if (timeMatch) {
+                                prefH = parseInt(timeMatch[1]);
+                                prefM = parseInt(timeMatch[2]);
+                            }
+                        }
+                        if (prefH !== null) {
                             if (prefH >= 6 && prefH <= 23) {
                                 const todayTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
                                 leadDueDate = new Date(Date.UTC(
