@@ -59,7 +59,10 @@ const run = async () => {
     }
 
     satirlar.sort((a, b) => b.otomatik - a.otomatik);
-    console.log('\n%-34s %-8s %8s %8s %8s', 'ÇALIŞMA ALANI', 'VANA', 'TOPLAM', 'OTOMATİK', 'MANUEL');
+    // NOT: console.log Node'da %-34s gibi dolgu biçimlerini desteklemez —
+    // biçim dizesi olduğu gibi basılır. padEnd/padStart ile hizalıyoruz.
+    console.log('\n' + 'ÇALIŞMA ALANI'.padEnd(34) + 'VANA'.padEnd(10)
+        + 'TOPLAM'.padStart(6) + 'OTOMATİK'.padStart(9) + 'MANUEL'.padStart(8));
     console.log('─'.repeat(74));
     for (const r of satirlar) {
         const vana = r.vana ? '🟢 AÇIK' : '🔴 KAPALI';
