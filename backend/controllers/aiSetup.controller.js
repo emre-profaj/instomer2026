@@ -99,30 +99,131 @@ export async function extractTextFromFile(file) {
 }
 
 // Scrape text content from URL
-export async function scrapeUrlText(url) {
+// ── Tek sayfanın metnini çıkar ───────────────────────────────────
+function htmlToText(html) {
+    return String(html)
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&#8211;/g, '-')
+        .replace(/&#8220;|&#8221;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+const fetchPage = async (pageUrl, timeout = 12000) => {
+    const res = await axios.get(pageUrl, {
+        timeout,
+        maxRedirects: 5,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    return String(res.data);
+};
+
+// Hangi alt sayfalar işe yarar? Fiyat/hizmet sayfaları en değerlisi —
+// firma bilgileri ana sayfada olsa da ürün ve fiyatlar neredeyse her zaman
+// ayrı bir sayfada duruyor (örn. /fiyat-listesi/).
+const LINK_HINTS = [
+    { score: 10, words: ['fiyat', 'price', 'tarife', 'ucret', 'ücret'] },
+    { score: 8,  words: ['hizmet', 'service', 'urun', 'ürün', 'product', 'paket'] },
+    { score: 5,  words: ['hakkimizda', 'hakkında', 'about', 'kurumsal'] },
+    { score: 5,  words: ['iletisim', 'iletişim', 'contact'] },
+    { score: 4,  words: ['sss', 'faq', 'sorular'] },
+    { score: 3,  words: ['sube', 'şube', 'branch', 'magaza', 'mağaza'] }
+];
+
+const SKIP_EXT = /\.(jpg|jpeg|png|gif|webp|svg|css|js|zip|rar|mp4|mp3|avi|woff2?|ttf|ico)($|\?)/i;
+
+function collectInternalLinks(html, baseUrl) {
+    const base = new URL(baseUrl);
+    const found = new Map(); // url -> skor
+
+    const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = anchorRe.exec(html)) !== null) {
+        const href = m[1];
+        const anchorText = htmlToText(m[2]).toLowerCase();
+        if (!href || /^(#|mailto:|tel:|javascript:)/i.test(href)) continue;
+
+        let abs;
+        try { abs = new URL(href, base); } catch { continue; }
+        if (abs.origin !== base.origin) continue;         // sadece aynı site
+        if (SKIP_EXT.test(abs.pathname)) continue;
+
+        abs.hash = '';
+        const key = abs.toString().replace(/\/$/, '');
+        const haystack = (abs.pathname + ' ' + anchorText).toLowerCase();
+
+        let score = 0;
+        for (const hint of LINK_HINTS) {
+            if (hint.words.some(w => haystack.includes(w))) score = Math.max(score, hint.score);
+        }
+        if (score === 0) continue;
+        if (!found.has(key) || found.get(key) < score) found.set(key, score);
+    }
+
+    return [...found.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([u]) => u);
+}
+
+/**
+ * Web sitesini tarar. Verilen sayfayı okur, ardından fiyat/hizmet/iletişim
+ * gibi işe yarar alt sayfaları da çeker ve hepsini birleştirir.
+ *
+ * Tek sayfa taranıyordu: ana sayfada adres ve telefon bulunuyor ama ürün ve
+ * fiyatlar ayrı sayfada olduğu için hiç gelmiyordu.
+ */
+export async function scrapeUrlText(url, opts = {}) {
+    const maxExtraPages = opts.maxExtraPages ?? 5;
+    const maxChars = opts.maxChars ?? 45000;
+    const maxCharsPerPage = opts.maxCharsPerPage ?? 15000;
+
     let targetUrl = url.trim();
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
         targetUrl = 'https://' + targetUrl;
     }
 
-    const response = await axios.get(targetUrl, {
-        timeout: 15000,
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    const rootHtml = await fetchPage(targetUrl);
+    const parts = [`--- SAYFA: ${targetUrl} ---\n${htmlToText(rootHtml).substring(0, maxCharsPerPage)}`];
+
+    // Alt sayfalar — başarısız olanlar sessizce atlanır, tarama yine de sonuç verir
+    try {
+        const startKey = targetUrl.replace(/\/$/, '');
+        const candidates = collectInternalLinks(rootHtml, targetUrl)
+            .filter(u => u !== startKey)
+            .slice(0, maxExtraPages);
+
+        if (candidates.length) {
+            console.log(`🔎 [AI Setup] ${candidates.length} alt sayfa taranıyor: ${candidates.join(', ')}`);
+            // SIRAYLA çekiyoruz. Paralel denendi: aynı anda 5 istek atılınca
+            // sitenin tamamı zaman aşımına uğradı (tek istek 2sn sürerken),
+            // paylaşımlı hosting eşzamanlı isteklerde boğuluyor.
+            const deadline = Date.now() + (opts.budgetMs ?? 20000);
+            for (const pageUrl of candidates) {
+                if (Date.now() > deadline) {
+                    console.warn('⏱️ [AI Setup] Süre bütçesi doldu, kalan sayfalar atlandı');
+                    break;
+                }
+                try {
+                    const text = htmlToText(await fetchPage(pageUrl, 8000));
+                    if (text.length > 50) {
+                        parts.push(`--- SAYFA: ${pageUrl} ---\n${text.substring(0, maxCharsPerPage)}`);
+                    }
+                } catch (e) {
+                    console.warn(`⚠️ [AI Setup] Alt sayfa okunamadı: ${pageUrl} (${e.message})`);
+                }
+            }
         }
-    });
+    } catch (err) {
+        console.warn('⚠️ [AI Setup] Alt sayfa taraması atlandı:', err.message);
+    }
 
-    const html = String(response.data);
-    // Strip scripts, styles and HTML tags
-    const cleaned = html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    return cleaned.substring(0, 35000); // Token safety limit
+    const combined = parts.join('\n\n');
+    console.log(`📄 [AI Setup] Toplam ${parts.length} sayfa, ${combined.length} karakter metin toplandı`);
+    return combined.substring(0, maxChars);
 }
 
 // Prompt for Gemini to parse corporate document
@@ -207,7 +308,13 @@ export const parseDocumentAndExtractSetup = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            // JSON modu: model zaten saf JSON döndürür. Öncesinde yanıt ```json
+            // çitleriyle geliyordu ve model araya bir cümle eklediğinde
+            // JSON.parse patlayıp tüm işlem 500 ile düşüyordu.
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+        });
 
         const prompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n--- İNCELENECEK BELGE METNİ ---\n${extractedText.substring(0, 35000)}`;
 
@@ -265,7 +372,13 @@ export const parseUrlAndExtractSetup = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            // JSON modu: model zaten saf JSON döndürür. Öncesinde yanıt ```json
+            // çitleriyle geliyordu ve model araya bir cümle eklediğinde
+            // JSON.parse patlayıp tüm işlem 500 ile düşüyordu.
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+        });
 
         const prompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n--- İNCELENECEK WEB SİTESİ METNİ (${url}) ---\n${scrapedText}`;
 
@@ -498,7 +611,13 @@ export const updateKnowledgeBaseViaPrompt = async (req, res) => {
         });
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            // JSON modu: model zaten saf JSON döndürür. Öncesinde yanıt ```json
+            // çitleriyle geliyordu ve model araya bir cümle eklediğinde
+            // JSON.parse patlayıp tüm işlem 500 ile düşüyordu.
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+        });
 
         const prompt = `Sen kurumsal veri tabanı güncelleme asistanısın.
 Kullanıcı işletmesi hakkında bir güncelleme talimatı verdi:

@@ -4,7 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI, aiSetupAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search, Wand2 } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search, Wand2, Clock } from 'lucide-react';
 import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
@@ -491,10 +491,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         if (!instructText.trim()) return alert('Lütfen güncellenecek talimatı yazın');
         try {
             setInstructLoading(true);
-            const res = await aiSetupAPI.instructUpdate({
-                workspaceId: currentWorkspace.id,
-                instruction: instructText.trim()
-            });
+            const res = await aiSetupAPI.instructUpdate(currentWorkspace.id, instructText.trim());
             alert('✅ AI Bilgi Bankası Başarıyla Güncellendi: ' + (res.data?.summary || 'İşlem tamamlandı'));
             setInstructText('');
             await loadCompanyInfo();
@@ -519,7 +516,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         formData.append('file', file);
         try {
             setAiSetupLoading(true);
-            const res = await aiSetupAPI.parseFile(formData);
+            const res = await aiSetupAPI.parseFile(currentWorkspace.id, formData);
             if (res.data?.success) {
                 setAiSetupResult(res.data.data);
             } else {
@@ -537,7 +534,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         if (!aiSetupUrl.trim()) return alert('Lütfen bir web sitesi adresi girin');
         try {
             setAiSetupLoading(true);
-            const res = await aiSetupAPI.parseUrl({ url: aiSetupUrl.trim() });
+            const res = await aiSetupAPI.parseUrl(currentWorkspace.id, aiSetupUrl.trim());
             if (res.data?.success) {
                 setAiSetupResult(res.data.data);
             } else {
@@ -555,10 +552,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         if (!aiSetupResult) return;
         try {
             setAiSetupApplying(true);
-            await aiSetupAPI.applySetup({
-                workspaceId: currentWorkspace.id,
-                setupData: aiSetupResult
-            });
+            await aiSetupAPI.applySetup(currentWorkspace.id, aiSetupResult);
             alert('🎉 AI Kurulumu ve veriler çalışma alanınıza başarıyla uygulandı!');
             setShowAiSetupModal(false);
             setAiSetupResult(null);

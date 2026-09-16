@@ -789,7 +789,7 @@ GENEL DAVRANIŞ KURALLARI:
     formData.append('file', file);
     try {
       setAiSetupLoading(true);
-      const res = await aiSetupAPI.parseFile(formData);
+      const res = await aiSetupAPI.parseFile(currentWorkspace.id, formData);
       if (res.data?.success) {
         setAiSetupResult(res.data.data);
       } else {
@@ -810,7 +810,7 @@ GENEL DAVRANIŞ KURALLARI:
     }
     try {
       setAiSetupLoading(true);
-      const res = await aiSetupAPI.parseUrl({ url: aiSetupUrl.trim() });
+      const res = await aiSetupAPI.parseUrl(currentWorkspace.id, aiSetupUrl.trim());
       if (res.data?.success) {
         setAiSetupResult(res.data.data);
       } else {
@@ -829,10 +829,7 @@ GENEL DAVRANIŞ KURALLARI:
     try {
       setAiSetupApplying(true);
       if (currentWorkspace?.id) {
-        await aiSetupAPI.applySetup({
-          workspaceId: currentWorkspace.id,
-          setupData: aiSetupResult
-        });
+        await aiSetupAPI.applySetup(currentWorkspace.id, aiSetupResult);
       }
       if (aiSetupResult.company) {
         const c = aiSetupResult.company;
