@@ -35,8 +35,10 @@ export function parseTimeWindow(text, log = () => {}) {
     if (!text || typeof text !== 'string') return null;
     const lower = text.toLowerCase();
 
-    // 1) "15:00-18:00" — iki nokta üst üste ile tam biçim
-    const hhmm = lower.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+    // 1) "15:00-18:00" veya "15.00-18.00" — tam biçim
+    // NOKTA DA KABUL EDİLİYOR: gerçek lead verisinde çoğunluk nokta kullanıyor
+    // ("12.00-15.00"). Yalnızca ":" aranınca bu cevaplar sessizce kaybediliyordu.
+    const hhmm = lower.match(/(\d{1,2})[.:](\d{2})\s*[-–]\s*(\d{1,2})[.:](\d{2})/);
     if (hhmm) {
         const sH = parseInt(hhmm[1]), sM = parseInt(hhmm[2]);
         const eH = parseInt(hhmm[3]), eM = parseInt(hhmm[4]);
@@ -81,13 +83,30 @@ const CONTACT_KEYS = [
     'city', 'sehir', 'şehir', 'il', 'ilce', 'ilçe', 'adres', 'address',
 ];
 
-/** Saat sorusuna işaret eden anahtar kelimeler. */
-const TIME_HINTS = ['saat', 'zaman', 'dilim', 'ulaş', 'ulas', 'ara', 'müsait', 'musait', 'uygun'];
+/**
+ * Saat sorusuna işaret eden anahtar kelimeler.
+ *
+ * DİKKAT — "ara" BİLEREK YOK. Gerçek lead verisinde yanlış eşleşmelere
+ * yol açıyordu, çünkü Türkçede bu hece çok geçiyor:
+ *   telefon_numarası        → "num-ARA-sı"
+ *   yatırım_aralığınız_nedir → "ARA-lığınız"
+ * Yerine fiil çekimleri kullanılıyor; onlar yalnızca gerçek soruda geçer.
+ */
+const TIME_HINTS = [
+    'saat', 'zaman', 'dilim', 'ulaş', 'ulas', 'müsait', 'musait', 'uygun',
+    'aranmak', 'aranma', 'arayalim', 'arayalım', 'aramak', 'aransin', 'aransın',
+];
 
 /** Facebook'un otomatik test lead'leri — gerçek cevap değil. */
 const isTestValue = (v) => /^<.*test lead.*>$/i.test(String(v || '').trim());
 
 const normalizeKey = (k) => String(k || '').toLowerCase().replace(/[?_\s-]+/g, '');
+
+/** Anahtar bir iletişim/adres alanı mı? (içerme ile — "telefon_numarası" dahil) */
+const isContactKey = (nk) => CONTACT_KEYS.some(c => nk.includes(normalizeKey(c)));
+
+/** Değer saat gibi görünüyor mu? "14:00", "16.30" — telefon veya tutar değil. */
+const looksLikeTime = (v) => /\b\d{1,2}[.:]\d{2}\b/.test(String(v || ''));
 
 /**
  * Lead formu alanlarından tercih edilen arama saatini çıkarır.
@@ -122,13 +141,13 @@ export function extractPreferredWindowFromLead(fieldData) {
     let hintMatch = null;
     for (const [key, value] of entries) {
         const nk = normalizeKey(key);
-        if (CONTACT_KEYS.some(c => nk === normalizeKey(c))) continue;
+        if (isContactKey(nk)) continue;
         if (!TIME_HINTS.some(h => nk.includes(normalizeKey(h)))) continue;
 
         const win = parseTimeWindow(String(value));
         if (win) return { window: win, fieldKey: key, rawValue: String(value) };
         // Aralık değil ama alan saat sorusu — ilkini aklımızda tut
-        if (!hintMatch && /\d/.test(String(value))) {
+        if (!hintMatch && looksLikeTime(value)) {
             hintMatch = { window: null, fieldKey: key, rawValue: String(value) };
         }
     }
@@ -136,7 +155,7 @@ export function extractPreferredWindowFromLead(fieldData) {
     // 2. kademe — değeri saat aralığına benzeyen herhangi bir alan
     for (const [key, value] of entries) {
         const nk = normalizeKey(key);
-        if (CONTACT_KEYS.some(c => nk === normalizeKey(c))) continue;
+        if (isContactKey(nk)) continue;
 
         const win = parseTimeWindow(String(value));
         if (win) return { window: win, fieldKey: key, rawValue: String(value) };
