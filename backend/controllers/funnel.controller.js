@@ -102,6 +102,12 @@ const DEFAULT_FUNNELS = [
     },
 ];
 
+// ── Yeni workspace açılışında oluşturulacak akışlar ──────────────────────────
+// DEFAULT_FUNNELS'ın tamamı katalog olarak duruyor (isim göçü, stage preset'i
+// ve eşleştirme için gerekli); ancak yeni bir workspace yalnızca bunlarla açılır.
+// Diğer akışları kullanıcı "Yeni Akış Ekle" ile kendi ekler.
+const SEED_ON_NEW_WORKSPACE = ['Genel', 'Satış Akışı'];
+
 // ── Stage isim eşleştirmesi: eski akış preset'leri → yeni default stages
 const STAGE_PRESETS = {};
 for (const f of DEFAULT_FUNNELS) {
@@ -217,39 +223,59 @@ const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
     // Aksi takdirde kullanıcının sildiği akışlar geri gelir.
     if (existingFunnels.length > 0) return false;
 
-    const existingNames = existingFunnels.map(f => normalizeTR(f.name));
-    let created = false;
+    // ── YARIŞ KORUMASI ───────────────────────────────────────────────
+    // Bu fonksiyon GET /funnels içinden çağrılıyor. Yeni bir workspace
+    // açıldığında arayüz birden fazla eşzamanlı istek gönderiyor; hepsi
+    // "hiç akış yok" görüp varsayılanları ayrı ayrı oluşturuyordu
+    // (gerçek vaka: 3 istek × 5 varsayılan = 15 akış, hepsi 300ms içinde).
+    // Advisory lock cluster'daki iki kopya arasında da çalışır ve şema
+    // değişikliği gerektirmez; kilidi alan tekrar sayar, diğerleri çıkar.
+    try {
+        return await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'funnel-seed:' + workspaceId}))`;
 
-    for (const def of DEFAULT_FUNNELS) {
-        const defNormalized = normalizeTR(def.name);
-        if (!existingNames.includes(defNormalized)) {
-            const isSalesFlow = def.name === 'Satış Akışı';
-            const stagesWithRules = def.stages.map((stage, index) => {
-                const defaultRules = getDefaultRulesForStage(stage.name);
-                return {
-                    ...stage,
-                    ...(defaultRules ? { entryRules: JSON.stringify(defaultRules), entryPriority: index } : {})
-                };
-            });
+            const already = await tx.funnel.count({ where: { workspaceId } });
+            if (already > 0) {
+                console.log(`⏭️  [Funnels] Varsayılanlar başka bir istek tarafından oluşturulmuş (${workspaceId})`);
+                return false;
+            }
 
-            await prisma.funnel.create({
-                data: {
-                    workspaceId,
-                    name: def.name,
-                    color: def.color,
-                    icon: def.icon,
-                    order: def.order,
-                    ...(isSalesFlow ? { isDefault: true } : {}),
-                    ...(def.funnelType ? { funnelType: def.funnelType } : {}),
-                    stages: { create: stagesWithRules }
-                }
-            });
-            console.log(`🌱 [Funnels] Created default funnel "${def.name}" for workspace ${workspaceId}${isSalesFlow ? ' (isDefault)' : ''}`);
-            created = true;
-        }
+            let created = false;
+            for (const def of DEFAULT_FUNNELS) {
+                // Yeni workspace'te yalnızca temel akışlar açılır; diğerleri
+                // katalogda kalır (isim eşleştirme ve stage preset'leri için).
+                if (!SEED_ON_NEW_WORKSPACE.includes(def.name)) continue;
+
+                const isSalesFlow = def.name === 'Satış Akışı';
+                const stagesWithRules = def.stages.map((stage, index) => {
+                    const defaultRules = getDefaultRulesForStage(stage.name);
+                    return {
+                        ...stage,
+                        ...(defaultRules ? { entryRules: JSON.stringify(defaultRules), entryPriority: index } : {})
+                    };
+                });
+
+                await tx.funnel.create({
+                    data: {
+                        workspaceId,
+                        name: def.name,
+                        color: def.color,
+                        icon: def.icon,
+                        order: def.order,
+                        ...(isSalesFlow ? { isDefault: true } : {}),
+                        ...(def.funnelType ? { funnelType: def.funnelType } : {}),
+                        stages: { create: stagesWithRules }
+                    }
+                });
+                console.log(`🌱 [Funnels] Created default funnel "${def.name}" for workspace ${workspaceId}${isSalesFlow ? ' (isDefault)' : ''}`);
+                created = true;
+            }
+            return created;
+        }, { timeout: 20000 });
+    } catch (err) {
+        console.error('❌ [Funnels] ensureDefaultFunnels hatası:', err.message);
+        return false;
     }
-
-    return created;
 };
 
 // ────────────────────────────────────────────────────────────────────────────
