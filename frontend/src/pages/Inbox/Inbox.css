@@ -3262,7 +3262,7 @@
 }
 
 .message-status .status-delivered {
-    color: #6b7280;
+    color: #9ca3af;
 }
 
 .message-status .status-read {
@@ -3271,7 +3271,51 @@
 }
 
 .message-status .status-failed {
-    color: #fbbf24;
+    color: #ef4444;
+}
+
+/* Left Panel Conversation Preview Status Badge */
+.inbox-item-preview-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preview-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.preview-status-badge .status-sent,
+.preview-status-badge.status-sent svg {
+    color: #9ca3af;
+}
+
+.preview-status-badge .status-delivered,
+.preview-status-badge.status-delivered svg {
+    color: #9ca3af;
+}
+
+.preview-status-badge .status-read,
+.preview-status-badge.status-read svg {
+    color: #3b82f6;
+}
+
+.preview-status-badge .status-failed,
+.preview-status-badge.status-failed svg {
+    color: #ef4444;
+}
+
+.preview-text-snippet {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .note-footer {

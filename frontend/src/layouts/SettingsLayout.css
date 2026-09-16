@@ -1,0 +1,46 @@
+/* ══════════════════════════════════════════════════════════════════
+   SETTINGS LAYOUT — Split-Pane Container
+   Left: SettingsNav (250px) | Right: Settings Content (Flex-1)
+   ══════════════════════════════════════════════════════════════════ */
+
+.settings-layout-wrapper {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+    background-color: #ffffff;
+    box-sizing: border-box;
+}
+
+.settings-layout-content {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-sizing: border-box;
+}
+
+/* Ensure child settings pages stretch fully */
+.settings-layout-content > .knowledge-base-page,
+.settings-layout-content > .channels-container,
+.settings-layout-content > .ut-page,
+.settings-layout-content > .ws-settings-page,
+.settings-layout-content > .profile-settings-page,
+.settings-layout-content > .notifications-page,
+.settings-layout-content > .templates-page,
+.settings-layout-content > .integrations-page,
+.settings-layout-content > .automations-hub-page,
+.settings-layout-content > .ai-agents-container {
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+}

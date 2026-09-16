@@ -1,6 +1,38 @@
 import { google } from 'googleapis';
 import prisma from '../lib/prisma.js';
 import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
+import { emitToWorkspace } from '../socket.js';
+
+// Helper to mark prior outgoing emails as READ when customer replies
+const markPriorOutgoingEmailsAsRead = async (workspaceId, conversationId) => {
+    try {
+        const unreadPrior = await prisma.message.findMany({
+            where: {
+                conversationId,
+                isFromContact: false,
+                status: { in: ['SENT', 'DELIVERED'] }
+            },
+            select: { id: true, emailMessageId: true }
+        });
+        if (unreadPrior.length > 0) {
+            await prisma.message.updateMany({
+                where: { id: { in: unreadPrior.map(m => m.id) } },
+                data: { status: 'READ' }
+            });
+            console.log(`✅ [Email Auto-Read] ${unreadPrior.length} prior emails marked as READ because contact replied`);
+            for (const m of unreadPrior) {
+                emitToWorkspace(workspaceId, 'message_status', {
+                    messageId: m.emailMessageId || m.id,
+                    dbMessageId: m.id,
+                    conversationId,
+                    status: 'READ'
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Error marking prior emails read on incoming reply:', err);
+    }
+};
 
 
 // Helper function to decode HTML entities
@@ -523,6 +555,9 @@ export const syncEmailsInternal = async (channelId) => {
                 }
             });
 
+            // Mark prior outgoing emails as READ since customer replied
+            await markPriorOutgoingEmailsAsRead(channel.workspaceId, conversation.id);
+
             // Madde 0: Pipeline post-processing
             try {
                 const { runChannelPostProcessing } = await import('./inbox.controller.js');
@@ -664,12 +699,13 @@ export const sendEmailReply = async (emailChannelId, to, subject, body, options 
             .replace(/\//g, '_')
             .replace(/=+$/, '');
 
-        await gmail.users.messages.send({
+        const gmailRes = await gmail.users.messages.send({
             userId: 'me',
             requestBody: {
                 raw: encodedMessage,
             },
         });
+        return { success: true, messageId: gmailRes.data?.id || null };
     } else {
         // Use SMTP (for IMAP providers like Yandex, Outlook, etc.)
         const nodemailer = await import('nodemailer');
@@ -701,7 +737,8 @@ export const sendEmailReply = async (emailChannelId, to, subject, body, options 
             mailOptions.bcc = bcc;
         }
 
-        await transporter.sendMail(mailOptions);
+        const info = await transporter.sendMail(mailOptions);
+        return { success: true, messageId: info?.messageId || null };
     }
 };
 
@@ -724,7 +761,7 @@ export const sendNewEmail = async (req, res) => {
         }
 
         // Send the email with CC/BCC support
-        await sendEmailReply(channelId, to, subject || '(Konu yok)', body, { cc, bcc });
+        const sendResult = await sendEmailReply(channelId, to, subject || '(Konu yok)', body, { cc, bcc });
 
         // Find or create contact for this workspace
         let contact = await prisma.contact.findFirst({
@@ -777,14 +814,16 @@ export const sendNewEmail = async (req, res) => {
             assignDefaultFunnel(channel.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Email error:', e.message));
         }
 
-        // Create sent message
+        // Create sent message with DELIVERED status
         await prisma.message.create({
             data: {
                 content: body,
                 conversationId: conversation.id,
                 senderId: req.user.id,
                 isFromContact: false,
-                emailSubject: subject || '(Konu yok)'
+                emailSubject: subject || '(Konu yok)',
+                emailMessageId: sendResult?.messageId || null,
+                status: 'DELIVERED'
             }
         });
 
@@ -1021,6 +1060,9 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                         emailSubject: subject
                     }
                 });
+
+                // Mark prior outgoing emails as READ since customer replied
+                await markPriorOutgoingEmailsAsRead(channel.workspaceId, conversation.id);
 
                 // Update conversation
                 await prisma.conversation.update({
@@ -1487,6 +1529,9 @@ export const syncEmailsImap = async (channelId) => {
                                                 emailSubject: subject
                                             }
                                         });
+
+                                        // Mark prior outgoing emails as READ since customer replied
+                                        await markPriorOutgoingEmailsAsRead(channel.workspaceId, conversation.id);
 
                                         await prisma.conversation.update({
                                             where: { id: conversation.id },

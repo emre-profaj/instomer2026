@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Check, CheckCheck, AlertCircle } from 'lucide-react';
 import { conversationAPI } from '../../services/api';
 import './ConversationPopup.css';
 
@@ -72,9 +73,22 @@ export default function ConversationPopup({ workspaceId, conversationId, channel
                                     )}
                                     <p>{msg.content?.replace(/\[HANDOFF\]/gi, '').trim()}</p>
                                 </div>
-                                <span className="conv-popup-msg-time">
+                                <span className="conv-popup-msg-time" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                     {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                                     {!msg.isFromContact && !msg.senderId && ' 🤖'}
+                                    {!msg.isFromContact && (
+                                        <span className="conv-popup-msg-status" style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 2 }}>
+                                            {msg.status === 'READ' ? (
+                                                <CheckCheck size={13} style={{ color: '#3b82f6' }} title="Müşteri Tarafından Okundu" />
+                                            ) : msg.status === 'DELIVERED' ? (
+                                                <CheckCheck size={13} style={{ color: '#94a3b8' }} title="Karşı Tarafa İletildi" />
+                                            ) : msg.status === 'FAILED' ? (
+                                                <AlertCircle size={13} style={{ color: '#ef4444' }} title="Mesaj Gönderilemedi" />
+                                            ) : (
+                                                <Check size={13} style={{ color: '#94a3b8' }} title="Mesaj Gönderildi" />
+                                            )}
+                                        </span>
+                                    )}
                                 </span>
                             </div>
                         ))

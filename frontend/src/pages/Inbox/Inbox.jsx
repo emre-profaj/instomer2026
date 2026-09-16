@@ -1630,24 +1630,59 @@ const Inbox = () => {
             }
         });
 
-        // Listen for message status updates (delivered, read)
+        // Listen for message status updates (sent, delivered, read, failed)
         socket.on('message_status', (data) => {
             console.log('📊 Message status update:', data);
             const { messageId, dbMessageId, conversationId, status } = data;
+            const normalizedStatus = (status || '').toUpperCase();
 
-            // Only update if this is for the currently selected conversation
-            if (selectedItem?.id === conversationId) {
+            // 1. Update active chat messages if open (using selectedItemRef to avoid stale closure)
+            const activeItem = selectedItemRef.current;
+            if (!conversationId || activeItem?.id === conversationId) {
                 setMessages(prev => prev.map(msg => {
-                    // Match by database ID, WhatsApp message ID, or Facebook message ID
                     if (msg.id === dbMessageId ||
-                        msg.whatsappMessageId === messageId ||
-                        msg.facebookMessageId === messageId) {
-                        console.log(`✅ Updating message ${msg.id} status to ${status}`);
-                        return { ...msg, status };
+                        (messageId && (msg.whatsappMessageId === messageId || msg.facebookMessageId === messageId || msg.emailMessageId === messageId))) {
+                        console.log(`✅ Updating active chat message ${msg.id} status to ${normalizedStatus}`);
+                        return { ...msg, status: normalizedStatus };
                     }
                     return msg;
                 }));
             }
+
+            // 2. Update conversation preview in the left inbox list in real time
+            setInboxItems(prev => prev.map(item => {
+                const matchesConv = item.id === conversationId ||
+                    (item.conversations && item.conversations.some(c => c.id === conversationId));
+
+                if (matchesConv) {
+                    let itemModified = false;
+
+                    const updatedMessages = (item.messages || []).map(msg => {
+                        if (msg.id === dbMessageId ||
+                            (messageId && (msg.whatsappMessageId === messageId || msg.facebookMessageId === messageId || msg.emailMessageId === messageId)) ||
+                            (!msg.isFromContact && !dbMessageId && !messageId)) {
+                            itemModified = true;
+                            return { ...msg, status: normalizedStatus };
+                        }
+                        return msg;
+                    });
+
+                    let updatedLastMessage = item.lastMessage;
+                    if (item.lastMessage && !item.lastMessage.isFromContact) {
+                        updatedLastMessage = { ...item.lastMessage, status: normalizedStatus };
+                        itemModified = true;
+                    }
+
+                    if (itemModified) {
+                        return {
+                            ...item,
+                            messages: updatedMessages.length ? updatedMessages : (item.messages || []),
+                            ...(updatedLastMessage ? { lastMessage: updatedLastMessage } : {})
+                        };
+                    }
+                }
+                return item;
+            }));
         });
 
         // Listen for conversation takeover events
@@ -3856,9 +3891,43 @@ const Inbox = () => {
     const getItemPreview = (item) => {
         if (item.inboxType === INBOX_TYPES.COMMENT) {
             return `${item.comments?.summary?.total_count || 0} yorum`;
-        } else {
-            return item.messages?.[0]?.content?.replace(/\[HANDOFF\]/gi, '').trim().substring(0, 60) || 'Mesaj yok';
         }
+
+        const lastMsg = item.messages?.[0] || item.lastMessage;
+        if (!lastMsg) return 'Mesaj yok';
+
+        let text = lastMsg.content?.replace(/\[HANDOFF\]/gi, '').trim();
+        if (!text && (lastMsg.mediaUrl || lastMsg.mediaType)) {
+            const mType = lastMsg.mediaType || '';
+            text = mType.startsWith('image') ? '📷 Fotoğraf' :
+                   mType.startsWith('video') ? '🎥 Video' :
+                   mType.startsWith('audio') ? '🎵 Ses Kaydı' : '📎 Dosya';
+        }
+        if (!text) text = 'Mesaj yok';
+        if (text.length > 60) text = text.substring(0, 60) + '...';
+
+        // Giden mesaj ise (temsilci veya bot) teslimat/okunma durum simgesi ekle
+        if (!lastMsg.isFromContact) {
+            const status = (lastMsg.status || 'SENT').toUpperCase();
+            return (
+                <span className="inbox-item-preview-content">
+                    <span className={`preview-status-badge status-${status.toLowerCase()}`}>
+                        {status === 'READ' ? (
+                            <CheckCheck size={14} className="status-read" title="Okundu" />
+                        ) : status === 'DELIVERED' ? (
+                            <CheckCheck size={14} className="status-delivered" title="İletildi" />
+                        ) : status === 'FAILED' ? (
+                            <AlertCircle size={14} className="status-failed" title="İletilemedi" />
+                        ) : (
+                            <Check size={14} className="status-sent" title="Gönderildi" />
+                        )}
+                    </span>
+                    <span className="preview-text-snippet">{text}</span>
+                </span>
+            );
+        }
+
+        return text;
     };
 
     const getFilterCounts = () => {
@@ -4044,14 +4113,6 @@ const Inbox = () => {
                                             <input type="checkbox" checked={showAssignedToMe} onChange={() => setShowAssignedToMe(!showAssignedToMe)} />
                                             <span>Bana Atananlar</span>
                                         </label>
-                                        <label className="fp-toggle-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
-                                            <input type="checkbox" checked={hideUnanswered} onChange={(e) => setHideUnanswered(e.target.checked)} />
-                                            <span>🔇 Cevapsızları Gizle</span>
-                                        </label>
-                                        <label className="fp-toggle-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
-                                            <input type="checkbox" checked={showBulk} onChange={(e) => setShowBulk(e.target.checked)} />
-                                            <span>📢 Toplu Gönderimler</span>
-                                        </label>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
                                             <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>📊 Sıralama:</span>
                                             <select
@@ -4060,7 +4121,7 @@ const Inbox = () => {
                                                 style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, border: '1px solid #e2e8f0', color: '#334155', background: '#fff', cursor: 'pointer' }}
                                             >
                                                 <option value="lastMessage">Son Mesaj</option>
-                                                <option value="customerFirst">Müşteri Yanıtı</option>
+                                                <option value="customerFirst">Son Gelen Mesaj</option>
                                             </select>
                                         </div>
                                     </div>
@@ -6434,13 +6495,13 @@ const Inbox = () => {
                                                                 </span>
                                                                 <span className={`message-status ${msg.status?.toLowerCase() || 'sent'}`}>
                                                                     {msg.status === 'READ' ? (
-                                                                        <CheckCheck size={14} className="status-read" title="Okundu" />
+                                                                        <CheckCheck size={14} className="status-read" title="Müşteri Tarafından Okundu" />
                                                                     ) : msg.status === 'DELIVERED' ? (
-                                                                        <CheckCheck size={14} className="status-delivered" title="İletildi" />
+                                                                        <CheckCheck size={14} className="status-delivered" title="Karşı Tarafa İletildi" />
                                                                     ) : msg.status === 'FAILED' ? (
-                                                                        <AlertCircle size={14} className="status-failed" title="Gönderilemedi" />
+                                                                        <AlertCircle size={14} className="status-failed" title="Mesaj Gönderilemedi" />
                                                                     ) : (
-                                                                        <Check size={14} className="status-sent" title="Gönderildi" />
+                                                                        <Check size={14} className="status-sent" title="Mesaj Gönderildi" />
                                                                     )}
                                                                 </span>
                                                             </>

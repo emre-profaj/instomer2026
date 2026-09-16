@@ -158,8 +158,12 @@ export const getConversations = async (req, res) => {
             ...(contactStatus && { contact: { status: contactStatus, isDeleted: false } }),
             ...(req.query.showArchived !== 'true' && { isArchived: false }),
             // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
-            ...(req.query.hideUnanswered === 'true' && {
+            ...((req.query.hideUnanswered === 'true' || req.query.sortBy === 'customerFirst') && {
                 messages: { some: { isFromContact: true } }
+            }),
+            // Gerçek Yazışmalar sıralaması: lastContactMessageAt null olanları da gizle
+            ...(req.query.sortBy === 'customerFirst' && {
+                lastContactMessageAt: { not: null }
             }),
             // AND: birden fazla OR koşulunu çakıştırmamak için
             AND: [
@@ -167,8 +171,8 @@ export const getConversations = async (req, res) => {
                 ...(channel === 'WHATSAPP' ? [{ OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }] }] : []),
                 ...(channel === 'FACEBOOK' ? [{ OR: [{ channel: 'FACEBOOK' }, { facebookPageId: { not: null }, instagramBusinessId: null }] }] : []),
                 ...(channel === 'INSTAGRAM' ? [{ OR: [{ channel: 'INSTAGRAM' }, { instagramBusinessId: { not: null } }] }] : []),
-                // Bulk gönderimlerden gelen sohbetleri varsayılan olarak gizle (sistem sohbetleri hariç)
-                ...(req.query.showBulk !== 'true' ? [{ OR: [{ isBulkSend: false }, { isSystemChat: true }] }] : [])
+                // Bulk gönderimlerden gelen sohbetleri gizle (customerFirst modunda otomatik, diğerinde showBulk'a bak)
+                ...((req.query.sortBy === 'customerFirst' || req.query.showBulk !== 'true') ? [{ OR: [{ isBulkSend: false }, { isSystemChat: true }] }] : [])
             ]
         };
 
@@ -428,7 +432,10 @@ export const getConversations = async (req, res) => {
                         id: true,
                         content: true,
                         createdAt: true,
-                        isFromContact: true
+                        isFromContact: true,
+                        status: true,
+                        mediaUrl: true,
+                        mediaType: true
                     }
                 },
                 case: {
@@ -984,7 +991,7 @@ export const sendMessage = async (req, res) => {
                     }
     
                     // Save Facebook message ID and set status to SENT
-                    const fbMessageId = fbResponse.data?.message_id;
+                    const fbMessageId = fbResponse?.data?.message_id;
                     if (fbMessageId) {
                         await prisma.message.update({
                             where: { id: message.id },
@@ -994,6 +1001,12 @@ export const sendMessage = async (req, res) => {
                             }
                         });
                         console.log(`✅ ${isInstagram ? 'Instagram' : 'Facebook'} message sent, ID: ${fbMessageId}`);
+                        emitToWorkspace(conversation.workspaceId, 'message_status', {
+                            messageId: fbMessageId,
+                            dbMessageId: message.id,
+                            conversationId: conversation.id,
+                            status: 'SENT'
+                        });
                     }
 
                     // If user also typed distinct text along with the media, send it as follow-up
@@ -1022,6 +1035,14 @@ export const sendMessage = async (req, res) => {
                         where: { id: message.id },
                         data: { status: 'FAILED' }
                     }).catch(e => console.error('Failed to update message status to FAILED:', e.message));
+
+                    emitToWorkspace(conversation.workspaceId, 'message_status', {
+                        messageId: message.id,
+                        dbMessageId: message.id,
+                        conversationId: conversation.id,
+                        status: 'FAILED',
+                        error: errMsg
+                    });
                 }
             }
     
@@ -1119,6 +1140,13 @@ export const sendMessage = async (req, res) => {
                                 status: 'SENT'
                             }
                         });
+
+                        emitToWorkspace(conversation.workspaceId, 'message_status', {
+                            messageId: wamid || message.id,
+                            dbMessageId: message.id,
+                            conversationId: conversation.id,
+                            status: 'SENT'
+                        });
                     } catch (error) {
                         console.error('❌ WhatsApp Send Error Details:', {
                             data: error.response?.data,
@@ -1129,6 +1157,14 @@ export const sendMessage = async (req, res) => {
                             where: { id: message.id },
                             data: { status: 'FAILED' }
                         }).catch(e => console.error('Failed to update message status to FAILED:', e.message));
+
+                        emitToWorkspace(conversation.workspaceId, 'message_status', {
+                            messageId: message.id,
+                            dbMessageId: message.id,
+                            conversationId: conversation.id,
+                            status: 'FAILED',
+                            error: error.message
+                        });
                     }
                 }
             }
@@ -1137,7 +1173,7 @@ export const sendMessage = async (req, res) => {
             if (conversation.emailChannelId && conversation.contact.email) {
                 try {
                     const subject = `Re: ${conversation.messages[0]?.emailSubject || 'Hesabınız hakkında'}`;
-                    await sendEmailReply(
+                    const emailResult = await sendEmailReply(
                         conversation.emailChannelId,
                         conversation.contact.email,
                         subject,
@@ -1145,8 +1181,33 @@ export const sendMessage = async (req, res) => {
                         { cc, bcc }
                     );
                     console.log('✅ Email sent successfully');
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: {
+                            status: 'DELIVERED',
+                            ...(emailResult?.messageId ? { emailMessageId: emailResult.messageId } : {})
+                        }
+                    });
+                    emitToWorkspace(conversation.workspaceId, 'message_status', {
+                        messageId: emailResult?.messageId || message.id,
+                        dbMessageId: message.id,
+                        conversationId: conversation.id,
+                        status: 'DELIVERED'
+                    });
                 } catch (error) {
                     console.error('❌ Email Send Error:', error.message);
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: { status: 'FAILED' }
+                    }).catch(e => console.error('Failed to update email message status to FAILED:', e.message));
+
+                    emitToWorkspace(conversation.workspaceId, 'message_status', {
+                        messageId: message.id,
+                        dbMessageId: message.id,
+                        conversationId: conversation.id,
+                        status: 'FAILED',
+                        error: error.message
+                    });
                 }
             }
         } else {
@@ -4183,7 +4244,7 @@ export const getContactGroupedConversations = async (req, res) => {
                         isStarred: true, starredAt: true,
                         teamIds: true,
                         assignedTo: { select: { id: true, name: true, avatar: true } },
-                        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { content: true, createdAt: true, isFromContact: true, messageType: true } }
+                        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, content: true, createdAt: true, isFromContact: true, messageType: true, status: true, mediaUrl: true, mediaType: true } }
                     },
                     orderBy: [
                         { isStarred: 'desc' },
@@ -4224,10 +4285,14 @@ export const getContactGroupedConversations = async (req, res) => {
                 conversationCount: convs.length,
                 totalUnread,
                 lastMessage: lastMsg ? {
+                    id: lastMsg.id,
                     content: lastMsg.content,
                     createdAt: lastMsg.createdAt,
                     isFromContact: lastMsg.isFromContact,
                     messageType: lastMsg.messageType,
+                    status: lastMsg.status,
+                    mediaUrl: lastMsg.mediaUrl,
+                    mediaType: lastMsg.mediaType,
                     channel: lastConv.channel
                 } : null,
                 lastMessageAt: lastConv?.lastMessageAt,

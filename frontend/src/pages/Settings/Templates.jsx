@@ -69,6 +69,170 @@ const CALL_SCENARIOS = [
     }
 ];
 
+const WA_READY_TEMPLATES = [
+    {
+        id: 'randevu_hatirlatma',
+        title: 'Randevu Hatırlatma',
+        icon: '📅',
+        badge: 'Otomasyon',
+        description: 'Yarınki randevuları otomatik hatırlatır. İsim, saat, doktor ve bölüm bilgisi.',
+        name: 'randevu_hatirlatma',
+        category: 'UTILITY',
+        bodyText: 'Merhaba {{1}}, yarın saat {{2}}\'deki {{3}} randevunuzu hatırlatmak isteriz.\n{{4}}\nSorularınız için bize yazabilirsiniz. İyi günler! 🙏'
+    },
+    {
+        id: 'arama_basarili',
+        title: 'Arama Başarılı',
+        icon: '✅',
+        badge: 'AI Arama',
+        description: 'Başarılı arama sonrası özet veya onay bilgisini müşteriye iletir.',
+        name: 'arama_basarili',
+        category: 'UTILITY',
+        bodyText: 'Merhaba {{1}}, az önce gerçekleştirdiğimiz görüşme hakkında bilgilendirmek isteriz.\n\n{{2}}\n\nSorularınız için bize ulaşabilirsiniz. İyi günler! 🙏'
+    },
+    {
+        id: 'arama_basarisiz',
+        title: 'Arama Başarısız',
+        icon: '📵',
+        badge: 'AI Arama',
+        description: 'Müşteriye ulaşılamadığında bilgilendirme gönderir.',
+        name: 'arama_basarisiz',
+        category: 'UTILITY',
+        bodyText: 'Merhaba {{1}}, size ulaşmaya çalıştık ancak ulaşamadık.\n\n{{2}}\n\nUygun olduğunuzda bize dönüş yapabilirsiniz. İyi günler!'
+    },
+    {
+        id: 'konum_gonder',
+        title: 'Konum Gönder',
+        icon: '📍',
+        badge: 'Operasyon',
+        description: 'Randevu veya ziyaret öncesi adres, konum ve yol tarifi bilgisi.',
+        name: 'konum_gonder',
+        category: 'UTILITY',
+        bodyText: 'Merhaba {{1}}, randevunuz için adres bilgilerimiz:\n\n📍 {{2}}\n{{3}}\n\nYol tarifi: {{4}}'
+    },
+    {
+        id: 'talep_alindi',
+        title: 'Talep / Başvuru Alındı',
+        icon: '📋',
+        badge: 'Otomasyon',
+        description: 'Form, bot veya manuel talep alındığında onay bildirimi.',
+        name: 'talep_alindi',
+        category: 'UTILITY',
+        bodyText: 'Merhaba {{1}}, talebiniz alınmıştır. ✅\n\nKonu: {{2}}\n{{3}}\n\nEn kısa sürede sizinle iletişime geçeceğiz. İyi günler!'
+    },
+    {
+        id: 'genel_bilgilendirme',
+        title: 'Genel Bilgilendirme',
+        icon: '💬',
+        badge: 'Genel',
+        description: 'Her amaçla kullanılabilen esnek bilgilendirme şablonu.',
+        name: 'genel_bilgilendirme',
+        category: 'UTILITY',
+        bodyText: 'Merhaba {{1}},\n\n{{2}}\n\nSorularınız için bize yazabilirsiniz. İyi günler! 🙏'
+    }
+];
+
+const SMS_READY_TEMPLATES = [
+    {
+        id: 'sms_randevu_hatirlatma',
+        title: 'Randevu Hatırlatma',
+        icon: '📅',
+        badge: 'Otomasyon',
+        description: 'Yarınki randevuyu SMS ile hatırlatır.',
+        name: 'Randevu Hatırlatma (SMS)',
+        bodyText: 'Merhaba, yarın saat {{saat}} randevunuz bulunmaktadır. Sorularınız için bize ulaşabilirsiniz. İyi günler!'
+    },
+    {
+        id: 'sms_talep_alindi',
+        title: 'Talep Alındı',
+        icon: '📋',
+        badge: 'Otomasyon',
+        description: 'Talep veya başvuru alındığında SMS onay bildirimi.',
+        name: 'Talep Alındı (SMS)',
+        bodyText: 'Talebiniz alınmıştır. En kısa sürede sizinle iletişime geçeceğiz. İyi günler!'
+    },
+    {
+        id: 'sms_dogrulama',
+        title: 'Doğrulama Kodu',
+        icon: '🔐',
+        badge: 'Güvenlik',
+        description: 'Tek kullanımlık doğrulama kodu gönderimi.',
+        name: 'Doğrulama Kodu (SMS)',
+        bodyText: 'Doğrulama kodunuz: {{kod}} — Bu kodu kimseyle paylaşmayın.'
+    },
+    {
+        id: 'sms_konum',
+        title: 'Adres / Konum',
+        icon: '📍',
+        badge: 'Operasyon',
+        description: 'Adres ve yol tarifi bilgisi kısa mesajla.',
+        name: 'Konum Bilgisi (SMS)',
+        bodyText: 'Adresimiz: {{adres}} — Yol tarifi için: {{link}}'
+    },
+    {
+        id: 'sms_kampanya',
+        title: 'Kampanya Duyurusu',
+        icon: '🎁',
+        badge: 'Pazarlama',
+        description: 'Kısa ve etkili kampanya/fırsat bildirimi.',
+        name: 'Kampanya Duyurusu (SMS)',
+        bodyText: 'Size özel fırsat! {{kampanya_detay}} — Detaylar için: {{link}}'
+    }
+];
+
+const EMAIL_READY_TEMPLATES = [
+    {
+        id: 'email_hosgeldin',
+        title: 'Hoş Geldiniz',
+        icon: '👋',
+        badge: 'Onboarding',
+        description: 'Yeni kayıt veya ilk talep sonrası karşılama e-postası.',
+        name: 'Hoş Geldiniz',
+        subject: 'Hoş Geldiniz! 🎉',
+        bodyText: 'Merhaba {{isim}},\n\nBize ulaştığınız için teşekkür ederiz. Ekibimiz en kısa sürede sizinle iletişime geçecektir.\n\nSorularınız için bu e-postaya yanıt verebilirsiniz.\n\nSaygılarımızla'
+    },
+    {
+        id: 'email_randevu_onay',
+        title: 'Randevu Onayı',
+        icon: '📅',
+        badge: 'Otomasyon',
+        description: 'Randevu oluşturulduğunda müşteriye onay e-postası.',
+        name: 'Randevu Onayı',
+        subject: 'Randevunuz Onaylandı ✅',
+        bodyText: 'Merhaba {{isim}},\n\nRandevunuz başarıyla oluşturulmuştur.\n\n📅 Tarih: {{tarih}}\n🕐 Saat: {{saat}}\n📍 Konum: {{adres}}\n\nDeğişiklik veya iptal için bize ulaşabilirsiniz.\n\nSaygılarımızla'
+    },
+    {
+        id: 'email_teklif',
+        title: 'Teklif / Fiyat Bilgisi',
+        icon: '💰',
+        badge: 'Satış',
+        description: 'Müşteriye fiyat teklifi veya ürün bilgisi gönderimi.',
+        name: 'Teklif Gönderimi',
+        subject: 'Fiyat Teklifimiz',
+        bodyText: 'Merhaba {{isim}},\n\nTalebiniz doğrultusunda hazırladığımız teklif aşağıdadır:\n\n{{teklif_detay}}\n\nTeklif geçerlilik süresi: {{gecerlilik}}\n\nSorularınız için yanıt verebilirsiniz.\n\nSaygılarımızla'
+    },
+    {
+        id: 'email_takip',
+        title: 'Takip / Geri Dönüş',
+        icon: '🔄',
+        badge: 'CRM',
+        description: 'İletişim sonrası takip veya geri bildirim isteme.',
+        name: 'Takip E-postası',
+        subject: 'Görüşmemiz Hakkında',
+        bodyText: 'Merhaba {{isim}},\n\nGeçtiğimiz günlerde yaptığımız görüşme hakkında geri dönüş yapmak istedik.\n\n{{ozet}}\n\nHerhangi bir sorunuz varsa bize ulaşabilirsiniz.\n\nSaygılarımızla'
+    },
+    {
+        id: 'email_kampanya',
+        title: 'Kampanya / Duyuru',
+        icon: '📣',
+        badge: 'Pazarlama',
+        description: 'Toplu kampanya veya özel teklif duyurusu.',
+        name: 'Kampanya Duyurusu',
+        subject: 'Size Özel Fırsat! 🎁',
+        bodyText: 'Merhaba {{isim}},\n\n{{kampanya_detay}}\n\nBu fırsattan yararlanmak için {{son_tarih}} tarihine kadar bize ulaşın.\n\nSaygılarımızla'
+    }
+];
+
 const Templates = () => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
@@ -783,7 +947,94 @@ const Templates = () => {
                 <>
                     {/* ==================== WhatsApp Tab Grid ==================== */}
                     {activeTab === 'WHATSAPP' && (
-                        filteredWaTemplates.length === 0 ? (
+                        <>
+                        {/* Hazır WhatsApp Şablonları */}
+                        {(() => {
+                            const existingNames = new Set(waTemplates.map(t => t.name));
+                            const availableTemplates = WA_READY_TEMPLATES.filter(t => !existingNames.has(t.name));
+                            if (availableTemplates.length === 0) return null;
+                            return (
+                                <div style={{ marginBottom: 20, padding: '16px 18px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <Sparkles size={18} color="#10b981" />
+                                            <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
+                                                Hazır WhatsApp Şablonları
+                                            </h4>
+                                            <span style={{ fontSize: 11, background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                                                Taslak Kütüphane
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: 12, color: '#64748b' }}>
+                                            Kartlara tıklayarak şablonu kütüphanenize ekleyin
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+                                        {availableTemplates.map(tpl => (
+                                            <div
+                                                key={tpl.id}
+                                                onClick={() => {
+                                                    resetTemplateForm();
+                                                    setTemplateForm(prev => ({
+                                                        ...prev,
+                                                        name: tpl.name,
+                                                        bodyText: tpl.bodyText,
+                                                        category: tpl.category,
+                                                        language: 'tr',
+                                                        whatsappPhoneNumberId: phoneNumbers[0]?.id || ''
+                                                    }));
+                                                    setEditingTemplate(null);
+                                                    setShowTemplateModal(true);
+                                                }}
+                                                style={{
+                                                    background: '#fff',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: 10,
+                                                    padding: '12px 14px',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s ease',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    justifyContent: 'space-between',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                                }}
+                                                onMouseEnter={e => {
+                                                    e.currentTarget.style.borderColor = '#10b981';
+                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.12)';
+                                                }}
+                                                onMouseLeave={e => {
+                                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.03)';
+                                                }}
+                                            >
+                                                <div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                        <span style={{ fontSize: 20 }}>{tpl.icon}</span>
+                                                        <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                                                            {tpl.badge}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', marginBottom: 4 }}>
+                                                        {tpl.title}
+                                                    </div>
+                                                    <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
+                                                        {tpl.description}
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4, color: '#10b981', fontSize: 11, fontWeight: 600 }}>
+                                                    <Plus size={13} /> Kütüphaneye Ekle
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {filteredWaTemplates.length === 0 ? (
                             <div className="tpl-empty-box">
                                 <div className="tpl-empty-icon-circle">
                                     <Smartphone size={32} />
@@ -937,7 +1188,8 @@ const Templates = () => {
                                     );
                                 })}
                             </div>
-                        )
+                        )}
+                        </>
                     )}
 
 
@@ -1161,7 +1413,100 @@ const Templates = () => {
 
                     {/* ==================== Simple Tabs (EMAIL, SMS, QUICK_REPLY) Grid ==================== */}
                     {activeTab !== 'WHATSAPP' && activeTab !== 'AI_CALL' && (
-                        filteredSimpleTemplates.length === 0 ? (
+                        <>
+                        {/* Hazır SMS / E-posta Şablonları */}
+                        {(activeTab === 'SMS' || activeTab === 'EMAIL') && (() => {
+                            const readyList = activeTab === 'SMS' ? SMS_READY_TEMPLATES : EMAIL_READY_TEMPLATES;
+                            const existingNames = new Set(simpleTemplates.map(t => t.name));
+                            const availableTemplates = readyList.filter(t => !existingNames.has(t.name));
+                            if (availableTemplates.length === 0) return null;
+
+                            const accentColor = activeTab === 'SMS' ? '#f59e0b' : '#6366f1';
+                            const badgeBg = activeTab === 'SMS' ? '#fef3c7' : '#e0e7ff';
+                            const badgeColor = activeTab === 'SMS' ? '#92400e' : '#4338ca';
+                            const label = activeTab === 'SMS' ? 'Hazır SMS Şablonları' : 'Hazır E-posta Şablonları';
+
+                            return (
+                                <div style={{ marginBottom: 20, padding: '16px 18px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <Sparkles size={18} color={accentColor} />
+                                            <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
+                                                {label}
+                                            </h4>
+                                            <span style={{ fontSize: 11, background: badgeBg, color: badgeColor, padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                                                Taslak Kütüphane
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: 12, color: '#64748b' }}>
+                                            Kartlara tıklayarak şablonu kütüphanenize ekleyin
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+                                        {availableTemplates.map(tpl => (
+                                            <div
+                                                key={tpl.id}
+                                                onClick={() => {
+                                                    setEditId(null);
+                                                    setFormData({
+                                                        name: tpl.name,
+                                                        subject: tpl.subject || '',
+                                                        bodyText: tpl.bodyText,
+                                                        bodyHtml: '',
+                                                        shortcut: '',
+                                                        message: ''
+                                                    });
+                                                    setShowSimpleModal(true);
+                                                }}
+                                                style={{
+                                                    background: '#fff',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: 10,
+                                                    padding: '12px 14px',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s ease',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    justifyContent: 'space-between',
+                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                                }}
+                                                onMouseEnter={e => {
+                                                    e.currentTarget.style.borderColor = accentColor;
+                                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                                    e.currentTarget.style.boxShadow = `0 4px 12px ${accentColor}20`;
+                                                }}
+                                                onMouseLeave={e => {
+                                                    e.currentTarget.style.borderColor = '#cbd5e1';
+                                                    e.currentTarget.style.transform = 'translateY(0)';
+                                                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.03)';
+                                                }}
+                                            >
+                                                <div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                        <span style={{ fontSize: 20 }}>{tpl.icon}</span>
+                                                        <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                                                            {tpl.badge}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', marginBottom: 4 }}>
+                                                        {tpl.title}
+                                                    </div>
+                                                    <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
+                                                        {tpl.description}
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4, color: accentColor, fontSize: 11, fontWeight: 600 }}>
+                                                    <Plus size={13} /> Kütüphaneye Ekle
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {filteredSimpleTemplates.length === 0 ? (
                             <div className="tpl-empty-box">
                                 <div className="tpl-empty-icon-circle">
                                     {activeTab === 'EMAIL' ? <Mail size={32} /> :
@@ -1271,7 +1616,8 @@ const Templates = () => {
                                     </div>
                                 ))}
                             </div>
-                        )
+                        )}
+                        </>
                     )}
                 </>
             )}

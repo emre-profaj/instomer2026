@@ -11,6 +11,9 @@
  */
 import prisma from '../lib/prisma.js';
 import { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from './domain/appointment.domain.js';
+import { ensureDefaultWhatsAppTemplates } from './defaultWhatsAppTemplates.service.js';
+
+const REMINDER_TEMPLATE_NAME = 'randevu_hatirlatma';
 
 // ─── Yardımcılar ─────────────────────────────────────────────
 
@@ -760,26 +763,79 @@ export async function checkAndSendReminders(workspaceId = null) {
 
         console.log(`🔔 [Reminder] ${appointments.length} randevu için hatırlatma gönderilecek${workspaceId ? ` (workspace: ${workspaceId.slice(0, 8)}...)` : ' (tüm workspace\'ler)'}`);
 
+        // Workspace başına şablon kontrolü (bir kere — tüm varsayılan şablonları oluşturur)
+        const checkedWorkspaces = new Set();
+        for (const appt of appointments) {
+            if (appt.workspaceId && !checkedWorkspaces.has(appt.workspaceId)) {
+                await ensureDefaultWhatsAppTemplates(appt.workspaceId);
+                checkedWorkspaces.add(appt.workspaceId);
+            }
+        }
+
         for (const appt of appointments) {
             try {
-                // WhatsApp mesajı gönder (conversation üzerinden)
+                const reminderTime = formatTime(new Date(appt.startTime));
+
+                // Mesaj metni (düzgün formatlı)
+                const reminderLines = [
+                    `Merhaba ${appt.contactName || ''},`,
+                    `Yarın saat ${reminderTime}'deki randevunuzu hatırlatmak isteriz.`,
+                    appt.doctorName ? `Doktor: ${appt.doctorName}` : '',
+                    appt.branch ? `Bölüm: ${appt.branch}` : '',
+                    '',
+                    `Sorularınız için bize yazabilirsiniz. İyi günler! 🙏`
+                ].filter(line => line !== false && line !== undefined);
+                const reminderMsg = reminderLines.join('\n');
+
+                // 1. Contact bilgisi bul
+                let contactId = appt.contactId;
+                if (!contactId && appt.conversationId) {
+                    const conv = await prisma.conversation.findUnique({
+                        where: { id: appt.conversationId },
+                        select: { contactId: true }
+                    });
+                    contactId = conv?.contactId;
+                }
+
+                // 2. WhatsApp şablon gönder (tel no varsa → her zaman WA'dan da gitsin)
+                if (contactId && appt.workspaceId) {
+                    try {
+                        // Randevu tipi: procedure varsa onu kullan, yoksa genel "randevu"
+                        const procedureType = appt.procedure || appt.title || 'randevu';
+                        // Doktor/Bölüm bilgisi tek satırda
+                        const extraInfo = [
+                            appt.doctorName ? `Doktor: ${appt.doctorName}` : '',
+                            appt.branch ? `Bölüm: ${appt.branch}` : ''
+                        ].filter(Boolean).join(' | ') || '';
+
+                        const { notifyAllChannels } = await import('./crossChannelNotifier.service.js');
+                        await notifyAllChannels(contactId, appt.workspaceId, 'APPOINTMENT_REMINDER', {
+                            templateName: REMINDER_TEMPLATE_NAME,
+                            templateParams: [
+                                appt.contactName || '',
+                                reminderTime,
+                                procedureType,
+                                extraInfo
+                            ],
+                        }, { channels: ['whatsapp'] });
+                        console.log(`📲 [Reminder] WhatsApp şablon gönderildi: ${appt.contactName} (${appt.contactPhone || 'tel yok'})`);
+                    } catch (waErr) {
+                        console.warn(`⚠️ [Reminder] WhatsApp gönderilemedi: ${waErr.message}`);
+                    }
+                }
+
+                // 3. Konuşmada da kayıt bırak (geçmişte görünsün)
                 if (appt.conversationId) {
                     await prisma.message.create({
                         data: {
                             conversationId: appt.conversationId,
-                            content: `🔔 Randevu Hatırlatması\n\n` +
-                                `Merhaba ${appt.contactName || ''},\n` +
-                                `Yarın ${formatTime(new Date(appt.startTime))} saatindeki randevunuzu hatırlatmak isteriz.\n` +
-                                `${appt.doctorName ? `Doktor: ${appt.doctorName}\n` : ''}` +
-                                `${appt.branch ? `Bölüm: ${appt.branch}\n` : ''}` +
-                                `\nSorularınız için bize yazabilirsiniz. İyi günler! 🙏`,
+                            content: `🔔 Randevu Hatırlatması\n\n${reminderMsg}`,
                             messageType: 'TEXT',
                             isFromContact: false,
                             status: 'SENT'
                         }
                     });
 
-                    // Conversation'ı güncelle
                     await prisma.conversation.update({
                         where: { id: appt.conversationId },
                         data: { lastMessageAt: new Date() }
@@ -791,7 +847,7 @@ export async function checkAndSendReminders(workspaceId = null) {
                     } catch (_) {}
                 }
 
-                // reminderSent = true
+                // 4. reminderSent = true
                 await prisma.appointment.update({
                     where: { id: appt.id },
                     data: { reminderSent: true }

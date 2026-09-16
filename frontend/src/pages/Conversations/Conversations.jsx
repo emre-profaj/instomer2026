@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { conversationAPI, workspaceAPI, aiAPI, teamAPI } from '../../services/api';
-import { Send, User, UserPlus, Users, Bot, Trash2, SendHorizontal, MessageCircle, Facebook, Instagram, Mail, ArrowRight, ArrowLeftRight, StickyNote, ExternalLink, Check, CheckCheck } from 'lucide-react';
+import { Send, User, UserPlus, Users, Bot, Trash2, SendHorizontal, MessageCircle, Facebook, Instagram, Mail, ArrowRight, ArrowLeftRight, StickyNote, ExternalLink, Check, CheckCheck, AlertCircle } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import PendingTransfersModal from '../../components/PendingTransfers/PendingTransfersModal';
 import './Conversations.css';
@@ -647,11 +647,13 @@ const Conversations = () => {
                                             {!message.isFromContact && !message.isInternalNote && (
                                                 <span className={`message-status ${message.status?.toLowerCase() || 'sent'}`}>
                                                     {message.status === 'READ' ? (
-                                                        <CheckCheck size={14} className="status-read" />
+                                                        <CheckCheck size={14} className="status-read" title="Müşteri Tarafından Okundu" />
                                                     ) : message.status === 'DELIVERED' ? (
-                                                        <CheckCheck size={14} className="status-delivered" />
+                                                        <CheckCheck size={14} className="status-delivered" title="Karşı Tarafa İletildi" />
+                                                    ) : message.status === 'FAILED' ? (
+                                                        <AlertCircle size={14} className="status-failed" title="Mesaj Gönderilemedi" />
                                                     ) : (
-                                                        <Check size={14} className="status-sent" />
+                                                        <Check size={14} className="status-sent" title="Mesaj Gönderildi" />
                                                     )}
                                                 </span>
                                             )}

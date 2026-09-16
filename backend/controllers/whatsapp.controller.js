@@ -590,6 +590,11 @@ export const connectPhoneNumber = async (req, res) => {
             }
         }
 
+        // Varsayılan WA şablonlarını oluştur (arka planda — response'u bekletme)
+        import('../services/defaultWhatsAppTemplates.service.js')
+            .then(({ ensureDefaultWhatsAppTemplates }) => ensureDefaultWhatsAppTemplates(workspaceId))
+            .catch(err => console.warn('⚠️ [WhatsApp] Varsayılan şablon oluşturma hatası:', err.message));
+
         res.status(201).json({ phoneNumber: newNumber });
 
     } catch (error) {
@@ -1313,6 +1318,35 @@ export const webhookHandler = async (req, res) => {
                         const { resetFollowUpFlags } = await import('../services/followUp.service.js');
                         await resetFollowUpFlags(conversation.id);
                     } catch (e) { /* ignore */ }
+
+                    // Mark prior outgoing messages as READ since customer responded
+                    try {
+                        const unreadPrior = await prisma.message.findMany({
+                            where: {
+                                conversationId: conversation.id,
+                                isFromContact: false,
+                                status: { in: ['SENT', 'DELIVERED'] }
+                            },
+                            select: { id: true, whatsappMessageId: true, facebookMessageId: true }
+                        });
+                        if (unreadPrior.length > 0) {
+                            await prisma.message.updateMany({
+                                where: { id: { in: unreadPrior.map(m => m.id) } },
+                                data: { status: 'READ' }
+                            });
+                            console.log(`✅ [WA Auto-Read] ${unreadPrior.length} prior messages marked as READ because customer responded`);
+                            for (const m of unreadPrior) {
+                                emitToWorkspace(waNumber.workspaceId, 'message_status', {
+                                    messageId: m.whatsappMessageId || m.facebookMessageId || m.id,
+                                    dbMessageId: m.id,
+                                    conversationId: conversation.id,
+                                    status: 'READ'
+                                });
+                            }
+                        }
+                    } catch (readErr) {
+                        console.error('Error marking prior messages read on incoming WA reply:', readErr);
+                    }
 
                     // Emit Socket Event (workspace-specific)
                     emitToWorkspace(waNumber.workspaceId, 'new_message', {

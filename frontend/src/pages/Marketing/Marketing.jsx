@@ -415,13 +415,15 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [showWizard, setShowWizard] = useState(false);
-    const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'MANUAL' | 'AUTO'
-    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'COMPLETED' | 'DRAFT'
-    const [dateFilter, setDateFilter] = useState(''); // '' | 'thisWeek' | 'thisMonth' | 'last30' | 'last90' | 'custom'
+    const [typeFilter, setTypeFilter] = useState('ALL');
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [dateFilter, setDateFilter] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [detailCampaignId, setDetailCampaignId] = useState(null);
+    const [detailView, setDetailView] = useState(null); // inline detail data
+    const [detailLoading, setDetailLoading] = useState(false);
 
     const getCampaignChannels = (c) => {
         const chs = new Set();
@@ -452,6 +454,30 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     }, [wsId]);
 
     useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+    // Kampanya detayını yükle (inline drill-down)
+    const loadCampaignDetail = useCallback(async (campaignId) => {
+        setDetailLoading(true);
+        setDetailCampaignId(campaignId);
+        try {
+            const res = await api.get(`/marketing-v2/${wsId}/campaigns/${campaignId}/detail`);
+            const data = res.data || {};
+            setDetailView({
+                ...data,
+                groups: data.campaign?.groups || data.groups || []
+            });
+        } catch (e) {
+            console.error('Detail load error:', e);
+            // Fallback: sadece kampanya bilgisi
+            setDetailView({ groups: [] });
+        }
+        setDetailLoading(false);
+    }, [wsId]);
+
+    const backToList = () => {
+        setDetailCampaignId(null);
+        setDetailView(null);
+    };
 
     const handleSave = async (data) => {
         try {
@@ -598,6 +624,315 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         SMS: { icon: <Smartphone size={11} />, label: 'SMS', bg: '#f3e8ff', color: '#7e22ce' },
         EMAIL: { icon: <Mail size={11} />, label: 'E-posta', bg: '#fef3c7', color: '#b45309' },
     };
+
+    // Eğer detay seçilmişse inline drill-down göster
+    if (detailCampaignId) {
+        const camp = campaigns.find(c => c.id === detailCampaignId) || detailView?.campaign;
+        const groups = detailView?.groups || [];
+        const detail = detailView;
+
+        return (
+            <div style={{ padding: '24px 28px' }}>
+                {/* Geri Butonu */}
+                <button onClick={backToList} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 14, color: '#6b7280', fontWeight: 500, marginBottom: 16, padding: 0,
+                }} onMouseOver={e => e.currentTarget.style.color = '#2563eb'}
+                   onMouseOut={e => e.currentTarget.style.color = '#6b7280'}>
+                    <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} /> Kampanyalara Dön
+                </button>
+
+                {detailLoading ? (
+                    <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+                        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
+                        <div style={{ marginTop: 10 }}>Yükleniyor...</div>
+                    </div>
+                ) : !camp ? (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Kampanya bulunamadı</div>
+                ) : (
+                    <>
+                        {/* Kampanya Başlığı */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
+                            borderRadius: 16, padding: '24px 28px', marginBottom: 24,
+                            border: '1px solid #e2e8f0'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                                <div>
+                                    <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>{camp.name}</h2>
+                                    {camp.description && <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b' }}>{camp.description}</p>}
+                                </div>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <span style={{
+                                        fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8,
+                                        background: camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '#dcfce7' : camp.status === 'COMPLETED' ? '#f1f5f9' : '#fefce8',
+                                        color: camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '#15803d' : camp.status === 'COMPLETED' ? '#64748b' : '#a16207'
+                                    }}>
+                                        {camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '🟢 Aktif' : camp.status === 'COMPLETED' ? 'Tamamlandı' : camp.status || 'Taslak'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* İstatistik Kartları */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginTop: 20 }}>
+                                {[
+                                    { label: 'Gönderildi', value: detail?.sentCount || camp.sentCount || 0, color: '#2563eb', icon: <Send size={16}/> },
+                                    { label: 'Teslim', value: detail?.deliveredCount || camp.deliveredCount || 0, color: '#16a34a', icon: <CheckCircle size={16}/> },
+                                    { label: 'Okundu', value: detail?.readCount || camp.readCount || 0, color: '#7c3aed', icon: <Eye size={16}/> },
+                                    { label: 'Başarısız', value: detail?.failedCount || camp.failedCount || 0, color: '#dc2626', icon: <XCircle size={16}/> },
+                                    { label: 'Yanıtlayan', value: detail?.repliedCount || camp.repliedCount || 0, color: '#0891b2', icon: <MessageSquare size={16}/> }
+                                ].map(s => (
+                                    <div key={s.label} style={{
+                                        background: '#fff', border: `1px solid ${s.color}22`, borderRadius: 12,
+                                        padding: '14px 16px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: s.color }}>
+                                            {s.icon}
+                                            <span style={{ fontSize: 24, fontWeight: 700 }}>{s.value}</span>
+                                        </div>
+                                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 500 }}>{s.label}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Reklam Grupları — 3 Katmanlı: Grup → Gönderi */}
+                        {(() => {
+                            // Gönderileri groupTag'e göre grupla
+                            const tagMap = {};
+                            groups.forEach(g => {
+                                const tag = g.groupTag || g.name || 'Genel';
+                                if (!tagMap[tag]) tagMap[tag] = { tag, sends: [], totalSent: 0, totalDelivered: 0, totalRead: 0, totalFailed: 0 };
+                                tagMap[tag].sends.push(g);
+                                tagMap[tag].totalSent += (g.sentCount || 0);
+                                tagMap[tag].totalDelivered += (g.deliveredCount || 0);
+                                tagMap[tag].totalRead += (g.readCount || 0);
+                                tagMap[tag].totalFailed += (g.failedCount || 0);
+                            });
+                            const groupedTags = Object.values(tagMap);
+
+                            return (
+                                <div style={{ marginBottom: 20 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <Folder size={18} style={{ color: '#2563eb' }} /> Reklam Grupları ({groupedTags.length}) — {groups.length} Gönderi
+                                        </h3>
+                                    </div>
+
+                                    {groups.length === 0 ? (
+                                        <div style={{
+                                            textAlign: 'center', padding: '40px 20px', background: '#f8fafc',
+                                            borderRadius: 12, border: '1px dashed #e2e8f0', color: '#94a3b8'
+                                        }}>
+                                            <Folder size={28} style={{ marginBottom: 8, opacity: 0.4 }} />
+                                            <div style={{ fontSize: 14, fontWeight: 500 }}>Bu kampanyada henüz reklam grubu yok</div>
+                                            <div style={{ fontSize: 12, marginTop: 4 }}>Reklam Grupları sekmesinden bu kampanyaya grup ekleyebilirsiniz</div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            {groupedTags.map(grp => {
+                                                const tagSuccessRate = grp.totalSent > 0 ? Math.round((grp.totalDelivered / grp.totalSent) * 100) : 0;
+                                                const channels = [...new Set(grp.sends.map(s => s.channel))];
+                                                return (
+                                                    <details key={grp.tag} open style={{
+                                                        background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+                                                        overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                                    }}>
+                                                        {/* Grup Başlığı (Tıklanabilir) */}
+                                                        <summary style={{
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                            padding: '14px 20px', cursor: 'pointer', userSelect: 'none',
+                                                            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                                                            borderBottom: '1px solid #e2e8f0', listStyle: 'none'
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                                <ChevronDown size={16} style={{ color: '#64748b', transition: 'transform 0.2s' }} />
+                                                                <div style={{
+                                                                    width: 32, height: 32, borderRadius: 8,
+                                                                    background: '#2563eb15', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                }}>
+                                                                    <Folder size={16} style={{ color: '#2563eb' }} />
+                                                                </div>
+                                                                <div>
+                                                                    <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{grp.tag}</div>
+                                                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                                                                        <span style={{ fontSize: 11, color: '#94a3b8' }}>{grp.sends.length} gönderi</span>
+                                                                        {channels.map(ch => {
+                                                                            const b = CHANNEL_BADGE[ch];
+                                                                            return b ? <span key={ch} style={{ fontSize: 9, background: b.bg, color: b.color, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>{b.label}</span> : null;
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                                                <div style={{ textAlign: 'right' }}>
+                                                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{grp.totalSent.toLocaleString()}</div>
+                                                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>toplam gönderim</div>
+                                                                </div>
+                                                                {grp.totalSent > 0 && (
+                                                                    <div style={{
+                                                                        width: 42, height: 42, borderRadius: '50%',
+                                                                        background: `conic-gradient(${tagSuccessRate >= 80 ? '#16a34a' : tagSuccessRate >= 50 ? '#f59e0b' : '#dc2626'} ${tagSuccessRate * 3.6}deg, #f1f5f9 0deg)`,
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                    }}>
+                                                                        <div style={{
+                                                                            width: 34, height: 34, borderRadius: '50%', background: '#fff',
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                            fontSize: 10, fontWeight: 700, color: '#374151'
+                                                                        }}>%{tagSuccessRate}</div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </summary>
+
+                                                        {/* Gönderimler Listesi */}
+                                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                            {grp.sends.map((g, idx) => {
+                                                                const chBadge = CHANNEL_BADGE[g.channel] || {};
+                                                                const sent = g.sentCount || 0;
+                                                                const delivered = g.deliveredCount || 0;
+                                                                const read = g.readCount || 0;
+                                                                const failed = g.failedCount || 0;
+                                                                const total = g.totalCount || sent;
+                                                                const rate = total > 0 ? Math.round((delivered / total) * 100) : 0;
+                                                                const dateStr = g.sentAt ? new Date(g.sentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
+                                                                    : g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
+                                                                    : new Date(g.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                                                                return (
+                                                                    <div key={g.id} style={{
+                                                                        background: '#fafbfc', borderRadius: 10, border: '1px solid #f1f5f9',
+                                                                        padding: '12px 16px'
+                                                                    }}>
+                                                                        {/* Gönderi Başlığı */}
+                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: sent > 0 ? 8 : 0 }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                                <span style={{
+                                                                                    width: 22, height: 22, borderRadius: 6,
+                                                                                    background: chBadge.bg || '#f1f5f9',
+                                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                    fontSize: 11
+                                                                                }}>{chBadge.icon || <Send size={10}/>}</span>
+                                                                                <div>
+                                                                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                                                                                        Gönderi {idx + 1}
+                                                                                    </span>
+                                                                                    <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>
+                                                                                        📅 {dateStr}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                                                {g.list && <span style={{ fontSize: 11, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontWeight: 500 }}>🎯 {g.list.name}</span>}
+                                                                                {g.segmentName && <span style={{ fontSize: 11, background: '#faf5ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 5, fontWeight: 500 }}>📊 {g.segmentName}</span>}
+                                                                                <span style={{
+                                                                                    padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
+                                                                                    background: g.status === 'COMPLETED' ? '#dcfce7' : g.status === 'SENDING' ? '#dbeafe' : '#f3f4f6',
+                                                                                    color: g.status === 'COMPLETED' ? '#166534' : g.status === 'SENDING' ? '#1e40af' : '#6b7280'
+                                                                                }}>{g.status || 'DRAFT'}</span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* İstatistikler */}
+                                                                        {sent > 0 && (
+                                                                            <div>
+                                                                                <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#64748b', marginBottom: 4 }}>
+                                                                                    <span>Gönderilen: <strong style={{ color: '#334155' }}>{sent}</strong></span>
+                                                                                    <span>Teslim: <strong style={{ color: '#16a34a' }}>{delivered}</strong></span>
+                                                                                    <span>Okunan: <strong style={{ color: '#7c3aed' }}>{read}</strong></span>
+                                                                                    {failed > 0 && <span>Başarısız: <strong style={{ color: '#dc2626' }}>{failed}</strong></span>}
+                                                                                    <span style={{ marginLeft: 'auto', fontWeight: 600, color: rate >= 80 ? '#16a34a' : rate >= 50 ? '#f59e0b' : '#dc2626' }}>%{rate}</span>
+                                                                                </div>
+                                                                                <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, overflow: 'hidden' }}>
+                                                                                    <div style={{
+                                                                                        height: '100%', borderRadius: 2,
+                                                                                        background: rate >= 80 ? '#16a34a' : rate >= 50 ? '#f59e0b' : '#dc2626',
+                                                                                        width: `${rate}%`, transition: 'width 0.5s ease'
+                                                                                    }} />
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Bağlı Mesajlar */}
+                                                                        {g.groupMessages && g.groupMessages.length > 0 && (
+                                                                            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                                                {g.groupMessages.map(gm => (
+                                                                                    <span key={gm.messageId || gm.id} style={{
+                                                                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                                                        background: '#f8fafc', border: '1px solid #e2e8f0',
+                                                                                        borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#475569'
+                                                                                    }}>
+                                                                                        <MessageSquare size={10} /> {gm.message?.name || 'Mesaj'}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </details>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+
+                        {/* Mesaj Önizlemesi (eski kampanyalar için) */}
+                        {detail?.messagePreviews?.length > 0 && (
+                            <div style={{ marginBottom: 20 }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <MessageSquare size={15} style={{ color: '#2563eb' }} /> Gönderilen Mesajlar
+                                </h3>
+                                {detail.messagePreviews.map((msg, i) => (
+                                    <div key={i} style={{
+                                        background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10,
+                                        padding: '12px 16px', marginBottom: 8
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{msg.name || msg.templateName || 'Mesaj'}</span>
+                                            <span style={{
+                                                fontSize: 10, background: '#e2e8f0', color: '#475569',
+                                                padding: '2px 8px', borderRadius: 6, fontWeight: 500
+                                            }}>{msg.channel}</span>
+                                        </div>
+                                        {msg.content && typeof msg.content === 'string' && (
+                                            <div style={{
+                                                fontSize: 13, color: '#374151', lineHeight: 1.5,
+                                                background: '#fff', padding: '8px 12px', borderRadius: 8,
+                                                border: '1px solid #e5e7eb', whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto'
+                                            }}>
+                                                {msg.content.substring(0, 500)}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Hedef Listeler */}
+                        {detail?.targetLists?.length > 0 && (
+                            <div style={{ marginBottom: 20 }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8 }}>🎯 Hedef Listeler</h3>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    {detail.targetLists.map((l, i) => (
+                                        <span key={i} style={{
+                                            background: (l.color || '#2563eb') + '15', color: l.color || '#2563eb',
+                                            border: `1px solid ${(l.color || '#2563eb')}33`,
+                                            padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500
+                                        }}>{l.icon || '👥'} {l.name}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div style={{ padding: '24px 28px' }}>
@@ -765,9 +1100,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                     flexDirection: 'column',
                                     gap: 10,
                                 }}
-                                onClick={() => {
-                                    setDetailCampaignId(c.id);
-                                }}
+                                onClick={() => loadCampaignDetail(c.id)}
                                 onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
                                 onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
                             >
@@ -853,10 +1186,6 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 <CampaignFormModal initial={editItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />
             )}
 
-            {/* Campaign Detail Modal */}
-            {detailCampaignId && (
-                <CampaignDetailModal wsId={wsId} campaignId={detailCampaignId} onClose={() => setDetailCampaignId(null)} />
-            )}
         </div>
     );
 }
@@ -867,17 +1196,37 @@ function CampaignsTab({ wsId, onGoToGroups }) {
 
 function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClose }) {
     const [name, setName] = useState(initial?.name || '');
+    const [groupTag, setGroupTag] = useState(initial?.groupTag || '');
     const [campaignId, setCampaignId] = useState(initial?.campaignId || '');
     const [channel, setChannel] = useState(initial?.channel || 'WHATSAPP');
+    const [audienceType, setAudienceType] = useState(initial?.segmentId ? 'segment' : 'list');
     const [listId, setListId] = useState(initial?.listId || '');
+    const [segmentId, setSegmentId] = useState(initial?.segmentId || '');
     const [sendRate, setSendRate] = useState(initial?.sendRate || 20);
     const [scheduledAt, setScheduledAt] = useState(initial?.scheduledAt ? initial.scheduledAt.substring(0,16) : '');
     const [saving, setSaving] = useState(false);
 
+    // Smart segmentleri yükle
+    const [smartSegments, setSmartSegments] = useState([]);
+    useEffect(() => {
+        api.get(`/smart-segments/${wsId}/segments/definitions`)
+            .then(r => setSmartSegments(r.data.segments || []))
+            .catch(() => setSmartSegments([]));
+    }, [wsId]);
+
     const handleSave = async () => {
-        if (!name.trim() || !campaignId || !listId) return alert('Lütfen zorunlu alanları doldurun');
+        if (!name.trim() || !campaignId) return alert('Lütfen zorunlu alanları doldurun');
+        if (audienceType === 'list' && !listId) return alert('Lütfen hedef kitle listesi seçin');
+        if (audienceType === 'segment' && !segmentId) return alert('Lütfen hedef segment seçin');
         setSaving(true);
-        await onSave({ name, campaignId, channel, listId, sendRate: Number(sendRate), scheduledAt });
+        const selectedSeg = smartSegments.find(s => s.id === segmentId);
+        await onSave({
+            name, campaignId, channel, sendRate: Number(sendRate), scheduledAt,
+            groupTag: groupTag.trim() || name.trim(), // Boşsa gönderi adı kullanılır
+            listId: audienceType === 'list' ? listId : null,
+            segmentId: audienceType === 'segment' ? segmentId : null,
+            segmentName: audienceType === 'segment' ? (selectedSeg?.name || segmentId) : null,
+        });
         setSaving(false);
     };
 
@@ -890,8 +1239,13 @@ function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClo
                 </div>
                 <div className="grp-modal-body">
                     <div className="grp-field">
-                        <label className="grp-label">Grup Adı</label>
-                        <input className="grp-input" value={name} onChange={e => setName(e.target.value)} />
+                        <label className="grp-label">Gönderi Adı</label>
+                        <input className="grp-input" value={name} onChange={e => setName(e.target.value)} placeholder="ör: VIP Liste - 15 Eylül" />
+                    </div>
+                    <div className="grp-field">
+                        <label className="grp-label">Grup Etiketi <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(Aynı etiketli gönderiler gruplanır)</span></label>
+                        <input className="grp-input" value={groupTag} onChange={e => setGroupTag(e.target.value)} placeholder="ör: Arama Başarılı" />
+                        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Boş bırakılırsa gönderi adı kullanılır</div>
                     </div>
                     <div className="grp-field">
                         <label className="grp-label">Kampanya</label>
@@ -909,13 +1263,40 @@ function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClo
                             <option value="SMS">SMS (NetGSM)</option>
                         </select>
                     </div>
+
+                    {/* Hedef Kitle Seçimi */}
                     <div className="grp-field">
-                        <label className="grp-label">Hedef Kitle (Liste)</label>
-                        <select className="grp-input" value={listId} onChange={e => setListId(e.target.value)}>
-                            <option value="">Seçiniz...</option>
-                            {contactGroups.map(cg => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
-                        </select>
+                        <label className="grp-label">Hedef Kitle</label>
+                        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 2, borderRadius: 7, marginBottom: 8 }}>
+                            <button type="button" onClick={() => setAudienceType('list')} style={{
+                                flex: 1, padding: '6px 0', border: 'none', borderRadius: 6, fontSize: 12,
+                                fontWeight: 600, cursor: 'pointer',
+                                background: audienceType === 'list' ? '#fff' : 'transparent',
+                                color: audienceType === 'list' ? '#1e293b' : '#64748b',
+                                boxShadow: audienceType === 'list' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                            }}>📋 Manuel Liste</button>
+                            <button type="button" onClick={() => setAudienceType('segment')} style={{
+                                flex: 1, padding: '6px 0', border: 'none', borderRadius: 6, fontSize: 12,
+                                fontWeight: 600, cursor: 'pointer',
+                                background: audienceType === 'segment' ? '#fff' : 'transparent',
+                                color: audienceType === 'segment' ? '#1e293b' : '#64748b',
+                                boxShadow: audienceType === 'segment' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                            }}>🤖 Otomatik Segment</button>
+                        </div>
+
+                        {audienceType === 'list' ? (
+                            <select className="grp-input" value={listId} onChange={e => setListId(e.target.value)}>
+                                <option value="">Liste seçiniz...</option>
+                                {contactGroups.map(cg => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
+                            </select>
+                        ) : (
+                            <select className="grp-input" value={segmentId} onChange={e => setSegmentId(e.target.value)}>
+                                <option value="">Segment seçiniz...</option>
+                                {smartSegments.map(s => <option key={s.id} value={s.id}>{s.icon || '📊'} {s.name}</option>)}
+                            </select>
+                        )}
                     </div>
+
                     <div className="grp-field" style={{ display: 'flex', gap: 10 }}>
                         <div style={{ flex: 1 }}>
                             <label className="grp-label">Gönderim Hızı (dakika/adet)</label>
@@ -1387,6 +1768,12 @@ function ListsTab({ wsId }) {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editGroup, setEditGroup] = useState(null);
+    const [listType, setListType] = useState('manual'); // 'manual' | 'smart'
+
+    // Smart Segments
+    const [smartSegments, setSmartSegments] = useState([]);
+    const [segmentCounts, setSegmentCounts] = useState({});
+    const [segmentsLoading, setSegmentsLoading] = useState(false);
 
     const [viewGroup, setViewGroup] = useState(null);
     const [members, setMembers] = useState([]);
@@ -1411,7 +1798,27 @@ function ListsTab({ wsId }) {
         setLoading(false);
     }, [wsId]);
 
-    useEffect(() => { fetchGroups(); }, [fetchGroups]);
+    // Smart segmentleri yükle
+    const fetchSmartSegments = useCallback(async () => {
+        if (!wsId) return;
+        setSegmentsLoading(true);
+        try {
+            const [defsRes, countsRes] = await Promise.all([
+                api.get(`/smart-segments/${wsId}/segments/definitions`),
+                api.get(`/smart-segments/${wsId}/segments/counts`)
+            ]);
+            setSmartSegments(defsRes.data.segments || []);
+            const countsMap = {};
+            (countsRes.data.counts || []).forEach(c => { countsMap[c.id] = c.count; });
+            setSegmentCounts(countsMap);
+        } catch (e) {
+            console.error('Smart segments yüklenemedi:', e);
+            setSmartSegments([]);
+        }
+        setSegmentsLoading(false);
+    }, [wsId]);
+
+    useEffect(() => { fetchGroups(); fetchSmartSegments(); }, [fetchGroups, fetchSmartSegments]);
 
     const fetchMembers = useCallback(async (groupId, search = '') => {
         if (!wsId || !groupId) return;
@@ -1506,11 +1913,91 @@ function ListsTab({ wsId }) {
 
     return (
         <div className="mkt-analytics-wrap">
-            <div className="mkt-analytics-bar">
-                <span style={{ fontSize: 13, color: '#6b7280' }}>{groups.length} liste</span>
-                <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Liste</button>
+            <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
+                    {[
+                        { key: 'manual', label: `📋 Manuel Listeler (${groups.length})` },
+                        { key: 'smart', label: `🤖 Otomatik Segmentler (${smartSegments.length})` }
+                    ].map(t => (
+                        <button key={t.key} onClick={() => setListType(t.key)} style={{
+                            padding: '6px 14px', border: 'none', borderRadius: 6, fontSize: 12,
+                            fontWeight: 600, cursor: 'pointer',
+                            background: listType === t.key ? '#fff' : 'transparent',
+                            color: listType === t.key ? '#1e293b' : '#64748b',
+                            boxShadow: listType === t.key ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                        }}>{t.label}</button>
+                    ))}
+                </div>
+                {listType === 'manual' && (
+                    <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Liste</button>
+                )}
             </div>
-            {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
+
+            {/* Otomatik Segmentler Görünümü */}
+            {listType === 'smart' && (
+                <div style={{ padding: '16px 0' }}>
+                    {segmentsLoading ? <div className="mkt-loading">Yükleniyor...</div> : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                            {smartSegments.map(seg => {
+                                const count = segmentCounts[seg.id] || 0;
+                                const SEGMENT_COLORS = {
+                                    cold_leads: '#64748b', warm_leads: '#f59e0b', hot_leads: '#ef4444',
+                                    silent_30_days: '#94a3b8', has_phone: '#2563eb', has_email: '#7c3aed',
+                                    whatsapp_active: '#16a34a', recent_contacts: '#0891b2'
+                                };
+                                const color = SEGMENT_COLORS[seg.id] || '#6366f1';
+
+                                return (
+                                    <div key={seg.id} style={{
+                                        background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb',
+                                        padding: '16px 20px', transition: 'all 0.15s', cursor: 'default'
+                                    }}
+                                        onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                                        onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <div style={{
+                                                    width: 36, height: 36, borderRadius: 10,
+                                                    background: color + '15', color: color,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: 16
+                                                }}>
+                                                    {seg.icon || '📊'}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{seg.name}</div>
+                                                    {seg.description && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{seg.description}</div>}
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                background: color + '12', color: color,
+                                                padding: '4px 12px', borderRadius: 8,
+                                                fontSize: 14, fontWeight: 700
+                                            }}>
+                                                {count.toLocaleString()}
+                                            </div>
+                                        </div>
+                                        {seg.group && (
+                                            <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
+                                                Grup: <strong style={{ color: '#64748b' }}>{seg.group}</strong>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {smartSegments.length === 0 && (
+                                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                                    Otomatik segment tanımlanmamış
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Manuel Listeler Görünümü */}
+            {listType === 'manual' && (loading ? <div className="mkt-loading">Yükleniyor...</div> : (
                 <div className="mkt-table-wrap">
                     <table className="mkt-table">
                         <thead>
@@ -1551,7 +2038,7 @@ function ListsTab({ wsId }) {
                         </tbody>
                     </table>
                 </div>
-            )}
+            ))}
             
             {showForm && (
                 <div className="mkt-modal-overlay" onClick={() => { setShowForm(false); setEditGroup(null); }}>

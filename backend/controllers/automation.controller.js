@@ -2231,39 +2231,79 @@ export const executeWebFormAutomation = async (workspaceId, contact, formData = 
 // ─────────────────────────────────────────────────────────────────────────────
 async function trackAutomationCampaign(workspaceId, automation) {
     try {
-        const today = new Date().toISOString().slice(0, 10);
-        const startOfDay = new Date(today + 'T00:00:00.000Z');
+        const today = new Date();
+        const monthKey = today.toISOString().slice(0, 7); // "2026-09"
+        const monthLabel = today.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }); // "Eylül 2026"
 
-        // Bugün bu otomasyon için kampanya var mı?
+        // 1. Bu otomasyon için kalıcı "Always On" kampanya bul veya oluştur
         let campaign = await prisma.marketingCampaign.findFirst({
             where: {
                 workspaceId,
                 automationId: automation.id,
-                createdAt: { gte: startOfDay }
+                type: 'AUTOMATION'
+            },
+            orderBy: { createdAt: 'asc' } // En eski (orijinal) kampanyayı bul
+        });
+
+        if (!campaign) {
+            campaign = await prisma.marketingCampaign.create({
+                data: {
+                    workspaceId,
+                    name: `${automation.name || 'Otomasyon'} (Always On)`,
+                    type: 'AUTOMATION',
+                    automationId: automation.id,
+                    status: 'ACTIVE',
+                    totalCount: 0,
+                    sentCount: 0
+                }
+            });
+        }
+
+        // 2. Bu ay için grup bul veya oluştur (groupTag = otomasyon adı)
+        const groupTag = automation.name || 'Otomasyon Gönderimleri';
+        const groupName = `${groupTag} — ${monthLabel}`;
+
+        let group = await prisma.campaignGroup.findFirst({
+            where: {
+                campaignId: campaign.id,
+                groupTag: groupTag,
+                name: groupName
             }
         });
 
-        if (campaign) {
-            await prisma.marketingCampaign.update({
-                where: { id: campaign.id },
+        if (group) {
+            await prisma.campaignGroup.update({
+                where: { id: group.id },
                 data: {
                     totalCount: { increment: 1 },
                     sentCount: { increment: 1 }
                 }
             });
         } else {
-            await prisma.marketingCampaign.create({
+            group = await prisma.campaignGroup.create({
                 data: {
-                    workspaceId,
-                    name: `${automation.name || 'Otomasyon'} — ${today}`,
-                    type: 'AUTOMATION',
-                    automationId: automation.id,
+                    campaignId: campaign.id,
+                    name: groupName,
+                    groupTag: groupTag,
+                    channel: automation.action === 'SEND_WHATSAPP' ? 'WHATSAPP' :
+                             automation.action === 'MAKE_CALL' ? 'AI_CALL' :
+                             automation.action === 'SEND_EMAIL' ? 'EMAIL' : 'WHATSAPP',
                     status: 'ACTIVE',
                     totalCount: 1,
                     sentCount: 1
                 }
             });
         }
+
+        // 3. Kampanya toplamlarını güncelle
+        await prisma.marketingCampaign.update({
+            where: { id: campaign.id },
+            data: {
+                totalCount: { increment: 1 },
+                sentCount: { increment: 1 },
+                status: 'ACTIVE'
+            }
+        });
     } catch (err) {
         console.warn('⚠️ [trackAutomationCampaign]', err.message);
     }

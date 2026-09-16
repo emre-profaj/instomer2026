@@ -483,7 +483,7 @@ const AIAgents = () => {
                         <div className="ai-modal-header">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <Phone size={18} color="#0d9488" />
-                                <h3>AI Call (Sesli Asistan) Ayarları</h3>
+                                <h3>{typeof showRetellModal === 'string' ? 'AI Sesli Asistan Yapılandırma' : 'AI Call (Sesli Asistan) Ayarları'}</h3>
                             </div>
                             <button className="ai-modal-close" onClick={() => setShowRetellModal(false)}>
                                 <X size={18} />
@@ -491,7 +491,7 @@ const AIAgents = () => {
                         </div>
                         <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
                             <RetellSettings
-                                hideApiSetup={false}
+                                hideApiSetup={typeof showRetellModal === 'string'}
                                 initialAgentId={typeof showRetellModal === 'string' ? showRetellModal : null}
                                 onSave={() => {
                                     loadAllAgents();

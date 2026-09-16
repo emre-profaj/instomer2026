@@ -328,7 +328,7 @@ export const createGroup = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const targetCampaignId = req.params.campaignId || req.body.campaignId;
-        const { name, channel, listId, segmentId, budget, sendRate, scheduledAt } = req.body;
+        const { name, channel, listId, segmentId, segmentName, groupTag, budget, sendRate, scheduledAt } = req.body;
 
         if (!targetCampaignId) {
             return res.status(400).json({ error: 'Kampanya seçilmelidir' });
@@ -345,9 +345,11 @@ export const createGroup = async (req, res) => {
             data: {
                 campaignId: targetCampaignId,
                 name,
+                groupTag: groupTag || name, // Varsayılan olarak isim kullanılır
                 channel: channel || 'WHATSAPP',
                 listId: listId || null,
                 segmentId: segmentId || null,
+                segmentName: segmentName || null,
                 budget: budget ? Number(budget) : null,
                 sendRate: sendRate ? Number(sendRate) : 20,
                 scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
@@ -370,15 +372,17 @@ export const createGroup = async (req, res) => {
 export const updateGroup = async (req, res) => {
     try {
         const { workspaceId, groupId } = req.params;
-        const { name, channel, listId, segmentId, budget, sendRate, scheduledAt, status } = req.body;
+        const { name, channel, listId, segmentId, segmentName, groupTag, budget, sendRate, scheduledAt, status } = req.body;
 
         const group = await prisma.campaignGroup.update({
             where: { id: groupId, campaign: { workspaceId } },
             data: {
                 name,
+                groupTag,
                 channel,
                 listId,
                 segmentId,
+                segmentName,
                 budget,
                 sendRate,
                 status,
@@ -2032,6 +2036,41 @@ export const getCampaignFullDetail = async (req, res) => {
             .filter(g => g.list)
             .map(g => ({ id: g.list.id, name: g.list.name, icon: g.list.icon, color: g.list.color, groupName: g.name }));
 
+        // Grup-bazlı istatistikler
+        const groupsWithStats = campaign.groups.map(g => ({
+            id: g.id,
+            name: g.name,
+            groupTag: g.groupTag || g.name, // Gruplama için — yoksa isim kullanılır
+            channel: g.channel,
+            status: g.status,
+            listId: g.listId,
+            segmentId: g.segmentId,
+            segmentName: g.segmentName,
+            sendRate: g.sendRate,
+            scheduledAt: g.scheduledAt,
+            sentAt: g.sentAt,
+            createdAt: g.createdAt,
+            totalCount: g.totalCount,
+            sentCount: g.sentCount,
+            deliveredCount: g.deliveredCount,
+            readCount: g.readCount,
+            failedCount: g.failedCount,
+            repliedCount: g.repliedCount,
+            list: g.list || null,
+            groupMessages: g.groupMessages.map(gm => ({
+                id: gm.id,
+                messageId: gm.messageId,
+                order: gm.order,
+                message: gm.message ? {
+                    id: gm.message.id,
+                    name: gm.message.name,
+                    channel: gm.message.channel,
+                    templateName: gm.message.templateName,
+                    content: gm.message.content
+                } : null
+            }))
+        }));
+
         res.json({
             success: true,
             campaign: {
@@ -2050,8 +2089,10 @@ export const getCampaignFullDetail = async (req, res) => {
                 startDate: campaign.startDate,
                 endDate: campaign.endDate,
                 budget: campaign.budget,
-                isAutomation: campaign.isAutomation
+                isAutomation: campaign.type === 'AUTOMATION' || Boolean(campaign.automationId),
+                groups: groupsWithStats
             },
+            groups: groupsWithStats,
             statusSummary,
             messagePreviews,
             targetLists,

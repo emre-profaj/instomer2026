@@ -9,7 +9,7 @@ import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
 
-const KnowledgeBase = () => {
+const KnowledgeBase = ({ hideSidebar = false }) => {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const { currentWorkspace, user, refreshWorkspace } = useAuth();
@@ -18,6 +18,11 @@ const KnowledgeBase = () => {
     const labels = getSectorLabels(currentWorkspace?.industry);
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
+
+    useEffect(() => {
+        const tab = searchParams.get('tab') || 'company';
+        setActiveTab(tab);
+    }, [searchParams]);
 
     const handleSelectTab = (tab) => {
         setActiveTab(tab);
@@ -788,111 +793,113 @@ const KnowledgeBase = () => {
     }
 
     return (
-        <div className="knowledge-base-page base-layout">
+        <div className={`knowledge-base-page base-layout ${hideSidebar ? 'no-sidebar' : ''}`}>
             {/* Sol Sidebar */}
-            <div className="base-sidebar">
-                <div className="base-sidebar-header">
-                    <div className="base-sidebar-header-icon">
-                        <Building2 size={16} />
+            {!hideSidebar && (
+                <div className="base-sidebar">
+                    <div className="base-sidebar-header">
+                        <div className="base-sidebar-header-icon">
+                            <Building2 size={16} />
+                        </div>
+                        <span>Base</span>
                     </div>
-                    <span>Base</span>
+                    <nav className="base-nav">
+                        {canManage && (
+                            <button
+                                type="button"
+                                className="base-nav-item"
+                                onClick={() => navigate('/setup-wizard')}
+                                style={{
+                                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(79, 70, 229, 0.16) 100%)',
+                                    color: '#4f46e5',
+                                    borderColor: 'rgba(99, 102, 241, 0.3)',
+                                    fontWeight: 600,
+                                    marginBottom: '6px',
+                                    boxShadow: '0 1px 4px rgba(99, 102, 241, 0.08)'
+                                }}
+                            >
+                                <Wand2 size={16} color="#4f46e5" /> Hızlı Kurulum Sihirbazı
+                            </button>
+                        )}
+                        {canManage && (
+                            <button
+                                type="button"
+                                className="base-nav-item"
+                                onClick={() => window.dispatchEvent(new CustomEvent('open-insta', { detail: { tab: 'wizard' } }))}
+                                style={{
+                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.16) 100%)',
+                                    color: '#dc2626',
+                                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                                    fontWeight: 600,
+                                    marginBottom: '6px',
+                                    boxShadow: '0 1px 4px rgba(239, 68, 68, 0.08)'
+                                }}
+                            >
+                                <Sparkles size={16} color="#ef4444" /> AI ile Yapılandır
+                            </button>
+                        )}
+                        <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => handleSelectTab('company')}>
+                            <Building2 size={16} /> Şirket Bilgileri
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => handleSelectTab('branches')}>
+                            <MapPin size={16} /> {labels.branchesTab || 'Şubeler'}
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => handleSelectTab('categories')}>
+                            <Layers size={16} /> {labels.categoriesTab || 'Kategoriler'}
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => handleSelectTab('productGroups')}>
+                            <FolderTree size={16} /> {labels.productGroupsTab || 'Ürün Grupları'}
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => handleSelectTab('products')}>
+                            <Package size={16} /> {labels.productsTab || 'Ürünler'}
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => handleSelectTab('resources')}>
+                            <UserCircle size={16} /> Kaynaklar
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
+                            <FileText size={16} /> Metin Ekle / SSS
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => handleSelectTab('files')}>
+                            <Upload size={16} /> Dosya Ekle
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => handleSelectTab('url')}>
+                            <Globe size={16} /> Web Sitesi Tara
+                        </button>
+                        <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => handleSelectTab('feed')}>
+                            <Link size={16} /> Dinamik Feed
+                        </button>
+                        <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', margin: '8px 0' }} />
+                        <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => handleSelectTab('list')}>
+                            <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
+                        </button>
+                        <div style={{ padding: '8px 12px', marginTop: '12px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setShowAiSetupModal(true)}
+                                className="btn btn-primary"
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                    fontSize: '12px',
+                                    padding: '8px 12px',
+                                    background: 'linear-gradient(135deg, #E63B2E 0%, #f97316 100%)',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    color: '#fff',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 8px rgba(230, 59, 46, 0.25)'
+                                }}
+                            >
+                                <Sparkles size={14} /> AI ile Yapılandır
+                            </button>
+                        </div>
+                    </nav>
                 </div>
-                <nav className="base-nav">
-                    {canManage && (
-                        <button
-                            type="button"
-                            className="base-nav-item"
-                            onClick={() => navigate('/setup-wizard')}
-                            style={{
-                                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(79, 70, 229, 0.16) 100%)',
-                                color: '#4f46e5',
-                                borderColor: 'rgba(99, 102, 241, 0.3)',
-                                fontWeight: 600,
-                                marginBottom: '6px',
-                                boxShadow: '0 1px 4px rgba(99, 102, 241, 0.08)'
-                            }}
-                        >
-                            <Wand2 size={16} color="#4f46e5" /> Hızlı Kurulum Sihirbazı
-                        </button>
-                    )}
-                    {canManage && (
-                        <button
-                            type="button"
-                            className="base-nav-item"
-                            onClick={() => window.dispatchEvent(new CustomEvent('open-insta', { detail: { tab: 'wizard' } }))}
-                            style={{
-                                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.16) 100%)',
-                                color: '#dc2626',
-                                borderColor: 'rgba(239, 68, 68, 0.3)',
-                                fontWeight: 600,
-                                marginBottom: '6px',
-                                boxShadow: '0 1px 4px rgba(239, 68, 68, 0.08)'
-                            }}
-                        >
-                            <Sparkles size={16} color="#ef4444" /> AI ile Yapılandır
-                        </button>
-                    )}
-                    <button className={`base-nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => handleSelectTab('company')}>
-                        <Building2 size={16} /> Şirket Bilgileri
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'branches' ? 'active' : ''}`} onClick={() => handleSelectTab('branches')}>
-                        <MapPin size={16} /> {labels.branchesTab || 'Şubeler'}
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => handleSelectTab('categories')}>
-                        <Layers size={16} /> {labels.categoriesTab || 'Kategoriler'}
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'productGroups' ? 'active' : ''}`} onClick={() => handleSelectTab('productGroups')}>
-                        <FolderTree size={16} /> {labels.productGroupsTab || 'Ürün Grupları'}
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'products' ? 'active' : ''}`} onClick={() => handleSelectTab('products')}>
-                        <Package size={16} /> {labels.productsTab || 'Ürünler'}
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => handleSelectTab('resources')}>
-                        <UserCircle size={16} /> Kaynaklar
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
-                        <FileText size={16} /> Metin Ekle / SSS
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => handleSelectTab('files')}>
-                        <Upload size={16} /> Dosya Ekle
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => handleSelectTab('url')}>
-                        <Globe size={16} /> Web Sitesi Tara
-                    </button>
-                    <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => handleSelectTab('feed')}>
-                        <Link size={16} /> Dinamik Feed
-                    </button>
-                    <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', margin: '8px 0' }} />
-                    <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => handleSelectTab('list')}>
-                        <Database size={16} /> Tüm Bilgiler <span className="base-nav-badge">{knowledgeEntries.length}</span>
-                    </button>
-                    <div style={{ padding: '8px 12px', marginTop: '12px' }}>
-                        <button
-                            type="button"
-                            onClick={() => setShowAiSetupModal(true)}
-                            className="btn btn-primary"
-                            style={{
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px',
-                                fontSize: '12px',
-                                padding: '8px 12px',
-                                background: 'linear-gradient(135deg, #E63B2E 0%, #f97316 100%)',
-                                border: 'none',
-                                borderRadius: '8px',
-                                color: '#fff',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                boxShadow: '0 2px 8px rgba(230, 59, 46, 0.25)'
-                            }}
-                        >
-                            <Sparkles size={14} /> AI ile Yapılandır
-                        </button>
-                    </div>
-                </nav>
-            </div>
+            )}
 
             {/* Sağ İçerik */}
             <div className="base-content">

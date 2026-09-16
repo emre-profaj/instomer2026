@@ -183,6 +183,38 @@ export const getWidgetMessages = async (req, res) => {
             }
         });
 
+        // Mark fetched outgoing messages as READ and emit message_status to workspace
+        if (messages.length > 0) {
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { workspaceId: true }
+                });
+
+                if (conv?.workspaceId) {
+                    const unreadMessageIds = messages.map(m => m.id);
+                    await prisma.message.updateMany({
+                        where: {
+                            id: { in: unreadMessageIds },
+                            status: { in: ['SENT', 'DELIVERED'] }
+                        },
+                        data: { status: 'READ' }
+                    });
+
+                    for (const m of messages) {
+                        emitToWorkspace(conv.workspaceId, 'message_status', {
+                            messageId: m.id,
+                            dbMessageId: m.id,
+                            conversationId,
+                            status: 'READ'
+                        });
+                    }
+                }
+            } catch (statusErr) {
+                console.error('Error updating widget message read status:', statusErr);
+            }
+        }
+
         res.json({ messages });
     } catch (error) {
         console.error('Widget getMessages error:', error);
@@ -363,6 +395,35 @@ export const handleWidgetChat = async (req, res) => {
                 contact: true
             }
         });
+
+        // Mark prior outgoing messages as READ since visitor replied
+        try {
+            const unreadPrior = await prisma.message.findMany({
+                where: {
+                    conversationId: conversation.id,
+                    isFromContact: false,
+                    status: { in: ['SENT', 'DELIVERED'] }
+                },
+                select: { id: true }
+            });
+            if (unreadPrior.length > 0) {
+                await prisma.message.updateMany({
+                    where: { id: { in: unreadPrior.map(m => m.id) } },
+                    data: { status: 'READ' }
+                });
+                console.log(`✅ [Widget Auto-Read] ${unreadPrior.length} prior messages marked as READ because visitor replied`);
+                for (const m of unreadPrior) {
+                    emitToWorkspace(workspaceId, 'message_status', {
+                        messageId: m.id,
+                        dbMessageId: m.id,
+                        conversationId: conversation.id,
+                        status: 'READ'
+                    });
+                }
+            }
+        } catch (readErr) {
+            console.error('Error marking prior messages read on widget reply:', readErr);
+        }
 
         // Emit socket events for real-time updates (workspace-specific)
         try {
@@ -712,3 +773,53 @@ export const handlePrechat = async (req, res) => {
         res.status(500).json({ error: 'Form işlenemedi.' });
     }
 };
+
+// Mark widget messages as read explicitly
+export const markWidgetMessagesRead = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        if (!conversationId) {
+            return res.status(400).json({ error: 'conversationId gerekli.' });
+        }
+
+        const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { workspaceId: true }
+        });
+
+        if (!conv) {
+            return res.status(404).json({ error: 'Konuşma bulunamadı.' });
+        }
+
+        const unreadMessages = await prisma.message.findMany({
+            where: {
+                conversationId,
+                isFromContact: false,
+                status: { in: ['SENT', 'DELIVERED'] }
+            },
+            select: { id: true }
+        });
+
+        if (unreadMessages.length > 0) {
+            await prisma.message.updateMany({
+                where: { id: { in: unreadMessages.map(m => m.id) } },
+                data: { status: 'READ' }
+            });
+
+            for (const m of unreadMessages) {
+                emitToWorkspace(conv.workspaceId, 'message_status', {
+                    messageId: m.id,
+                    dbMessageId: m.id,
+                    conversationId,
+                    status: 'READ'
+                });
+            }
+        }
+
+        res.json({ success: true, count: unreadMessages.length });
+    } catch (error) {
+        console.error('markWidgetMessagesRead error:', error);
+        res.status(500).json({ error: 'Mesajlar güncellenemedi.' });
+    }
+};
+

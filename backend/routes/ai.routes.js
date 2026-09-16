@@ -69,5 +69,6 @@ router.get('/public/widget/:widgetId', widgetController.getWidgetByWidgetId);
 router.post('/public/chat', widgetController.handleWidgetChat);
 router.post('/public/prechat', widgetController.handlePrechat);
 router.get('/public/messages/:conversationId', widgetController.getWidgetMessages);
+router.post('/public/messages/:conversationId/read', widgetController.markWidgetMessagesRead);
 
 export default router;

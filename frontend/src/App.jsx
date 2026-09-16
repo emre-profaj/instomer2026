@@ -66,6 +66,7 @@ import ProfileSettings from './pages/Settings/ProfileSettings';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
+import SettingsLayout from './layouts/SettingsLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSettings from './pages/Admin/AdminSettings';
 import AdminActivityLog from './pages/Admin/AdminActivityLog';
@@ -121,24 +122,34 @@ function App() {
               <Route path="emails" element={<Navigate to="/inbox" replace />} />
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
-              <Route path="channels" element={<Channels />} />
+              {/* Settings Hub with Unified Middle Panel */}
+              <Route element={<SettingsLayout />}>
+                <Route path="base" element={<KnowledgeBase hideSidebar={true} />} />
+                <Route path="settings" element={<Navigate to="/base?tab=company" replace />} />
+                <Route path="firm-settings" element={<Navigate to="/base?tab=company" replace />} />
+                <Route path="channels" element={<Channels />} />
+                <Route path="funnels" element={<Funnels />} />
+                <Route path="teams" element={<Users />} />
+                <Route path="ai-agents" element={<AIAgents />} />
+                <Route path="templates" element={<Templates />} />
+                <Route path="automations-hub" element={<OtomasyonlarHub />} />
+                <Route path="integrations" element={<Integrations />} />
+                <Route path="notification-settings" element={<NotificationSettings />} />
+                <Route path="profile" element={<ProfileSettings />} />
+                <Route path="workspace-settings" element={<WorkspaceSettings />} />
+              </Route>
+
+              {/* Redirects & Aliases */}
               <Route path="classifier" element={<Navigate to="/channels" replace />} />
-
-
-              <Route path="teams" element={<Users />} />
               <Route path="users" element={<Navigate to="/teams" replace />} />
-              <Route path="ai-agents" element={<AIAgents />} />
               <Route path="agents" element={<Navigate to="/ai-agents" replace />} />
               <Route path="assistants" element={<Navigate to="/ai-agents" replace />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="firm-settings" element={<FirmSettings />} />
-              <Route path="workspace-settings" element={<WorkspaceSettings />} />
               <Route path="topic-categories" element={<Navigate to="/funnels?tab=casetypes" replace />} />
               <Route path="casetypes" element={<Navigate to="/funnels?tab=casetypes" replace />} />
-              <Route path="templates" element={<Templates />} />
-              <Route path="integrations" element={<Integrations />} />
               <Route path="knowledge-base" element={<Navigate to="/base" replace />} />
-              <Route path="base" element={<KnowledgeBase />} />
+              <Route path="automations" element={<Navigate to="/automations-hub" replace />} />
+              <Route path="profile-settings" element={<Navigate to="/profile" replace />} />
+
               <Route path="setup-wizard" element={<SetupWizard />} />
               <Route path="ayarlar/wizard" element={<SetupWizard />} />
               <Route path="base/wizard" element={<SetupWizard />} />
@@ -159,11 +170,6 @@ function App() {
               <Route path="calendar" element={<CalendarRedirect />} />
               <Route path="activities/calendar" element={<Calendar />} />
 
-              <Route path="automations-hub" element={<OtomasyonlarHub />} />
-              <Route path="automations" element={<Navigate to="/automations-hub" replace />} />
-              <Route path="notification-settings" element={<NotificationSettings />} />
-              <Route path="profile" element={<ProfileSettings />} />
-              <Route path="profile-settings" element={<Navigate to="/profile" replace />} />
               {/* Functions route removed - merged into Integrations */}
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />
@@ -171,7 +177,6 @@ function App() {
               <Route path="invoices" element={<Invoices />} />
               <Route path="products" element={<Products />} />
               <Route path="pipeline" element={<Navigate to="/inbox" replace />} />
-              <Route path="funnels" element={<Funnels />} />
               <Route path="real-estate" element={<RealEstateAdmin />} />
               <Route path="real-estate/wizard" element={<RealEstateWizard />} />
               <Route path="real-estate/offers" element={<RealEstateOffers />} />

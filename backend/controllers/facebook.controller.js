@@ -1171,6 +1171,10 @@ async function processWebhookAsync(body) {
             if (messagingEvent.delivery) {
                 console.log('📬 Delivery receipt received');
                 const mids = messagingEvent.delivery.mids || [];
+                const watermark = messagingEvent.delivery.watermark;
+                const deliveryTargetIds = [messagingEvent.recipient?.id, messagingEvent.sender?.id].filter(Boolean);
+
+                // 1. Process specific message IDs if provided
                 for (const mid of mids) {
                     try {
                         const updated = await prisma.message.updateMany({
@@ -1203,29 +1207,87 @@ async function processWebhookAsync(body) {
                         console.error('Delivery update error:', e);
                     }
                 }
+
+                // 2. Fallback to watermark (especially important for Instagram where mids is often empty)
+                if (watermark && deliveryTargetIds.length > 0) {
+                    try {
+                        const contactConversations = await prisma.conversation.findMany({
+                            where: {
+                                contact: {
+                                    OR: [
+                                        { facebookId: { in: deliveryTargetIds } },
+                                        { instagramId: { in: deliveryTargetIds } }
+                                    ]
+                                }
+                            },
+                            select: { id: true, workspaceId: true }
+                        });
+
+                        if (contactConversations.length > 0) {
+                            const convIds = contactConversations.map(c => c.id);
+                            const pendingDelivery = await prisma.message.findMany({
+                                where: {
+                                    conversationId: { in: convIds },
+                                    isFromContact: false,
+                                    status: 'SENT',
+                                    createdAt: { lte: new Date(watermark) }
+                                },
+                                select: {
+                                    id: true,
+                                    conversationId: true,
+                                    facebookMessageId: true,
+                                    conversation: { select: { workspaceId: true } }
+                                }
+                            });
+
+                            if (pendingDelivery.length > 0) {
+                                await prisma.message.updateMany({
+                                    where: { id: { in: pendingDelivery.map(m => m.id) } },
+                                    data: { status: 'DELIVERED' }
+                                });
+                                console.log(`✅ ${pendingDelivery.length} messages marked as DELIVERED via watermark for target: ${deliveryTargetIds.join(', ')}`);
+                                for (const msg of pendingDelivery) {
+                                    if (msg.conversation?.workspaceId) {
+                                        emitToWorkspace(msg.conversation.workspaceId, 'message_status', {
+                                            messageId: msg.facebookMessageId || msg.id,
+                                            dbMessageId: msg.id,
+                                            conversationId: msg.conversationId,
+                                            status: 'DELIVERED'
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    } catch (watermarkErr) {
+                        console.error('Delivery watermark update error:', watermarkErr);
+                    }
+                }
                 continue;
             }
 
             // --- HANDLE READ RECEIPTS ---
             if (messagingEvent.read) {
                 const watermark = messagingEvent.read.watermark;
-                const readSenderId = messagingEvent.sender?.id; // Who read the message (the contact)
+                const readUserIds = [messagingEvent.sender?.id, messagingEvent.recipient?.id].filter(Boolean);
 
-                console.log(`👁️ Read receipt received - Sender: ${readSenderId}, Watermark: ${watermark}`);
+                console.log(`👁️ Read receipt received - Users: ${readUserIds.join(', ')}, Watermark: ${watermark}`);
 
                 try {
-                    // Find conversations for this contact (who read the messages)
+                    // Find conversations for this contact (supporting BOTH Facebook and Instagram contacts)
                     const contactConversations = await prisma.conversation.findMany({
                         where: {
                             contact: {
-                                facebookId: readSenderId
+                                OR: [
+                                    { facebookId: { in: readUserIds } },
+                                    { instagramId: { in: readUserIds } }
+                                ]
                             }
                         },
                         select: { id: true, workspaceId: true }
                     });
 
                     if (contactConversations.length === 0) {
-                        console.log(`⚠️ No conversations found for contact ${readSenderId}`);
+                        console.log(`⚠️ No conversations found for contact ${readUserIds.join(', ')}`);
                         continue;
                     }
 
@@ -1253,13 +1315,13 @@ async function processWebhookAsync(body) {
                             data: { status: 'READ' }
                         });
 
-                        console.log(`✅ ${messagesToUpdate.length} messages marked as READ for contact ${readSenderId}`);
+                        console.log(`✅ ${messagesToUpdate.length} messages marked as READ for contact ${readUserIds.join(', ')}`);
 
                         // Emit socket events for each message to its workspace
                         for (const msg of messagesToUpdate) {
                             if (msg.conversation?.workspaceId) {
                                 emitToWorkspace(msg.conversation.workspaceId, 'message_status', {
-                                    messageId: msg.facebookMessageId,
+                                    messageId: msg.facebookMessageId || msg.id,
                                     dbMessageId: msg.id,
                                     conversationId: msg.conversationId,
                                     status: 'READ'
@@ -1267,7 +1329,7 @@ async function processWebhookAsync(body) {
                             }
                         }
                     } else {
-                        console.log(`ℹ️ No unread messages to update for contact ${readSenderId}`);
+                        console.log(`ℹ️ No unread messages to update for contact ${readUserIds.join(', ')}`);
                     }
                 } catch (e) {
                     console.error('Read update error:', e);
@@ -1901,6 +1963,35 @@ async function processWebhookAsync(body) {
                             const { resetFollowUpFlags } = await import('../services/followUp.service.js');
                             await resetFollowUpFlags(conversation.id);
                         } catch (e) { /* ignore */ }
+
+                        // Mark prior outgoing messages as READ since customer has replied
+                        try {
+                            const unreadPrior = await prisma.message.findMany({
+                                where: {
+                                    conversationId: conversation.id,
+                                    isFromContact: false,
+                                    status: { in: ['SENT', 'DELIVERED'] }
+                                },
+                                select: { id: true, facebookMessageId: true }
+                            });
+                            if (unreadPrior.length > 0) {
+                                await prisma.message.updateMany({
+                                    where: { id: { in: unreadPrior.map(m => m.id) } },
+                                    data: { status: 'READ' }
+                                });
+                                console.log(`✅ [FB/IG Auto-Read] ${unreadPrior.length} prior messages marked as READ because customer responded`);
+                                for (const m of unreadPrior) {
+                                    emitToWorkspace(facebookPage.workspaceId, 'message_status', {
+                                        messageId: m.facebookMessageId || m.id,
+                                        dbMessageId: m.id,
+                                        conversationId: conversation.id,
+                                        status: 'READ'
+                                    });
+                                }
+                            }
+                        } catch (readErr) {
+                            console.error('Error marking prior messages read on incoming FB/IG reply:', readErr);
+                        }
                     }
 
                     // Emit WebSocket event for real-time update (workspace-specific)

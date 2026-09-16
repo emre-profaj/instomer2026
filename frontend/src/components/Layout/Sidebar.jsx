@@ -463,54 +463,16 @@ const Sidebar = () => {
 
 
 
-                            {/* Settings — gruplu alt menü */}
+                            {/* Ayarlar — Doğrudan Ayarlar & Bilgi Bankası Orta Paneline Yönlendirir */}
                             {(workspaceRole === 'OWNER' || user?.role === 'SUPER_ADMIN') && (
-                                <div className="nav-category">
-                                    <button
-                                        className={`nav-category-header ${isSettingsPath(location.pathname) ? 'active' : ''}`}
-                                        onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsRealEstateOpen(false); setIsAnalyticsOpen(false); }}
-                                        title="Ayarlar"
-                                    >
-                                        <Settings size={20} className="nav-icon" />
-                                        {!isCollapsed && <span>Ayarlar</span>}
-                                        {!isCollapsed && <ChevronDown size={16} className={`category-arrow ${isSettingsOpen ? 'open' : ''}`} />}
-                                    </button>
-                                    {isSettingsOpen && !isCollapsed && (
-                                        <div className="nav-submenu">
-                                            {(() => {
-                                                let lastGroup = null;
-                                                return settingsSubItems.map(item => {
-                                                    const isItemActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path + '/'));
-                                                    const showGroupLabel = item.group !== lastGroup;
-                                                    lastGroup = item.group;
-                                                    return (
-                                                        <div key={item.path}>
-                                                            {showGroupLabel && (
-                                                                <div style={{
-                                                                    fontSize: '9px',
-                                                                    fontWeight: 700,
-                                                                    color: '#94a3b8',
-                                                                    textTransform: 'uppercase',
-                                                                    letterSpacing: '0.8px',
-                                                                    padding: '8px 12px 3px',
-                                                                    marginTop: lastGroup === settingsSubItems[0]?.group ? 0 : '2px'
-                                                                }}>
-                                                                    {item.group}
-                                                                </div>
-                                                            )}
-                                                            <Link to={item.path}
-                                                                className={`sidebar-nav-item submenu-item ${isItemActive ? 'active' : ''}`}
-                                                            >
-                                                                <item.icon size={18} className="nav-icon" />
-                                                                <span style={{ flex: 1 }}>{item.label}</span>
-                                                            </Link>
-                                                        </div>
-                                                    );
-                                                });
-                                            })()}
-                                        </div>
-                                    )}
-                                </div>
+                                <Link
+                                    to="/base?tab=company"
+                                    className={`sidebar-nav-item ${isSettingsPath(location.pathname) ? 'active' : ''}`}
+                                    title="Ayarlar"
+                                >
+                                    <Settings size={20} className="nav-icon" />
+                                    {!isCollapsed && <span>Ayarlar</span>}
+                                </Link>
                             )}
 
                             {/* Admin */}

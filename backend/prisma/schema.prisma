@@ -2189,6 +2189,7 @@ model CampaignGroup {
   id             String    @id @default(uuid())
   campaignId     String
   name           String // "VIP WhatsApp", "Yeni Lead Arama"
+  groupTag       String? // Gruplama etiketi: aynı tag'e sahip gönderimler bir "Reklam Grubu" oluşturur
   channel        String    @default("WHATSAPP") // WHATSAPP, AI_CALL, EMAIL, SMS, GOOGLE_ADS, META_ADS
   // Hedef kitle
   listId         String? // ContactGroup ID
@@ -2218,6 +2219,7 @@ model CampaignGroup {
 
   @@index([campaignId])
   @@index([listId])
+  @@index([campaignId, groupTag])
   @@map("campaign_groups")
 }
 

@@ -224,7 +224,7 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
             const recipientPhone = conversation.contact?.phone?.replace(/\D/g, '');
 
             if (recipientPhone && phone.accessToken) {
-                await axios.post(
+                const waRes = await axios.post(
                     `https://graph.facebook.com/${GRAPH_API_VERSION}/${phone.phoneNumberId}/messages`,
                     {
                         messaging_product: 'whatsapp',
@@ -234,6 +234,18 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                     },
                     { headers: { Authorization: `Bearer ${phone.accessToken}` } }
                 );
+                const wamid = waRes.data?.messages?.[0]?.id;
+                sentMessage = await prisma.message.create({
+                    data: {
+                        conversationId: conversation.id,
+                        content: safeMessage,
+                        isFromContact: false,
+                        messageType: 'WHATSAPP',
+                        senderId: null,
+                        whatsappMessageId: wamid || null,
+                        status: 'SENT'
+                    }
+                });
             }
         } else if ((channel === 'facebook' || channel === 'instagram') && conversation.facebookPage) {
             const page = conversation.facebookPage;
@@ -265,15 +277,16 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                         conversationId: conversation.id,
                         content: safeMessage,
                         isFromContact: false,
-                        messageType: 'TEXT',
+                        messageType: channel === 'instagram' ? 'INSTAGRAM' : 'TEXT',
                         senderId: null, // Bot message, no user sender
-                        facebookMessageId: fbMessageId || null
+                        facebookMessageId: fbMessageId || null,
+                        status: 'SENT'
                     }
                 });
             }
         }
 
-        // Save message to database (for WhatsApp or if Facebook/Instagram failed)
+        // Save message to database (fallback)
         if (!sentMessage) {
             sentMessage = await prisma.message.create({
                 data: {
@@ -281,7 +294,8 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                     content: safeMessage,
                     isFromContact: false,
                     messageType: 'TEXT',
-                    senderId: null // Bot message, no user sender
+                    senderId: null, // Bot message, no user sender
+                    status: 'SENT'
                 }
             });
         }
