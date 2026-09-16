@@ -1,5 +1,4 @@
 import prisma from '../lib/prisma.js';
-import { executeRule } from '../services/ruleEngine.service.js';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
@@ -1292,6 +1291,19 @@ export const webhookHandler = async (req, res) => {
                         }
                     });
 
+                    // 🎤 Sesli mesaj çözümleme — VOICE_MESSAGE_TRANSCRIBE kuralı aktifse
+                    if (mediaType === 'audio' && mediaUrl) {
+                        import('../services/voiceTranscribe.service.js')
+                            .then(({ transcribeVoiceMessage }) => transcribeVoiceMessage({
+                                workspaceId: waNumber.workspaceId,
+                                contactId: contact.id,
+                                conversationId: conversation.id,
+                                messageId: newMessage.id,
+                                mediaUrl
+                            }))
+                            .catch(e => console.error('[VoiceTranscribe] hata:', e.message));
+                    }
+
                     // Madde 0: Pipeline post-processing (niyet→aşama, lead puanlama, auto case, takım bot)
                     try {
                         const { runChannelPostProcessing } = await import('./inbox.controller.js');
@@ -1523,27 +1535,17 @@ export const webhookHandler = async (req, res) => {
                             console.error('❌ [RULES] Import error:', ruleErr.message);
                         }
 
-                        // 🤖 Otomasyon Hook'ları — Mesaj bazlı kurallar
-                        try {
-                            const workspaceId = waNumber.workspaceId;
-                            const messageBody = msg_body;
-                            const ruleCtx = { contactId: contact.id, conversationId: conversation.id, message: messageBody };
-                            
-                            // Mesai dışı otomatik cevap
-                            executeRule(workspaceId, 'AFTER_HOURS_REPLY', ruleCtx).catch(e => console.error('[AutoHook] AFTER_HOURS_REPLY error:', e.message));
-                            
-                            // VIP müşteri uyarısı
-                            if (contact.category === 'VIP') {
-                                executeRule(workspaceId, 'VIP_CUSTOMER_ALERT', ruleCtx).catch(e => console.error('[AutoHook] VIP_CUSTOMER_ALERT error:', e.message));
-                            }
-                            
-                            // Şikayet eskalasyonu (sentiment negatif ise)
-                            if (conversation.sentimentScore !== null && conversation.sentimentScore < 30) {
-                                executeRule(workspaceId, 'COMPLAINT_ESCALATION', ruleCtx).catch(e => console.error('[AutoHook] COMPLAINT_ESCALATION error:', e.message));
-                            }
-                        } catch (hookErr) {
-                            console.error('[AutoHook] WhatsApp message hooks error:', hookErr.message);
-                        }
+                        // 🤖 Otomasyon Hook'ları — tek kapı (tüm kanallar aynı mantık)
+                        import('../services/inboundAutomationHooks.service.js')
+                            .then(({ runInboundMessageHooks }) => runInboundMessageHooks({
+                                workspaceId: waNumber.workspaceId,
+                                contactId: contact.id,
+                                conversationId: conversation.id,
+                                message: msg_body,
+                                contact,
+                                conversation
+                            }))
+                            .catch(e => console.error('[AutoHook] WhatsApp hooks error:', e.message));
                     }
                     // --- AUTOMATION RULES END ---
                     releaseMessageLock(wamid);

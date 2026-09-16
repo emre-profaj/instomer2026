@@ -4,7 +4,6 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
-import { executeRule } from '../services/ruleEngine.service.js';
 import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
 import { hasProfanity, censorProfanity } from '../utils/profanityFilter.js';
 
@@ -2089,25 +2088,17 @@ async function processWebhookAsync(body) {
                     }
                     // --- AUTOMATION RULES END ---
 
-                    // 🤖 Otomasyon Hook'ları — Mesaj bazlı kurallar (Facebook/Instagram)
-                    try {
-                        const ruleCtx = { contactId: contact.id, conversationId: conversation.id, message: message?.text };
-                        
-                        // Mesai dışı otomatik cevap
-                        executeRule(facebookPage.workspaceId, 'AFTER_HOURS_REPLY', ruleCtx).catch(e => console.error('[AutoHook] AFTER_HOURS_REPLY error:', e.message));
-                        
-                        // VIP müşteri uyarısı
-                        if (contact.category === 'VIP') {
-                            executeRule(facebookPage.workspaceId, 'VIP_CUSTOMER_ALERT', ruleCtx).catch(e => console.error('[AutoHook] VIP_CUSTOMER_ALERT error:', e.message));
-                        }
-                        
-                        // Şikayet eskalasyonu
-                        if (conversation.sentimentScore !== null && conversation.sentimentScore < 30) {
-                            executeRule(facebookPage.workspaceId, 'COMPLAINT_ESCALATION', ruleCtx).catch(e => console.error('[AutoHook] COMPLAINT_ESCALATION error:', e.message));
-                        }
-                    } catch (hookErr) {
-                        console.error('[AutoHook] Facebook message hooks error:', hookErr.message);
-                    }
+                    // 🤖 Otomasyon Hook'ları — tek kapı (tüm kanallar aynı mantık)
+                    import('../services/inboundAutomationHooks.service.js')
+                        .then(({ runInboundMessageHooks }) => runInboundMessageHooks({
+                            workspaceId: facebookPage.workspaceId,
+                            contactId: contact.id,
+                            conversationId: conversation.id,
+                            message: message?.text,
+                            contact,
+                            conversation
+                        }))
+                        .catch(e => console.error('[AutoHook] Facebook hooks error:', e.message));
 
                     // --- AI AUTO REPLY START ---
                     // ONLY for incoming messages (from contact)

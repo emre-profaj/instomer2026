@@ -454,6 +454,17 @@ export const handleWidgetChat = async (req, res) => {
             console.error('❌ [Widget] Socket emit error:', socketError);
         }
 
+        // 🤖 Otomasyon Hook'ları — tek kapı (mesai dışı, VIP, şikayet, anahtar kelime)
+        import('../services/inboundAutomationHooks.service.js')
+            .then(({ runInboundMessageHooks }) => runInboundMessageHooks({
+                workspaceId,
+                contactId: contact.id,
+                conversationId: conversation.id,
+                message,
+                contact
+            }))
+            .catch(e => console.error('[AutoHook] Widget hooks error:', e.message));
+
         // --- AUTO EXTRACT START ---
         try {
             const { autoExtractFromConversation } = await import('./ai.controller.js');

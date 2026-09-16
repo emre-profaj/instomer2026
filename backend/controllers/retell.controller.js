@@ -3420,7 +3420,26 @@ async function handleCallEnded(call) {
                     where: { retellCallId: call.call_id }
                 });
 
-                if (scheduledCall && scheduledCall.attemptNumber < scheduledCall.maxAttempts) {
+                // ── CALL_RETRY kuralı ────────────────────────────────
+                // Tekrar arama motoru zaten burada. Kural aktifse deneme
+                // üst sınırını yönetici belirlesin (config.maxRetries);
+                // kural yoksa/pasifse mevcut davranış korunur.
+                let attemptCap = scheduledCall?.maxAttempts ?? 3;
+                if (scheduledCall) {
+                    try {
+                        const { getRuleConfig } = await import('../services/ruleEngine.service.js');
+                        const retryCfg = await getRuleConfig(scheduledCall.workspaceId, 'CALL_RETRY');
+                        const wanted = parseInt(retryCfg?.maxRetries, 10);
+                        if (retryCfg && Number.isFinite(wanted) && wanted > 0) {
+                            attemptCap = wanted;
+                            console.log(`🔁 [Retry] CALL_RETRY kuralı deneme sınırını ${wanted} olarak belirledi`);
+                        }
+                    } catch (e) {
+                        console.error('[Retry] CALL_RETRY kural okuma hatası:', e.message);
+                    }
+                }
+
+                if (scheduledCall && scheduledCall.attemptNumber < attemptCap) {
                     // ─── AKILLI KADEME: Agent config'den retrySteps al ──────────
                     let retryDelay = scheduledCall.retryDelayMin || 60;
                     const currentAttempt = scheduledCall.attemptNumber;
@@ -3462,11 +3481,11 @@ async function handleCallEnded(call) {
                             await prisma.contactActivity.update({
                                 where: { id: activityId },
                                 data: {
-                                    result: `📞 Deneme ${currentAttempt}/${scheduledCall.maxAttempts}: Ulaşılamadı (${disconnectReason || 'Bilinmiyor'}). ${retryDelayLabel} sonra tekrar aranacak.`,
+                                    result: `📞 Deneme ${currentAttempt}/${attemptCap}: Ulaşılamadı (${disconnectReason || 'Bilinmiyor'}). ${retryDelayLabel} sonra tekrar aranacak.`,
                                     dueDate: nextAttemptAt
                                 }
                             });
-                            console.log(`📋 [Retry] Görev açık bırakıldı, not güncellendi: ${activityId} — Deneme ${currentAttempt}/${scheduledCall.maxAttempts}`);
+                            console.log(`📋 [Retry] Görev açık bırakıldı, not güncellendi: ${activityId} — Deneme ${currentAttempt}/${attemptCap}`);
                         } catch (_) {}
                     }
 
@@ -3492,17 +3511,17 @@ async function handleCallEnded(call) {
                             createdById: scheduledCall.createdById,
                             dynamicVariables: scheduledCall.dynamicVariables,
                             attemptNumber: nextAttempt,
-                            maxAttempts: scheduledCall.maxAttempts,
+                            maxAttempts: attemptCap,
                             retryDelayMin: retryDelay,
                             parentCallId: scheduledCall.parentCallId || scheduledCall.id,
                             conversationId: scheduledCall.conversationId
                         }
                     });
-                    console.log(`🔄 [Retry] Deneme ${nextAttempt}/${scheduledCall.maxAttempts} planlandı: ${nextAttemptAt.toLocaleString('tr-TR')} (+${retryDelayLabel}) | Numara: ${scheduledCall.toNumber}`);
+                    console.log(`🔄 [Retry] Deneme ${nextAttempt}/${attemptCap} planlandı: ${nextAttemptAt.toLocaleString('tr-TR')} (+${retryDelayLabel}) | Numara: ${scheduledCall.toNumber}`);
 
-                } else if (scheduledCall && scheduledCall.attemptNumber >= scheduledCall.maxAttempts) {
+                } else if (scheduledCall && scheduledCall.attemptNumber >= attemptCap) {
                     // Tüm denemeler tükendi — görevi ULAŞILAMADI olarak kapat
-                    console.log(`❌ [Retry] Tüm denemeler tükendi (${scheduledCall.attemptNumber}/${scheduledCall.maxAttempts}) | Numara: ${scheduledCall.toNumber}`);
+                    console.log(`❌ [Retry] Tüm denemeler tükendi (${scheduledCall.attemptNumber}/${attemptCap}) | Numara: ${scheduledCall.toNumber}`);
                     if (scheduledCall.createdById?.startsWith('activity_')) {
                         const activityId = scheduledCall.createdById.replace('activity_', '');
                         try {
@@ -3512,7 +3531,7 @@ async function handleCallEnded(call) {
                                     status: 'CANCELLED',
                                     isCompleted: true,
                                     completedAt: new Date(),
-                                    result: `❌ ${scheduledCall.maxAttempts} kere arandı, ulaşılamadı. Son sebep: ${disconnectReason || 'Bilinmiyor'}`,
+                                    result: `❌ ${attemptCap} kere arandı, ulaşılamadı. Son sebep: ${disconnectReason || 'Bilinmiyor'}`,
                                     source: 'AI_CALL'
                                 }
                             });

@@ -2620,3 +2620,63 @@ export const executeDailyAutomations = async () => {
         console.error('❌ [AUTOMATION] executeDailyAutomations error:', error);
     }
 };
+
+// ─────────────────────────────────────────────────────────────────
+// OTOMASYON ÇALIŞMA KAYITLARI
+// ─────────────────────────────────────────────────────────────────
+// automationLog tablosunu gösteren hiçbir ekran yoktu: bir otomasyon
+// başarısız olduğunda (şablon onaysız, WhatsApp numarası yok, kişide
+// telefon yok…) yönetici bunu göremiyor, otomasyon sessizce ölüyordu.
+export const getAutomationLogs = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { ruleType, result, limit } = req.query;
+        const take = Math.min(parseInt(limit, 10) || 50, 200);
+
+        const where = { workspaceId };
+        if (ruleType) where.ruleType = ruleType;
+        if (result) where.result = result;
+
+        const [logs, summary] = await Promise.all([
+            prisma.automationLog.findMany({
+                where,
+                orderBy: { executedAt: 'desc' },
+                take,
+                select: {
+                    id: true, ruleType: true, result: true, executedAt: true, metadata: true,
+                    contact: { select: { id: true, name: true, phone: true } }
+                }
+            }),
+            prisma.automationLog.groupBy({
+                by: ['ruleType', 'result'],
+                where: { workspaceId, executedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+                _count: true
+            })
+        ]);
+
+        // Başarısızlık sebebini metadata'dan çıkar — asıl aranan bilgi bu
+        const rows = logs.map(l => {
+            let error = null;
+            try {
+                const meta = l.metadata ? JSON.parse(l.metadata) : null;
+                error = meta?.result?.error || meta?.error || meta?.reason || null;
+            } catch { /* metadata bozuksa sorun değil */ }
+            return {
+                id: l.id,
+                ruleType: l.ruleType,
+                result: l.result,
+                executedAt: l.executedAt,
+                contact: l.contact,
+                error
+            };
+        });
+
+        res.json({
+            logs: rows,
+            summary: summary.map(s => ({ ruleType: s.ruleType, result: s.result, count: s._count }))
+        });
+    } catch (error) {
+        console.error('❌ [AUTOMATION] getAutomationLogs error:', error);
+        res.status(500).json({ error: 'Otomasyon kayıtları alınamadı' });
+    }
+};

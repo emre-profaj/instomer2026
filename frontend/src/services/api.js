@@ -627,6 +627,10 @@ export const automationAPI = {
      */
     sendTemplateDynamic: (workspaceId, data) => api.post(`/automations/${workspaceId}/templates/send-dynamic`, data),
 
+    // Otomasyon çalışma kayıtları (başarı/başarısızlık geçmişi)
+    getAutomationLogs: (workspaceId, params = {}) =>
+        api.get(`/automations/${workspaceId}/automation-logs`, { params }),
+
     // Automations
     getAutomations: (workspaceId) => api.get(`/automations/${workspaceId}/automations`),
     createAutomation: (workspaceId, data) => api.post(`/automations/${workspaceId}/automations`, data),

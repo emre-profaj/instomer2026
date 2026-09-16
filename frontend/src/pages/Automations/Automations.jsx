@@ -5,7 +5,7 @@ import api, { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, 
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, Search, X,
-    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp, GitBranch, Phone
+    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp, GitBranch, Phone, Activity
 } from 'lucide-react';
 import './Automations.css';
 import FlowBuilder from './FlowBuilder';
@@ -21,6 +21,11 @@ const Automations = ({ initialTab }) => {
     // Effect eklemek gereksiz bir ikinci render üretirdi.
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
+
+    // Otomasyon çalışma kayıtları — başarısızlıklar görünür olsun
+    const [showLogs, setShowLogs] = useState(false);
+    const [logs, setLogs] = useState([]);
+    const [logsLoading, setLogsLoading] = useState(false);
 
     // Templates
     const [templates, setTemplates] = useState([]);
@@ -554,6 +559,26 @@ const Automations = ({ initialTab }) => {
         );
     }
 
+    const loadLogs = async () => {
+        if (!currentWorkspace?.id) return;
+        try {
+            setLogsLoading(true);
+            const res = await automationAPI.getAutomationLogs(currentWorkspace.id, { limit: 50 });
+            setLogs(res.data?.logs || []);
+        } catch (err) {
+            console.error('Otomasyon kayıtları alınamadı:', err);
+            setLogs([]);
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
+    const toggleLogs = () => {
+        const next = !showLogs;
+        setShowLogs(next);
+        if (next) loadLogs();
+    };
+
     return (
         <div className="automations-page">
             {/* Header */}
@@ -563,6 +588,11 @@ const Automations = ({ initialTab }) => {
                     Otomasyonlar
                 </h1>
                 <div className="header-actions">
+
+                    <button className="btn btn-secondary" onClick={toggleLogs} title="Otomasyonların son çalışma kayıtları ve hata sebepleri">
+                        <Activity size={16} />
+                        {showLogs ? 'Kayıtları Gizle' : 'Çalışma Kayıtları'}
+                    </button>
 
                     {activeTab === 'automations' && (
                         <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setEditingAutomation(null); setShowAutomationModal(true); }}>
@@ -576,6 +606,60 @@ const Automations = ({ initialTab }) => {
 
             {/* Tab bar hidden — controlled by initialTab prop from Hub */}
 
+            {/* Otomasyon çalışma kayıtları */}
+            {showLogs && (
+                <div style={{ margin: '0 0 16px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>🧾 Son Çalışma Kayıtları</h3>
+                        <button className="btn btn-sm btn-secondary" onClick={loadLogs} disabled={logsLoading}>
+                            {logsLoading ? 'Yükleniyor...' : 'Yenile'}
+                        </button>
+                    </div>
+                    {logsLoading ? (
+                        <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>Yükleniyor...</p>
+                    ) : logs.length === 0 ? (
+                        <p style={{ fontSize: '0.85rem', color: '#9ca3af', margin: 0 }}>
+                            Henüz kayıt yok. Bir otomasyon çalıştığında (başarılı veya başarısız) burada görünür.
+                        </p>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
+                                        <th style={{ padding: '6px 8px' }}>Zaman</th>
+                                        <th style={{ padding: '6px 8px' }}>Otomasyon</th>
+                                        <th style={{ padding: '6px 8px' }}>Kişi</th>
+                                        <th style={{ padding: '6px 8px' }}>Sonuç</th>
+                                        <th style={{ padding: '6px 8px' }}>Sebep</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {logs.map(l => (
+                                        <tr key={l.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                            <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', color: '#6b7280' }}>
+                                                {new Date(l.executedAt).toLocaleString('tr-TR')}
+                                            </td>
+                                            <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '0.78rem' }}>{l.ruleType}</td>
+                                            <td style={{ padding: '6px 8px' }}>{l.contact?.name || l.contact?.phone || '—'}</td>
+                                            <td style={{ padding: '6px 8px' }}>
+                                                <span style={{
+                                                    padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 600,
+                                                    background: l.result === 'SUCCESS' ? '#dcfce7' : l.result === 'FAILED' ? '#fef2f2' : '#f3f4f6',
+                                                    color: l.result === 'SUCCESS' ? '#166534' : l.result === 'FAILED' ? '#991b1b' : '#6b7280'
+                                                }}>
+                                                    {l.result === 'SUCCESS' ? 'Başarılı' : l.result === 'FAILED' ? 'Başarısız' : l.result}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '6px 8px', color: '#991b1b' }}>{l.error || ''}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Content */}
             <div className="automations-content">
 
@@ -586,7 +670,7 @@ const Automations = ({ initialTab }) => {
                     const CATALOG = [
                         { type: 'CALL_SUCCESS_NOTIFY', icon: '✅', name: 'Arama Başarılı Bildirimi', desc: 'AI veya normal arama başarılı olduğunda müşteriye özet/teşekkür mesajı gönderir.', group: '📞 Arama Yönetimi', fields: ['templateId', 'channel'] },
                         { type: 'CALL_FAILED_NOTIFY', icon: '📵', name: 'Arama Başarısız Bildirimi', desc: 'AI veya normal arama başarısız olduğunda müşteriye bilgilendirme mesajı gönderir.', group: '📞 Arama Yönetimi', fields: ['templateId', 'channel'] },
-                        { type: 'CALL_RETRY', icon: '🔁', name: 'Arama Tekrarlama', desc: 'Ulaşılamayan kişilere belirli aralıklarla otomatik geri arama yapar.', group: '📞 Arama Yönetimi', fields: ['delayMinutes', 'maxRetries'] },
+                        { type: 'CALL_RETRY', icon: '🔁', name: 'Arama Tekrarlama', desc: 'Ulaşılamayan aramaların kaç kez tekrar deneneceğini belirler. Kademeli gecikmeler AI arama ayarlarından gelir.', group: '📞 Arama Yönetimi', fields: ['delayMinutes', 'maxRetries'] },
                         { type: 'MISSED_CALL_NOTIFY', icon: '📞', name: 'Cevapsız Arama Görevi', desc: 'Cevapsız kalan aramaları takıma bildirir ve geri arama görevi oluşturur.', group: '📞 Arama Yönetimi', fields: ['teamId'] },
                         { type: 'VOICE_MESSAGE_TRANSCRIBE', icon: '🎤', name: 'Sesli Mesaj Çözümleme', desc: 'Gelen sesli mesajları yazıya çevirip müşteri notlarına ekler.', group: '📞 Arama Yönetimi', fields: [] },
 
@@ -599,18 +683,18 @@ const Automations = ({ initialTab }) => {
 
                         { type: 'REQUEST_RECEIVED_NOTIFY', icon: '📩', name: 'Talep Alındı Bildirimi', desc: 'Lead veya arama talebi oluştuğunda müşteriye WhatsApp ile "talebiniz alındı" gönderir.', group: '📩 Talep & Lead', fields: ['templateId', 'channel'] },
                         { type: 'LEAD_WELCOME', icon: '👋', name: 'Hoşgeldin Mesajı', desc: 'Yeni gelen leadlere otomatik karşılama mesajı veya şablonu gönderir.', group: '📩 Talep & Lead', fields: ['templateId', 'channel'] },
-                        { type: 'LEAD_SCORING', icon: '🎯', name: 'Lead Puanlama', desc: 'Müşteri etkileşimlerine göre otomatik lead skoru hesaplar ve sıcak leadleri işaretler.', group: '📩 Talep & Lead', fields: [] },
-                        { type: 'LEAD_AUTO_ASSIGN', icon: '🎪', name: 'Otomatik Lead Atama', desc: 'Yeni leadleri takımlara veya kişilere round-robin dağıtır.', group: '📩 Talep & Lead', fields: ['teamId'] },
+                        { type: 'LEAD_SCORING', icon: '🎯', name: 'Lead Puanlama', desc: 'Yeni lead geldiğinde lead skorunu hesaplar. (Skorlama akış ve vaka hareketlerinde de ayrıca çalışır.)', group: '📩 Talep & Lead', fields: [] },
+                        { type: 'LEAD_AUTO_ASSIGN', icon: '🎪', name: 'Otomatik Lead Atama', desc: 'Yeni leadin konuşmasını, seçilen takımın en az yüklü üyesine otomatik atar (round-robin).', group: '📩 Talep & Lead', fields: ['teamId'] },
                         { type: 'FUNNEL_STAGE_NOTIFY', icon: '📊', name: 'Aşama Değişiklik Bildirimi', desc: 'Müşteri satış hunisinde aşama değiştirdiğinde sorumlu kişiye bildirim gönderir.', group: '📩 Talep & Lead', fields: ['channel'] },
                         { type: 'NEW_LEAD_NOTIFY', icon: '🆕', name: 'Yeni Lead Bildirimi', desc: 'Yeni bir lead geldiğinde ilgili takıma anlık bildirim gönderir.', group: '📩 Talep & Lead', fields: ['teamId'] },
 
-                        { type: 'SEND_LOCATION', icon: '📍', name: 'Konum Gönder', desc: 'Adres veya yol tarifi isteyen müşterilere otomatik olarak işletme konumunu gönderir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
-                        { type: 'SEND_CATALOG', icon: '📦', name: 'Katalog Gönder', desc: 'Ürün veya hizmet soran müşterilere otomatik katalog/fiyat listesi gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId'] },
-                        { type: 'PRICE_AUTO_REPLY', icon: '🏷️', name: 'Fiyat Bilgisi Gönder', desc: '"Fiyat ne?" gibi sorulara otomatik fiyat listesi gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message'] },
-                        { type: 'FAQ_AUTO_REPLY', icon: '❓', name: 'SSS Otomatik Cevap', desc: 'Sık sorulan sorulara (çalışma saatleri, adres, ödeme) otomatik yanıt verir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
-                        { type: 'SEND_WORKING_HOURS', icon: '🕐', name: 'Çalışma Saatleri Bildir', desc: '"Ne zaman açıksınız?" gibi sorulara çalışma saatlerini otomatik gönderir.', group: '📍 Bilgi & İçerik', fields: ['message'] },
+                        { type: 'SEND_LOCATION', icon: '📍', name: 'Konum Gönder', desc: 'Adres/konum sorulduğunda şube veya firma adresini ve Google Maps bağlantısını gönderir.', group: '📍 Bilgi & İçerik', fields: ['message', 'keywords', 'channel'] },
+                        { type: 'SEND_CATALOG', icon: '📦', name: 'Katalog Gönder', desc: 'Katalog/ürün sorulduğunda, girdiğiniz şablonu veya mesajı otomatik gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message', 'keywords', 'channel'] },
+                        { type: 'PRICE_AUTO_REPLY', icon: '🏷️', name: 'Fiyat Bilgisi Gönder', desc: 'Fiyat sorulduğunda, girdiğiniz şablonu veya mesajı otomatik gönderir. Tetikleyici kelimeleri siz belirlersiniz.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message', 'keywords', 'channel'] },
+                        { type: 'FAQ_AUTO_REPLY', icon: '❓', name: 'SSS Otomatik Cevap', desc: 'Sık sorulan sorulara (çalışma saatleri, adres, ödeme) otomatik yanıt verir.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message', 'keywords', 'channel'] },
+                        { type: 'SEND_WORKING_HOURS', icon: '🕐', name: 'Çalışma Saatleri Bildir', desc: '"Ne zaman açıksınız?" gibi sorulara çalışma saatlerini otomatik gönderir.', group: '📍 Bilgi & İçerik', fields: ['templateId', 'message', 'keywords', 'channel'] },
 
-                        { type: 'DRIP_DAY_0', icon: '📨', name: 'Başvuru Günü Mesajı', desc: 'Bugün başvuran/form dolduran kişiye aynı gün geldiği kanal + WhatsApp ile mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId', 'channel'] },
+                        { type: 'DRIP_DAY_0', icon: '📨', name: 'Başvuru Günü Mesajı', desc: 'Bugün başvuran/form dolduran kişiye aynı gün mesaj gönderir. Kanal seçilmezse kişinin geldiği kanaldan gider.', group: '📣 Pazarlama Dizisi', fields: ['templateId', 'channel'] },
                         { type: 'DRIP_DAY_1', icon: '📬', name: '1 Gün Sonra Takip', desc: 'Başvurudan 1 gün sonra WhatsApp şablonu ile hatırlatma gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
                         { type: 'DRIP_DAY_3', icon: '📭', name: '3 Gün Sonra İlgi Ölçme', desc: 'Başvurudan 3 gün sonra ilgi seviyesini ölçen mesaj gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
                         { type: 'DRIP_DAY_7', icon: '📮', name: '7 Gün Sonra Hatırlatma', desc: '1 hafta sonra özel teklif veya bilgilendirme mesajı gönderir.', group: '📣 Pazarlama Dizisi', fields: ['templateId'] },
@@ -636,7 +720,7 @@ const Automations = ({ initialTab }) => {
                         { type: 'FIRST_RESPONSE_SLA', icon: '⏱️', name: 'İlk Yanıt SLA Uyarısı', desc: 'Belirli sürede yanıtlanmayan mesajlar için takıma uyarı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['delayMinutes'] },
                         { type: 'COMPLAINT_ESCALATION', icon: '🚨', name: 'Şikayet Eskalasyonu', desc: 'Olumsuz mesajlar algılandığında yöneticiye otomatik bildirim gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['teamId'] },
                         { type: 'TICKET_CLOSE_NOTIFY', icon: '🎫', name: 'Destek Talebi Kapatma', desc: 'Belirli süre yanıt gelmeyen destek taleplerini otomatik kapatır ve bildirir.', group: '🛎️ Müşteri Hizmetleri', fields: ['templateId', 'delayMinutes'] },
-                        { type: 'AFTER_HOURS_REPLY', icon: '🌙', name: 'Mesai Dışı Otomatik Cevap', desc: 'Mesai dışında gelen mesajlara otomatik bilgilendirme mesajı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['message'] },
+                        { type: 'AFTER_HOURS_REPLY', icon: '🌙', name: 'Mesai Dışı Otomatik Cevap', desc: 'Mesai dışında gelen mesajlara otomatik bilgilendirme mesajı gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['templateId', 'message', 'channel'] },
                         { type: 'VIP_CUSTOMER_ALERT', icon: '👑', name: 'VIP Müşteri Uyarısı', desc: 'VIP müşteriden mesaj geldiğinde sorumlu kişiye anlık bildirim gönderir.', group: '🛎️ Müşteri Hizmetleri', fields: ['teamId'] },
 
                         { type: 'TASK_OVERDUE_ALERT', icon: '⏰', name: 'Görev Süresi Aşımı', desc: 'Tamamlanmamış görevler sürelerini aştığında sorumlu kişiye uyarı gönderir.', group: '⚙️ Operasyon', fields: ['delayMinutes'] },
@@ -648,7 +732,7 @@ const Automations = ({ initialTab }) => {
                     ];
 
                     const approvedTpls = templates.filter(t => t.status === 'approved' || t.status === 'APPROVED');
-                    const LABELS = { templateId: '📋 WhatsApp Şablonu', channel: '📡 Kanal', delayMinutes: '⏳ Gecikme (dk)', reminderHours: '🔔 Hatırlatma', maxRetries: '🔁 Maks. Deneme', teamId: '👥 Takım', message: '💬 Mesaj' };
+                    const LABELS = { templateId: '📋 WhatsApp Şablonu', channel: '📡 Kanal', delayMinutes: '⏳ Gecikme (dk)', reminderHours: '🔔 Hatırlatma', maxRetries: '🔁 Maks. Deneme', teamId: '👥 Takım', message: '💬 Mesaj', keywords: '🔑 Tetikleyici Kelimeler' };
                     const catalogGroups = [...new Set(CATALOG.map(a => a.group))];
 
                     // System automation items for category 1
@@ -925,11 +1009,13 @@ const Automations = ({ initialTab }) => {
                                                                                     <div style={{ flex: '1 1 150px' }}>
                                                                                         <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.channel}</label>
                                                                                         <select style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
-                                                                                            value={cfg.channel || 'whatsapp'} onChange={e => updateAutoConfig(auto.type, 'channel', e.target.value)}>
+                                                                                            value={cfg.channel || 'auto'} onChange={e => updateAutoConfig(auto.type, 'channel', e.target.value)}>
+                                                                                            <option value="auto">Geldiği kanal (otomatik)</option>
                                                                                             <option value="whatsapp">WhatsApp</option>
                                                                                             <option value="email">E-posta</option>
-                                                                                            <option value="both">Her İkisi</option>
+                                                                                            <option value="widget">Web Sohbeti</option>
                                                                                             <option value="sms">SMS</option>
+                                                                                            <option value="both">WhatsApp + E-posta</option>
                                                                                         </select>
                                                                                     </div>
                                                                                 )}
@@ -968,6 +1054,15 @@ const Automations = ({ initialTab }) => {
                                                                                             <option value="">Takım seçin...</option>
                                                                                             {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                                                                         </select>
+                                                                                    </div>
+                                                                                )}
+                                                                                {auto.fields.includes('keywords') && (
+                                                                                    <div style={{ flex: '1 1 100%' }}>
+                                                                                        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>{LABELS.keywords}</label>
+                                                                                        <input type="text" style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#f9fafb' }}
+                                                                                            value={Array.isArray(cfg.keywords) ? cfg.keywords.join(', ') : (cfg.keywords || '')}
+                                                                                            onChange={e => updateAutoConfig(auto.type, 'keywords', e.target.value.split(',').map(k => k.trim()).filter(Boolean))}
+                                                                                            placeholder="fiyat, ücret, ne kadar (virgülle ayırın — boş bırakırsanız varsayılanlar kullanılır)" />
                                                                                     </div>
                                                                                 )}
                                                                                 {auto.fields.includes('message') && (

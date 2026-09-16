@@ -107,59 +107,21 @@ export async function logExecution(workspaceId, ruleType, contactId, result = 'S
 
 // ─── WhatsApp şablon gönder (rule config'e göre) ─────────────────
 async function sendTemplateFromConfig(workspaceId, contactId, config) {
-    if (!config?.templateId) {
-        console.warn(`${TAG} sendTemplate: templateId yok`);
-        return { success: false, error: 'templateId eksik' };
-    }
-
-    const template = await prisma.whatsappTemplate.findFirst({
-        where: { id: config.templateId, workspaceId }
+    // Teslim tek kapıdan — kanal seçimi ve WhatsApp dışı kanallar orada
+    const { deliverToContact } = await import('./automationDelivery.service.js');
+    return deliverToContact(workspaceId, contactId, {
+        templateId: config.templateId,
+        channel: config.channel
     });
-    if (!template) return { success: false, error: 'Template bulunamadı' };
-
-    const contact = await prisma.contact.findUnique({ where: { id: contactId } });
-    if (!contact?.phone) return { success: false, error: 'Telefon numarası yok' };
-
-    // WhatsApp API ile gönder
-    const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({
-        where: { workspaceId, isActive: true }
-    });
-    if (!whatsappPhone) return { success: false, error: 'WhatsApp numarası bulunamadı' };
-
-    try {
-        const { sendWhatsappTemplate } = await import('../controllers/whatsapp.helpers.js');
-        await sendWhatsappTemplate(whatsappPhone, contact.phone, template);
-        console.log(`📨 ${TAG} Template "${template.name}" → ${contact.phone}`);
-        return { success: true, templateName: template.name };
-    } catch (err) {
-        console.error(`${TAG} sendTemplate error:`, err.message);
-        return { success: false, error: err.message };
-    }
 }
 
 // ─── Mesaj gönder (rule config'e göre) ───────────────────────────
 async function sendMessageFromConfig(workspaceId, contactId, config) {
-    if (!config?.message) return { success: false, error: 'Mesaj içeriği yok' };
-
-    const contact = await prisma.contact.findUnique({ where: { id: contactId } });
-    if (!contact?.phone) return { success: false, error: 'Telefon numarası yok' };
-
-    // WhatsApp session mesajı olarak gönder
-    const conversation = await prisma.conversation.findFirst({
-        where: { contactId, workspaceId, channel: 'WHATSAPP' },
-        orderBy: { lastMessageAt: 'desc' }
+    const { deliverToContact } = await import('./automationDelivery.service.js');
+    return deliverToContact(workspaceId, contactId, {
+        message: config.message,
+        channel: config.channel
     });
-    if (!conversation) return { success: false, error: 'Conversation bulunamadı' };
-
-    try {
-        const { sendWhatsappTextMessage } = await import('../controllers/whatsapp.helpers.js');
-        await sendWhatsappTextMessage(workspaceId, conversation, config.message);
-        console.log(`💬 ${TAG} Message → ${contact.phone}: "${config.message.substring(0, 50)}..."`);
-        return { success: true };
-    } catch (err) {
-        console.error(`${TAG} sendMessage error:`, err.message);
-        return { success: false, error: err.message };
-    }
 }
 
 // ─── Takıma bildirim gönder ──────────────────────────────────────
@@ -177,6 +139,25 @@ async function notifyTeam(workspaceId, config, payload) {
     });
     for (const tm of teamMembers) {
         emitToWorkspace(workspaceId, 'automation:notification', { ...payload, userId: tm.userId });
+    }
+
+    // Kalıcı bildirim — socket yayını o an bağlı olmayan kullanıcıya ulaşmıyordu,
+    // uyarı tamamen kayboluyordu.
+    if (teamMembers.length > 0) {
+        try {
+            await prisma.notification.createMany({
+                data: teamMembers.map(tm => ({
+                    workspaceId,
+                    userId: tm.userId,
+                    type: 'AUTOMATION',
+                    title: `🤖 ${payload.ruleType}`,
+                    body: String(payload.message || 'Otomasyon tetiklendi').substring(0, 500),
+                    data: JSON.stringify({ contactId: payload.contactId || null, ruleType: payload.ruleType })
+                }))
+            });
+        } catch (e) {
+            console.error(`${TAG} bildirim kaydı hatası:`, e.message);
+        }
     }
 }
 
@@ -209,6 +190,114 @@ async function createActivity(workspaceId, contactId, type, title, config = {}) 
  * @param {object} ctx - { contactId, conversationId, message, contact, ... }
  * @param {object} opts - { skipDuplicateCheck, duplicateHours }
  */
+// ─── Tipe özel aksiyonlar ────────────────────────────────────────
+// Bir tip burada ele alınıyorsa genel şablon/mesaj yoluna düşmez.
+// null dönerse genel yol çalışır.
+async function runTypeSpecificAction(workspaceId, ruleType, contactId, config, ctx) {
+    switch (ruleType) {
+        // Lead skorunu gerçekten hesapla
+        case 'LEAD_SCORING': {
+            try {
+                const { updateLeadScore } = await import('./leadScoring.service.js');
+                const score = await updateLeadScore(contactId);
+                return { success: true, action: 'LEAD_SCORED', score: score?.score ?? score ?? null };
+            } catch (e) {
+                return { success: false, error: `Puanlama hatası: ${e.message}` };
+            }
+        }
+
+        // Leadi gerçekten ata — takım üyeleri arasında round-robin
+        case 'LEAD_AUTO_ASSIGN': {
+            try {
+                const conversation = await prisma.conversation.findFirst({
+                    where: { contactId, workspaceId },
+                    orderBy: { lastMessageAt: 'desc' },
+                    select: { id: true, assignedToId: true }
+                });
+                if (!conversation) return { success: false, error: 'Atanacak konuşma yok' };
+                if (conversation.assignedToId) {
+                    return { success: true, action: 'ALREADY_ASSIGNED' };
+                }
+
+                // Aday havuzu: kural bir takım işaret ediyorsa o takımın üyeleri,
+                // yoksa workspace'in temsilcileri
+                let candidates = [];
+                if (config.teamId) {
+                    const members = await prisma.teamMember.findMany({
+                        where: { teamId: config.teamId }, select: { userId: true }
+                    });
+                    candidates = members.map(m => m.userId);
+                } else {
+                    const members = await prisma.workspaceMember.findMany({
+                        where: { workspaceId, role: { in: ['AGENT', 'MANAGER', 'ADMIN', 'OWNER'] } },
+                        select: { userId: true }
+                    });
+                    candidates = members.map(m => m.userId);
+                }
+                if (candidates.length === 0) return { success: false, error: 'Atanacak kişi bulunamadı' };
+
+                // Round-robin: en az açık konuşması olan kişiye ver
+                const loads = await prisma.conversation.groupBy({
+                    by: ['assignedToId'],
+                    where: { workspaceId, assignedToId: { in: candidates }, status: { not: 'RESOLVED' } },
+                    _count: true
+                });
+                const loadMap = new Map(loads.map(l => [l.assignedToId, l._count]));
+                candidates.sort((a, b) => (loadMap.get(a) || 0) - (loadMap.get(b) || 0));
+                const target = candidates[0];
+
+                const { cascadeAssignment } = await import('./cascadeAssignment.service.js');
+                await cascadeAssignment(conversation.id, workspaceId, {
+                    assignedToId: target,
+                    ...(config.teamId ? { assignedTeamId: config.teamId } : {}),
+                    source: 'LEAD_AUTO_ASSIGN'
+                });
+                return { success: true, action: 'LEAD_ASSIGNED', assignedToId: target };
+            } catch (e) {
+                return { success: false, error: `Atama hatası: ${e.message}` };
+            }
+        }
+
+        // Gerçek işletme konumunu gönder
+        case 'SEND_LOCATION': {
+            try {
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { googleMapsUrl: true, companyAddress: true, companyName: true }
+                });
+                // Şube konumu varsa onu tercih et
+                const branch = await prisma.appointmentBranch.findFirst({
+                    where: { workspaceId, isActive: true, googleMapsUrl: { not: null } },
+                    select: { name: true, address: true, googleMapsUrl: true },
+                    orderBy: { order: 'asc' }
+                }).catch(() => null);
+
+                const mapsUrl = branch?.googleMapsUrl || ws?.googleMapsUrl || null;
+                const address = branch?.address || ws?.companyAddress || null;
+                if (!mapsUrl && !address) {
+                    return { success: false, error: 'Konum tanımlı değil (şube/firma Google Maps adresi yok)' };
+                }
+
+                const parts = [];
+                if (config.message) parts.push(config.message);
+                if (address) parts.push(`📍 ${branch?.name ? branch.name + ' — ' : ''}${address}`);
+                if (mapsUrl) parts.push(mapsUrl);
+
+                const { deliverToContact } = await import('./automationDelivery.service.js');
+                const res = await deliverToContact(workspaceId, contactId, {
+                    message: parts.join('\n'), channel: config.channel
+                });
+                return { ...res, action: 'LOCATION_SENT' };
+            } catch (e) {
+                return { success: false, error: `Konum gönderim hatası: ${e.message}` };
+            }
+        }
+
+        default:
+            return null; // genel şablon/mesaj yolu
+    }
+}
+
 export async function executeRule(workspaceId, ruleType, ctx = {}, opts = {}) {
     try {
         // 1. Config al (aktif değilse null döner)
@@ -234,8 +323,16 @@ export async function executeRule(workspaceId, ruleType, ctx = {}, opts = {}) {
         // 3. Aksiyonu çalıştır
         let result = { success: false };
 
+        // 3a. Tipe özel aksiyonlar — adı iş vaat eden kurallar.
+        // Daha önce bunlar da yalnızca şablon/mesaj gönderiyordu; "Otomatik
+        // Lead Atama" atama yapmıyor, "Lead Puanlama" puanlamıyor, "Konum
+        // Gönder" konum göndermiyordu.
+        const special = await runTypeSpecificAction(workspaceId, ruleType, contactId, config, ctx);
+        if (special) {
+            result = special;
+        }
         // Template gönderme
-        if (config.templateId) {
+        else if (config.templateId) {
             result = await sendTemplateFromConfig(workspaceId, contactId, config);
         }
         // Mesaj gönderme

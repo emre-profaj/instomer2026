@@ -18,7 +18,8 @@ import {
     deleteAutomation,
     toggleAutomation,
     getUnifiedAutomationPanel,
-    toggleUnifiedAutomation
+    toggleUnifiedAutomation,
+    getAutomationLogs,
 } from '../controllers/automation.controller.js';
 
 const router = express.Router();
@@ -49,6 +50,9 @@ router.patch('/:workspaceId/automations/:automationId/toggle', requireWorkspaceA
 
 // Birleşik Otomasyon Paneli
 router.get('/:workspaceId/unified-panel', requireWorkspaceAccess, getUnifiedAutomationPanel);
+
+// Otomasyon çalışma kayıtları (başarı/başarısızlık geçmişi)
+router.get('/:workspaceId/automation-logs', requireWorkspaceAccess, getAutomationLogs);
 router.patch('/:workspaceId/unified-toggle', requireWorkspaceAccess, toggleUnifiedAutomation);
 
 export default router;

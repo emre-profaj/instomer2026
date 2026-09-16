@@ -15,6 +15,24 @@ import { executeRule, getActiveRules, wasAlreadyExecuted, logExecution } from '.
 const TAG = '[AutomationCron]';
 let isRunning = false;
 
+// ── Türkiye saati ────────────────────────────────────────────────
+// Sunucu UTC'de çalışıyor. Düz now.getHours() kullanmak raporları
+// 3 saat kaydırıyordu (18:00 kuralı Türkiye'de 21:00'da çalışıyordu).
+const TZ = 'Europe/Istanbul';
+function istanbulParts(now = new Date()) {
+    const f = new Intl.DateTimeFormat('en-GB', {
+        timeZone: TZ, hour: '2-digit', minute: '2-digit',
+        weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour12: false
+    }).formatToParts(now);
+    const g = (t) => f.find(p => p.type === t)?.value;
+    const WD = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+    return {
+        hour: parseInt(g('hour'), 10),
+        weekday: WD[g('weekday')] ?? 0,
+        dateKey: `${g('year')}-${g('month')}-${g('day')}`
+    };
+}
+
 // ── Türk özel günleri (sabit takvim) ─────────────────────────────
 const TURKISH_SPECIAL_DAYS = [
     { month: 1, day: 1, name: 'Yılbaşı' },
@@ -65,6 +83,50 @@ export async function runAutomationCron() {
 }
 
 // ─── Workspace bazlı kural işleme ────────────────────────────────
+// ── Gün bazında tek çalışma kapısı (rapor otomasyonları için) ────
+// AutomationLog.contactId zorunlu olduğu için workspace seviyesindeki
+// raporlar oraya yazılamıyor; işareti kuralın kendi config'inde tutuyoruz.
+async function alreadyReported(workspaceId, ruleType, dateKey) {
+    const rule = await prisma.workspaceRule.findFirst({
+        where: { workspaceId, ruleType }, select: { config: true }
+    });
+    if (!rule) return false;
+    let cfg = {};
+    try { cfg = rule.config ? JSON.parse(rule.config) : {}; } catch { cfg = {}; }
+    return cfg._lastReportKey === dateKey;
+}
+
+async function markReported(workspaceId, ruleType, dateKey) {
+    const rule = await prisma.workspaceRule.findFirst({
+        where: { workspaceId, ruleType }, select: { id: true, config: true }
+    });
+    if (!rule) return;
+    let cfg = {};
+    try { cfg = rule.config ? JSON.parse(rule.config) : {}; } catch { cfg = {}; }
+    cfg._lastReportKey = dateKey;
+    await prisma.workspaceRule.update({
+        where: { id: rule.id }, data: { config: JSON.stringify(cfg) }
+    }).catch(e => console.error(`${TAG} markReported hatası:`, e.message));
+}
+
+// ── Yöneticilere kalıcı bildirim ─────────────────────────────────
+// Raporlar yalnızca socket ile yayınlanıyordu; o an bağlı kimse yoksa
+// kayboluyordu. Artık bildirim kutusuna da düşüyor.
+async function notifyManagers(workspaceId, type, title, body) {
+    try {
+        const members = await prisma.workspaceMember.findMany({
+            where: { workspaceId, role: { in: ['OWNER', 'ADMIN', 'MANAGER'] } },
+            select: { userId: true }
+        });
+        if (members.length === 0) return;
+        await prisma.notification.createMany({
+            data: members.map(m => ({ workspaceId, userId: m.userId, type, title, body }))
+        });
+    } catch (e) {
+        console.error(`${TAG} notifyManagers hatası:`, e.message);
+    }
+}
+
 async function processWorkspace(ws) {
     const workspaceId = ws.id;
 
@@ -143,12 +205,21 @@ async function processWorkspace(ws) {
     }
 
     // ─── RAPORLAMA (günlük/haftalık) ─────────────────────────────
-    const hour = now.getHours();
-    if (activeRules.DAILY_SUMMARY && hour === 18) { // 18:00'da çalışsın
-        await processDailySummary(workspaceId, activeRules.DAILY_SUMMARY, now);
+    // Saatler Türkiye saatine göre. Cron 5 dakikada bir çalıştığı için
+    // saat eşleşmesi tek başına yetmez — aynı saat diliminde 12 kez
+    // tetiklenirdi; alreadyReported() gün bazında tek çalışmayı garanti eder.
+    const tr = istanbulParts(now);
+    if (activeRules.DAILY_SUMMARY && tr.hour === 18) {
+        if (!(await alreadyReported(workspaceId, 'DAILY_SUMMARY', tr.dateKey))) {
+            await processDailySummary(workspaceId, activeRules.DAILY_SUMMARY, now);
+            await markReported(workspaceId, 'DAILY_SUMMARY', tr.dateKey);
+        }
     }
-    if (activeRules.TEAM_PERFORMANCE && now.getDay() === 1 && hour === 9) { // Pazartesi 09:00
-        await processTeamPerformance(workspaceId, activeRules.TEAM_PERFORMANCE, now);
+    if (activeRules.TEAM_PERFORMANCE && tr.weekday === 1 && tr.hour === 9) {
+        if (!(await alreadyReported(workspaceId, 'TEAM_PERFORMANCE', tr.dateKey))) {
+            await processTeamPerformance(workspaceId, activeRules.TEAM_PERFORMANCE, now);
+            await markReported(workspaceId, 'TEAM_PERFORMANCE', tr.dateKey);
+        }
     }
 
     // ─── ÖDEME & BELGE ───────────────────────────────────────────
@@ -575,9 +646,9 @@ async function processDailySummary(workspaceId, config, now) {
 
     console.log(`${TAG} ${summary}`);
 
-    // Workspace sahiplerine bildirim
     const { emitToWorkspace } = await import('../socket.js');
     emitToWorkspace(workspaceId, 'automation:daily-summary', { summary, date: now.toISOString() });
+    await notifyManagers(workspaceId, 'DAILY_SUMMARY', '📊 Günlük Özet', summary);
 }
 
 async function processTeamPerformance(workspaceId, config, now) {
@@ -595,6 +666,7 @@ async function processTeamPerformance(workspaceId, config, now) {
     console.log(`${TAG} ${report}`);
     const { emitToWorkspace } = await import('../socket.js');
     emitToWorkspace(workspaceId, 'automation:team-performance', { report, date: now.toISOString() });
+    await notifyManagers(workspaceId, 'TEAM_PERFORMANCE', '📈 Haftalık Performans', report);
 }
 
 // ══════════════════════════════════════════════════════════════════

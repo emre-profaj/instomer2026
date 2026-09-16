@@ -601,7 +601,16 @@ export const syncEmailsInternal = async (channelId) => {
                         console.error('❌ [RULE:SALES_PHONE_CALL] Email async error:', e.message)
                     );
                     if (contact?.id) {
-                        // executeAutoCallPlanning devre dışı — mesaj handler'da çalışmamalı
+                        // 🤖 Otomasyon Hook'ları — tek kapı (mesai dışı, VIP, şikayet, anahtar kelime)
+                        const { runInboundMessageHooks } = await import('../services/inboundAutomationHooks.service.js');
+                        runInboundMessageHooks({
+                            workspaceId: channel.workspaceId,
+                            contactId: contact.id,
+                            conversationId: conversation.id,
+                            message: cleanBody,
+                            contact,
+                            conversation
+                        }).catch(e => console.error('[AutoHook] Email hooks error:', e.message));
                     }
                 }
             } catch (ruleErr) {
