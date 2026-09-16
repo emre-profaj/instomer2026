@@ -1,6 +1,35 @@
 import prisma from '../lib/prisma.js';
 import { getAutoReply } from '../controllers/ai.controller.js';
 
+/**
+ * Meta (Facebook/Instagram) mesaj uzunluk sınırı için metni parçalar.
+ *
+ * Instagram 1000 karakteri aşan mesajı REDDEDİYOR:
+ *   "(#100) Gönderilen mesajın uzunluğu 1.000 karakterin üzerinde"
+ * Bu durumda müşteriye HİÇBİR ŞEY ulaşmıyor — bot cevap yazdığını sanıyor,
+ * müşteri sessizlik görüyor. Bu mantık dosyada zaten vardı ama yalnızca
+ * processBatchedMessages yolunda; sendAutoReplyToChannel yolu metni olduğu
+ * gibi gönderiyordu. Artık iki yol da buradan geçiyor.
+ *
+ * Bölme noktası tercihi: satır sonu > cümle sonu > boşluk > sert kesme.
+ */
+export function splitForMeta(text, limit = 950) {
+    const chunks = [];
+    let rest = String(text || '');
+    while (rest.length > 0) {
+        if (rest.length <= limit) { chunks.push(rest); break; }
+        let bp = rest.lastIndexOf('\n', limit);
+        if (bp === -1) bp = rest.lastIndexOf('. ', limit);
+        if (bp === -1) bp = rest.lastIndexOf(' ', limit);
+        if (bp === -1) bp = limit;
+        chunks.push(rest.substring(0, bp + 1).trim());
+        rest = rest.substring(bp + 1).trim();
+    }
+    return chunks.filter(Boolean);
+}
+
+
+
 
 // Store pending auto-reply timers
 const pendingTimers = new Map();
@@ -211,17 +240,24 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
             const recipientId = conversation.platformConversationId || conversation.contact?.facebookId;
 
             if (recipientId && page.pageAccessToken) {
-                const response = await axios.post(
-                    `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
-                    {
-                        recipient: { id: String(recipientId) },
-                        message: { text: safeMessage }
-                    },
-                    { params: { access_token: page.pageAccessToken } }
-                );
-
-                // Capture message ID from response
-                const fbMessageId = response.data?.message_id;
+                // 1000 karakter sınırı: aşan mesaj reddediliyor ve müşteriye
+                // hiçbir şey ulaşmıyordu. Parçalayarak sırayla gönder.
+                const parcalar = splitForMeta(safeMessage);
+                let fbMessageId = null;
+                for (const parca of parcalar) {
+                    const response = await axios.post(
+                        `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                        {
+                            recipient: { id: String(recipientId) },
+                            message: { text: parca }
+                        },
+                        { params: { access_token: page.pageAccessToken } }
+                    );
+                    if (!fbMessageId) fbMessageId = response.data?.message_id || null;
+                }
+                if (parcalar.length > 1) {
+                    console.log(`✂️ [AutoReplyDelay] Mesaj ${parcalar.length} parçaya bölündü (${safeMessage.length} karakter)`);
+                }
 
                 // Save message to database with Facebook message ID
                 sentMessage = await prisma.message.create({
@@ -436,21 +472,8 @@ const processBatchedMessages = async (conversationId) => {
             });
 
         } else if (channel === 'facebook' || channel === 'instagram') {
-            // Split message if > 950 characters (Meta limit)
-            const chunks = [];
-            let currentText = aiResponse;
-            while (currentText.length > 0) {
-                if (currentText.length <= 950) {
-                    chunks.push(currentText);
-                    break;
-                }
-                let breakPoint = currentText.lastIndexOf('\n', 950);
-                if (breakPoint === -1) breakPoint = currentText.lastIndexOf('. ', 950);
-                if (breakPoint === -1) breakPoint = currentText.lastIndexOf(' ', 950);
-                if (breakPoint === -1) breakPoint = 950;
-                chunks.push(currentText.substring(0, breakPoint + 1).trim());
-                currentText = currentText.substring(breakPoint + 1).trim();
-            }
+            // Meta 1000 karakter sınırı — ortak yardımcı (bkz. splitForMeta)
+            const chunks = splitForMeta(aiResponse);
 
             let sentMessageId = null;
             for (let i = 0; i < chunks.length; i++) {

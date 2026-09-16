@@ -752,9 +752,13 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         let agentFallbackToAi = null;
         let agentFallbackDelay = null;
         
+        // KAPSAM: 'try' bloğunun İÇİNDE tanımlıydı ama ~200 satır sonra,
+        // blok dışındaki contactActivity.create içinde kullanılıyordu.
+        // Sonuç: her çalıştırmada "resolvedAgentId is not defined" ve arama
+        // görevi HİÇ oluşmuyordu — "Arama Talebi Algılama" tamamen kırıktı.
+        let resolvedAgentId = null;
         try {
             // Find the agent assigned to this team
-            let resolvedAgentId = null;
             if (salesTeamId) {
                 const teamMember = await prisma.teamMember.findFirst({
                     where: { teamId: salesTeamId, retellAgentId: { not: null } }

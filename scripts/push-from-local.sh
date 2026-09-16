@@ -131,19 +131,34 @@ ok "${SSH_USER}@${SSH_HOST}:${APP_PATH}"
 # ── 3 · Gönder ───────────────────────────────────────────────
 hdr "3/4 · DOSYALAR GÖNDERİLİYOR"
 [ -n "$DRY" ] && warn "DRY-RUN — hiçbir şey yazılmayacak"
-rsync -az --delete ${DRY} --itemize-changes \
+# ── NEDEN --delete YOK ──────────────────────────────────────────────────
+# APP_PATH bu kurulumda bir depo klonu DEĞİL, site kullanıcısının EV DİZİNİ
+# (/home/<user>). Oraya --delete ile rsync, depoda bulunmayan her şeyi siler:
+# backups/ (veritabanı yedekleri dahil), .ssh/, .pm2/, .nvm/, htdocs/...
+# Provada 5320 silme çıktı — bu yüzden --delete kalktı ve hedef daraltıldı.
+#
+# Sunucuda yalnızca backend/ çalışıyor; frontend kaynağı orada yok, derlenmiş
+# çıktı htdocs'a ayrıca gönderiliyor (aşağıda).
+rsync -az ${DRY} --itemize-changes \
     -e "$RSYNC_SHELL" \
-    --exclude '.git' \
     --exclude 'node_modules' \
     --exclude '.env' \
     --exclude 'logs/' \
     --exclude 'uploads/' \
-    --exclude 'htdocs/' \
-    --exclude '_backups/' \
-    --exclude '.last-deployed-sha' \
     --exclude '.DS_Store' \
     --exclude '*.zip' \
-    ./ "${SSH_USER}@${SSH_HOST}:${APP_PATH}/"
+    --exclude 'Arşiv.zip' \
+    ./backend/ "${SSH_USER}@${SSH_HOST}:${APP_PATH}/backend/"
+
+# Frontend: derlenmiş çıktı Nginx'in servis ettiği dizine.
+# assets/ içinde --delete kullanılır (eski bundle temizlensin) ama kökte
+# ASLA: .well-known (SSL yenilemesi) ve logo dosyaları orada duruyor.
+if [ -d "${PROJECT_ROOT}/frontend/dist" ] && [ -n "${HTDOCS_PATH:-}" ]; then
+    rsync -az --delete ${DRY} --itemize-changes -e "$RSYNC_SHELL" \
+        "${PROJECT_ROOT}/frontend/dist/assets/" "${SSH_USER}@${SSH_HOST}:${HTDOCS_PATH}/assets/"
+    rsync -az ${DRY} --itemize-changes -e "$RSYNC_SHELL" \
+        "${PROJECT_ROOT}/frontend/dist/index.html" "${SSH_USER}@${SSH_HOST}:${HTDOCS_PATH}/index.html"
+fi
 
 if [ -n "$DRY" ]; then
     echo ""

@@ -439,6 +439,11 @@ ${systemPrompt}`;
                 systemInstruction: fullSystemInstruction,
                 generationConfig: {
                     temperature: 0.2,
+                    // Üretim uzunluğu sınırı. Sınırsızken model uzun yanıtlarda
+                    // kendi bağlamını kaybedip kural atlıyordu; ayrıca Instagram
+                    // 1000 karakteri aşan mesajı REDDEDİYOR ve müşteriye HİÇBİR
+                    // ŞEY ulaşmıyordu. ~700 token ≈ 2-4 paragraf, hedeflenen ton.
+                    maxOutputTokens: 700,
                 }
             });
             const chat = model.startChat({ history: historyParts });
@@ -2598,7 +2603,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 model: modelName,
                 systemInstruction: finalSystemInstruction,
                 generationConfig: {
-                    temperature: 0.2, // Strict grounding, zero hallucination
+                    temperature: 0.2,
+                    // Üretim uzunluğu sınırı. Sınırsızken model uzun yanıtlarda
+                    // kendi bağlamını kaybedip kural atlıyordu; ayrıca Instagram
+                    // 1000 karakteri aşan mesajı REDDEDİYOR ve müşteriye HİÇBİR
+                    // ŞEY ulaşmıyordu. ~700 token ≈ 2-4 paragraf, hedeflenen ton.
+                    maxOutputTokens: 700, // Strict grounding, zero hallucination
                 }
             };
 

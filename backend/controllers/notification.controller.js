@@ -153,6 +153,15 @@ export const deleteAllNotifications = async (req, res) => {
 // Helper: Create notification and emit via socket
 // Kullanıcının bildirim tercihlerini kontrol eder + WhatsApp/Email bildirim gönderir
 export const createNotification = async (workspaceId, userId, type, title, body, data = null) => {
+    // userId null/undefined olabiliyor: havuzdaki (kimseye atanmamış) randevu
+    // hatırlatıcıları buraya assignedToId=null ile geliyordu ve
+    // prisma.user.findUnique({ where: { id: undefined } }) çağrısı
+    // PrismaClientValidationError fırlatıyordu. Sessizce atla.
+    if (!userId) {
+        console.warn('⚠️ [Notification] userId yok — bildirim atlandı:', type || '');
+        return null;
+    }
+
     try {
         // Kullanıcının tercihlerini kontrol et
         const user = await prisma.user.findUnique({
