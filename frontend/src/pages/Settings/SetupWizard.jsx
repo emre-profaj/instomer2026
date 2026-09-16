@@ -364,15 +364,6 @@ const SetupWizard = () => {
     location: {
       title: 'Konum & Yol Tarifi Şablonu',
       content: `Merhaba! {FIRMA_ADI} konum ve adres bilgileri:\n\n🏢 *Adres:* {ADRES}\n🗺️ *Google Haritalar:* {KONUM_LINKI}\n🌐 *Web Sitemiz:* {WEB_SITESI}\n🕐 *Çalışma Saatlerimiz:* {CALISMA_SAATLERI}\n\nSizi ağırlamaktan mutluluk duyarız!`
-    },
-    appointmentReminder: {
-      title: 'Randevu Hatırlatıcı Şablonu',
-      content: `Sayın {MUSTERI_ADI},\n\n{TARIH} saat {SAAT} için {UZMAN_ADI} ile olan randevunuzu hatırlatmak isteriz.\n\nDeğişiklik veya teyit için lütfen bu mesaja yanıt veriniz.`
-    },
-    aiCallAppointment: {
-      title: 'AI Sesli Randevu Teyit Senaryosu',
-      beginMessage: 'Merhaba {{customer_name}}, {{company_name}} adına arıyorum. {{appointment_date}} tarihindeki randevunuzu teyit etmek için aradım, müsait miydiniz?',
-      promptSuffix: 'Müşterinin randevusunu teyit et. Gelip gelemeyeceğini sor. Değişiklik veya iptal istiyorsa yeni saat öner. Randevu teyit edilirse teşekkür edip WhatsApptan konum göndereceğini söyle.'
     }
   });
 
@@ -5417,65 +5408,6 @@ GENEL DAVRANIŞ KURALLARI:
           </div>
         </div>
 
-        {/* 4. Randevu Onay & Hatırlatıcı Şablonu */}
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '16px' }}>⏰</span>
-              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
-                Randevu Hatırlatıcı Şablonu
-              </h4>
-            </div>
-            <span style={{ fontSize: '11px', color: '#2563eb', fontFamily: 'monospace', fontWeight: 600 }}>/randevu-hatirlatma</span>
-          </div>
-          <textarea
-            rows={4}
-            value={wizardTemplates.appointmentReminder.content}
-            onChange={e => setWizardTemplates({
-              ...wizardTemplates,
-              appointmentReminder: { ...wizardTemplates.appointmentReminder, content: e.target.value }
-            })}
-            style={{ ...inputStyle, resize: 'vertical', fontSize: '12px', lineHeight: 1.5 }}
-          />
-        </div>
-
-        {/* 5. AI Sesli Arama Şablonu */}
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '16px' }}>🎙️</span>
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
-              AI Sesli Arama Senaryosu (Retell Call)
-            </h4>
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-              Açılış Cümlesi
-            </label>
-            <input
-              type="text"
-              value={wizardTemplates.aiCallAppointment.beginMessage}
-              onChange={e => setWizardTemplates({
-                ...wizardTemplates,
-                aiCallAppointment: { ...wizardTemplates.aiCallAppointment, beginMessage: e.target.value }
-              })}
-              style={{ ...inputStyle, fontSize: '12px' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-              AI Agent Konuşma Talimatı
-            </label>
-            <textarea
-              rows={3}
-              value={wizardTemplates.aiCallAppointment.promptSuffix}
-              onChange={e => setWizardTemplates({
-                ...wizardTemplates,
-                aiCallAppointment: { ...wizardTemplates.aiCallAppointment, promptSuffix: e.target.value }
-              })}
-              style={{ ...inputStyle, resize: 'vertical', fontSize: '12px' }}
-            />
-          </div>
-        </div>
       </div>
     );
   };
