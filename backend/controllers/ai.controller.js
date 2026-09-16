@@ -1759,9 +1759,20 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         if (appointmentAllowed && (activeBot.botType === 'APPOINTMENT' || hasHealthApi)) {
             isAppointmentBot = true;
             if (hasHealthApi) isProbelBot = true; // Only Probel-connected workspaces get special treatment
-            const { getAppointmentToolDeclarations } = await import('../services/appointmentBot.service.js');
-            activeBot._appointmentTools = getAppointmentToolDeclarations();
-            console.log(`🏥 [AI] Appointment bot capability detected: ${activeBot.name}, ${activeBot._appointmentTools.length} built-in tools loaded${isProbelBot ? ' (Probel)' : ''}`);
+
+            // ── ARAÇ SEÇİMİ: Probel'e özel mi, Instomer'ın kendi modülü mü? ──
+            // Daha önce botType === 'APPOINTMENT' olan HER bot Probel araçlarını
+            // (hasta_token, brans_kodu, doktor_kodu, servis_kodu) alıyordu.
+            // Probel entegrasyonu olmayan firmalarda o araçlar hiç çalışamaz;
+            // model de boşluğu doldurmak için bilgi uydurup eksik randevu açıyordu.
+            if (isProbelBot) {
+                const { getAppointmentToolDeclarations } = await import('../services/appointmentBot.service.js');
+                activeBot._appointmentTools = getAppointmentToolDeclarations();
+            } else {
+                const { getNativeAppointmentToolDeclarations } = await import('../services/appointmentFunctions.service.js');
+                activeBot._appointmentTools = getNativeAppointmentToolDeclarations();
+            }
+            console.log(`🏥 [AI] Appointment bot: ${activeBot.name}, ${activeBot._appointmentTools.length} araç (${isProbelBot ? 'Probel' : 'Instomer native'})`);
         } else if (!appointmentAllowed) {
             console.log(`🔒 [AI] Appointment module disabled for workspace ${workspaceId} — skipping appointment bot`);
         }
@@ -2349,15 +2360,23 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 },
                 {
                     name: "create_appointment",
-                    description: "Müşteri için randevu oluşturur",
+                    // Zorunlu alanlar KASITLI OLARAK geniş. Önce yalnızca "date"
+                    // zorunluydu; model isim/telefon/hizmet sormadan randevu
+                    // açıyor, takvimde konusu ve sahibi belirsiz kayıtlar
+                    // oluşuyordu. Model düzyazı talimatları atlayabiliyor ama
+                    // şema zorunluluklarına çok daha güvenilir uyuyor.
+                    description: "Müşteri için randevu oluşturur. SADECE hizmet, ad soyad, telefon, tarih ve saat netleştikten sonra çağrılır. Eksik olan varsa ÖNCE onu sor.",
                     parameters: {
                         type: "object",
                         properties: {
+                            service: { type: "string", description: "Randevu konusu / hizmet adı" },
+                            customer_name: { type: "string", description: "Müşterinin ad soyadı" },
+                            customer_phone: { type: "string", description: "Müşterinin telefon numarası" },
                             date: { type: "string", description: "Tarih (YYYY-MM-DD)" },
                             time: { type: "string", description: "Saat (HH:MM)" },
                             notes: { type: "string", description: "Randevu notu" }
                         },
-                        required: ["date"]
+                        required: ["service", "customer_name", "customer_phone", "date", "time"]
                     }
                 },
                 {
@@ -2489,15 +2508,23 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 },
                 {
                     name: "create_appointment",
-                    description: "Müşteri için randevu oluşturur",
+                    // Zorunlu alanlar KASITLI OLARAK geniş. Önce yalnızca "date"
+                    // zorunluydu; model isim/telefon/hizmet sormadan randevu
+                    // açıyor, takvimde konusu ve sahibi belirsiz kayıtlar
+                    // oluşuyordu. Model düzyazı talimatları atlayabiliyor ama
+                    // şema zorunluluklarına çok daha güvenilir uyuyor.
+                    description: "Müşteri için randevu oluşturur. SADECE hizmet, ad soyad, telefon, tarih ve saat netleştikten sonra çağrılır. Eksik olan varsa ÖNCE onu sor.",
                     parameters: {
                         type: "object",
                         properties: {
+                            service: { type: "string", description: "Randevu konusu / hizmet adı" },
+                            customer_name: { type: "string", description: "Müşterinin ad soyadı" },
+                            customer_phone: { type: "string", description: "Müşterinin telefon numarası" },
                             date: { type: "string", description: "Tarih (YYYY-MM-DD)" },
                             time: { type: "string", description: "Saat (HH:MM)" },
                             notes: { type: "string", description: "Randevu notu" }
                         },
-                        required: ["date"]
+                        required: ["service", "customer_name", "customer_phone", "date", "time"]
                     }
                 },
                 {
@@ -2606,12 +2633,30 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 for (const call of functionCalls) {
                     console.log(`⚙️ Gemini called function: ${call.name} with args:`, call.args);
 
-                    // 🏥 Check if this is an appointment bot function
-                    const appointmentFunctions = ['validate_patient', 'get_branches', 'get_doctors', 'get_available_days', 'get_available_hours', 'check_availability', 'create_appointment', 'handoff_to_human'];
-                    if (isAppointmentBot && appointmentFunctions.includes(call.name)) {
+                    // 🏥 Randevu fonksiyonları — iki AYRI modül, iki AYRI imza.
+                    // DİKKAT: her iki dosyada da executeAppointmentFunction adında
+                    // bir export var ama parametre sıraları FARKLI:
+                    //   Probel : (name, args, workspaceId, conversationId, botId)
+                    //   Native : (name, workspaceId, params)
+                    const probelFunctions = ['validate_patient', 'get_branches', 'get_doctors', 'get_available_days', 'get_available_hours', 'check_availability', 'create_appointment', 'handoff_to_human'];
+                    const nativeFunctions = ['list_services', 'check_availability', 'book_appointment', 'list_appointments', 'cancel_appointment'];
+                    const isProbelCall = isAppointmentBot && isProbelBot && probelFunctions.includes(call.name);
+                    const isNativeCall = isAppointmentBot && !isProbelBot && nativeFunctions.includes(call.name);
+
+                    if (isProbelCall || isNativeCall) {
                         try {
-                            const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
-                            const result = await executeAppointmentFunction(call.name, call.args, workspaceId, conversationId, activeBot.id);
+                            let result;
+                            if (isProbelCall) {
+                                const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
+                                result = await executeAppointmentFunction(call.name, call.args, workspaceId, conversationId, activeBot.id);
+                            } else {
+                                const { executeAppointmentFunction } = await import('../services/appointmentFunctions.service.js');
+                                result = await executeAppointmentFunction(call.name, workspaceId, {
+                                    ...call.args,
+                                    conversation_id: conversationId,
+                                    bot_id: activeBot.id
+                                });
+                            }
 
                             functionResponsesParts.push({
                                 functionResponse: {

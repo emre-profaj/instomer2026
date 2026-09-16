@@ -542,50 +542,89 @@ export const executeBuiltInTool = async (functionName, args, context) => {
         }
 
         case 'create_appointment': {
-            // Randevu oluşturur
-            const { date, time, type = 'GENERAL', notes } = args;
+            // ── RANDEVU OLUŞTURMA — TEK KAPIDAN ──────────────────────────────
+            // Bu araç eskiden prisma.contactActivity.create ile MEETING tipi bir
+            // aktivite yazıyordu. Sonuçları:
+            //   • randevu takvimde HİÇ görünmüyordu (Appointment tablosuna yazılmıyor)
+            //   • çakışma kontrolünden geçmiyordu
+            //   • "Randevu Talebi Algılama" izin kapısını atlıyordu
+            // Müşteriye ise "Randevunuz oluşturuldu! 📅" deniyordu.
+            // Artık appointment.domain.js üzerinden gerçek bir Appointment kaydı
+            // oluşuyor; izin kapısı, çakışma kontrolü, Google sync ve bildirim
+            // otomatik olarak devreye giriyor.
+            const { service, customer_name, customer_phone, date, time, notes } = args;
+
+            const eksik = [];
+            if (!String(service || '').trim())         eksik.push('hizmet');
+            if (!String(customer_name || '').trim())   eksik.push('ad soyad');
+            if (!String(customer_phone || '').trim())  eksik.push('telefon');
+            if (!String(date || '').trim())            eksik.push('tarih');
+            if (!String(time || '').trim())            eksik.push('saat');
+            if (eksik.length) {
+                return {
+                    success: false,
+                    message: `Randevu oluşturulamadı — şu bilgiler eksik: ${eksik.join(', ')}. Müşteriye bunları TEKER TEKER sor, sonra tekrar dene.`
+                };
+            }
+
             try {
-                const conv = await prisma.conversation.findUnique({
-                    where: { id: conversationId },
-                    include: { contact: true },
+                const conv = conversationId
+                    ? await prisma.conversation.findUnique({
+                        where: { id: conversationId },
+                        include: { contact: true }
+                      })
+                    : null;
+
+                const startTime = new Date(`${date}T${time}:00`);
+                if (isNaN(startTime.getTime())) {
+                    return { success: false, message: 'Geçersiz tarih/saat. Tarih YYYY-MM-DD, saat HH:MM olmalı.' };
+                }
+                const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+
+                const { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } =
+                    await import('../services/domain/appointment.domain.js');
+
+                const outcome = await createAppointment({
+                    workspaceId,
+                    source: APPOINTMENT_SOURCE.CHAT_BOT,
+                    title: `${service} — ${customer_name}`,
+                    procedure: service,
+                    startTime,
+                    endTime,
+                    contactId: conv?.contactId || null,
+                    contactName: customer_name,
+                    contactPhone: customer_phone,
+                    contactEmail: conv?.contact?.email || null,
+                    conversationId: conversationId || null,
+                    createdByBotId: activeBotId || null,
+                    createdById: 'system',
+                    notes: notes || null
                 });
 
-                if (!conv?.contactId) {
-                    return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
-                }
-
-                const appointmentDate = new Date(`${date}T${time || '10:00'}:00`);
-                if (isNaN(appointmentDate.getTime())) {
-                    return { success: false, message: 'Geçersiz tarih/saat formatı. YYYY-MM-DD ve HH:MM formatında girin.' };
-                }
-
-                const appointment = await prisma.contactActivity.create({
-                    data: {
-                        contactId: conv.contactId,
-                        workspaceId,
-                        type: 'MEETING',
-                        title: `Randevu - ${conv.contact.firstName || 'Müşteri'}`,
-                        description: notes || 'Bot tarafından oluşturuldu',
-                        dueDate: appointmentDate,
-                        status: 'SCHEDULED',
-                        ...(conv.caseId ? { caseId: conv.caseId } : {})
+                if (!outcome.ok) {
+                    if (outcome.result === APPOINTMENT_RESULT.DISABLED) {
+                        return { success: false, message: 'Şu anda sistem üzerinden randevu oluşturamıyorum. Talebi ekibe ilet.' };
                     }
-                });
+                    if (outcome.result === APPOINTMENT_RESULT.CONFLICT) {
+                        return { success: false, message: 'Seçilen saat dolu. Müşteriye başka bir gün/saat öner.' };
+                    }
+                    return { success: false, message: outcome.message || 'Randevu oluşturulamadı.' };
+                }
 
-                const dateStr = appointmentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
-                const timeStr = appointmentDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                const a = outcome.appointment;
+                const dateStr = a.startTime.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+                const timeStr = a.startTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
                 return {
                     success: true,
-                    appointmentId: appointment.id,
-                    message: `Randevunuz oluşturuldu! 📅\n\n📆 ${dateStr}\n⏰ ${timeStr}\n📝 ${notes || ''}\n\nDeğişiklik yapmak isterseniz bize bildirin.`
+                    appointmentId: a.id,
+                    message: `Randevu oluşturuldu.\n\n📆 ${dateStr}\n⏰ ${timeStr}\n💼 ${service}\n👤 ${customer_name}`
                 };
             } catch (err) {
                 console.error('[BuiltIn] create_appointment error:', err.message);
-                return { success: false, message: 'Randevu oluşturulamadı.' };
+                return { success: false, message: 'Randevu oluşturulurken teknik bir sorun oluştu.' };
             }
         }
-
         case 'send_location': {
             // Şube/ofis konumunu gönderir
             const { branch_name } = args;

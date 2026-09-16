@@ -407,6 +407,22 @@ export async function bookAppointment(workspaceId, params = {}) {
         console.log(`📅 [AppointmentFn] book_appointment:`, JSON.stringify(params));
 
         // ── Parametreleri doğrula ──
+        // ── HİZMET ZORUNLULUĞU ────────────────────────────────────────────────
+        // Hizmet seçilmeden randevu, takvimde konusu belirsiz bir kayıt
+        // oluşturuyordu. Yalnızca firmanın tanımlı ürünü varsa zorunlu:
+        // ürün girmemiş firmalarda ve sesli bot akışında kapıyı kilitlemez.
+        if (!params.service && !params.procedure) {
+            const svcCount = await prisma.product.count({
+                where: { workspaceId, isActive: true, isGroup: false }
+            });
+            if (svcCount > 0) {
+                return {
+                    success: false,
+                    error: 'Hangi hizmet için randevu istendiği belirtilmedi. Önce list_services ile hizmetleri sun ve müşteriye seçtir.'
+                };
+            }
+        }
+
         if (!params.customer_name) {
             return { success: false, error: 'Müşteri adı gerekli. Adınızı öğrenebilir miyim?' };
         }
@@ -549,7 +565,7 @@ export async function bookAppointment(workspaceId, params = {}) {
             createdByBotId: params.bot_id || null,
             conversationId: params.conversation_id || null,
             branch: params.branch || null,
-            procedure: params.procedure || null,
+            procedure: params.procedure || params.service || null,
             doctorName,
         });
 
@@ -804,6 +820,9 @@ export async function executeAppointmentFunction(functionName, workspaceId, para
     switch (functionName) {
         case 'check_availability':
             return await checkAvailability(workspaceId, params);
+        case 'list_services':
+            return await listServices(workspaceId, params);
+
         case 'book_appointment':
             return await bookAppointment(workspaceId, params);
         case 'cancel_appointment':
@@ -821,4 +840,138 @@ function tryParseJSON(str) {
     if (!str) return null;
     if (typeof str === 'object') return str;
     try { return JSON.parse(str); } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INSTOMER NATIVE RANDEVU ARAÇLARI (sohbet botu için)
+// ═══════════════════════════════════════════════════════════════
+//
+// Probel (Metropol Hastanesi) ile KARIŞTIRMA:
+//   appointmentBot.service.js       → Probel'e özel (hasta_token, brans_kodu)
+//   appointmentFunctions.service.js → BU DOSYA, Instomer'ın kendi verisi
+//
+// Daha önce botType === 'APPOINTMENT' olan HER bot Probel araçlarını
+// alıyordu. Probel'i olmayan firmalarda o araçlar hiç çalışamıyor, model de
+// boşluğu doldurmak için bilgi uyduruyordu.
+
+/**
+ * Firmanın hizmet listesi (Product tablosu).
+ * "Hangi konuda randevu istiyorsunuz?" sorusunun seçeneklerini üretir.
+ */
+export async function listServices(workspaceId, params = {}) {
+    try {
+        const products = await prisma.product.findMany({
+            where: { workspaceId, isActive: true, isGroup: false },
+            select: {
+                id: true, name: true, description: true, price: true,
+                unit: true, aiContext: true,
+                category: { select: { name: true } }
+            },
+            orderBy: { name: 'asc' },
+            take: 50
+        });
+
+        if (products.length === 0) {
+            return {
+                success: true, services: [], count: 0,
+                message: 'Tanımlı hizmet bulunamadı. Müşteriye ne için randevu istediğini serbest metin olarak sor.'
+            };
+        }
+
+        const q = (params.query || '').trim().toLowerCase();
+        const filtered = q
+            ? products.filter(p =>
+                p.name.toLowerCase().includes(q) ||
+                (p.category?.name || '').toLowerCase().includes(q))
+            : products;
+
+        return {
+            success: true,
+            count: filtered.length,
+            services: (filtered.length ? filtered : products).map(p => ({
+                name: p.name,
+                category: p.category?.name || null,
+                price: p.price > 0 ? `${p.price.toLocaleString('tr-TR')} TL${p.unit ? ' / ' + p.unit : ''}` : null,
+                description: p.description || p.aiContext || null
+            })),
+            message: 'Bu listedeki hizmetleri müşteriye sun. Listede OLMAYAN bir hizmet UYDURMA.'
+        };
+    } catch (err) {
+        console.error('❌ [AppointmentFn] listServices error:', err.message);
+        return { success: false, error: 'Hizmet listesi alınamadı.' };
+    }
+}
+
+/**
+ * Gemini function-calling formatında native araç tanımları.
+ * `required` alanları KASITLI OLARAK geniş: model düzyazı talimatları
+ * atlayabiliyor ama şema zorunluluklarına çok daha güvenilir uyuyor.
+ */
+export function getNativeAppointmentToolDeclarations() {
+    return [
+        {
+            name: 'list_services',
+            description: 'Firmanın randevu verilebilecek hizmet/ürün listesini getirir. Müşteri randevu istediğinde İLK BU ÇAĞRILIR; hangi hizmet olduğu netleşmeden randevu oluşturulmaz.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Müşterinin bahsettiği hizmet adı (opsiyonel filtre)' }
+                },
+                required: []
+            }
+        },
+        {
+            name: 'check_availability',
+            description: 'Belirtilen tarih aralığında uygun randevu saatlerini getirir.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    date: { type: 'string', description: 'Başlangıç tarihi (YYYY-MM-DD)' },
+                    date_range: { type: 'number', description: 'Kaç günlük aralığa bakılacak (varsayılan 3)' },
+                    person_id: { type: 'string', description: 'Belirli bir kişi/kaynak için (opsiyonel)' }
+                },
+                required: ['date']
+            }
+        },
+        {
+            name: 'book_appointment',
+            description: 'Randevuyu kaydeder. SADECE şu dördü de netleştikten sonra çağrılır: hizmet, ad soyad, telefon, tarih+saat. Eksik olan varsa ÖNCE onu sor, bu fonksiyonu çağırma.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    service: { type: 'string', description: 'Randevu konusu — list_services listesinden seçilen hizmet adı' },
+                    customer_name: { type: 'string', description: 'Müşterinin ad soyadı' },
+                    customer_phone: { type: 'string', description: 'Müşterinin telefon numarası' },
+                    date: { type: 'string', description: 'Randevu tarihi (YYYY-MM-DD)' },
+                    start_time: { type: 'string', description: 'Randevu saati (HH:MM)' },
+                    duration: { type: 'number', description: 'Süre (dakika, varsayılan 30)' },
+                    notes: { type: 'string', description: 'Ek not (opsiyonel)' }
+                },
+                required: ['service', 'customer_name', 'customer_phone', 'date', 'start_time']
+            }
+        },
+        {
+            name: 'list_appointments',
+            description: 'Müşterinin mevcut randevularını listeler.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    customer_phone: { type: 'string', description: 'Müşteri telefonu' }
+                },
+                required: []
+            }
+        },
+        {
+            name: 'cancel_appointment',
+            description: 'Mevcut bir randevuyu iptal eder.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    appointment_id: { type: 'string', description: 'İptal edilecek randevunun kimliği' },
+                    customer_phone: { type: 'string', description: 'Doğrulama için müşteri telefonu' }
+                },
+                required: ['appointment_id']
+            }
+        }
+    ];
 }
