@@ -891,10 +891,10 @@ export async function listServices(workspaceId, params = {}) {
             services: (filtered.length ? filtered : products).map(p => ({
                 name: p.name,
                 category: p.category?.name || null,
-                price: p.price > 0 ? `${p.price.toLocaleString('tr-TR')} TL${p.unit ? ' / ' + p.unit : ''}` : null,
+                // Fiyat KASITLI OLARAK yok — bkz. baseKnowledge.service.js
                 description: p.description || p.aiContext || null
             })),
-            message: 'Bu listedeki hizmetleri müşteriye sun. Listede OLMAYAN bir hizmet UYDURMA.'
+            message: 'Bu listedeki hizmetleri müşteriye sun. Listede OLMAYAN bir hizmet UYDURMA. Fiyat sorulursa rakam verme, yetkiliye aktar.'
         };
     } catch (err) {
         console.error('❌ [AppointmentFn] listServices error:', err.message);

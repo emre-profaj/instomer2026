@@ -233,16 +233,17 @@ export async function getBaseKnowledgeContext(workspaceId) {
         // 4. Ürünler, Hizmetler ve Fiyatlar
         if (products.length > 0) {
             const productLines = products.map(p => {
+                // FİYAT KASITLI OLARAK GÖNDERİLMİYOR.
+                // Bot fiyat telaffuz etmemeli; fiyat sorulduğunda temsilciye
+                // aktarmalı. Fiyatlar yine de panelde ve tekliflerde duruyor,
+                // yalnızca AI'ın bağlamına girmiyor.
                 let info = `- ${p.name}`;
-                if (p.price > 0) info += ` | Fiyat: ₺${p.price.toLocaleString('tr-TR')}`;
-                if (p.priceUSD) info += ` ($${p.priceUSD})`;
-                if (p.priceEUR) info += ` (€${p.priceEUR})`;
                 if (p.category?.name) info += ` | Kategori: ${p.category.name}`;
                 if (p.description) info += ` | Açıklama: ${p.description.substring(0, 500)}`;
                 if (p.aiContext) info += ` | [Satış Notu: ${p.aiContext}]`;
                 return info;
             });
-            sections.push(`🛍️ ÜRÜNLER, HİZMETLER VE FİYAT LİSTESİ:\n${productLines.join('\n')}`);
+            sections.push(`🛍️ ÜRÜNLER VE HİZMETLER (FİYAT BİLGİSİ YOKTUR):\n${productLines.join('\n')}\n\n⚠️ Fiyat bilgisi bu listede KASITLI OLARAK yer almaz. Müşteri fiyat, ücret, tutar veya indirim sorarsa ASLA rakam söyleme, tahmin etme veya aralık verme; talebi yetkiliye aktar.`);
         }
 
         // 5. Akışlar (Funnels) ve Aşamaları

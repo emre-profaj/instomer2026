@@ -423,9 +423,9 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                     return { success: true, message: 'Aradığınız kriterlere uygun ürün bulunamadı.' };
                 }
 
+                // Fiyat KASITLI OLARAK listelenmiyor — bot rakam telaffuz etmemeli.
                 const productList = products.map(p => {
-                    const price = p.price ? `${p.price} ${p.currency || 'TL'}` : 'Fiyat bilgisi yok';
-                    return `• ${p.name} - ${price}${p.description ? ': ' + p.description.substring(0, 80) : ''}`;
+                    return `• ${p.name}${p.description ? ': ' + p.description.substring(0, 80) : ''}`;
                 }).join('\n');
 
                 return {
@@ -754,7 +754,8 @@ export const executeBuiltInTool = async (functionName, args, context) => {
 
                 return {
                     success: true,
-                    message: `📦 ${product.name}\n💰 Fiyat: ${product.price || 'Belirtilmemiş'} ${product.currency || 'TL'}\n${stockInfo}`
+                    // Fiyat KASITLI OLARAK yok — stok bilgisi yeterli.
+                    message: `📦 ${product.name}\n${stockInfo}`
                 };
             } catch (err) {
                 console.error('[BuiltIn] check_stock error:', err.message);
