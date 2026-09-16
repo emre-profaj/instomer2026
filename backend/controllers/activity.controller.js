@@ -915,11 +915,24 @@ export const updateActivity = async (req, res) => {
         if (botJustAssigned && isCallableActivity && contactPhone && aiCallAllowed) {
             try {
                 // Daha önce bu activity için ScheduledCall var mı?
+                // Aynı aktivite için kayıt var mı? (durum filtresi KASITLI geniş:
+                // eskiden yalnızca PENDING/IN_PROGRESS'e bakılıyordu ve ilk arama
+                // CANCELLED/COMPLETED olduğunda ikinci bir arama açılıyordu.)
                 const existingSC = await prisma.scheduledCall.findFirst({
-                    where: { createdById: `activity_${activityId}`, status: { in: ['PENDING', 'IN_PROGRESS'] } }
+                    where: {
+                        createdById: `activity_${activityId}`,
+                        status: { in: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] }
+                    }
                 });
 
-                if (!existingSC) {
+                // Farklı kaynaktan aynı numaraya planlanmış arama var mı?
+                const { shouldSkipDuplicateCall } = await import('../utils/callDedup.js');
+                const dupe = existingSC ? false : await shouldSkipDuplicateCall(prisma, {
+                    workspaceId: existing.workspaceId,
+                    phone: contactPhone,
+                }, 'Activity');
+
+                if (!existingSC && !dupe) {
                     const workspace = await prisma.workspace.findUnique({
                         where: { id: existing.workspaceId },
                         select: { retellAutoCallTriggers: true }

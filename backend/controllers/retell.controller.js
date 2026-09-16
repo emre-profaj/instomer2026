@@ -742,17 +742,19 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 
         console.log(`📅 [AutoCall] Final schedule: ${formattedPhone} → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })} (UTC: ${scheduledAt.toISOString()})`);
 
-        // Duplicate prevention: check for existing PENDING calls for this phone within 24 hours
-        const existingCall = await prisma.scheduledCall.findFirst({
-            where: {
-                workspaceId,
-                toNumber: formattedPhone,
-                status: 'PENDING',
-                scheduledAt: {
-                    gte: new Date(scheduledAt.getTime() - 24 * 60 * 60 * 1000),
-                    lte: new Date(scheduledAt.getTime() + 24 * 60 * 60 * 1000)
-                }
-            }
+        // ── MÜKERRER KORUMASI ───────────────────────────────────────────────
+        // Eskiden toNumber METİN olarak karşılaştırılıyordu. Veritabanındaki
+        // numaralar tek biçimde değil (7–27 hane, kimi + ile kimi değil), bu
+        // yüzden "+905321112233" ile "905321112233" ayrı numara sanılıyordu.
+        // Ortak yardımcı son 10 hane üzerinden eşleştiriyor.
+        // Ayrıca yalnızca PENDING'e değil, COMPLETED'a da bakıyor: kişiye
+        // yakın zamanda zaten ulaşıldıysa tekrar aramak gerekmiyor.
+        const { findRecentCallForPhone, phoneKey } = await import('../utils/callDedup.js');
+        const existingCall = await findRecentCallForPhone(prisma, {
+            workspaceId,
+            phone: formattedPhone,
+            aroundDate: scheduledAt,
+            windowHours: 24,
         });
         if (existingCall) {
             console.log(`⏭️ [AutoCall] Skipping duplicate: already have PENDING call for ${formattedPhone} at ${existingCall.scheduledAt.toLocaleString('tr-TR')}`);
@@ -1587,6 +1589,17 @@ async function checkOverdueAgentCalls() {
                 const { canScheduleAiCall, CALL_SOURCE } = await import('../services/policy/automationPolicy.service.js');
                 if (!(await canScheduleAiCall(activity.workspaceId, CALL_SOURCE.AI_FALLBACK)).allowed) {
                     console.log(`🚫 [CallRouter] AI devralma atlandı — "AI Arama İzni" kapalı (activity ${activity.id})`);
+                    continue;
+                }
+
+                // ── MÜKERRER KORUMASI ───────────────────────────────────────
+                // Bu yolda hiç telefon kontrolü yoktu; activity.controller ile
+                // aynı numaraya iki arama planlanabiliyordu.
+                const { shouldSkipDuplicateCall } = await import('../utils/callDedup.js');
+                if (await shouldSkipDuplicateCall(prisma, {
+                    workspaceId: activity.workspaceId,
+                    phone,
+                }, 'CallRouter')) {
                     continue;
                 }
 
