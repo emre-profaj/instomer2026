@@ -134,8 +134,11 @@ function App() {
                 {/* Otomasyonlar ve Akış Oluşturucu artık ARAÇLAR menüsünde
                     ayrı maddeler. Eskiden OtomasyonlarHub'ın alt sekmeleriydi;
                     hub kaldırıldı (bkz. aşağıdaki yönlendirme). */}
-                <Route path="automations" element={<Automations initialTab="automations" />} />
-                <Route path="flow-builder" element={<Automations initialTab="flows" />} />
+                {/* key ZORUNLU: ikisi de aynı bileşeni render ediyor, React örneği
+                    yeniden kullanıyor ve Automations'daki useState(initialTab)
+                    yalnızca ilk render'da okunduğu için sekme değişmiyordu. */}
+                <Route path="automations" element={<Automations key="tab-automations" initialTab="automations" />} />
+                <Route path="flow-builder" element={<Automations key="tab-flows" initialTab="flows" />} />
                 <Route path="integrations" element={<Integrations />} />
                 <Route path="notification-settings" element={<NotificationSettings />} />
                 <Route path="profile" element={<ProfileSettings />} />

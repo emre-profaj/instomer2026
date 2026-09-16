@@ -14,6 +14,11 @@ const Automations = ({ initialTab }) => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState(initialTab || 'automations');
+
+    // NOT: initialTab'i bir effect ile senkronlamıyoruz. Sekme geçişi
+    // App.jsx'te route'a verilen key ile çözülüyor — rota değişince bileşen
+    // yeniden kuruluyor ve useState doğru başlangıç değerini okuyor.
+    // Effect eklemek gereksiz bir ikinci render üretirdi.
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
 
