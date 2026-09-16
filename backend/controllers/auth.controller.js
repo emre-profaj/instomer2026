@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { validationResult } from 'express-validator';
 import prisma from '../lib/prisma.js';
+import { seedDefaultTeams } from '../utils/teamSeeder.js';
 import axios from 'axios';
 import { generateToken } from '../middleware/auth.middleware.js';
 
@@ -313,6 +314,9 @@ export const facebookCallback = async (req, res) => {
                     }
                 }
             });
+
+            // Varsayılan takımlar ve kurallar (idempotent)
+            await seedDefaultTeams(workspace.id);
 
             workspaceMember = {
                 workspace: workspace,

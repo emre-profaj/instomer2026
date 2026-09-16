@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { seedDefaultTeams } from '../utils/teamSeeder.js';
 import bcrypt from 'bcryptjs';
 import { getAiUsageStats, updateAiLimit, SUBSCRIPTION_PLANS } from '../services/aiUsage.service.js';
 import { logAdminActivity } from '../services/activityLog.service.js';
@@ -258,6 +259,9 @@ export const createWorkspace = async (req, res) => {
         });
 
         await logAdminActivity(req, 'CREATE_WORKSPACE', 'WORKSPACE', workspace.id, workspace.name);
+
+        // Varsayılan takımlar ve kurallar (idempotent)
+        await seedDefaultTeams(workspace.id);
 
         await prisma.aIBot.create({
             data: {

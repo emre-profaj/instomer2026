@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { seedDefaultTeams } from '../utils/teamSeeder.js';
 import slugify from 'slugify';
 
 
@@ -416,6 +417,14 @@ export const createWorkspaceInCompany = async (req, res) => {
                 role: 'OWNER'
             }
         });
+
+        // Varsayılan takımlar ve kurallar — workspace.controller.js'teki
+        // createWorkspace bunu çağırıyordu ama buradaki ikinci yol (Ayarlar →
+        // İşletmelerim → Yeni Workspace) çağırmıyordu. Bu yoldan açılan
+        // workspace'lerde hiç takım ve SALES_PHONE_CALL / PHONE_CAPTURE /
+        // APPOINTMENT_AUTO_PLAN kuralları oluşmuyordu.
+        // Idempotent: takım varsa atlar, kuralları upsert eder.
+        await seedDefaultTeams(workspace.id);
 
         // Create default 'Insta' AI bot
         await prisma.aIBot.create({
