@@ -88,6 +88,26 @@ const AIIcon = () => (
   />
 );
 
+// ─── API yanıtından varlığı güvenle çıkarır ──────────────────────────────────
+// Uçlar tutarsız: çoğu { team: {...} } / { funnel: {...} } gibi isimli anahtar
+// döndürüyor, ürün uçları ise { success: true, data: {...} } döndürüyor.
+// Frontend yalnızca isimli anahtarı biliyordu ve bulamayınca `res.data`
+// ZARFINI state'e koyuyordu — listede adı ve fiyatı boş bir satır oluşuyor,
+// sayfa yenilenince (liste sunucudan tazelendiği için) düzeliyordu.
+// Bu yardımcı zarfı ASLA döndürmez: tanıyamazsa null verir, çağıran da
+// kendi birleştirme yedeğine düşer.
+const unwrapEntity = (res, key) => {
+  const d = res?.data;
+  if (!d || typeof d !== 'object') return null;
+  // SIRA ÖNEMLİ: önce "yanıtın kendisi zaten varlık mı?" diye bakılır.
+  // Aksi halde varlığın İÇİNDEKİ aynı adlı alan (örn. bir ürünün category
+  // nesnesi) varlığın kendisi sanılıp yanlış katman döndürülüyordu.
+  if (d.id) return d;
+  if (key && d[key] && typeof d[key] === 'object') return d[key];
+  if (d.data && typeof d.data === 'object' && !Array.isArray(d.data)) return d.data;
+  return null;
+};
+
 const STEPS = [
   { key: 'firma', label: 'Firma', icon: <Building2 size={16} /> },
   { key: 'kb', label: 'Bilgi Bankası', icon: <Book size={16} /> },
@@ -1644,7 +1664,7 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingBranch(true);
     try {
       const res = await appointmentConfigAPI.createLocation(currentWorkspace.id, newBranch);
-      const loc = res.data?.location || res.data;
+      const loc = unwrapEntity(res, 'location');
       if (loc) setBranches(prev => [...prev, loc]);
       showSuccess('Şube başarıyla oluşturuldu!');
       setNewBranch({ name: '', address: '', phone: '' });
@@ -1665,7 +1685,8 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingCategory(true);
     try {
       const res = await createTopicCategory(currentWorkspace.id, newCategory);
-      if (res.data) setCategories(prev => [...prev, res.data]);
+      const cat = unwrapEntity(res, 'category');
+      if (cat) setCategories(prev => [...prev, cat]);
       showSuccess('Kategori başarıyla oluşturuldu!');
       setNewCategory({ name: '', description: '', color: '#3b82f6' });
       setShowAddCategory(false);
@@ -1689,7 +1710,7 @@ GENEL DAVRANIŞ KURALLARI:
         price: parseFloat(newProduct.price) || 0,
         categoryId: newProduct.categoryId || null
       });
-      const prod = res.data?.product || res.data;
+      const prod = unwrapEntity(res, 'product');
       if (prod) setProducts(prev => [...prev, prod]);
       showSuccess('Ürün başarıyla eklendi!');
       setNewProduct({ name: '', price: '', categoryId: '' });
@@ -1715,7 +1736,7 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingEditBranch(true);
     try {
       const res = await appointmentConfigAPI.updateLocation(currentWorkspace.id, editingBranchId, editBranchData);
-      const updated = res.data?.location || res.data;
+      const updated = unwrapEntity(res, 'location');
       setBranches(prev => prev.map(b => b.id === editingBranchId ? (updated?.id ? updated : { ...b, ...editBranchData }) : b));
       showSuccess('Şube bilgileri güncellendi.');
       setEditingBranchId(null);
@@ -1751,7 +1772,7 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingEditCategory(true);
     try {
       const res = await updateTopicCategory(currentWorkspace.id, editingCategoryId, editCategoryData);
-      const updated = res.data;
+      const updated = unwrapEntity(res, 'category');
       setCategories(prev => prev.map(c => c.id === editingCategoryId ? (updated?.id ? updated : { ...c, ...editCategoryData }) : c));
       showSuccess('Kategori güncellendi.');
       setEditingCategoryId(null);
@@ -1795,7 +1816,7 @@ GENEL DAVRANIŞ KURALLARI:
         price: parseFloat(editProductData.price) || 0,
         categoryId: editProductData.categoryId || null
       });
-      const updated = res.data?.product || res.data;
+      const updated = unwrapEntity(res, 'product');
       setProducts(prev => prev.map(p => p.id === editingProductId ? (updated?.id ? updated : { ...p, ...editProductData, price: parseFloat(editProductData.price) || 0 }) : p));
       showSuccess('Ürün güncellendi.');
       setEditingProductId(null);
@@ -1830,7 +1851,7 @@ GENEL DAVRANIŞ KURALLARI:
         name: newResource.name.trim(),
         slotMinutes: parseInt(newResource.slotMinutes, 10) || 30
       });
-      const created = res.data?.resource || res.data;
+      const created = unwrapEntity(res, 'resource');
       if (created?.id) {
         setResources(prev => [...prev, created]);
       } else {
@@ -1889,7 +1910,7 @@ GENEL DAVRANIŞ KURALLARI:
         name: editResourceData.name.trim(),
         slotMinutes: parseInt(editResourceData.slotMinutes, 10) || 30
       });
-      const updated = res.data?.resource || res.data;
+      const updated = unwrapEntity(res, 'resource');
       const allRes = await resourceAPI.getAll(currentWorkspace.id);
       const list = allRes.data?.resources || allRes.data;
       if (Array.isArray(list)) {
@@ -1935,7 +1956,7 @@ GENEL DAVRANIŞ KURALLARI:
         stages: cleanStages.length > 0 ? cleanStages : ['Yeni Başvuru', 'İşlemde', 'Tamamlandı']
       };
       const res = await funnelAPI.create(currentWorkspace.id, payload);
-      const created = res.data?.funnel || res.data;
+      const created = unwrapEntity(res, 'funnel');
       if (created) setFunnels(prev => [...prev, created]);
       showSuccess('Yeni akış ve aşamaları başarıyla oluşturuldu!');
       setNewFunnel({
@@ -2066,7 +2087,7 @@ GENEL DAVRANIŞ KURALLARI:
       };
 
       const res = await funnelAPI.update(wsId, editingFunnelId, payload);
-      const updated = res.data?.funnel || res.data;
+      const updated = unwrapEntity(res, 'funnel');
 
       if (updated && updated.id) {
         setFunnels(prev => prev.map(f => f.id === editingFunnelId ? updated : f));
@@ -2121,7 +2142,7 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingTeam(true);
     try {
       const res = await teamAPI.create(currentWorkspace.id, newTeam);
-      const created = res.data?.team || res.data;
+      const created = unwrapEntity(res, 'team');
       if (created) setTeams(prev => [...prev, created]);
       showSuccess('Yeni takım başarıyla oluşturuldu!');
       setNewTeam({ name: '', description: '', color: '#3b82f6' });
@@ -2146,7 +2167,7 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingEditTeam(true);
     try {
       const res = await teamAPI.update(currentWorkspace.id, editingTeamId, editTeamData);
-      const updated = res.data?.team || res.data;
+      const updated = unwrapEntity(res, 'team');
       setTeams(prev => prev.map(t => t.id === editingTeamId ? (updated?.id ? updated : { ...t, ...editTeamData }) : t));
       showSuccess('Takım güncellendi.');
       setEditingTeamId(null);
@@ -2299,7 +2320,7 @@ GENEL DAVRANIŞ KURALLARI:
     setSavingEditBot(true);
     try {
       const res = await aiAPI.updateBot(currentWorkspace.id, editingBotId, editBotData);
-      const updated = res.data?.bot || res.data;
+      const updated = unwrapEntity(res, 'bot');
       setBots(prev => prev.map(b => b.id === editingBotId ? { ...b, ...editBotData, ...(updated?.id ? updated : {}) } : b));
       showSuccess('AI Asistan başarıyla güncellendi.');
       setEditingBotId(null);
@@ -2349,7 +2370,7 @@ GENEL DAVRANIŞ KURALLARI:
         }
       };
       const res = await aiAPI.createBot(currentWorkspace.id, payload);
-      const created = res.data?.bot || res.data;
+      const created = unwrapEntity(res, 'bot');
       if (created) setBots(prev => [created, ...prev]);
       showSuccess('Yeni AI asistan başarıyla oluşturuldu!');
       setNewBot({
@@ -2389,7 +2410,7 @@ GENEL DAVRANIŞ KURALLARI:
           knowledgeBase: true
         }
       });
-      const created = res.data?.bot || res.data;
+      const created = unwrapEntity(res, 'bot');
       if (created) setBots(prev => [created, ...prev]);
       showSuccess('Varsayılan AI Asistan (Insta) başarıyla oluşturuldu!');
     } catch (err) {
