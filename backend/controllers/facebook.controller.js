@@ -3611,6 +3611,41 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('⚠️ [LEADGEN] Channel routing error:', chRoutingErr.message);
         }
 
+        // ─── TERCİH EDİLEN SAATTE OTOMATİK ARAMA ────────────────────────────
+        // Lead formunda "Size Hangi Saat Diliminde Ulaşalım?" gibi bir soru
+        // varsa cevabı (örn. "12:00-15:00") fieldData içinde duruyordu ama
+        // HİÇ OKUNMUYORDU — yalnızca isim, e-posta ve telefon çıkarılıyordu.
+        // Sonuç: müşteri saat seçiyor, sistem görmezden geliyordu.
+        //
+        // triggerAutoCall bu aralığı zaten işleyebiliyor (explicitPreferredWindow
+        // → calculateScheduledAt). Eksik olan tek şey bu bağlantıydı.
+        // AI Arama İzni vanası triggerAutoCall'un içinde kontrol ediliyor.
+        try {
+            const { extractPreferredWindowFromLead, formatWindow } = await import('../utils/preferredTimeWindow.js');
+            const found = extractPreferredWindowFromLead(fieldData);
+
+            if (found && leadPhone) {
+                const { triggerAutoCall } = await import('./retell.controller.js');
+                console.log(`🕐 [LEADGEN] Tercih edilen arama saati: ${formatWindow(found.window)} (alan: "${found.fieldKey}")`);
+
+                triggerAutoCall(
+                    facebookPage.workspaceId,
+                    leadPhone,
+                    contact?.id,
+                    leadName || leadPhone,
+                    'FACEBOOK_LEAD',
+                    null,            // messageContent — saat zaten yapılandırılmış alandan geldi
+                    new Date(),
+                    found.window     // explicitPreferredWindow
+                ).catch(e => console.warn(`ℹ️ [LEADGEN] Arama planlanamadı (kritik değil): ${e.message}`));
+            } else if (leadPhone) {
+                console.log(`ℹ️ [LEADGEN] Formda saat tercihi yok — otomatik arama planlanmadı`);
+            }
+        } catch (callErr) {
+            // Arama planlanamasa bile lead kaydı bozulmamalı
+            console.error('⚠️ [LEADGEN] Tercih edilen saat işlenemedi:', callErr.message);
+        }
+
         // Post-processing pipeline (Lead scoring, auto-case, auto-category sync)
         try {
             const { runChannelPostProcessing } = await import('./inbox.controller.js');

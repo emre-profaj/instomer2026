@@ -9,6 +9,7 @@ import mammoth from 'mammoth';
 import { executeRule } from '../services/ruleEngine.service.js';
 import { generateCaseNumber } from './case.controller.js';
 import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
+import { parseTimeWindow } from '../utils/preferredTimeWindow.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -386,43 +387,10 @@ export function detectCallRequestInMessage(text) {
  * @returns {{ startHour, startMinute, endHour, endMinute }|null}
  */
 function parsePreferredTime(messageContent) {
-    if (!messageContent || typeof messageContent !== 'string') return null;
-    const text = messageContent.toLowerCase();
-
-    // Pattern 1: "15:00-18:00" or "15:00 - 18:00" (strict HH:MM-HH:MM with colon)
-    const rangeHHMM = text.match(/(\d{1,2}):(\d{2})\s*[-\u2013]\s*(\d{1,2}):(\d{2})/);
-    if (rangeHHMM) {
-        const startH = parseInt(rangeHHMM[1]), startM = parseInt(rangeHHMM[2]);
-        const endH   = parseInt(rangeHHMM[3]), endM   = parseInt(rangeHHMM[4]);
-        if (startH >= 6 && endH > startH && endH <= 23) {
-            console.log(`🔍 [parsePreferredTime] Matched HH:MM range: ${startH}:${String(startM).padStart(2,'0')}-${endH}:${String(endM).padStart(2,'0')}`);
-            return { startHour: startH, startMinute: startM, endHour: endH, endMinute: endM };
-        }
-    }
-
-    // Pattern 2: "saat 15-18 arası" or "saat 15-18" (requires "saat" AND/OR "arası" context)
-    // This guards against matching random digit-dash-digit patterns from dates/codes
-    const rangeWithContext = text.match(/saat\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2})(?:\s*(?:aras[ıi]|saat))?/);
-    if (rangeWithContext) {
-        const startH = parseInt(rangeWithContext[1]), endH = parseInt(rangeWithContext[2]);
-        if (startH >= 6 && endH > startH && endH <= 23 && endH - startH <= 8) {
-            console.log(`🔍 [parsePreferredTime] Matched "saat X-Y" range: ${startH}-${endH}`);
-            return { startHour: startH, startMinute: 0, endHour: endH, endMinute: 0 };
-        }
-    }
-
-    // Pattern 2b: "15-18 arası" (requires "arası" suffix, no "saat" prefix)
-    const rangeWithArasi = text.match(/(\d{1,2})\s*[-\u2013]\s*(\d{1,2})\s+aras[ıi]/);
-    if (rangeWithArasi) {
-        const startH = parseInt(rangeWithArasi[1]), endH = parseInt(rangeWithArasi[2]);
-        if (startH >= 6 && endH > startH && endH <= 23 && endH - startH <= 8) {
-            console.log(`🔍 [parsePreferredTime] Matched "X-Y arası" range: ${startH}-${endH}`);
-            return { startHour: startH, startMinute: 0, endHour: endH, endMinute: 0 };
-        }
-    }
-
-    console.log(`🔍 [parsePreferredTime] No preferred time found in message`);
-    return null;
+    // Ayrıştırma mantığı utils/preferredTimeWindow.js'e taşındı.
+    // Sebep: aynı mantık Facebook lead formu için de gerekiyordu ama burada
+    // ÖZEL olduğu için erişilemiyordu — lead'deki saat cevabı hiç okunamıyordu.
+    return parseTimeWindow(messageContent, (m) => console.log(`🔍 [parsePreferredTime] ${m}`));
 }
 
 // =====================================================================
