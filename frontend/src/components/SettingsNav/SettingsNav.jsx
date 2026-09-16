@@ -25,8 +25,7 @@ import {
     Cpu,
     Bell,
     UserCog,
-    Sliders
-} from 'lucide-react';
+    Sliders, GitBranch} from 'lucide-react';
 import './SettingsNav.css';
 
 const SettingsNav = () => {
@@ -242,11 +241,19 @@ const SettingsNav = () => {
                         </Link>
 
                         <Link
-                            to="/automations-hub"
-                            className={`settings-nav-item ${isPathActive(['/automations-hub', '/automations']) ? 'active' : ''}`}
+                            to="/automations"
+                            className={`settings-nav-item ${isPathActive(['/automations', '/automations-hub']) ? 'active' : ''}`}
                         >
                             <Zap size={15} />
                             <span className="settings-item-label">Otomasyonlar</span>
+                        </Link>
+
+                        <Link
+                            to="/flow-builder"
+                            className={`settings-nav-item ${isPathActive(['/flow-builder']) ? 'active' : ''}`}
+                        >
+                            <GitBranch size={15} />
+                            <span className="settings-item-label">Akış Oluşturucu</span>
                         </Link>
 
                         <Link

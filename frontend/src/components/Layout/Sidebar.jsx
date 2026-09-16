@@ -92,7 +92,8 @@ const Sidebar = () => {
         { group: 'TAKIM & EKİP', path: '/ai-agents', icon: Sparkles, label: 'AI Agentlar' },
         // ARAÇLAR
         { group: 'ARAÇLAR', path: '/templates', icon: FileSignature, label: 'Şablonlar' },
-        { group: 'ARAÇLAR', path: '/automations-hub', icon: Zap, label: 'Otomasyonlar' },
+        { group: 'ARAÇLAR', path: '/automations', icon: Zap, label: 'Otomasyonlar' },
+        { group: 'ARAÇLAR', path: '/flow-builder', icon: GitBranch, label: 'Akış Oluşturucu' },
         // DİĞER
         { group: 'DİĞER', path: '/notification-settings', icon: Bell, label: 'Bildirimler' },
         { group: 'DİĞER', path: '/profile', icon: UserCog, label: 'Profil Ayarları' },

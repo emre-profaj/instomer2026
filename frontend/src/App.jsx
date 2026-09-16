@@ -42,7 +42,6 @@ import Calendar from './pages/Calendar/Calendar';
 
 
 import Automations from './pages/Automations/Automations';
-import OtomasyonlarHub from './pages/Automations/OtomasyonlarHub';
 import NotificationSettings from './pages/Settings/NotificationSettings';
 import FirmSettings from './pages/Settings/FirmSettings';
 // Functions page removed - merged into Integrations
@@ -132,7 +131,11 @@ function App() {
                 <Route path="teams" element={<Users />} />
                 <Route path="ai-agents" element={<AIAgents />} />
                 <Route path="templates" element={<Templates />} />
-                <Route path="automations-hub" element={<OtomasyonlarHub />} />
+                {/* Otomasyonlar ve Akış Oluşturucu artık ARAÇLAR menüsünde
+                    ayrı maddeler. Eskiden OtomasyonlarHub'ın alt sekmeleriydi;
+                    hub kaldırıldı (bkz. aşağıdaki yönlendirme). */}
+                <Route path="automations" element={<Automations initialTab="automations" />} />
+                <Route path="flow-builder" element={<Automations initialTab="flows" />} />
                 <Route path="integrations" element={<Integrations />} />
                 <Route path="notification-settings" element={<NotificationSettings />} />
                 <Route path="profile" element={<ProfileSettings />} />
@@ -147,7 +150,8 @@ function App() {
               <Route path="topic-categories" element={<Navigate to="/funnels?tab=casetypes" replace />} />
               <Route path="casetypes" element={<Navigate to="/funnels?tab=casetypes" replace />} />
               <Route path="knowledge-base" element={<Navigate to="/base" replace />} />
-              <Route path="automations" element={<Navigate to="/automations-hub" replace />} />
+              {/* Eski bağlantılar ve yer imleri bozulmasın */}
+              <Route path="automations-hub" element={<Navigate to="/automations" replace />} />
               <Route path="profile-settings" element={<Navigate to="/profile" replace />} />
 
               <Route path="setup-wizard" element={<SetupWizard />} />
