@@ -575,8 +575,12 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                       })
                     : null;
 
-                const startTime = new Date(`${date}T${time}:00`);
-                if (isNaN(startTime.getTime())) {
+                // TR duvar saati olarak yorumla. new Date(`${date}T${time}:00`)
+                // sunucu yerelinde (Etc/UTC) çözümleniyordu; "15:00" 15:00 UTC
+                // olup takvimde 18:00 görünüyordu.
+                const { parseTrDateTime } = await import('./trTime.js');
+                const startTime = parseTrDateTime(date, time);
+                if (!startTime) {
                     return { success: false, message: 'Geçersiz tarih/saat. Tarih YYYY-MM-DD, saat HH:MM olmalı.' };
                 }
                 const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);

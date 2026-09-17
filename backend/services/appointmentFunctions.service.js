@@ -12,6 +12,7 @@
 import prisma from '../lib/prisma.js';
 import { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from './domain/appointment.domain.js';
 import { ensureDefaultWhatsAppTemplates } from './defaultWhatsAppTemplates.service.js';
+import { setTrTime, parseTrDateTime } from '../utils/trTime.js';
 
 const REMINDER_TEMPLATE_NAME = 'randevu_hatirlatma';
 
@@ -38,12 +39,18 @@ function parseTime(timeStr) {
     return { hours: h, minutes: m || 0 };
 }
 
+/**
+ * Verilen günün TÜRKİYE saatiyle belirtilen saatini döndürür.
+ *
+ * Eskiden d.setHours(...) kullanıyordu. Sunucu Etc/UTC çalıştığı için
+ * "15:00" doğrudan 15:00 UTC oluyordu; takvim TR'ye çevirip gösterince
+ * randevular +3 saat ileri görünüyordu (gerçek vaka: bot 15:00 dedi,
+ * takvimde 18:00 çıktı). Artık ortak yardımcıdan geçiyor.
+ */
 function setTime(date, timeStr) {
     const t = parseTime(timeStr);
     if (!t) return date;
-    const d = new Date(date);
-    d.setHours(t.hours, t.minutes, 0, 0);
-    return d;
+    return setTrTime(date, t) || date;
 }
 
 function addMinutes(date, mins) {
@@ -441,14 +448,17 @@ export async function bookAppointment(workspaceId, params = {}) {
         const duration = parseInt(params.duration) || 30;
 
         if (params.start_time && params.start_time.includes('T')) {
-            // ISO format
-            startTime = new Date(params.start_time);
+            // ISO format — saat dilimi taşıyorsa (Z veya +03:00) olduğu gibi,
+            // taşımıyorsa TR duvar saati kabul edilir.
+            startTime = /[Zz]|[+-]\d{2}:?\d{2}$/.test(params.start_time)
+                ? new Date(params.start_time)
+                : (parseTrDateTime(params.start_time.split('T')[0], params.start_time.split('T')[1]) || new Date(params.start_time));
         } else if (params.date && params.start_time) {
-            // date + HH:MM
-            startTime = setTime(new Date(params.date), params.start_time);
+            // date + HH:MM — TR saati
+            startTime = parseTrDateTime(params.date, params.start_time) || setTime(new Date(params.date), params.start_time);
         } else if (params.date) {
-            // Sadece tarih — varsayılan 09:00
-            startTime = setTime(new Date(params.date), '09:00');
+            // Sadece tarih — varsayılan 09:00 TR
+            startTime = parseTrDateTime(params.date, '09:00') || setTime(new Date(params.date), '09:00');
         } else {
             return { success: false, error: 'Geçerli bir tarih formatı belirtin.' };
         }
