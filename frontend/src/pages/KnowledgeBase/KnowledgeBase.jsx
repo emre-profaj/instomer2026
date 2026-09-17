@@ -8,6 +8,7 @@ import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Penci
 import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
+import './CompanyInfo.css';
 
 const KnowledgeBase = ({ hideSidebar = false }) => {
     const { t } = useTranslation();
@@ -114,6 +115,9 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         }
     });
     const [savingCompany, setSavingCompany] = useState(false);
+    // Sunucudan en son okunan hâl. Kaydet çubuğundaki "kaç alan değişti"
+    // sayacı ve "geri al" düğmesi bunu referans alır.
+    const [companySnapshot, setCompanySnapshot] = useState(null);
     const [newBusinessArea, setNewBusinessArea] = useState('');
     const [regionSearchText, setRegionSearchText] = useState('');
     const [regionSuggestions, setRegionSuggestions] = useState([]);
@@ -422,7 +426,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                     }
                 } catch(e) { /* fallback to default */ }
             }
-            setCompanyInfo({
+            const loadedCompany = {
                 name: info.companyName || '',
                 description: info.companyDescription || '',
                 address: info.companyAddress || '',
@@ -440,7 +444,9 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                 scheduleEnabled: info.companyScheduleEnabled !== false,
                 weeklySchedule,
                 holidaysConfig
-            });
+            };
+            setCompanyInfo(loadedCompany);
+            setCompanySnapshot(loadedCompany);
         } catch (error) {
             console.error('Error loading company info:', error);
         }
@@ -483,6 +489,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             if (typeof refreshWorkspace === 'function') {
                 await refreshWorkspace();
             }
+            setCompanySnapshot(companyInfo);
             alert(t('knowledgeBase.saved'));
         } catch (error) {
             console.error('Error saving company info:', error);
@@ -783,6 +790,19 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     };
 
 
+    // Kaydedilmemiş alan sayısı. Logo ayrı uçtan anında kaydedildiği,
+    // workingHours ise çizelgeden türetildiği için ikisi de sayılmaz.
+    const COMPANY_DIRTY_FIELDS = [
+        'name', 'description', 'address', 'phone', 'email', 'website',
+        'founder', 'industry', 'businessAreas', 'serviceRegions',
+        'googleMapsUrl', 'scheduleEnabled', 'weeklySchedule', 'holidaysConfig'
+    ];
+    const companyDirtyCount = companySnapshot
+        ? COMPANY_DIRTY_FIELDS.filter(k =>
+            JSON.stringify(companyInfo[k]) !== JSON.stringify(companySnapshot[k])
+        ).length
+        : 0;
+
     if (!currentWorkspace) {
         return (
             <div className="empty-state">
@@ -905,559 +925,595 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
 
             {/* Company Tab */}
             {activeTab === 'company' && (
-                <div className="card company-info-form">
-                    <div className="company-logo-section">
-                        <div className="logo-preview">
-                            {companyInfo.logoPreview ? (
-                                <img
-                                    src={companyInfo.logoPreview.startsWith('data:')
-                                        ? companyInfo.logoPreview
-                                        : companyInfo.logoPreview.startsWith('http')
-                                            ? companyInfo.logoPreview
-                                            : `${import.meta.env.VITE_API_URL || ''}/uploads${companyInfo.logoPreview.replace('/uploads', '')}`
-                                    }
-                                    alt="Şirket Logosu"
-                                    onError={(e) => {
-                                        console.error('Logo yüklenemedi:', e.target.src);
-                                        e.target.style.display = 'none';
-                                    }}
-                                />
-                            ) : (
-                                <div className="logo-placeholder">
-                                    <Image size={32} />
-                                    <span>Logo</span>
-                                </div>
-                            )}
-                        </div>
-                        <div className="logo-actions">
-                            <label className="btn btn-outline upload-logo-btn">
-                                <Upload size={16} />
-                                Logo Yükle
-                                <input
-                                    type="file"
-                                    accept=".jpg,.jpeg,.png,.webp,.gif"
-                                    onChange={handleLogoChange}
-                                    style={{ display: 'none' }}
-                                />
-                            </label>
-                            {companyInfo.logoPreview && (
-                                <button className="btn btn-outline btn-danger-outline" onClick={handleDeleteLogo}>
-                                    <Trash2 size={16} />
-                                    Kaldır
-                                </button>
-                            )}
-                        </div>
-                    </div>
+                <div className="cb-page">
 
-                    <div className="company-form-grid">
-                        <div className="form-group">
-                            <label>{t('knowledgeBase.companyName')}</label>
-                            <input
-                                type="text"
-                                className="input"
-                                placeholder="Örn: ABC Teknoloji Ltd."
-                                value={companyInfo.name}
-                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
-                            />
+                    {/* ── Başlık ── */}
+                    <div className="cb-head">
+                        <div>
+                            <div className="cb-eyebrow">Ayarlar · Firma &amp; Bilgi Bankası</div>
+                            <h1 className="cb-title">Şirket Bilgileri</h1>
+                            <div className="cb-sub">Yapay zekânın müşterilere aktardığı temel firma bilgileri burada tutulur.</div>
                         </div>
-                        <div className="form-group">
-                            <label>Website</label>
-                            <input
-                                type="url"
-                                className="input"
-                                placeholder="https://www.ornek.com"
-                                value={companyInfo.website}
-                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, website: e.target.value }))}
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Telefon</label>
-                            <input
-                                type="tel"
-                                className="input"
-                                placeholder="+90 212 123 45 67"
-                                value={companyInfo.phone}
-                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, phone: e.target.value }))}
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>E-posta</label>
-                            <input
-                                type="email"
-                                className="input"
-                                placeholder="info@ornek.com"
-                                value={companyInfo.email}
-                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="company-form-grid">
-                        <div className="form-group">
-                            <label>Kurucu / Firma Sahibi</label>
-                            <input
-                                type="text"
-                                className="input"
-                                placeholder="Örn: Ahmet Yılmaz"
-                                value={companyInfo.founder}
-                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, founder: e.target.value }))}
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Sektör</label>
-                            <select
-                                className="input"
-                                value={companyInfo.industry}
-                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, industry: e.target.value }))}
-                            >
-                                <option value="GENERAL">Genel</option>
-                                <option value="HEALTHCARE">Sağlık</option>
-                                <option value="REAL_ESTATE">Emlak</option>
-                                <option value="AUTOMOTIVE">Otomotiv</option>
-                                <option value="TOURISM">Turizm / Otelcilik</option>
-                                <option value="RETAIL">Perakende</option>
-                                <option value="SERVICE">Hizmet</option>
-                                <option value="EDUCATION">Eğitim</option>
-                                <option value="TECHNOLOGY">Teknoloji</option>
-                                <option value="FOOD">Gıda / Restoran</option>
-                                <option value="SPA">Güzellik / SPA</option>
-                                <option value="LEGAL">Hukuk</option>
-                                <option value="FINANCE">Finans</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Faaliyet Alanları - Tag Input */}
-                    <div className="form-group">
-                        <label>Faaliyet Alanları</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                            {companyInfo.businessAreas.map((area, idx) => (
-                                <span key={idx} style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                    background: '#eff6ff', color: '#1d4ed8', padding: '4px 10px',
-                                    borderRadius: '16px', fontSize: '13px', fontWeight: 500
-                                }}>
-                                    {area}
-                                    <button onClick={() => setCompanyInfo(prev => ({
-                                        ...prev, businessAreas: prev.businessAreas.filter((_, i) => i !== idx)
-                                    }))} style={{ background: 'none', border: 'none', color: '#1d4ed8', cursor: 'pointer', padding: '0 2px', fontSize: '16px', lineHeight: 1 }}>×</button>
-                                </span>
-                            ))}
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                                type="text"
-                                className="input"
-                                placeholder="Yeni alan yazıp Enter'a basın (Örn: Diş Hekimliği)"
-                                value={newBusinessArea}
-                                onChange={(e) => setNewBusinessArea(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && newBusinessArea.trim()) {
-                                        e.preventDefault();
-                                        if (!companyInfo.businessAreas.includes(newBusinessArea.trim())) {
-                                            setCompanyInfo(prev => ({ ...prev, businessAreas: [...prev.businessAreas, newBusinessArea.trim()] }));
-                                        }
-                                        setNewBusinessArea('');
-                                    }
-                                }}
-                                style={{ flex: 1 }}
-                            />
+                        <div className="cb-head-right">
                             <button
-                                className="btn btn-outline"
-                                onClick={() => {
-                                    if (newBusinessArea.trim() && !companyInfo.businessAreas.includes(newBusinessArea.trim())) {
-                                        setCompanyInfo(prev => ({ ...prev, businessAreas: [...prev.businessAreas, newBusinessArea.trim()] }));
-                                        setNewBusinessArea('');
-                                    }
-                                }}
-                                style={{ whiteSpace: 'nowrap' }}
-                            >Ekle</button>
+                                className="cb-btn primary"
+                                onClick={handleSaveCompanyInfo}
+                                disabled={savingCompany}
+                            >
+                                {savingCompany ? 'Kaydediliyor...' : 'Kaydet'}
+                            </button>
                         </div>
                     </div>
 
-                    {/* Adres + Google Maps */}
-                    <div className="form-group">
-                        <label>Adres</label>
-                        <input
-                            type="text"
-                            className="input"
-                            placeholder="Örn: Kadıköy, İstanbul, Türkiye"
-                            value={companyInfo.address}
-                            onChange={(e) => setCompanyInfo(prev => ({ ...prev, address: e.target.value }))}
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>📍 Google Maps Linki</label>
-                        <input
-                            type="url"
-                            className="input"
-                            placeholder="https://maps.google.com/..."
-                            value={companyInfo.googleMapsUrl}
-                            onChange={(e) => setCompanyInfo(prev => ({ ...prev, googleMapsUrl: e.target.value }))}
-                        />
-                        {companyInfo.googleMapsUrl && (
-                            <a href={companyInfo.googleMapsUrl} target="_blank" rel="noopener noreferrer"
-                                style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px', display: 'inline-block' }}>
-                                🔗 Haritada Görüntüle
-                            </a>
-                        )}
+                    {/* ── Bölüm çapaları ── */}
+                    <div className="cb-anchors">
+                        <a className="cb-anchor" href="#cb-kimlik">Kimlik</a>
+                        <a className="cb-anchor" href="#cb-iletisim">İletişim</a>
+                        <a className="cb-anchor" href="#cb-faaliyet">Faaliyet &amp; Bölgeler</a>
+                        <a className="cb-anchor" href="#cb-saatler">Çalışma Saatleri</a>
+                        <a className="cb-anchor" href="#cb-tatiller">Tatiller</a>
+                        <a className="cb-anchor" href="#cb-aciklama">Açıklama</a>
                     </div>
 
-                    {/* Hizmet ve Satış Bölgeleri - İl/İlçe Autocomplete */}
-                    <div className="form-group" style={{ position: 'relative' }}>
-                        <label>Hizmet ve Satış Bölgeleri</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                            {companyInfo.serviceRegions.map((region, idx) => (
-                                <span key={idx} style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                    background: '#f0fdf4', color: '#15803d', padding: '4px 10px',
-                                    borderRadius: '16px', fontSize: '13px', fontWeight: 500
-                                }}>
-                                    📍 {region}
-                                    <button onClick={() => setCompanyInfo(prev => ({
-                                        ...prev, serviceRegions: prev.serviceRegions.filter((_, i) => i !== idx)
-                                    }))} style={{ background: 'none', border: 'none', color: '#15803d', cursor: 'pointer', padding: '0 2px', fontSize: '16px', lineHeight: 1 }}>×</button>
-                                </span>
-                            ))}
+                    {/* ── 1. KİMLİK ── */}
+                    <div className="cb-sec" id="cb-kimlik">
+                        <div className="cb-sec-head">
+                            <div className="cb-sec-t">
+                                <div className="cb-sec-ico"><Building2 size={16} /></div>
+                                <div>
+                                    <div className="cb-sec-name">Kimlik</div>
+                                    <div className="cb-sec-desc">Firmanın adı, logosu ve faaliyet gösterdiği sektör</div>
+                                </div>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <div style={{ flex: 1, position: 'relative' }}>
-                                <input
-                                    type="text"
-                                    className="input"
-                                    placeholder="İl veya ilçe yazın (Örn: Kadıköy)"
-                                    value={regionSearchText}
-                                    onChange={async (e) => {
-                                        const val = e.target.value;
-                                        setRegionSearchText(val);
-                                        if (val.length >= 2) {
-                                            try {
-                                                const resp = await fetch(`https://turkiyeapi.dev/api/v1/provinces?name=${encodeURIComponent(val)}`);
-                                                const data = await resp.json();
-                                                const suggestions = [];
-                                                if (data.data) {
-                                                    data.data.forEach(p => {
-                                                        suggestions.push(p.name);
-                                                        if (p.districts) {
-                                                            p.districts.forEach(d => {
-                                                                if (d.name.toLowerCase().includes(val.toLowerCase()) || p.name.toLowerCase().includes(val.toLowerCase())) {
-                                                                    suggestions.push(`${p.name} / ${d.name}`);
-                                                                }
-                                                            });
-                                                        }
-                                                    });
+                        <div className="cb-sec-body">
+                            <div className="cb-logo">
+                                <div className="cb-logo-box">
+                                    {companyInfo.logoPreview ? (
+                                        <img
+                                            src={companyInfo.logoPreview.startsWith('data:')
+                                                ? companyInfo.logoPreview
+                                                : companyInfo.logoPreview.startsWith('http')
+                                                    ? companyInfo.logoPreview
+                                                    : `${import.meta.env.VITE_API_URL || ''}/uploads${companyInfo.logoPreview.replace('/uploads', '')}`
+                                            }
+                                            alt="Şirket Logosu"
+                                            onError={(e) => {
+                                                console.error('Logo yüklenemedi:', e.target.src);
+                                                e.target.style.display = 'none';
+                                            }}
+                                        />
+                                    ) : (
+                                        <div>
+                                            <Image size={24} />
+                                            <div style={{ marginTop: '4px' }}>Logo</div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="cb-logo-meta">
+                                    <div className="cb-logo-n">Şirket logosu</div>
+                                    <div className="cb-logo-d">JPG, PNG, WEBP veya GIF. Teklif ve fatura çıktılarında, widget başlığında görünür.</div>
+                                    <div className="cb-logo-actions">
+                                        <label className="cb-btn">
+                                            <Upload size={14} />
+                                            Logo yükle
+                                            <input
+                                                type="file"
+                                                accept=".jpg,.jpeg,.png,.webp,.gif"
+                                                onChange={handleLogoChange}
+                                                style={{ display: 'none' }}
+                                            />
+                                        </label>
+                                        {companyInfo.logoPreview && (
+                                            <button className="cb-btn danger" onClick={handleDeleteLogo}>
+                                                <Trash2 size={14} />
+                                                Kaldır
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="cb-grid">
+                                <div className="cb-f">
+                                    <label>{t('knowledgeBase.companyName')}</label>
+                                    <input
+                                        type="text"
+                                        className="cb-in"
+                                        placeholder="Örn: ABC Teknoloji Ltd."
+                                        value={companyInfo.name}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="cb-f">
+                                    <label>Sektör</label>
+                                    <select
+                                        className="cb-in"
+                                        value={companyInfo.industry}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, industry: e.target.value }))}
+                                    >
+                                        <option value="GENERAL">Genel</option>
+                                        <option value="HEALTHCARE">Sağlık</option>
+                                        <option value="REAL_ESTATE">Emlak</option>
+                                        <option value="AUTOMOTIVE">Otomotiv</option>
+                                        <option value="TOURISM">Turizm / Otelcilik</option>
+                                        <option value="RETAIL">Perakende</option>
+                                        <option value="SERVICE">Hizmet</option>
+                                        <option value="EDUCATION">Eğitim</option>
+                                        <option value="TECHNOLOGY">Teknoloji</option>
+                                        <option value="FOOD">Gıda / Restoran</option>
+                                        <option value="SPA">Güzellik / SPA</option>
+                                        <option value="LEGAL">Hukuk</option>
+                                        <option value="FINANCE">Finans</option>
+                                    </select>
+                                </div>
+                                <div className="cb-f">
+                                    <label>Kurucu / firma sahibi</label>
+                                    <input
+                                        type="text"
+                                        className="cb-in"
+                                        placeholder="Örn: Ahmet Yılmaz"
+                                        value={companyInfo.founder}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, founder: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── 2. İLETİŞİM ── */}
+                    <div className="cb-sec" id="cb-iletisim">
+                        <div className="cb-sec-head">
+                            <div className="cb-sec-t">
+                                <div className="cb-sec-ico"><Phone size={16} /></div>
+                                <div>
+                                    <div className="cb-sec-name">İletişim</div>
+                                    <div className="cb-sec-desc">Müşteriye verilebilecek iletişim bilgileri ve konum</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="cb-sec-body">
+                            <div className="cb-grid" style={{ marginBottom: '16px' }}>
+                                <div className="cb-f">
+                                    <label>Telefon</label>
+                                    <input
+                                        type="tel"
+                                        className="cb-in"
+                                        placeholder="+90 212 123 45 67"
+                                        value={companyInfo.phone}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, phone: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="cb-f">
+                                    <label>E-posta</label>
+                                    <input
+                                        type="email"
+                                        className="cb-in"
+                                        placeholder="info@ornek.com"
+                                        value={companyInfo.email}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="cb-f">
+                                    <label>Website</label>
+                                    <input
+                                        type="url"
+                                        className="cb-in"
+                                        placeholder="https://www.ornek.com"
+                                        value={companyInfo.website}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, website: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+                            <div className="cb-grid one" style={{ gap: '16px' }}>
+                                <div className="cb-f">
+                                    <label>Adres</label>
+                                    <input
+                                        type="text"
+                                        className="cb-in"
+                                        placeholder="Örn: Kadıköy, İstanbul, Türkiye"
+                                        value={companyInfo.address}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, address: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="cb-f">
+                                    <label>📍 Google Maps linki <span className="cb-hint">— yol tarifi istendiğinde paylaşılır</span></label>
+                                    <input
+                                        type="url"
+                                        className="cb-in"
+                                        placeholder="https://maps.google.com/..."
+                                        value={companyInfo.googleMapsUrl}
+                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, googleMapsUrl: e.target.value }))}
+                                    />
+                                    {companyInfo.googleMapsUrl && (
+                                        <a className="cb-link" href={companyInfo.googleMapsUrl} target="_blank" rel="noopener noreferrer">
+                                            🔗 Haritada görüntüle
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── 3. FAALİYET & BÖLGELER ── */}
+                    <div className="cb-sec" id="cb-faaliyet">
+                        <div className="cb-sec-head">
+                            <div className="cb-sec-t">
+                                <div className="cb-sec-ico"><MapPin size={16} /></div>
+                                <div>
+                                    <div className="cb-sec-name">Faaliyet ve bölgeler</div>
+                                    <div className="cb-sec-desc">Hangi işi yapıyorsunuz, nerelere hizmet veriyorsunuz</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="cb-sec-body">
+                            {/* Faaliyet Alanları - Tag Input */}
+                            <div className="cb-f" style={{ marginBottom: '22px' }}>
+                                <label>Faaliyet alanları</label>
+                                {companyInfo.businessAreas.length > 0 && (
+                                    <div className="cb-tags">
+                                        {companyInfo.businessAreas.map((area, idx) => (
+                                            <span key={idx} className="cb-tag">
+                                                {area}
+                                                <button className="cb-x" onClick={() => setCompanyInfo(prev => ({
+                                                    ...prev, businessAreas: prev.businessAreas.filter((_, i) => i !== idx)
+                                                }))}>×</button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="cb-addrow">
+                                    <input
+                                        type="text"
+                                        className="cb-in"
+                                        placeholder="Yeni alan yazıp Enter'a basın (Örn: Diş Hekimliği)"
+                                        value={newBusinessArea}
+                                        onChange={(e) => setNewBusinessArea(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && newBusinessArea.trim()) {
+                                                e.preventDefault();
+                                                if (!companyInfo.businessAreas.includes(newBusinessArea.trim())) {
+                                                    setCompanyInfo(prev => ({ ...prev, businessAreas: [...prev.businessAreas, newBusinessArea.trim()] }));
                                                 }
-                                                // İlçe araması için de dene
-                                                if (suggestions.length < 3) {
-                                                    const resp2 = await fetch('https://turkiyeapi.dev/api/v1/provinces');
-                                                    const data2 = await resp2.json();
-                                                    if (data2.data) {
-                                                        data2.data.forEach(p => {
+                                                setNewBusinessArea('');
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        className="cb-btn"
+                                        onClick={() => {
+                                            if (newBusinessArea.trim() && !companyInfo.businessAreas.includes(newBusinessArea.trim())) {
+                                                setCompanyInfo(prev => ({ ...prev, businessAreas: [...prev.businessAreas, newBusinessArea.trim()] }));
+                                                setNewBusinessArea('');
+                                            }
+                                        }}
+                                        style={{ whiteSpace: 'nowrap' }}
+                                    >Ekle</button>
+                                </div>
+                            </div>
+
+                            {/* Hizmet ve Satış Bölgeleri - İl/İlçe Autocomplete */}
+                            <div className="cb-f" style={{ position: 'relative' }}>
+                                <label>Hizmet ve satış bölgeleri</label>
+                                {companyInfo.serviceRegions.length > 0 && (
+                                    <div className="cb-tags">
+                                        {companyInfo.serviceRegions.map((region, idx) => (
+                                            <span key={idx} className="cb-tag region">
+                                                📍 {region}
+                                                <button className="cb-x" onClick={() => setCompanyInfo(prev => ({
+                                                    ...prev, serviceRegions: prev.serviceRegions.filter((_, i) => i !== idx)
+                                                }))}>×</button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type="text"
+                                        className="cb-in"
+                                        placeholder="İl veya ilçe yazın (Örn: Kadıköy)"
+                                        value={regionSearchText}
+                                        onChange={async (e) => {
+                                            const val = e.target.value;
+                                            setRegionSearchText(val);
+                                            if (val.length >= 2) {
+                                                try {
+                                                    const resp = await fetch(`https://turkiyeapi.dev/api/v1/provinces?name=${encodeURIComponent(val)}`);
+                                                    const data = await resp.json();
+                                                    const suggestions = [];
+                                                    if (data.data) {
+                                                        data.data.forEach(p => {
+                                                            suggestions.push(p.name);
                                                             if (p.districts) {
                                                                 p.districts.forEach(d => {
-                                                                    if (d.name.toLowerCase().includes(val.toLowerCase())) {
-                                                                        const entry = `${p.name} / ${d.name}`;
-                                                                        if (!suggestions.includes(entry)) suggestions.push(entry);
+                                                                    if (d.name.toLowerCase().includes(val.toLowerCase()) || p.name.toLowerCase().includes(val.toLowerCase())) {
+                                                                        suggestions.push(`${p.name} / ${d.name}`);
                                                                     }
                                                                 });
                                                             }
                                                         });
                                                     }
-                                                }
-                                                setRegionSuggestions(suggestions.slice(0, 10));
-                                                setShowRegionDropdown(true);
-                                            } catch(err) {
-                                                console.warn('Region API error:', err);
-                                                setRegionSuggestions([]);
-                                            }
-                                        } else {
-                                            setRegionSuggestions([]);
-                                            setShowRegionDropdown(false);
-                                        }
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && regionSearchText.trim()) {
-                                            e.preventDefault();
-                                            if (!companyInfo.serviceRegions.includes(regionSearchText.trim())) {
-                                                setCompanyInfo(prev => ({ ...prev, serviceRegions: [...prev.serviceRegions, regionSearchText.trim()] }));
-                                            }
-                                            setRegionSearchText('');
-                                            setShowRegionDropdown(false);
-                                        }
-                                    }}
-                                    onBlur={() => setTimeout(() => setShowRegionDropdown(false), 200)}
-                                />
-                                {showRegionDropdown && regionSuggestions.length > 0 && (
-                                    <div style={{
-                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                                        background: 'var(--bg-primary, #fff)', border: '1px solid var(--border, #e5e7eb)',
-                                        borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                                        maxHeight: '200px', overflowY: 'auto'
-                                    }}>
-                                        {regionSuggestions.map((s, i) => (
-                                            <div key={i}
-                                                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px',
-                                                    borderBottom: '1px solid var(--border, #f3f4f6)' }}
-                                                onMouseDown={() => {
-                                                    if (!companyInfo.serviceRegions.includes(s)) {
-                                                        setCompanyInfo(prev => ({ ...prev, serviceRegions: [...prev.serviceRegions, s] }));
+                                                    // İlçe araması için de dene
+                                                    if (suggestions.length < 3) {
+                                                        const resp2 = await fetch('https://turkiyeapi.dev/api/v1/provinces');
+                                                        const data2 = await resp2.json();
+                                                        if (data2.data) {
+                                                            data2.data.forEach(p => {
+                                                                if (p.districts) {
+                                                                    p.districts.forEach(d => {
+                                                                        if (d.name.toLowerCase().includes(val.toLowerCase())) {
+                                                                            const entry = `${p.name} / ${d.name}`;
+                                                                            if (!suggestions.includes(entry)) suggestions.push(entry);
+                                                                        }
+                                                                    });
+                                                                }
+                                                            });
+                                                        }
                                                     }
-                                                    setRegionSearchText('');
-                                                    setShowRegionDropdown(false);
-                                                }}
-                                                onMouseEnter={(e) => e.target.style.background = 'var(--bg-secondary, #f9fafb)'}
-                                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                                            >📍 {s}</div>
-                                        ))}
-                                    </div>
-                                )}
+                                                    setRegionSuggestions(suggestions.slice(0, 10));
+                                                    setShowRegionDropdown(true);
+                                                } catch(err) {
+                                                    console.warn('Region API error:', err);
+                                                    setRegionSuggestions([]);
+                                                }
+                                            } else {
+                                                setRegionSuggestions([]);
+                                                setShowRegionDropdown(false);
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && regionSearchText.trim()) {
+                                                e.preventDefault();
+                                                if (!companyInfo.serviceRegions.includes(regionSearchText.trim())) {
+                                                    setCompanyInfo(prev => ({ ...prev, serviceRegions: [...prev.serviceRegions, regionSearchText.trim()] }));
+                                                }
+                                                setRegionSearchText('');
+                                                setShowRegionDropdown(false);
+                                            }
+                                        }}
+                                        onBlur={() => setTimeout(() => setShowRegionDropdown(false), 200)}
+                                    />
+                                    {showRegionDropdown && regionSuggestions.length > 0 && (
+                                        <div className="cb-suggest">
+                                            {regionSuggestions.map((s, i) => (
+                                                <div key={i}
+                                                    onMouseDown={() => {
+                                                        if (!companyInfo.serviceRegions.includes(s)) {
+                                                            setCompanyInfo(prev => ({ ...prev, serviceRegions: [...prev.serviceRegions, s] }));
+                                                        }
+                                                        setRegionSearchText('');
+                                                        setShowRegionDropdown(false);
+                                                    }}
+                                                >📍 {s}</div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <span className="cb-hint">İl veya ilçe yazarak arayın, listeden seçin veya Enter'a basın.</span>
                             </div>
                         </div>
-                        <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
-                            İl veya ilçe yazarak arayın, listeden seçin veya Enter'a basın.
-                        </p>
                     </div>
 
-                    {/* Çalışma Saatleri - 7 Gün */}
-                    <div className="form-group">
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            gap: '12px', marginBottom: '12px', flexWrap: 'wrap'
-                        }}>
-                            <label style={{ margin: 0 }}>🕐 Çalışma Saatleri</label>
-                            <label style={{
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-                                color: companyInfo.scheduleEnabled ? '#2563eb' : '#64748b'
-                            }}>
+                    {/* ── 4. ÇALIŞMA SAATLERİ ── */}
+                    <div className="cb-sec" id="cb-saatler">
+                        <div className="cb-sec-head">
+                            <div className="cb-sec-t">
+                                <div className="cb-sec-ico">🕐</div>
+                                <div>
+                                    <div className="cb-sec-name">Çalışma saatleri</div>
+                                    <div className="cb-sec-desc">Mesai dışı yanıtları ve “çalışma saatleriniz?” sorusu bu çizelgeden okunur</div>
+                                </div>
+                            </div>
+                            {/* Anahtar başlıkta: eskiden çizelgenin içinde kayboluyordu. */}
+                            <label className={`cb-toggle ${companyInfo.scheduleEnabled ? 'on' : ''}`}>
                                 <input
                                     type="checkbox"
                                     role="switch"
                                     checked={companyInfo.scheduleEnabled}
                                     onChange={(e) => setCompanyInfo(prev => ({ ...prev, scheduleEnabled: e.target.checked }))}
-                                    style={{ accentColor: '#2563eb', width: '16px', height: '16px' }}
                                 />
-                                {companyInfo.scheduleEnabled ? 'Bu çizelge kullanılıyor' : 'Bilgi bankasından okunuyor'}
+                                <span className="cb-tg" />
+                                <span className="cb-tg-label">
+                                    {companyInfo.scheduleEnabled ? 'Bu çizelge kullanılıyor' : 'Bilgi bankasından okunuyor'}
+                                </span>
                             </label>
                         </div>
-
-                        {!companyInfo.scheduleEnabled && (
-                            <div style={{
-                                padding: '10px 12px', marginBottom: '12px', borderRadius: '8px',
-                                background: '#fffbeb', border: '1px solid #fde68a',
-                                fontSize: '12px', color: '#92400e', lineHeight: 1.5
-                            }}>
-                                Aşağıdaki çizelge <strong>yok sayılıyor</strong>. Yapay zekâ çalışma
-                                saatlerini yalnızca bilgi bankası belgelerinizden okur — bölümlere göre
-                                farklı saat işleyen yerler (ör. kadınlar / erkekler) için bunu kullanın.
-                                Saate bağlı otomasyonlar (mesai dışı cevabı, “çalışma saatleriniz?”
-                                otomatik yanıtı) bu durumda çalışmaz.
-                            </div>
-                        )}
-
-                        <div style={{ opacity: companyInfo.scheduleEnabled ? 1 : 0.45 }}>
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                            <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
-                                onClick={() => setCompanyInfo(prev => ({
-                                    ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
-                                        ...s, enabled: s.day <= 4, start: '09:00', end: '18:00'
-                                    }))
-                                }))}>Hafta İçi (Pzt-Cum)</button>
-                            <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
-                                onClick={() => setCompanyInfo(prev => ({
-                                    ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
-                                        ...s, enabled: s.day <= 5, start: '09:00', end: '18:00'
-                                    }))
-                                }))}>+ Cumartesi</button>
-                            <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
-                                onClick={() => setCompanyInfo(prev => ({
-                                    ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
-                                        ...s, enabled: true, start: '09:00', end: '18:00'
-                                    }))
-                                }))}>7 Gün</button>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {companyInfo.weeklySchedule.map((slot, idx) => (
-                                <div key={idx} style={{
-                                    display: 'flex', alignItems: 'center', gap: '12px',
-                                    padding: '8px 12px', borderRadius: '8px',
-                                    background: slot.enabled ? 'var(--bg-secondary, #f9fafb)' : 'transparent',
-                                    border: '1px solid var(--border, #e5e7eb)',
-                                    opacity: slot.enabled ? 1 : 0.5,
-                                    transition: 'all 0.15s ease'
-                                }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', minWidth: '120px' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={slot.enabled}
-                                            onChange={(e) => {
-                                                const updated = [...companyInfo.weeklySchedule];
-                                                updated[idx] = { ...updated[idx], enabled: e.target.checked };
-                                                setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
-                                            }}
-                                            style={{ accentColor: '#2563eb' }}
-                                        />
-                                        <span style={{ fontWeight: 600, fontSize: '13px' }}>{slot.label}</span>
-                                    </label>
-                                    {slot.enabled && (
-                                        <>
-                                            <input
-                                                type="time"
-                                                value={slot.start}
-                                                onChange={(e) => {
-                                                    const updated = [...companyInfo.weeklySchedule];
-                                                    updated[idx] = { ...updated[idx], start: e.target.value };
-                                                    setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
-                                                }}
-                                                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border, #d1d5db)', fontSize: '13px' }}
-                                            />
-                                            <span style={{ color: '#9ca3af', fontSize: '13px' }}>—</span>
-                                            <input
-                                                type="time"
-                                                value={slot.end}
-                                                onChange={(e) => {
-                                                    const updated = [...companyInfo.weeklySchedule];
-                                                    updated[idx] = { ...updated[idx], end: e.target.value };
-                                                    setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
-                                                }}
-                                                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border, #d1d5db)', fontSize: '13px' }}
-                                            />
-                                        </>
-                                    )}
-                                    {!slot.enabled && (
-                                        <span style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>Kapalı</span>
-                                    )}
+                        <div className="cb-sec-body">
+                            {!companyInfo.scheduleEnabled && (
+                                <div className="cb-note warn">
+                                    Aşağıdaki çizelge <strong>yok sayılıyor</strong>. Yapay zekâ çalışma
+                                    saatlerini yalnızca bilgi bankası belgelerinizden okur — bölümlere göre
+                                    farklı saat işleyen yerler (ör. kadınlar / erkekler) için bunu kullanın.
+                                    Saate bağlı otomasyonlar (mesai dışı cevabı, “çalışma saatleriniz?”
+                                    otomatik yanıtı) bu durumda çalışmaz.
                                 </div>
-                            ))}
-                        </div>
+                            )}
 
-                        {/* Resmi Tatil & Bayram Günleri Tanımlama Alanı */}
-                        <div style={{ marginTop: '16px', padding: '16px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '20px' }}>🎉</span>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '13px', color: '#1e293b' }}>
-                                            Resmi Tatil & Bayram Günleri Politikası
+                            <div className={companyInfo.scheduleEnabled ? '' : 'cb-dim'}>
+                                <div className="cb-presets">
+                                    <button className="cb-btn sm"
+                                        onClick={() => setCompanyInfo(prev => ({
+                                            ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
+                                                ...s, enabled: s.day <= 4, start: '09:00', end: '18:00'
+                                            }))
+                                        }))}>Hafta içi (Pzt–Cum)</button>
+                                    <button className="cb-btn sm"
+                                        onClick={() => setCompanyInfo(prev => ({
+                                            ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
+                                                ...s, enabled: s.day <= 5, start: '09:00', end: '18:00'
+                                            }))
+                                        }))}>+ Cumartesi</button>
+                                    <button className="cb-btn sm"
+                                        onClick={() => setCompanyInfo(prev => ({
+                                            ...prev, weeklySchedule: prev.weeklySchedule.map(s => ({
+                                                ...s, enabled: true, start: '09:00', end: '18:00'
+                                            }))
+                                        }))}>7 gün</button>
+                                </div>
+
+                                <div className="cb-days">
+                                    {companyInfo.weeklySchedule.map((slot, idx) => (
+                                        <div key={idx} className={`cb-day ${slot.enabled ? '' : 'off'}`}>
+                                            <label className="cb-day-nm">
+                                                <input
+                                                    type="checkbox"
+                                                    className="cb-chk"
+                                                    checked={slot.enabled}
+                                                    onChange={(e) => {
+                                                        const updated = [...companyInfo.weeklySchedule];
+                                                        updated[idx] = { ...updated[idx], enabled: e.target.checked };
+                                                        setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
+                                                    }}
+                                                />
+                                                <span>{slot.label}</span>
+                                            </label>
+                                            {slot.enabled ? (
+                                                <>
+                                                    <input
+                                                        type="time"
+                                                        className="cb-time"
+                                                        value={slot.start}
+                                                        onChange={(e) => {
+                                                            const updated = [...companyInfo.weeklySchedule];
+                                                            updated[idx] = { ...updated[idx], start: e.target.value };
+                                                            setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
+                                                        }}
+                                                    />
+                                                    <span className="cb-dash">—</span>
+                                                    <input
+                                                        type="time"
+                                                        className="cb-time"
+                                                        value={slot.end}
+                                                        onChange={(e) => {
+                                                            const updated = [...companyInfo.weeklySchedule];
+                                                            updated[idx] = { ...updated[idx], end: e.target.value };
+                                                            setCompanyInfo(prev => ({ ...prev, weeklySchedule: updated }));
+                                                        }}
+                                                    />
+                                                </>
+                                            ) : (
+                                                <span className="cb-closed">Kapalı</span>
+                                            )}
                                         </div>
-                                        <div style={{ fontSize: '12px', color: '#64748b' }}>
-                                            AI Agent bayram ve tatillerde müşterilere bu kurala göre yanıt verir.
-                                        </div>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ fontSize: '12px', fontWeight: 600, color: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#dc2626' : '#16a34a' }}>
-                                        {companyInfo.holidaysConfig?.closedOnPublicHolidays ? '🔴 Resmi Tatillerde KAPALIYIZ' : '🟢 Resmi Tatillerde AÇIĞIZ'}
-                                    </span>
-                                    <label style={{ position: 'relative', display: 'inline-block', width: '42px', height: '24px', cursor: 'pointer' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={!companyInfo.holidaysConfig?.closedOnPublicHolidays}
-                                            onChange={(e) => {
-                                                setCompanyInfo(prev => ({
-                                                    ...prev,
-                                                    holidaysConfig: {
-                                                        ...prev.holidaysConfig,
-                                                        closedOnPublicHolidays: !e.target.checked
-                                                    }
-                                                }));
-                                            }}
-                                            style={{ opacity: 0, width: 0, height: 0 }}
-                                        />
-                                        <span style={{
-                                            position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
-                                            backgroundColor: !companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#16a34a' : '#cbd5e1',
-                                            transition: '0.2s', borderRadius: '24px'
-                                        }}>
-                                            <span style={{
-                                                position: 'absolute', height: '18px', width: '18px', left: !companyInfo.holidaysConfig?.closedOnPublicHolidays ? '20px' : '3px',
-                                                bottom: '3px', backgroundColor: '#fff', transition: '0.2s', borderRadius: '50%'
-                                            }} />
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            {/* Standart Resmi Tatiller Listesi */}
-                            <div style={{ marginTop: '12px' }}>
-                                <div style={{ fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Kapsanan Resmi Tatiller & Dini Bayramlar
-                                </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                    {[
-                                        '1 Ocak (Yılbaşı)',
-                                        '23 Nisan (Ulusal Egemenlik ve Çocuk Bayramı)',
-                                        '1 Mayıs (Emek ve Dayanışma Günü)',
-                                        '19 Mayıs (Atatürk\'ü Anma, Gençlik ve Spor Bayramı)',
-                                        '15 Temmuz (Demokrasi ve Milli Birlik Günü)',
-                                        '30 Ağustos (Zafer Bayramı)',
-                                        '29 Ekim (Cumhuriyet Bayramı)',
-                                        'Ramazan Bayramı (Arife + 3 Gün)',
-                                        'Kurban Bayramı (Arife + 4 Gün)'
-                                    ].map((hol, hIdx) => (
-                                        <span
-                                            key={hIdx}
-                                            style={{
-                                                padding: '4px 10px',
-                                                background: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#fee2e2' : '#f0fdf4',
-                                                color: companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#991b1b' : '#166534',
-                                                border: `1px solid ${companyInfo.holidaysConfig?.closedOnPublicHolidays ? '#fca5a5' : '#bbf7d0'}`,
-                                                borderRadius: '16px',
-                                                fontSize: '11px',
-                                                fontWeight: 500
-                                            }}
-                                        >
-                                            {hol}
-                                        </span>
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    </div>
 
-                            {/* Özel Tatil Notu */}
-                            <div style={{ marginTop: '12px' }}>
-                                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                                    Özel Tatil / Bayram Notu (AI Agent için)
-                                </label>
-                                <input
-                                    type="text"
-                                    className="input"
-                                    style={{ fontSize: '13px', background: '#fff' }}
-                                    placeholder="Örn: Bayramın 1. günü kapalıyız, diğer günler nöbetçi servisimiz açıktır."
-                                    value={companyInfo.holidaysConfig?.note || ''}
-                                    onChange={(e) => {
-                                        setCompanyInfo(prev => ({
+                    {/* ── 5. RESMİ TATİLLER ── */}
+                    <div className="cb-sec" id="cb-tatiller">
+                        <div className="cb-sec-head">
+                            <div className="cb-sec-t">
+                                <div className="cb-sec-ico">🎉</div>
+                                <div>
+                                    <div className="cb-sec-name">Resmi tatil ve bayram politikası</div>
+                                    <div className="cb-sec-desc">AI Agent bayram ve tatillerde müşterilere bu kurala göre yanıt verir</div>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span className={`cb-state ${companyInfo.holidaysConfig?.closedOnPublicHolidays ? 'closed' : 'open'}`}>
+                                    {companyInfo.holidaysConfig?.closedOnPublicHolidays ? 'Resmi tatillerde kapalıyız' : 'Resmi tatillerde açığız'}
+                                </span>
+                                <label className={`cb-toggle ${!companyInfo.holidaysConfig?.closedOnPublicHolidays ? 'on' : ''}`}>
+                                    <input
+                                        type="checkbox"
+                                        role="switch"
+                                        checked={!companyInfo.holidaysConfig?.closedOnPublicHolidays}
+                                        onChange={(e) => setCompanyInfo(prev => ({
                                             ...prev,
                                             holidaysConfig: {
                                                 ...prev.holidaysConfig,
-                                                note: e.target.value
+                                                closedOnPublicHolidays: !e.target.checked
                                             }
-                                        }));
-                                    }}
+                                        }))}
+                                    />
+                                    <span className="cb-tg" />
+                                </label>
+                            </div>
+                        </div>
+                        <div className="cb-sec-body">
+                            <div className="cb-sublabel">Kapsanan resmi tatiller &amp; dini bayramlar</div>
+                            <div className={`cb-hol ${companyInfo.holidaysConfig?.closedOnPublicHolidays ? 'closed' : ''}`}>
+                                {[
+                                    '1 Ocak (Yılbaşı)',
+                                    '23 Nisan (Ulusal Egemenlik ve Çocuk Bayramı)',
+                                    '1 Mayıs (Emek ve Dayanışma Günü)',
+                                    '19 Mayıs (Atatürk\'ü Anma, Gençlik ve Spor Bayramı)',
+                                    '15 Temmuz (Demokrasi ve Milli Birlik Günü)',
+                                    '30 Ağustos (Zafer Bayramı)',
+                                    '29 Ekim (Cumhuriyet Bayramı)',
+                                    'Ramazan Bayramı (Arife + 3 Gün)',
+                                    'Kurban Bayramı (Arife + 4 Gün)'
+                                ].map((hol, hIdx) => (
+                                    <span key={hIdx}>{hol}</span>
+                                ))}
+                            </div>
+
+                            <div className="cb-f" style={{ marginTop: '20px' }}>
+                                <label>Özel tatil / bayram notu <span className="cb-hint">— AI Agent için</span></label>
+                                <input
+                                    type="text"
+                                    className="cb-in"
+                                    placeholder="Örn: Bayramın 1. günü kapalıyız, diğer günler nöbetçi servisimiz açıktır."
+                                    value={companyInfo.holidaysConfig?.note || ''}
+                                    onChange={(e) => setCompanyInfo(prev => ({
+                                        ...prev,
+                                        holidaysConfig: { ...prev.holidaysConfig, note: e.target.value }
+                                    }))}
                                 />
                             </div>
                         </div>
+                    </div>
+
+                    {/* ── 6. AÇIKLAMA ── */}
+                    <div className="cb-sec" id="cb-aciklama">
+                        <div className="cb-sec-head">
+                            <div className="cb-sec-t">
+                                <div className="cb-sec-ico"><FileText size={16} /></div>
+                                <div>
+                                    <div className="cb-sec-name">Şirket açıklaması</div>
+                                    <div className="cb-sec-desc">AI bu metni müşterilerle paylaşabilir</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="cb-sec-body">
+                            <textarea
+                                className="cb-in"
+                                rows="4"
+                                placeholder="Şirketiniz hakkında kısa bir açıklama. AI bu bilgiyi müşterilerle paylaşabilir."
+                                value={companyInfo.description}
+                                onChange={(e) => setCompanyInfo(prev => ({ ...prev, description: e.target.value }))}
+                            />
                         </div>
                     </div>
 
-                    <div className="form-group">
-                        <label>{t('knowledgeBase.companyDesc')}</label>
-                        <textarea
-                            className="input"
-                            rows="4"
-                            placeholder="Şirketiniz hakkında kısa bir açıklama. AI bu bilgiyi müşterilerle paylaşabilir."
-                            value={companyInfo.description}
-                            onChange={(e) => setCompanyInfo(prev => ({ ...prev, description: e.target.value }))}
-                        />
-                    </div>
-
-                    <div className="kb-form-actions">
-                        <button
-                            className="btn btn-primary"
-                            onClick={handleSaveCompanyInfo}
-                            disabled={savingCompany}
-                        >
-                            {savingCompany ? 'Kaydediliyor...' : 'Kaydet'}
-                        </button>
+                    {/* ── Kaydet çubuğu ── */}
+                    <div className="cb-bar">
+                        <span className="cb-bar-hint">
+                            {companyDirtyCount > 0
+                                ? <><b>{companyDirtyCount} alan</b> değiştirildi — kaydedilmedi</>
+                                : 'Tüm değişiklikler kaydedildi'}
+                        </span>
+                        <div className="cb-bar-actions">
+                            {companyDirtyCount > 0 && (
+                                <button
+                                    className="cb-btn"
+                                    onClick={() => {
+                                        // Logo ayrı bir uçtan anında kaydedildiği için geri alma
+                                        // dışında tutulur; aksi hâlde yüklenen logo ekrandan silinirdi.
+                                        setCompanyInfo(prev => ({ ...companySnapshot, logo: prev.logo, logoPreview: prev.logoPreview }));
+                                    }}
+                                >Değişiklikleri geri al</button>
+                            )}
+                            <button
+                                className="cb-btn primary"
+                                onClick={handleSaveCompanyInfo}
+                                disabled={savingCompany}
+                            >
+                                {savingCompany ? 'Kaydediliyor...' : 'Kaydet'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
