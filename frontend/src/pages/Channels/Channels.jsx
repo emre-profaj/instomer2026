@@ -90,6 +90,9 @@ const Channels = () => {
 
     // Modals
     const [showFormModal, setShowFormModal] = useState(false);
+    // Web form kurulum bilgileri (webhook adresi + token) — oluşturulan formun
+    // bağlantısı hiçbir yerde gösterilmiyordu, kullanıcı kodu göremiyordu.
+    const [formDetail, setFormDetail] = useState(null);
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
     const [showRetellModal, setShowRetellModal] = useState(false);
     const [showWidgetModal, setShowWidgetModal] = useState(false);
@@ -327,7 +330,7 @@ const Channels = () => {
             return;
         }
         try {
-            await formWebhookAPI.createWebhook(currentWorkspace.id, {
+            const res = await formWebhookAPI.createWebhook(currentWorkspace.id, {
                 name: newFormName,
                 siteUrl: newSiteUrl
             });
@@ -335,6 +338,10 @@ const Channels = () => {
             setNewSiteUrl('');
             setShowFormModal(false);
             loadAllChannels();
+            // Kurulum bilgilerini doğrudan göster — kullanıcının ihtiyacı olan
+            // webhook adresi ve token burada.
+            const created = res?.data?.webhook;
+            if (created) setFormDetail(created);
         } catch (error) {
             console.error('Error creating form webhook:', error);
             alert('Form webhook could not be created.');
@@ -1160,8 +1167,10 @@ const Channels = () => {
             setPageSyncResult(null);
             return;
         } else if (channel.type === 'webform') {
+            // Önceden doğrudan aktif/pasif değiştiriyordu; kurulum bilgilerini
+            // görmenin hiçbir yolu yoktu. Artık detay penceresi açılıyor.
             const webhook = formWebhooks.find(f => f.id === channel.rawId);
-            if (webhook) handleToggleFormWebhook(webhook);
+            if (webhook) setFormDetail(webhook);
         } else if (channel.type === 'webwidget') {
             const widget = webWidgets.find(w => w.id === channel.rawId);
             if (widget) {
@@ -1919,6 +1928,107 @@ const Channels = () => {
                             <button className="btn btn-primary" onClick={handleCreateFormWebhook}>
                                 Oluştur
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Web Form Kurulum Bilgileri */}
+            {formDetail && (
+                <div className="modal-overlay" onClick={() => setFormDetail(null)}>
+                    <div className="modal-content modal-lg" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>{formDetail.name} — Kurulum Bilgileri</h2>
+                            <button className="btn-icon" onClick={() => setFormDetail(null)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                                    Webhook Adresi
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value={formDetail.webhookUrl || ''}
+                                        onFocus={e => e.target.select()}
+                                        className="form-input"
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '12px', background: '#f8fafc' }}
+                                    />
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => copyToClipboard(formDetail.webhookUrl, 'form-url')}
+                                        style={{ whiteSpace: 'nowrap' }}
+                                    >
+                                        {copiedUrl === 'form-url' ? 'Kopyalandı' : 'Kopyala'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                                    Güvenlik Anahtarı (X-Webhook-Token)
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                        type="text"
+                                        readOnly
+                                        value={formDetail.webhookToken || ''}
+                                        onFocus={e => e.target.select()}
+                                        className="form-input"
+                                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '12px', background: '#f8fafc' }}
+                                    />
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => copyToClipboard(formDetail.webhookToken, 'form-token')}
+                                        style={{ whiteSpace: 'nowrap' }}
+                                    >
+                                        {copiedUrl === 'form-token' ? 'Kopyalandı' : 'Kopyala'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
+                                    Elementor Form Kurulumu
+                                </div>
+                                <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: '#475569', lineHeight: 1.7 }}>
+                                    <li>Elementor Form widget'ını açın</li>
+                                    <li>&quot;Actions After Submit&quot; bölümüne gidin</li>
+                                    <li>&quot;Webhook&quot; action'ını ekleyin</li>
+                                    <li>Yukarıdaki webhook adresini yapıştırın</li>
+                                    <li>İsteğe bağlı: Custom Header olarak <code>X-Webhook-Token</code> ekleyip güvenlik anahtarını girin</li>
+                                </ol>
+                                <div style={{ marginTop: '10px', fontSize: '12px', color: '#64748b' }}>
+                                    Alan adları otomatik eşleşir: <code>name</code>, <code>email</code>, <code>phone</code>,
+                                    {' '}<code>message</code>, <code>company</code> (Türkçe karşılıkları da tanınır).
+                                    Tanınmayan alanlar &quot;Diğer Bilgiler&quot; olarak kaydedilir.
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+                                <div style={{ fontSize: '13px', color: '#475569' }}>
+                                    Durum: <strong style={{ color: formDetail.isActive ? '#16a34a' : '#dc2626' }}>
+                                        {formDetail.isActive ? 'Aktif' : 'Pasif'}
+                                    </strong>
+                                    {formDetail.siteUrl && <span style={{ color: '#94a3b8' }}> · {formDetail.siteUrl}</span>}
+                                </div>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={async () => {
+                                        await handleToggleFormWebhook(formDetail);
+                                        setFormDetail({ ...formDetail, isActive: !formDetail.isActive });
+                                    }}
+                                >
+                                    {formDetail.isActive ? 'Pasife Al' : 'Aktif Et'}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-primary" onClick={() => setFormDetail(null)}>Kapat</button>
                         </div>
                     </div>
                 </div>
