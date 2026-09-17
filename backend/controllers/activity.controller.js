@@ -1282,7 +1282,14 @@ export const getWorkspaceActivities = async (req, res) => {
             cancelled: counts.find(c => c.status === 'CANCELLED')?._count || 0
         };
 
-        res.json({ activities, summary });
+        // Eksiksiz durum dağılımı. Yukarıdaki dört kova gerçekte var olan
+        // durumları kapsamıyor: canlıda 449 MEETING kaydı SCHEDULED, 1'i
+        // PENDING — hiçbiri sayılmıyordu, bu yüzden toplam eksik çıkıyor ve
+        // arayüz tanımadığı durumu "iptal" sanıyordu.
+        // `summary` aynen duruyor; bu alan yalnızca ekleme.
+        const byStatus = Object.fromEntries(counts.map(c => [c.status || 'UNKNOWN', c._count]));
+
+        res.json({ activities, summary, byStatus });
     } catch (error) {
         console.error('Get workspace activities error:', error);
         res.status(500).json({ error: 'Aktiviteler yüklenirken hata oluştu' });
