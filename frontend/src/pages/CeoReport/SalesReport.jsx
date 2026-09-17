@@ -1,19 +1,133 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * SATIŞ RAPORU
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * Aynı satış kümesini üç eksende, her biri ÜÇ KADEMELİ açılımla
+ * gösteriyor: konu → temsilci → tek tek satışlar (ve temsilci → konu,
+ * kaynak → temsilci). Dördüncü bölüm düz satış listesi.
+ * Ortak rapor dili: reportDesign.css.
+ *
+ * Eski sayfadaki her şey duruyor: geri düğmesi, toplam tutar/adet,
+ * üç eksenli üç kademeli açılım, satış satırında kişi/başlık/kaynak/
+ * tutar/tarih, 8 kolonlu tüm satış listesi, kategori ikonu ve rengi.
+ *
+ * Eklenenler:
+ *   • Hero'da kaynak dağılımı — Metropol Eylül 2026'da cironun %90'ı
+ *     "Manuel" kaynaktan geliyor, dijital kanallar toplam %10. Aynı ay
+ *     1128 sohbet var; satış kaydı açılırken kaynak taşınmıyor gibi
+ *     görünüyor. Sayı hero'da durunca sorun görünür oluyor.
+ *   • Grup satırlarında ORTALAMA — 27 satıştan 2 milyon çıkaran
+ *     kategoriyle 1 satıştan 130 bin çıkaran kategori aynı değil.
+ *   • Her dökümün altında Toplam satırı (eskiden gruplar toplanmıyordu).
+ *   • Şeritte "En Yüksek" tek satış.
+ */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    DollarSign, ShoppingCart, RefreshCw, Filter, ArrowLeft,
-    TrendingUp, ChevronDown, ChevronRight, Users, UserCheck, Hash, Globe, FileText
-} from 'lucide-react';
+import { RefreshCw, FileText, ArrowLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
-import './CeoReport.css';
-import './CeoDetailReport.css';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../Analytics/reportDesign.css';
+import './SalesReport.css';
 
-const formatCurrency = (n) => {
-    if (!n && n !== 0) return '₺0';
-    return (n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
+const tr = (n) => Number(n || 0).toLocaleString('tr-TR');
+const money = (n) => Number(n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
+const shortDate = (s) => {
+    const d = new Date(s);
+    return isNaN(d) ? '—' : new Intl.DateTimeFormat('tr-TR', {
+        timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: '2-digit',
+    }).format(d);
 };
+const SRC_COLORS = ['#ef4444', '#f59e0b', '#6366f1', '#a78bfa', '#cbd5e1'];
+
+const SaleLines = ({ list }) => (
+    list.length === 0 ? null : (
+        <div className="ra-sales">
+            {list.map(s => (
+                <div className="ra-sale" key={s.id}>
+                    <span className="who" title={s.contactName}>{s.contactName}</span>
+                    <span className="ttl" title={s.title}>{s.title}</span>
+                    <span className="src">{s.source || '—'}</span>
+                    <span className="amt">{money(s.amount)}</span>
+                    <span className="dt">{shortDate(s.createdAt)}</span>
+                </div>
+            ))}
+        </div>
+    )
+);
+
+/**
+ * Üç eksenin tamamı aynı kalıp: grup → alt grup → tek tek satışlar.
+ * axis, açılım durumlarını birbirinden ayırmak için anahtar öneki.
+ *
+ * Bileşen modül düzeyinde: render içinde tanımlansaydı her render'da
+ * yeniden yaratılıp açılmış grupların alt ağacı boşuna yeniden bağlanırdı.
+ */
+const Drill = ({ axis, id, title, meta, groups, max, fallbackColor, subKey, subLabel, salesFor, openGroup, openSub, setOpenGroup, setOpenSub }) => {
+    if (groups.length === 0) {
+        return (
+            <div className="ra-surface" id={id} style={{ marginBottom: 22, '--cols': 2 }}>
+                <div className="ra-sec"><h2>{title}</h2><span className="meta">{meta}</span></div>
+                <div className="ra-empty"><h3>Kayıt yok</h3><p>Bu dönemde satış bulunamadı.</p></div>
+            </div>
+        );
+    }
+    return (
+        <div className="ra-surface" id={id} style={{ marginBottom: 22, '--cols': 2 }}>
+            <div className="ra-sec"><h2>{title}</h2><span className="meta">{meta}</span></div>
+            {groups.map((g, gi) => {
+                const gKey = `${axis}__${g.name}`;
+                const gOpen = !!openGroup[gKey];
+                const subs = g[subKey] || [];
+                return (
+                    <React.Fragment key={g.name || gi}>
+                        <div className={`ra-brow clickable${gOpen ? ' open' : ''}`}
+                            onClick={() => setOpenGroup(p => ({ ...p, [gKey]: !p[gKey] }))}>
+                            <span className="caret"><ChevronRight size={14} /></span>
+                            <div>
+                                <div className="nm">{g.icon ? `${g.icon} ` : ''}{g.name}</div>
+                                {subs.length > 0 && <div className="sub">{tr(subs.length)} {subLabel}</div>}
+                            </div>
+                            <div className="ra-primary">
+                                <div className="top"><span className="v">{money(g.amount)}</span><span className="u">ciro</span></div>
+                                <div className="bar"><i style={{ width: `${(g.amount / max) * 100}%`, background: g.color || fallbackColor }} /></div>
+                            </div>
+                            <div className="ra-metric"><div className="v">{tr(g.count)}</div><div className="k">adet</div></div>
+                            <div className="ra-metric"><div className="v">{g.count ? money(g.amount / g.count) : '—'}</div><div className="k">ortalama</div></div>
+                        </div>
+                        {gOpen && subs.map((s, si) => {
+                            const sKey = `${gKey}__${s.name}`;
+                            const sOpen = !!openSub[sKey];
+                            return (
+                                <React.Fragment key={s.name || si}>
+                                    <div className={`ra-lvl2${sOpen ? ' open' : ''}`}
+                                        onClick={() => setOpenSub(p => ({ ...p, [sKey]: !p[sKey] }))}>
+                                        <span className="caret"><ChevronRight size={11} /></span>
+                                        <span className="ico">{s.icon || '👤'}</span>
+                                        <span className="nm">{s.name}</span>
+                                        <span className="cnt">{tr(s.count)} adet</span>
+                                        <span className="amt">{money(s.amount)}</span>
+                                    </div>
+                                    {sOpen && <SaleLines list={salesFor(g, s)} />}
+                                </React.Fragment>
+                            );
+                        })}
+                    </React.Fragment>
+                );
+            })}
+            <div className="ra-brow total">
+                <span /><div className="nm">Toplam</div>
+                <div className="ra-primary">
+                    <div className="top"><span className="v">{money(groups.reduce((s, g) => s + g.amount, 0))}</span><span className="u">ciro</span></div>
+                </div>
+                <div className="ra-metric"><div className="v">{tr(groups.reduce((s, g) => s + g.count, 0))}</div><div className="k">adet</div></div>
+                <div className="ra-metric"><div className="v">—</div><div className="k">ortalama</div></div>
+            </div>
+        </div>
+    );
+};
+
 
 const SalesReport = () => {
     const { currentWorkspace } = useAuth();
@@ -23,12 +137,9 @@ const SalesReport = () => {
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
-    const [expandedTopics, setExpandedTopics] = useState({});
-    const [expandedAgents, setExpandedAgents] = useState({});
-    const [expandedTopicSales, setExpandedTopicSales] = useState({});
-    const [expandedAgentSales, setExpandedAgentSales] = useState({});
-    const [expandedSources, setExpandedSources] = useState({});
-    const [expandedSourceSales, setExpandedSourceSales] = useState({});
+    // Birinci ve ikinci kademe açılımları — üç eksen için ayrı ayrı
+    const [openGroup, setOpenGroup] = useState({});
+    const [openSub, setOpenSub] = useState({});
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -36,14 +147,13 @@ const SalesReport = () => {
         sessionStorage.setItem('reportEndDate', endDate);
     }, [dateFilter, startDate, endDate]);
 
-    const getDateRange = () => getDateRangeLogic(dateFilter, startDate, endDate);
-
     const fetchData = async () => {
         if (!currentWorkspace?.id) return;
         setLoading(true);
         try {
-            const params = getDateRange();
-            const res = await contactAPI.getSalesReport(currentWorkspace.id, params);
+            const res = await contactAPI.getSalesReport(
+                currentWorkspace.id, getDateRangeLogic(dateFilter, startDate, endDate)
+            );
             setData(res.data);
         } catch (err) {
             console.error('Sales report error:', err);
@@ -52,450 +162,209 @@ const SalesReport = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
+    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (loading && !data) {
         return (
-            <div className="ceo-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-                <div style={{ textAlign: 'center', color: '#64748b' }}>
-                    <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-                    <p>Yükleniyor...</p>
+            <div className="ra-page">
+                <div className="ra-loading">
+                    <RefreshCw className="ra-spin" size={30} />
+                    <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>Satış Raporu yükleniyor…</p>
                 </div>
             </div>
         );
     }
 
-    const { totalCount = 0, totalAmount = 0, topicGroups = [], agentGroups = [], sourceGroups = [], salesList = [] } = data || {};
-    const maxTopicAmount = topicGroups.length > 0 ? topicGroups[0].amount : 1;
-    const maxAgentAmount = agentGroups.length > 0 ? agentGroups[0].amount : 1;
+    const {
+        totalCount = 0, totalAmount = 0,
+        topicGroups = [], agentGroups = [], sourceGroups = [], salesList = [],
+    } = data || {};
 
-    const toggleTopic = (name) => setExpandedTopics(p => ({ ...p, [name]: !p[name] }));
-    const toggleAgent = (name) => setExpandedAgents(p => ({ ...p, [name]: !p[name] }));
-    const toggleTopicSales = (key) => setExpandedTopicSales(p => ({ ...p, [key]: !p[key] }));
-    const toggleAgentSales = (key) => setExpandedAgentSales(p => ({ ...p, [key]: !p[key] }));
-    const toggleSource = (name) => setExpandedSources(p => ({ ...p, [name]: !p[name] }));
-    const toggleSourceSales = (key) => setExpandedSourceSales(p => ({ ...p, [key]: !p[key] }));
+    const maxTopic = topicGroups[0]?.amount || 1;
+    const maxAgent = agentGroups[0]?.amount || 1;
+    const maxSource = sourceGroups[0]?.amount || 1;
+    const biggest = salesList.length ? Math.max(...salesList.map(s => s.amount || 0)) : 0;
+    const srcTotal = sourceGroups.reduce((s, x) => s + (x.amount || 0), 0) || 1;
 
-    // Get sales for a specific topic+agent combination
-    const getSalesFor = (categoryName, agentName) => {
-        return salesList.filter(s =>
-            s.categoryName === categoryName && (agentName ? s.agentName === agentName : true)
-        );
-    };
+    const strip = [
+        { label: 'Satış Adedi', dot: '#ef4444', value: tr(totalCount), sub: 'kazanılan kayıt' },
+        { label: 'Ortalama', dot: '#f59e0b', value: totalCount ? money(totalAmount / totalCount) : '—', sub: 'satış başına' },
+        { label: 'En Yüksek', dot: '#047857', value: biggest ? money(biggest) : '—', sub: 'tek satış' },
+        { label: 'Kategori', dot: '#6366f1', value: tr(topicGroups.length), sub: 'konu' },
+        { label: 'Temsilci', dot: '#0ea5e9', value: tr(agentGroups.length), sub: 'satış yapan' },
+        { label: 'Kaynak', dot: '#a78bfa', value: tr(sourceGroups.length), sub: 'geliş kanalı' },
+    ];
 
     return (
-        <div className="ceo-report">
-            <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
+        <div className="ra-page">
+            <div className="ra-wrap">
 
-            <div className="ceo-detail-header">
-                <div className="ceo-detail-header-left">
-                    <h1><DollarSign size={24} style={{ color: '#059669' }} /> Satış Raporu</h1>
-                    <p>Kategori ve temsilci bazlı satış analizi</p>
+                <button className="ra-back" onClick={() => navigate('/general-report')}>
+                    <ArrowLeft size={15} /> Dashboard
+                </button>
+
+                <div className="ra-head">
+                    <div>
+                        <div className="ra-eyebrow">Raporlar</div>
+                        <h1>Satış Raporu</h1>
+                        <p>Konu, temsilci ve kaynak bazlı satış analizi</p>
+                    </div>
+                    <div className="ra-head-actions">
+                        <button className="ra-btn" onClick={fetchData} disabled={loading}>
+                            <RefreshCw className={loading ? 'ra-spin' : ''} size={14} /> Güncelle
+                        </button>
+                        <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                            <FileText size={14} /> Raporu İndir
+                        </button>
+                    </div>
                 </div>
 
-            </div>
-
-            {/* Filters */}
-            <div className="ceo-filter-bar">
-                <div className="ceo-filter-left">
-                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                    <div className="ceo-pill-group">
-                        {dateFilterOptions.map(item => (
-                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                <div className="ra-filters">
+                    <div className="ra-pills">
+                        {dateFilterOptions.map(o => (
+                            <button key={o.key} className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(o.key)}>{o.label}</button>
                         ))}
                     </div>
                     {dateFilter === 'custom' && (
-                        <div className="ceo-custom-dates">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
+                        <div className="ra-dates">
+                            <input type="date" className="ra-date-input" value={startDate}
+                                onChange={e => setStartDate(e.target.value)} />
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                            <input type="date" className="ra-date-input" value={endDate}
+                                onChange={e => setEndDate(e.target.value)} />
                         </div>
                     )}
                 </div>
-                <div className="ceo-filter-right">
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
-            </div>
 
-            {/* ═══ 1. TOPLAM SATIŞ ═══ */}
-            <div style={{
-                display: 'flex', gap: 20, marginBottom: 24, flexWrap: 'wrap'
-            }}>
-                <div style={{
-                    flex: 1, minWidth: 200,
-                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                    borderRadius: 16, padding: '28px 32px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, opacity: 0.85, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <DollarSign size={16} /> Toplam Satış Tutarı
-                    </div>
-                    <div style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-                        {formatCurrency(totalAmount)}
-                    </div>
-                </div>
-                <div style={{
-                    flex: 1, minWidth: 200,
-                    background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    borderRadius: 16, padding: '28px 32px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, opacity: 0.85, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <ShoppingCart size={16} /> Toplam Satış Adedi
-                    </div>
-                    <div style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-                        {totalCount}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', opacity: 0.7, marginTop: 4 }}>
-                        Ort: {totalCount > 0 ? formatCurrency(totalAmount / totalCount) : '₺0'}
-                    </div>
-                </div>
-            </div>
-
-            {/* ═══ 2. KONUYA GÖRE SATIŞ ═══ */}
-            {topicGroups.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 24 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#ecfdf5', color: '#059669' }}><TrendingUp size={18} /></div>
-                        <h2>Konuya Göre Satış</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0 }}>
-                        {topicGroups.map((group, gi) => {
-                            const pct = ((group.amount / maxTopicAmount) * 100).toFixed(0);
-                            const isExpanded = expandedTopics[group.name];
-                            return (
-                                <div key={gi} style={{ borderBottom: gi < topicGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                    {/* Ana Grup Satırı */}
-                                    <div
-                                        onClick={() => toggleTopic(group.name)}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                                            cursor: 'pointer', transition: 'background 0.15s'
-                                        }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                    >
-                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-                                        </div>
-                                        <span style={{ fontSize: '0.9rem', width: 22, textAlign: 'center' }}>{group.icon || '📁'}</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
-                                        <div style={{ flex: 2, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 200 }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${group.color || '#059669'}, ${group.color ? group.color + '99' : '#34d399'})`, borderRadius: 6, transition: 'width 0.6s' }} />
-                                        </div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#059669', minWidth: 50, textAlign: 'right' }}>{group.count} adet</span>
-                                        <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#0f172a', minWidth: 100, textAlign: 'right' }}>{formatCurrency(group.amount)}</span>
-                                    </div>
-
-                                    {/* Alt Grup: Temsilciler */}
-                                    {isExpanded && (
-                                        <div style={{ background: '#fafbfc', padding: '0 16px 8px 46px' }}>
-                                            {group.agents.map((agent, ai) => {
-                                                const agentKey = `${group.name}__${agent.name}`;
-                                                const showSales = expandedTopicSales[agentKey];
-                                                const agentSales = getSalesFor(group.name, agent.name);
-                                                return (
-                                                    <div key={ai}>
-                                                        <div
-                                                            onClick={() => toggleTopicSales(agentKey)}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-                                                                borderRadius: 8, cursor: 'pointer', marginBottom: 2,
-                                                                transition: 'background 0.15s'
-                                                            }}
-                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                        >
-                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showSales ? 'rotate(90deg)' : 'none' }} />
-                                                            <UserCheck size={13} style={{ color: '#6366f1' }} />
-                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', flex: 1 }}>{agent.name}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#6366f1' }}>{agent.count}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', minWidth: 80, textAlign: 'right' }}>{formatCurrency(agent.amount)}</span>
-                                                        </div>
-                                                        {/* Satış listesi */}
-                                                        {showSales && agentSales.length > 0 && (
-                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12 }}>
-                                                                {agentSales.map((s, si) => (
-                                                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.72rem', color: '#64748b' }}>
-                                                                        <Hash size={10} style={{ color: '#cbd5e1' }} />
-                                                                        <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
-                                                                        <span>{s.title}</span>
-                                                                        {s.source && <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4 }}>{s.source}</span>}
-                                                                        <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
-                                                                        <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* ═══ 3. TEMSİLCİYE GÖRE SATIŞ ═══ */}
-            {agentGroups.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 24 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={18} /></div>
-                        <h2>Temsilciye Göre Satış</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{agentGroups.length} temsilci</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0 }}>
-                        {agentGroups.map((group, gi) => {
-                            const pct = ((group.amount / maxAgentAmount) * 100).toFixed(0);
-                            const isExpanded = expandedAgents[group.name];
-                            return (
-                                <div key={gi} style={{ borderBottom: gi < agentGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                    {/* Ana Grup Satırı */}
-                                    <div
-                                        onClick={() => toggleAgent(group.name)}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                                            cursor: 'pointer', transition: 'background 0.15s'
-                                        }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                    >
-                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-                                        </div>
-                                        <div style={{
-                                            width: 28, height: 28, borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, #6366f1, #818cf8)',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            color: '#fff', fontWeight: 800, fontSize: '0.7rem'
-                                        }}>
-                                            {group.name?.charAt(0)?.toUpperCase() || '?'}
-                                        </div>
-                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
-                                        <div style={{ flex: 2, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 200 }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #6366f1, #818cf8)', borderRadius: 6, transition: 'width 0.6s' }} />
-                                        </div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#6366f1', minWidth: 50, textAlign: 'right' }}>{group.count} adet</span>
-                                        <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#0f172a', minWidth: 100, textAlign: 'right' }}>{formatCurrency(group.amount)}</span>
-                                    </div>
-
-                                    {/* Alt Grup: Konular */}
-                                    {isExpanded && (
-                                        <div style={{ background: '#fafbfc', padding: '0 16px 8px 46px' }}>
-                                            {group.topics.map((topic, ti) => {
-                                                const topicKey = `${group.name}__${topic.name}`;
-                                                const showSales = expandedAgentSales[topicKey];
-                                                const topicSales = salesList.filter(s => s.agentName === group.name && s.categoryName === topic.name);
-                                                return (
-                                                    <div key={ti}>
-                                                        <div
-                                                            onClick={() => toggleAgentSales(topicKey)}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-                                                                borderRadius: 8, cursor: 'pointer', marginBottom: 2,
-                                                                transition: 'background 0.15s'
-                                                            }}
-                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                        >
-                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showSales ? 'rotate(90deg)' : 'none' }} />
-                                                            <span style={{ fontSize: '0.8rem' }}>{topic.icon || '📁'}</span>
-                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: topic.color || '#374151', flex: 1 }}>{topic.name}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: topic.color || '#059669' }}>{topic.count}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', minWidth: 80, textAlign: 'right' }}>{formatCurrency(topic.amount)}</span>
-                                                        </div>
-                                                        {/* Satış listesi */}
-                                                        {showSales && topicSales.length > 0 && (
-                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12 }}>
-                                                                {topicSales.map((s, si) => (
-                                                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.72rem', color: '#64748b' }}>
-                                                                        <Hash size={10} style={{ color: '#cbd5e1' }} />
-                                                                        <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
-                                                                        <span>{s.title}</span>
-                                                                        {s.source && <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4 }}>{s.source}</span>}
-                                                                        <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
-                                                                        <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* ═══ 4. TÜM SATIŞ LİSTESİ ═══ */}
-            {salesList.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 24 }}>
-                    <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><ShoppingCart size={18} /></div>
-                            <h2>Tüm Satış Listesi</h2>
+                <div className="ra-surface ra-hero">
+                    <div className="ra-hero-left">
+                        <div className="ra-metric-label">Toplam Satış</div>
+                        <div className="ra-metric-value" style={{ fontSize: '2.9rem' }}>{money(totalAmount)}</div>
+                        <div className="ra-metric-note">
+                            {tr(totalCount)} satış · ortalama {totalCount ? money(totalAmount / totalCount) : '—'}
                         </div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8' }}>{salesList.length} satış</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Müşteri</th>
-                                    <th>Kategori</th>
-                                    <th>Temsilci</th>
-                                    <th>Başlık</th>
-                                    <th>Kaynak</th>
-                                    <th>Tutar</th>
-                                    <th>Tarih</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {salesList.map((s, idx) => (
-                                    <tr key={s.id}>
-                                        <td><span style={{ fontWeight: 800, color: idx < 3 ? '#059669' : '#94a3b8', fontSize: '0.82rem' }}>{idx + 1}</span></td>
-                                        <td>
-                                            <div>
-                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f172a' }}>{s.contactName}</span>
-                                                {s.contactPhone && <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{s.contactPhone}</div>}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                padding: '2px 8px', borderRadius: 6,
-                                                background: s.categoryColor ? s.categoryColor + '18' : '#f1f5f9',
-                                                color: s.categoryColor || '#64748b',
-                                                fontSize: '0.72rem', fontWeight: 600
-                                            }}>
-                                                {s.categoryIcon && <span>{s.categoryIcon}</span>}
-                                                {s.categoryName}
-                                            </span>
-                                        </td>
-                                        <td><span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151' }}>{s.agentName}</span></td>
-                                        <td><span style={{ fontSize: '0.78rem', color: '#64748b' }}>{s.title}</span></td>
-                                        <td>
-                                            {s.source ? (
-                                                <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '2px 8px', borderRadius: 6 }}>{s.source}</span>
-                                            ) : (
-                                                <span style={{ fontSize: '0.68rem', color: '#d1d5db' }}>—</span>
-                                            )}
-                                        </td>
-                                        <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '0.88rem' }}>{formatCurrency(s.amount)}</span></td>
-                                        <td><span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══ 4. KAYNAĞA GÖRE SATIŞ ═══ */}
-            {sourceGroups.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 24 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#faf5ff', color: '#8b5cf6' }}><Globe size={18} /></div>
-                        <h2>Kaynağa Göre Satış</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{sourceGroups.length} kaynak</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0 }}>
-                        {sourceGroups.map((group, gi) => {
-                            const pct = ((group.amount / (sourceGroups[0]?.amount || 1)) * 100).toFixed(0);
-                            const isExpanded = expandedSources[group.name];
-                            return (
-                                <div key={gi} style={{ borderBottom: gi < sourceGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                    <div
-                                        onClick={() => toggleSource(group.name)}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                                            cursor: 'pointer', transition: 'background 0.15s'
-                                        }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                    >
-                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-                                        </div>
-                                        <Globe size={16} style={{ color: '#8b5cf6' }} />
-                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
-                                        <div style={{ flex: 2, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 200 }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)', borderRadius: 6, transition: 'width 0.6s' }} />
-                                        </div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#8b5cf6', minWidth: 50, textAlign: 'right' }}>{group.count} adet</span>
-                                        <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#0f172a', minWidth: 100, textAlign: 'right' }}>{formatCurrency(group.amount)}</span>
-                                    </div>
-
-                                    {isExpanded && (
-                                        <div style={{ background: '#fafbfc', padding: '0 16px 8px 46px' }}>
-                                            {group.agents.map((agent, ai) => {
-                                                const agentKey = `src__${group.name}__${agent.name}`;
-                                                const showSales = expandedSourceSales[agentKey];
-                                                const agentSales = salesList.filter(s => (s.source || 'Bilinmeyen') === group.name && s.agentName === agent.name);
-                                                return (
-                                                    <div key={ai}>
-                                                        <div
-                                                            onClick={() => toggleSourceSales(agentKey)}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-                                                                borderRadius: 8, cursor: 'pointer', marginBottom: 2,
-                                                                transition: 'background 0.15s'
-                                                            }}
-                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                        >
-                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showSales ? 'rotate(90deg)' : 'none' }} />
-                                                            <UserCheck size={13} style={{ color: '#6366f1' }} />
-                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', flex: 1 }}>{agent.name}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#6366f1' }}>{agent.count}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', minWidth: 80, textAlign: 'right' }}>{formatCurrency(agent.amount)}</span>
-                                                        </div>
-                                                        {showSales && agentSales.length > 0 && (
-                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12 }}>
-                                                                {agentSales.map((s, si) => (
-                                                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.72rem', color: '#64748b' }}>
-                                                                        <Hash size={10} style={{ color: '#cbd5e1' }} />
-                                                                        <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
-                                                                        <span>{s.title}</span>
-                                                                        <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
-                                                                        <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
+                        {sourceGroups.length > 0 && (
+                            <div className="ra-split">
+                                <div className="ra-bar">
+                                    {sourceGroups.map((s, i) => (
+                                        <span key={s.name} style={{ width: `${(s.amount / srcTotal) * 100}%`, background: SRC_COLORS[i % SRC_COLORS.length] }}
+                                            title={`${s.name}: ${money(s.amount)}`} />
+                                    ))}
                                 </div>
-                            );
-                        })}
+                                <div className="ra-legend" style={{ marginTop: 12 }}>
+                                    {sourceGroups.map((s, i) => (
+                                        <div className="ra-legend-item" key={s.name}>
+                                            <i className="ra-dot" style={{ background: SRC_COLORS[i % SRC_COLORS.length] }} />
+                                            <span className="ra-legend-text">{s.name}</span>
+                                            <span className="ra-legend-count">%{Math.round((s.amount / srcTotal) * 100)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="ra-hero-right">
+                        <div className="ra-chart-head">
+                            <span className="ra-chart-title">En çok satan konular</span>
+                            <span className="ra-chart-peak">{tr(topicGroups.length)} kategori</span>
+                        </div>
+                        <div className="ra-tops">
+                            {topicGroups.length === 0
+                                ? <div style={{ fontSize: '.8rem', color: '#94a3b8' }}>Bu dönemde satış yok</div>
+                                : topicGroups.slice(0, 6).map(t => (
+                                    <div className="ra-toprow" key={t.name}>
+                                        <span className="nm" title={t.name}>{t.icon ? `${t.icon} ` : ''}{t.name}</span>
+                                        <div className="bar"><i style={{ width: `${(t.amount / maxTopic) * 100}%`, background: t.color || '#ef4444' }} /></div>
+                                        <span className="val">{money(t.amount)}</span>
+                                    </div>
+                                ))}
+                        </div>
                     </div>
                 </div>
-            )}
 
-            {totalCount === 0 && !loading && (
-                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
-                    <ShoppingCart size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-                    <p style={{ fontSize: '1rem', fontWeight: 600 }}>Bu dönemde satış bulunamadı</p>
-                    <p style={{ fontSize: '0.82rem' }}>Tarih filtresini değiştirmeyi deneyin</p>
+                <div className="ra-surface ra-strip" style={{ marginBottom: 22 }}>
+                    {strip.map(c => (
+                        <div className="ra-cell" key={c.label}>
+                            <div className="ra-cell-label"><i className="ra-cell-dot" style={{ background: c.dot }} />{c.label}</div>
+                            <div className="ra-cell-value">{c.value}</div>
+                            <div className="ra-cell-sub">{c.sub}</div>
+                        </div>
+                    ))}
                 </div>
-            )}
+
+                <div className="ra-anchors">
+                    <a className="ra-anchor" href="#s-topic">Konu <b>{tr(topicGroups.length)}</b></a>
+                    <a className="ra-anchor" href="#s-agent">Temsilci <b>{tr(agentGroups.length)}</b></a>
+                    <a className="ra-anchor" href="#s-source">Kaynak <b>{tr(sourceGroups.length)}</b></a>
+                    <a className="ra-anchor" href="#s-list">Tüm Satışlar <b>{tr(salesList.length)}</b></a>
+                </div>
+
+                <Drill axis="topic" id="s-topic" title="Konuya Göre Satış"
+                    meta={`${tr(topicGroups.length)} kategori`} groups={topicGroups} max={maxTopic}
+                    fallbackColor="#ef4444" subKey="agents" subLabel="temsilci"
+                    salesFor={(g, s) => salesList.filter(x => x.categoryName === g.name && x.agentName === s.name)}
+                    openGroup={openGroup} openSub={openSub} setOpenGroup={setOpenGroup} setOpenSub={setOpenSub} />
+
+                <Drill axis="agent" id="s-agent" title="Temsilciye Göre Satış"
+                    meta={`${tr(agentGroups.length)} temsilci`} groups={agentGroups} max={maxAgent}
+                    fallbackColor="#6366f1" subKey="topics" subLabel="konu"
+                    salesFor={(g, s) => salesList.filter(x => x.agentName === g.name && x.categoryName === s.name)}
+                    openGroup={openGroup} openSub={openSub} setOpenGroup={setOpenGroup} setOpenSub={setOpenSub} />
+
+                <Drill axis="source" id="s-source" title="Kaynağa Göre Satış"
+                    meta={`${tr(sourceGroups.length)} kaynak`} groups={sourceGroups} max={maxSource}
+                    fallbackColor="#a78bfa" subKey="agents" subLabel="temsilci"
+                    salesFor={(g, s) => salesList.filter(x => (x.source || 'Bilinmeyen') === g.name && x.agentName === s.name)}
+                    openGroup={openGroup} openSub={openSub} setOpenGroup={setOpenGroup} setOpenSub={setOpenSub} />
+
+                <div className="ra-surface" id="s-list">
+                    <div className="ra-sec">
+                        <h2>Tüm Satış Listesi</h2>
+                        <span className="meta">{tr(salesList.length)} satış</span>
+                    </div>
+                    {salesList.length === 0 ? (
+                        <div className="ra-empty">
+                            <h3>Satış kaydı yok</h3>
+                            <p>Bu dönemde kazanılmış satış bulunamadı.</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="ra-slist head">
+                                <span>#</span><span>Müşteri</span><span>Kategori</span><span>Temsilci</span>
+                                <span>Başlık</span><span>Kaynak</span>
+                                <span style={{ textAlign: 'right' }}>Tutar</span><span style={{ textAlign: 'right' }}>Tarih</span>
+                            </div>
+                            {salesList.map((s, i) => (
+                                <div className="ra-slist" key={s.id}>
+                                    <span className={`no${i < 3 ? ' top' : ''}`}>{i + 1}</span>
+                                    <div>
+                                        <div className="nm" title={s.contactName}>{s.contactName}</div>
+                                        {s.contactPhone && <div className="ph">{s.contactPhone}</div>}
+                                    </div>
+                                    <span className="cell">
+                                        <span className="ra-tag" style={{
+                                            background: s.categoryColor ? `${s.categoryColor}14` : '#f1f5f9',
+                                            color: s.categoryColor || '#64748b',
+                                        }}>
+                                            {s.categoryIcon ? `${s.categoryIcon} ` : ''}{s.categoryName}
+                                        </span>
+                                    </span>
+                                    <span className="cell">{s.agentName || '—'}</span>
+                                    <span className="cell" title={s.title}>{s.title}</span>
+                                    <span className="cell">
+                                        <span className="ra-tag" style={{ background: '#f8fafc', color: '#64748b' }}>{s.source || '—'}</span>
+                                    </span>
+                                    <span className="money">{money(s.amount)}</span>
+                                    <span className="dt">{shortDate(s.createdAt)}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                </div>
+
+            </div>
         </div>
     );
 };

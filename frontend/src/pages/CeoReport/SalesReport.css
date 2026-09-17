@@ -1,0 +1,76 @@
+/* ═══════════════════════════════════════════════════════════════
+   SATIŞ RAPORU — SAYFAYA ÖZGÜ
+   Ortak dil: ../Analytics/reportDesign.css
+   (.ra-brow, .ra-anchor, .ra-primary, .ra-metric orada)
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* Hero sağı: en çok satan kategoriler */
+.ra-tops { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
+.ra-toprow { display: grid; grid-template-columns: minmax(110px, 170px) 1fr 104px; gap: 12px; align-items: center; }
+.ra-toprow .nm { font-size: 0.775rem; font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-toprow .bar { height: 8px; border-radius: 999px; background: #f1f2f5; overflow: hidden; }
+.ra-toprow .bar i { display: block; height: 100%; border-radius: 999px; }
+.ra-toprow .val { font-size: 0.8rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* İkinci kademe: temsilci / konu satırı */
+.ra-lvl2 {
+    display: grid; grid-template-columns: 18px 20px 1fr 62px 118px;
+    gap: 10px; align-items: center;
+    padding: 9px 28px 9px 58px; cursor: pointer;
+    transition: background .14s;
+}
+.ra-lvl2:hover { background: #fff5f5; }
+.ra-lvl2 .caret { color: #cbd2dc; transition: transform .16s; }
+.ra-lvl2.open .caret { transform: rotate(90deg); color: var(--accent); }
+.ra-lvl2 .nm { font-size: 0.79rem; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-lvl2 .cnt { font-size: 0.76rem; font-weight: 700; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-lvl2 .amt { font-size: 0.8rem; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-lvl2 .ico { font-size: 0.85rem; text-align: center; }
+
+/* Üçüncü kademe: tek tek satışlar */
+.ra-sales { padding: 2px 28px 10px 90px; }
+.ra-sale {
+    display: grid; grid-template-columns: minmax(120px, 1fr) minmax(110px, 1.1fr) 84px 96px 72px;
+    gap: 10px; align-items: center; padding: 7px 0;
+    border-left: 2px solid var(--line); padding-left: 14px;
+}
+.ra-sale + .ra-sale { box-shadow: inset 0 1px 0 var(--line); }
+.ra-sale .who { font-size: 0.765rem; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-sale .ttl { font-size: 0.74rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-sale .src { font-size: 0.68rem; font-weight: 600; color: var(--ink-3); }
+.ra-sale .amt { font-size: 0.77rem; font-weight: 700; color: #047857; text-align: right; font-variant-numeric: tabular-nums; }
+.ra-sale .dt { font-size: 0.68rem; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Tüm satış listesi */
+.ra-slist {
+    display: grid; grid-template-columns: 34px minmax(140px, 1.2fr) minmax(120px, 1fr) minmax(110px, .9fr) minmax(130px, 1.2fr) 88px 116px 78px;
+    gap: 12px; align-items: center; padding: 12px 28px;
+    transition: background .14s;
+}
+.ra-slist + .ra-slist { box-shadow: inset 0 1px 0 var(--line); }
+.ra-slist:hover { background: #fffafa; }
+.ra-slist.head { padding-bottom: 9px; box-shadow: none; }
+.ra-slist.head span { font-size: 0.65rem; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .09em; }
+.ra-slist .no { font-size: 0.75rem; font-weight: 700; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ra-slist .no.top { color: var(--accent-deep); }
+.ra-slist .nm { font-size: 0.83rem; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-slist .ph { font-size: 0.7rem; color: var(--ink-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.ra-slist .cell { font-size: 0.78rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-slist .money { font-size: 0.82rem; font-weight: 700; color: #047857; text-align: right; font-variant-numeric: tabular-nums; }
+.ra-slist .dt { font-size: 0.72rem; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-tag {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 600;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+    .ra-lvl2 { padding-left: 20px; padding-right: 20px; grid-template-columns: 18px 20px 1fr 52px 96px; }
+    .ra-sales { padding-left: 20px; padding-right: 20px; }
+    .ra-sale { grid-template-columns: 1fr 88px; row-gap: 4px; }
+    .ra-sale .ttl, .ra-sale .src { grid-column: 1; }
+    .ra-slist { grid-template-columns: 30px 1fr 96px; row-gap: 6px; padding: 14px 20px; }
+    .ra-slist > *:nth-child(n+4) { grid-column: 2 / -1; }
+    .ra-slist.head { display: none; }
+}

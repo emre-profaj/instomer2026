@@ -3,18 +3,6 @@
    Ortak dil: ../Analytics/reportDesign.css
    ═══════════════════════════════════════════════════════════════ */
 
-/* Bölüm çapaları — dört döküm uzun sayfada kaybolmasın */
-.ra-anchors { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
-.ra-anchor {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 8px 14px; border-radius: 999px; background: #fff;
-    box-shadow: inset 0 0 0 1px var(--line);
-    font-size: 0.77rem; font-weight: 600; color: var(--ink-2);
-    text-decoration: none; transition: box-shadow .15s, color .15s;
-}
-.ra-anchor:hover { color: var(--accent-deep); box-shadow: inset 0 0 0 1px #fca5a5; }
-.ra-anchor b { font-weight: 700; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-
 /* Hero sağı: aktivite dökümü */
 .ra-acts { display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: center; }
 .ra-actrow { display: grid; grid-template-columns: 78px 1fr 58px; gap: 12px; align-items: center; }
@@ -28,26 +16,6 @@
 }
 .ra-acts-money .k { font-size: 0.75rem; font-weight: 600; color: var(--ink-2); }
 .ra-acts-money .v { font-size: 1.15rem; font-weight: 700; color: #047857; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-
-/* Döküm satırı — kolon sayısı bölüme göre değişir */
-.ra-brow {
-    display: grid;
-    grid-template-columns: 22px minmax(150px, 1.25fr) minmax(110px, 1fr) repeat(var(--cols, 6), minmax(60px, 86px));
-    gap: 14px; align-items: center; padding: 12px 28px;
-    transition: background .14s;
-}
-.ra-brow + .ra-brow, .ra-brow.total { box-shadow: inset 0 1px 0 var(--line); }
-.ra-brow:hover { background: #fffafa; }
-.ra-brow.clickable { cursor: pointer; }
-.ra-brow.open { background: #fffafa; }
-.ra-brow.total { background: #fafbfc; box-shadow: inset 0 1px 0 var(--ink-3); }
-.ra-brow.total .nm, .ra-brow.total .ra-metric .v { font-weight: 800; }
-
-.ra-brow .caret { color: #c3cad4; transition: transform .16s, color .16s; }
-.ra-brow.open .caret { transform: rotate(90deg); color: var(--accent); }
-.ra-brow .nm { font-size: 0.845rem; font-weight: 650; color: var(--ink); letter-spacing: -0.012em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ra-brow .sub { font-size: 0.71rem; color: var(--ink-3); margin-top: 2px; }
-
 
 /* Açılan alt döküm */
 .ra-sub-wrap { background: #fcfcfd; box-shadow: inset 0 1px 0 var(--line); padding: 14px 0 8px; }
@@ -75,8 +43,6 @@
 .ra-stage-pill b { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 1100px) {
-    .ra-brow { grid-template-columns: 22px 1fr; row-gap: 9px; align-items: start; padding: 15px 20px; }
-    .ra-brow > *:nth-child(n+3) { grid-column: 2; }
     .ra-srow, .ra-sub-head, .ra-sub-more, .ra-stages { padding-left: 20px; padding-right: 20px; }
     .ra-srow { grid-template-columns: 1fr 56px 56px 92px; gap: 8px; }
 }
