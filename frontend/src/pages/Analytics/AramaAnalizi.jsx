@@ -1,17 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import { 
-    Users, PhoneCall, CheckCircle2, PhoneOff, Phone, 
-    TrendingUp, Calendar, Clock, RefreshCw, Trash2, 
-    Search, FileText, AlertCircle, X, ChevronRight, MessageSquare, Filter 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+    PhoneCall, PhoneOff, RefreshCw, Search, FileText, X, StickyNote
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
-import api, { contactAPI, retellAPI, funnelAPI } from '../../services/api';
+import { contactAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
-import '../CeoReport/CeoReport.css';
-import '../CeoReport/CeoDetailReport.css';
+import './reportDesign.css';
 import './AramaAnalizi.css';
+
+const TZ = 'Europe/Istanbul';
+const fmt = (o) => new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, ...o });
+const trTime = (d) => fmt({ hour: '2-digit', minute: '2-digit' }).format(d);
+const trDay = (d) => fmt({ weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+const trShort = (d) => fmt({ day: 'numeric', month: 'short' }).format(d);
+const trKey = (d) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(d);
+const tr = (n) => Number(n || 0).toLocaleString('tr-TR');
+
+const AVATARS = [
+    ['#fef2f2', '#b91c1c'], ['#fff7ed', '#c2410c'], ['#fffbeb', '#b45309'],
+    ['#f8fafc', '#475569'], ['#fdf2f8', '#be185d'], ['#f5f3ff', '#6d28d9'],
+];
+const avatarOf = (name) => {
+    const s = String(name || '?');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    const [bg, color] = AVATARS[h % AVATARS.length];
+    const initials = s.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toLocaleUpperCase('tr');
+    return { bg, color, initials: initials || '?' };
+};
+const initials2 = (n) => String(n || '').substring(0, 2).toLocaleUpperCase('tr');
+
+const CALL_STATUS = {
+    COMPLETED: { label: 'Tamamlandı', dot: '#10b981' },
+    PLANNED:   { label: 'Bekliyor',   dot: '#f59e0b' },
+    SCHEDULED: { label: 'Planlandı',  dot: '#6366f1' },
+    CANCELLED: { label: 'İptal',      dot: '#94a3b8' },
+};
+const callStatusOf = (s) => CALL_STATUS[s] || { label: s || 'Bilinmiyor', dot: '#cbd5e1' };
+
+const SENTIMENT = {
+    Positive: { label: 'Olumlu',  color: '#047857', dot: '#10b981' },
+    Negative: { label: 'Olumsuz', color: '#b91c1c', dot: '#ef4444' },
+    Neutral:  { label: 'Nötr',    color: '#64748b', dot: '#cbd5e1' },
+};
 
 const AramaAnalizi = () => {
     const { currentWorkspace } = useAuth();
@@ -45,7 +80,6 @@ const AramaAnalizi = () => {
 
     // Table filter & search states
     const [searchTerm, setSearchTerm] = useState('');
-    const [tableFilter, setTableFilter] = useState('all'); // all | called | notCalled | completed | planned
 
     // Modal states
     const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -176,508 +210,407 @@ const AramaAnalizi = () => {
         activities: []
     };
 
-    // Filter customer details table
-    const filteredDetails = (stats.details || [])
-        .filter(d => {
-            if (tableFilter === 'called') return d.totalCalls > 0;
-            if (tableFilter === 'notCalled') return d.totalCalls === 0;
-            if (tableFilter === 'completed') return d.completedCalls > 0;
-            if (tableFilter === 'planned') return d.plannedCalls > 0;
-            return true;
-        })
-        .filter(d => {
-            if (!searchTerm) return true;
-            const term = searchTerm.toLowerCase();
-            return (
-                d.contactName.toLowerCase().includes(term) ||
-                d.phone.includes(term) ||
-                (d.assigneeName && d.assigneeName.toLowerCase().includes(term))
-            );
-        });
+    // ── Türetilmiş veriler ────────────────────────────────────────
+    const callList = useMemo(() => stats.activities || [], [stats.activities]);
+    const uncalledList = useMemo(
+        () => (stats.phoneContactsList || []).filter(c => !c.wasCalled),
+        [stats.phoneContactsList]
+    );
+    const closureNotes = useMemo(
+        () => analytics?.callTrackingStats?.closureNotes || [],
+        [analytics]
+    );
 
-    // Calculate new metrics requested by user
-    const callListAll = stats.activities || [];
-    const totalPositive = callListAll.filter(a => a.callSentiment === 'Positive').length;
-    const totalNegative = callListAll.filter(a => a.callSentiment === 'Negative').length;
-    const totalReached = callListAll.filter(a => a.callSuccessful === true).length;
-    const totalNotReached = callListAll.filter(a => a.callSuccessful === false).length;
-    const totalCompleted = callListAll.filter(a => a.status === 'COMPLETED').length;
-    const totalPending = callListAll.filter(a => a.status !== 'COMPLETED' && a.status !== 'CANCELLED').length;
+    const stageOf = (funnelStageId, fallbackStatus) => {
+        if (funnelStageId && funnels.length > 0) {
+            for (const f of funnels) {
+                const st = f.stages?.find(x => x.id === funnelStageId);
+                if (st) return { name: st.name, color: st.color || '#6366f1' };
+            }
+        }
+        if (fallbackStatus) {
+            const labels = { NEW: 'Yeni', OPPORTUNITY: 'Fırsat', CUSTOMER: 'Müşteri', LOST: 'Kayıp' };
+            return { name: labels[fallbackStatus] || fallbackStatus, color: '#94a3b8' };
+        }
+        return null;
+    };
 
+    const matches = (...fields) => {
+        if (!searchTerm) return true;
+        const q = searchTerm.toLocaleLowerCase('tr');
+        return fields.some(v => String(v || '').toLocaleLowerCase('tr').includes(q));
+    };
+
+    const dateOfCall = (a) => new Date(a.completedAt || a.dueDate || a.createdAt);
+
+    const shownCalls = useMemo(() => callList
+        .filter(a => matches(a.contact?.name, a.contact?.phone, a.contact?.activeAssigneeName, a.contact?.assigneeName))
+        .sort((a, b) => dateOfCall(b) - dateOfCall(a)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [callList, searchTerm]);
+
+    const shownUncalled = useMemo(() => uncalledList
+        .filter(c => matches(c.name, c.phone, c.activeAssigneeName, c.assigneeName)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [uncalledList, searchTerm]);
+
+    const shownNotes = useMemo(() => closureNotes
+        .filter(n => matches(n.contact?.name, n.assignee?.name, n.creator?.name, n.result, n.description)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [closureNotes, searchTerm]);
+
+    // Günlük dağılım
+    const chart = useMemo(() => {
+        const map = new Map();
+        for (const a of callList) {
+            const d = dateOfCall(a);
+            if (isNaN(d)) continue;
+            const k = trKey(d);
+            if (!map.has(k)) map.set(k, { key: k, date: d, count: 0 });
+            map.get(k).count++;
+        }
+        const buckets = [...map.values()].sort((a, b) => a.date - b.date);
+        return { buckets, peak: buckets.length ? Math.max(...buckets.map(b => b.count)) : 0 };
+    }, [callList]);
+
+    // Arama listesini gün gün grupla
+    const callGroups = useMemo(() => {
+        const map = new Map();
+        for (const a of shownCalls) {
+            const d = dateOfCall(a);
+            if (isNaN(d)) continue;
+            const k = trKey(d);
+            if (!map.has(k)) map.set(k, []);
+            map.get(k).push(a);
+        }
+        return [...map.entries()];
+    }, [shownCalls]);
+
+    const todayKey = trKey(new Date());
+    const activeLabel = dateFilterOptions.find(o => o.key === dateFilter)?.label || '';
+    const calledPct = stats.totalWithPhone ? (stats.totalCalled / stats.totalWithPhone) * 100 : 0;
 
     if (loading && !analytics) {
         return (
-            <div className="arama-analizi-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center', color: '#6366f1' }}>
-                    <RefreshCw className="spin" size={40} style={{ marginBottom: 12 }} />
-                    <p style={{ fontWeight: 600 }}>Arama Analizleri Yükleniyor...</p>
+            <div className="ra-page">
+                <div className="ra-loading">
+                    <RefreshCw className="ra-spin" size={30} />
+                    <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>Arama Analizi yükleniyor…</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="arama-analizi-container">
-            {/* Header */}
-            <div className="ceo-detail-header">
-                <div className="ceo-detail-header-left">
-                    <h1><PhoneCall size={24} style={{ color: '#6366f1' }} /> Arama Analizi</h1>
-                    <p>Telefon aramaları, gecikmiş aramalar ve müşteri görüşme notları</p>
-                </div>
-            </div>
+        <div className="ra-page">
+            <div className="ra-wrap">
 
-            <div className="ceo-filter-bar">
-                <div className="ceo-filter-left">
-                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                    <div className="ceo-pill-group">
-                        {dateFilterOptions.map(item => (
-                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                <div className="ra-head">
+                    <div>
+                        <div className="ra-eyebrow">Raporlar</div>
+                        <h1>Arama Analizi</h1>
+                        <p>Numaralı başvurular, aranma durumu ve temsilci arama notları</p>
+                    </div>
+                    <div className="ra-head-actions">
+                        <button className="ra-btn" onClick={() => loadAllData(true)} disabled={refreshing}>
+                            <RefreshCw className={refreshing ? 'ra-spin' : ''} size={14} /> Güncelle
+                        </button>
+                        <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                            <FileText size={14} /> Raporu İndir
+                        </button>
+                    </div>
+                </div>
+
+                <div className="ra-filters">
+                    <div className="ra-pills">
+                        {dateFilterOptions.map(o => (
+                            <button key={o.key} className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(o.key)}>{o.label}</button>
                         ))}
                     </div>
                     {dateFilter === 'custom' && (
-                        <div className="ceo-custom-dates">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
+                        <div className="ra-dates">
+                            <input type="date" className="ra-date-input" value={startDate}
+                                onChange={e => setStartDate(e.target.value)} />
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                            <input type="date" className="ra-date-input" value={endDate}
+                                onChange={e => setEndDate(e.target.value)} />
                         </div>
                     )}
                 </div>
-                <div className="ceo-filter-right">
-                    <button className="ceo-refresh-btn" onClick={() => loadAllData(true)} disabled={refreshing}>
-                        <RefreshCw className={refreshing ? 'spin' : ''} size={14} /> Güncelle
-                    </button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}>
-                        <FileText size={14} /> Raporu İndir
-                    </button>
-                </div>
-            </div>
 
-            {/* Metrics cards */}
-            <div className="stats-grid">
-                <div className="stat-card" onClick={() => setShowPhoneModal(true)} style={{ cursor: 'pointer' }}>
-                    <div className="stat-card-icon" style={{ background: '#eef2ff', color: '#6366f1' }}>
-                        <Users size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Numaralı Başvurular</span>
-                        <span className="stat-card-value">{stats.totalWithPhone}</span>
-                        <span className="stat-card-desc">Telefon numarası olan kişi</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#f0fdf4', color: '#16a34a' }}>
-                        <PhoneCall size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Kaçı Arandı</span>
-                        <span className="stat-card-value">{stats.totalCalled}</span>
-                        <span className="stat-card-desc">Benzersiz kişi (5 kez aransa da 1)</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}>
-                        <Phone size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Toplam Arama</span>
-                        <span className="stat-card-value">{stats.totalCallCount || 0}</span>
-                        <span className="stat-card-desc">Toplam yapılan arama sayısı</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                        <PhoneOff size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Aranmayan Başvuru</span>
-                        <span className="stat-card-value">{stats.totalNotCalled}</span>
-                        <span className="stat-card-desc">Henüz hiç aranmamış kişi</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#fffbeb', color: '#d97706' }}>
-                        <TrendingUp size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Arama Oranı</span>
-                        <span className="stat-card-value">%{stats.callRate}</span>
-                        <span className="stat-card-desc">Aranan / Toplam numaralı</span>
-                    </div>
-                </div>
-            </div>
+                {/* Hero — bu sayfanın asıl sorusu: numaralı kişilerin kaçı arandı */}
+                <div className="ra-surface ra-hero">
+                    <div className="ra-hero-left ra-clickable" onClick={() => setShowPhoneModal(true)}
+                        title="Numaralı kişilerin tamamını gör">
+                        <div className="ra-metric-label">Numaralı Başvuru</div>
+                        <div className="ra-metric-value">{tr(stats.totalWithPhone)}</div>
+                        <div className="ra-metric-note">{activeLabel} · listeyi açmak için tıklayın</div>
 
-            <div className="stats-grid" style={{ marginTop: '16px' }}>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#dcfce7', color: '#15803d' }}>
-                        <TrendingUp size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Olumlu / Olumsuz</span>
-                        <span className="stat-card-value">
-                            <span style={{ color: '#15803d' }}>{totalPositive}</span> / <span style={{ color: '#dc2626' }}>{totalNegative}</span>
-                        </span>
-                        <span className="stat-card-desc">Görüşme değerlendirmesi</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#e0f2fe', color: '#0369a1' }}>
-                        <PhoneCall size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Ulaşılan / Ulaşılamayan</span>
-                        <span className="stat-card-value">
-                            <span style={{ color: '#0369a1' }}>{totalReached}</span> / <span style={{ color: '#dc2626' }}>{totalNotReached}</span>
-                        </span>
-                        <span className="stat-card-desc">Çağrı yanıtlanma durumu</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#f3e8ff', color: '#7e22ce' }}>
-                        <AlertCircle size={22} />
-                    </div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Kapatıldı / Aranacak</span>
-                        <span className="stat-card-value">
-                            <span style={{ color: '#15803d' }}>{totalCompleted}</span> / <span style={{ color: '#ea580c' }}>{totalPending}</span>
-                        </span>
-                        <span className="stat-card-desc">Kapatılan vs bekleyen kayıt</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Split panels: Delayed Calls & Closed Call Notes removed as requested */}
-
-            {/* Bottom Tables — Arama Listesi & Aranmayanlar */}
-            <div className="bottom-section">
-                <div className="bottom-section-header">
-                    <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 12 }}>
-                        <button
-                            className={`preset-btn ${bottomTab === 'calls' ? 'active' : ''}`}
-                            onClick={() => setBottomTab('calls')}
-                        >
-                            <PhoneCall size={14} style={{ marginRight: 4 }} />
-                            Arama Listesi ({(stats.activities || []).length})
-                        </button>
-                        <button
-                            className={`preset-btn ${bottomTab === 'uncalled' ? 'active' : ''}`}
-                            onClick={() => setBottomTab('uncalled')}
-                        >
-                            <PhoneOff size={14} style={{ marginRight: 4 }} />
-                            Aranmayanlar ({(stats.phoneContactsList || []).filter(c => !c.wasCalled).length})
-                        </button>
+                        <div className="ra-split">
+                            <div className="ra-split-bar">
+                                <i style={{ width: `${calledPct}%`, background: 'var(--accent)' }}
+                                    title={`Arandı: ${stats.totalCalled}`} />
+                                <i style={{ width: `${100 - calledPct}%`, background: '#cbd5e1' }}
+                                    title={`Aranmadı: ${stats.totalNotCalled}`} />
+                            </div>
+                            <div className="ra-split-legend">
+                                <div className="ra-split-item">Arandı<b>{tr(stats.totalCalled)} <span style={{ fontSize: '.72rem', color: '#94a3b8', fontWeight: 600 }}>%{Math.round(calledPct)}</span></b></div>
+                                <div className="ra-split-item" style={{ textAlign: 'right' }}>Aranmadı<b>{tr(stats.totalNotCalled)}</b></div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="bottom-section-filters">
-                        <input
-                            type="text"
-                            className="input-search-contacts"
-                            placeholder="İsim, numara veya temsilci ara..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                    <div className="ra-hero-right">
+                        <div className="ra-chart-head">
+                            <span className="ra-chart-title">Günlük arama dağılımı</span>
+                            {chart.peak > 0 && <span className="ra-chart-peak">en yoğun: {tr(chart.peak)} arama</span>}
+                        </div>
+                        {chart.buckets.length > 0 ? (
+                            <>
+                                <div className="ra-chart">
+                                    {chart.buckets.map(b => (
+                                        <div key={b.key} className={`ra-col${b.key === todayKey ? ' is-today' : ''}`}
+                                            title={`${trShort(b.date)} · ${b.count} arama`}>
+                                            <i style={{ height: `${Math.max(3, (b.count / chart.peak) * 100)}%` }} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="ra-chart-axis">
+                                    <span>{trShort(chart.buckets[0].date)}</span>
+                                    <span>{trShort(chart.buckets[chart.buckets.length - 1].date)}</span>
+                                </div>
+                            </>
+                        ) : <div className="ra-chart" />}
                     </div>
                 </div>
 
-                {/* TAB 1: Arama Listesi */}
-                {bottomTab === 'calls' && (
-                    <div className="contacts-table-container" style={{ marginTop: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'auto' }}>
-                        <table className="contacts-table" style={{ width: '100%' }}>
-                            <thead>
-                                <tr>
-                                    <th style={{ width: '40px', paddingLeft: '12px', paddingRight: '4px' }}>Tarih</th>
-                                    <th style={{ padding: '8px 4px' }}>Temsilci</th>
-                                    <th style={{ padding: '8px 4px' }}>Müşteri</th>
-                                    <th style={{ padding: '8px 4px' }}>Konu</th>
-                                    <th style={{ padding: '8px 4px' }}>Aşama</th>
-                                    <th style={{ padding: '8px 4px' }}>Durum</th>
-                                    <th style={{ padding: '8px 4px' }}>Ulaşılabilirlik</th>
-                                    <th style={{ padding: '8px 4px' }}>Değerlendirme</th>
-                                    <th style={{ padding: '8px 4px' }}>Arama Notu</th>
-                                    <th style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>İşlem</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(() => {
-                                    const callList = (stats.activities || [])
-                                        .filter(a => {
-                                            if (!searchTerm) return true;
-                                            const q = searchTerm.toLowerCase();
-                                            return (
-                                                (a.contact?.name || '').toLowerCase().includes(q) ||
-                                                (a.contact?.phone || '').includes(q) ||
-                                                ((a.contact?.activeAssigneeName || a.contact?.assigneeName) || '').toLowerCase().includes(q)
-                                            );
-                                        })
-                                        .sort((a, b) => new Date(b.dueDate || b.createdAt) - new Date(a.dueDate || a.createdAt));
+                <div className="ra-surface ra-strip">
+                    {[
+                        { label: 'Toplam Arama', dot: '#ef4444', value: tr(stats.totalCallCount), sub: 'yapılan arama sayısı' },
+                        { label: 'Ulaşıldı', dot: '#10b981', value: tr(callList.filter(a => a.callSuccessful === true).length), sub: 'görüşme sağlandı' },
+                        { label: 'Ulaşılamadı', dot: '#94a3b8', value: tr(callList.filter(a => a.callSuccessful === false).length), sub: 'açmadı / meşgul' },
+                        { label: 'Olumlu', dot: '#10b981', value: tr(callList.filter(a => a.callSentiment === 'Positive').length), sub: 'görüşme değerlendirmesi' },
+                        { label: 'Olumsuz', dot: '#ef4444', value: tr(callList.filter(a => a.callSentiment === 'Negative').length), sub: 'görüşme değerlendirmesi' },
+                        { label: 'Aranacak', dot: '#f59e0b', value: tr(callList.filter(a => a.status !== 'COMPLETED' && a.status !== 'CANCELLED').length), sub: 'bekleyen kayıt' },
+                    ].map(c => (
+                        <div className="ra-cell" key={c.label}>
+                            <div className="ra-cell-label"><i className="ra-cell-dot" style={{ background: c.dot }} />{c.label}</div>
+                            <div className="ra-cell-value">{c.value}</div>
+                            <div className="ra-cell-sub">{c.sub}</div>
+                        </div>
+                    ))}
+                </div>
 
-                                    if (callList.length === 0) {
-                                        return (
-                                            <tr>
-                                                <td colSpan="9" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
-                                                    Eşleşen sonuç bulunamadı.
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-                                    return callList.map(a => {
-                                        const isCompleted = a.status === 'COMPLETED';
-                                        const isPlanned = a.status === 'PLANNED';
-                                        let stageName = '';
-                                        let stageColor = '#6b7280';
-                                        if (a.contact?.funnelStageId && funnels.length > 0) {
-                                            for (const f of funnels) {
-                                                const s = f.stages?.find(x => x.id === a.contact.funnelStageId);
-                                                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; break; }
-                                            }
-                                        }
-                                        if (!stageName && a.contact?.status) {
-                                            const statusLabels = { NEW: 'Yeni', OPPORTUNITY: 'Fırsat', CUSTOMER: 'Müşteri', LOST: 'Kayıp' };
-                                            stageName = statusLabels[a.contact.status] || a.contact.status;
-                                        }
-                                        return (
-                                            <tr key={a.id}>
-                                                <td style={{ paddingLeft: '12px', paddingRight: '4px', color: '#64748b', fontSize: '0.76rem' }}>
-                                                    {formatDateTime(a.completedAt || a.dueDate || a.createdAt)}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        {a.contact?.activeAssigneeName || a.contact?.assigneeName ? (
-                                                            <>
-                                                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700 }}>
-                                                                    {(a.contact.activeAssigneeName || a.contact.assigneeName).substring(0, 2).toUpperCase()}
-                                                                </div>
-                                                                <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>
-                                                                    {a.contact.activeAssigneeName || a.contact.assigneeName}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>Atanmamış</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-                                                            {a.contact?.name ? a.contact.name.charAt(0).toUpperCase() : '👤'}
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.8rem' }}>{a.contact?.name || 'Bilinmiyor'}</div>
-                                                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{a.contact?.phone || '-'}</div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '8px 4px', maxWidth: '120px' }}>
-                                                    {a.contact?.aiTopic ? (
-                                                        <span style={{
-                                                            display: 'inline-block',
-                                                            padding: '2px 6px',
-                                                            backgroundColor: '#f0f9ff',
-                                                            color: '#0369a1',
-                                                            borderRadius: '4px',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: 500,
-                                                            maxWidth: '100%',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            {a.contact.aiTopic}
-                                                        </span>
-                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    {stageName ? (
-                                                        <span style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: '999px', background: `${stageColor}1a`, color: stageColor, fontWeight: 600, border: `1px solid ${stageColor}33`, display: 'inline-block', whiteSpace: 'nowrap' }}>
-                                                            {stageName}
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ color: '#d1d5db' }}>—</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    {isCompleted ? (
-                                                        <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#15803d', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✓ Tamamlandı</span>
-                                                    ) : isPlanned ? (
-                                                        <span style={{ fontSize: '0.7rem', background: '#fff7ed', color: '#c2410c', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>⏳ Bekliyor</span>
-                                                    ) : (
-                                                        <span style={{ fontSize: '0.7rem', background: '#fef2f2', color: '#dc2626', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✗ İptal</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    {a.callSuccessful === true ? (
-                                                        <span style={{ fontSize: '0.7rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✓ Ulaşıldı</span>
-                                                    ) : a.callSuccessful === false ? (
-                                                        <span style={{ fontSize: '0.7rem', background: '#fef2f2', color: '#dc2626', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✗ Ulaşılamadı</span>
-                                                    ) : (
-                                                        <span style={{ color: '#cbd5e1' }}>—</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    {a.callSentiment === 'Positive' ? (
-                                                        <span style={{ fontSize: '0.7rem', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>😊 Olumlu</span>
-                                                    ) : a.callSentiment === 'Negative' ? (
-                                                        <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }}>😔 Olumsuz</span>
-                                                    ) : a.callSentiment === 'Neutral' ? (
-                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>😐 Nötr</span>
-                                                    ) : (
-                                                        <span style={{ color: '#cbd5e1' }}>—</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.75rem', color: '#334155', fontStyle: 'italic', padding: '8px 4px' }}>
-                                                    {a.result ? `"${a.result}"` : '—'}
-                                                </td>
-                                                <td style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>
-                                                    <button 
-                                                        className="btn btn-sm btn-outline" 
-                                                        style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                        onClick={() => handleOpenNoteModal(a.contact?.id || a.contactId)}
-                                                    >
-                                                        <FileText size={12} />
-                                                        Not Ekle
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    });
-                                })()}
-                            </tbody>
-                        </table>
+                <div className="ra-surface">
+                    <div className="ra-list-head">
+                        <div className="ra-tabs">
+                            <button className={`ra-tab${bottomTab === 'calls' ? ' active' : ''}`} onClick={() => setBottomTab('calls')}>
+                                <PhoneCall size={14} /> Arama Listesi <b>{tr(callList.length)}</b>
+                            </button>
+                            <button className={`ra-tab${bottomTab === 'uncalled' ? ' active' : ''}`} onClick={() => setBottomTab('uncalled')}>
+                                <PhoneOff size={14} /> Aranmayanlar <b>{tr(uncalledList.length)}</b>
+                            </button>
+                            {closureNotes.length > 0 && (
+                                <button className={`ra-tab${bottomTab === 'notes' ? ' active' : ''}`} onClick={() => setBottomTab('notes')}>
+                                    <StickyNote size={14} /> Arama Notları <b>{tr(closureNotes.length)}</b>
+                                </button>
+                            )}
+                        </div>
+                        <div className="ra-search">
+                            <Search size={15} />
+                            <input type="text" placeholder="İsim, numara veya temsilci ara…"
+                                value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        </div>
                     </div>
-                )}
 
-                {/* TAB 2: Aranmayanlar Listesi */}
-                {bottomTab === 'uncalled' && (
-                    <div className="contacts-table-container" style={{ marginTop: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'auto' }}>
-                        <table className="contacts-table" style={{ width: '100%' }}>
-                            <thead>
-                                <tr>
-                                    <th style={{ paddingLeft: '12px', paddingRight: '4px' }}>Kişi Adı</th>
-                                    <th style={{ padding: '8px 4px' }}>Telefon</th>
-                                    <th style={{ padding: '8px 4px' }}>Firma</th>
-                                    <th style={{ padding: '8px 4px' }}>Temsilci</th>
-                                    <th style={{ padding: '8px 4px' }}>Konu</th>
-                                    <th style={{ padding: '8px 4px' }}>Aşama / Durum</th>
-                                    <th style={{ padding: '8px 4px' }}>Kayıt Tarihi</th>
-                                    <th style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>İşlem</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(() => {
-                                    const uncalledList = (stats.phoneContactsList || [])
-                                        .filter(c => !c.wasCalled)
-                                        .filter(c => {
-                                            if (!searchTerm) return true;
-                                            const q = searchTerm.toLowerCase();
-                                            return c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
-                                        });
-
-                                    if (uncalledList.length === 0) {
-                                        return (
-                                            <tr>
-                                                <td colSpan="6" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
-                                                    Tüm numaralı kişiler aranmış! 🎉
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-                                    return uncalledList.map(c => {
-                                        let stageName = '';
-                                        let stageColor = '#6b7280';
-                                        if (c.funnelStageId && funnels.length > 0) {
-                                            for (const f of funnels) {
-                                                const s = f.stages?.find(x => x.id === c.funnelStageId);
-                                                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; break; }
-                                            }
-                                        }
-                                        if (!stageName && c.status) {
-                                            const statusLabels = { NEW: 'Yeni', OPPORTUNITY: 'Fırsat', CUSTOMER: 'Müşteri', LOST: 'Kayıp' };
-                                            stageName = statusLabels[c.status] || c.status;
-                                        }
-                                        return (
-                                            <tr key={c.contactId}>
-                                                <td style={{ paddingLeft: '12px', paddingRight: '4px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-                                                            {c.name ? c.name.charAt(0).toUpperCase() : '👤'}
-                                                        </div>
-                                                        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.8rem' }}>{c.name}</div>
-                                                    </div>
-                                                </td>
-                                                <td style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.75rem', padding: '8px 4px' }}>
-                                                    {c.phone}
-                                                </td>
-                                                <td style={{ color: '#475569', fontSize: '0.75rem', padding: '8px 4px' }}>
-                                                    {c.company || '—'}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        {c.activeAssigneeName || c.assigneeName ? (
-                                                            <>
-                                                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700 }}>
-                                                                    {(c.activeAssigneeName || c.assigneeName).substring(0, 2).toUpperCase()}
-                                                                </div>
-                                                                <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>
-                                                                    {c.activeAssigneeName || c.assigneeName}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>Atanmamış</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '8px 4px', maxWidth: '120px' }}>
-                                                    {c.aiTopic ? (
-                                                        <span style={{
-                                                            display: 'inline-block',
-                                                            padding: '2px 6px',
-                                                            backgroundColor: '#f0f9ff',
-                                                            color: '#0369a1',
-                                                            borderRadius: '4px',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: 500,
-                                                            maxWidth: '100%',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            {c.aiTopic}
-                                                        </span>
-                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    {stageName ? (
-                                                        <span style={{ fontSize: '0.7rem', background: `${stageColor}1a`, color: stageColor, padding: '4px 8px', borderRadius: '999px', fontWeight: 600, border: `1px solid ${stageColor}33`, whiteSpace: 'nowrap' }}>
-                                                            {stageName}
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ color: '#cbd5e1' }}>—</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '8px 4px' }}>
-                                                    <span style={{ color: '#64748b', fontSize: '0.7rem' }}>
-                                                        {formatDateTime(c.createdAt)}
+                    {/* ── Arama Listesi ── */}
+                    {bottomTab === 'calls' && (
+                        callGroups.length === 0 ? (
+                            <div className="ra-empty">
+                                <div className="ra-empty-icon"><PhoneCall size={24} /></div>
+                                <h3>{searchTerm ? 'Aramanızla eşleşen kayıt yok' : 'Bu dönemde arama kaydı yok'}</h3>
+                                <p>{searchTerm ? 'Farklı bir isim, numara veya temsilci deneyin.' : 'Başka bir dönem seçebilirsiniz.'}</p>
+                            </div>
+                        ) : callGroups.map(([key, items]) => (
+                            <div key={key}>
+                                <div className="ra-day">
+                                    <span className="ra-day-name">{trDay(dateOfCall(items[0]))}</span>
+                                    {key === todayKey && <span className="ra-day-today">BUGÜN</span>}
+                                    <span className="ra-day-rule" />
+                                    <span className="ra-day-meta">{items.length} arama</span>
+                                </div>
+                                {items.map(a => {
+                                    const st = callStatusOf(a.status);
+                                    const av = avatarOf(a.contact?.name);
+                                    const stage = stageOf(a.contact?.funnelStageId, a.contact?.status);
+                                    const agent = a.contact?.activeAssigneeName || a.contact?.assigneeName;
+                                    const sent = SENTIMENT[a.callSentiment];
+                                    return (
+                                        <div className="ra-row-call2" key={a.id}>
+                                            <div className="ra-time">{trTime(dateOfCall(a))}</div>
+                                            <div className="ra-avatar" style={{ background: av.bg, color: av.color }}>{av.initials}</div>
+                                            <div>
+                                                <div className="ra-name">{a.contact?.name || 'Bilinmiyor'}</div>
+                                                {a.contact?.phone && <div className="ra-phone">{a.contact.phone}</div>}
+                                                {a.contact?.aiTopic && <div className="ra-sub"><span className="ra-topic">{a.contact.aiTopic}</span></div>}
+                                            </div>
+                                            <div>
+                                                {agent ? (
+                                                    <span className="ra-who">
+                                                        <span className="ra-mini-avatar">{initials2(agent)}</span>
+                                                        <span>{agent}</span>
                                                     </span>
-                                                </td>
-                                                <td style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>
-                                                    <button 
-                                                        className="btn btn-sm btn-outline" 
-                                                        style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                        onClick={() => handleOpenNoteModal(c.contactId)}
-                                                    >
-                                                        <FileText size={12} />
-                                                        Not Ekle
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    });
-                                })()}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+                                                ) : <span className="ra-who-none">Atanmamış</span>}
+                                            </div>
+                                            <div>
+                                                {stage ? (
+                                                    <span className="ra-stage" style={{ background: `${stage.color}14`, color: stage.color }}>{stage.name}</span>
+                                                ) : <span className="ra-who-none">—</span>}
+                                            </div>
+                                            <div>
+                                                <span className="ra-status" style={{ color: '#334155' }}>
+                                                    <i style={{ background: st.dot }} />{st.label}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                {a.callSuccessful === true && (
+                                                    <span className="ra-status" style={{ color: '#047857' }}><i style={{ background: '#10b981' }} />Ulaşıldı</span>
+                                                )}
+                                                {a.callSuccessful === false && (
+                                                    <span className="ra-status" style={{ color: '#b91c1c' }}><i style={{ background: '#ef4444' }} />Ulaşılamadı</span>
+                                                )}
+                                                {a.callSuccessful === null && sent && (
+                                                    <span className="ra-status" style={{ color: sent.color }}><i style={{ background: sent.dot }} />{sent.label}</span>
+                                                )}
+                                                {a.callSuccessful === null && !sent && <span className="ra-who-none">—</span>}
+                                            </div>
+                                            <div>
+                                                <button className="ra-note-btn" onClick={() => handleOpenNoteModal(a.contact?.id || a.contactId)}>
+                                                    <FileText size={12} /> Not Ekle
+                                                </button>
+                                            </div>
+                                            {a.result && <div className="ra-note">{a.result}</div>}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ))
+                    )}
 
+                    {/* ── Aranmayanlar ── */}
+                    {bottomTab === 'uncalled' && (
+                        shownUncalled.length === 0 ? (
+                            <div className="ra-empty">
+                                <div className="ra-empty-icon"><PhoneCall size={24} /></div>
+                                <h3>{searchTerm ? 'Aramanızla eşleşen kişi yok' : 'Numaralı herkes aranmış'}</h3>
+                                <p>{searchTerm ? 'Farklı bir isim veya numara deneyin.' : 'Bu dönemde aranmayan kimse kalmadı.'}</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="ra-day">
+                                    <span className="ra-day-name">Henüz aranmamış</span>
+                                    <span className="ra-day-rule" />
+                                    <span className="ra-day-meta">{tr(shownUncalled.length)} kişi</span>
+                                </div>
+                                {shownUncalled.map(c => {
+                                    const av = avatarOf(c.name);
+                                    const stage = stageOf(c.funnelStageId, c.status);
+                                    const agent = c.activeAssigneeName || c.assigneeName;
+                                    return (
+                                        <div className="ra-row-uncalled" key={c.contactId}>
+                                            <div className="ra-avatar" style={{ background: av.bg, color: av.color }}>{av.initials}</div>
+                                            <div>
+                                                <div className="ra-name">{c.name}</div>
+                                                {c.phone && <div className="ra-phone">{c.phone}</div>}
+                                                {c.company && <div className="ra-sub">{c.company}</div>}
+                                            </div>
+                                            <div>
+                                                {agent ? (
+                                                    <span className="ra-who">
+                                                        <span className="ra-mini-avatar">{initials2(agent)}</span>
+                                                        <span>{agent}</span>
+                                                    </span>
+                                                ) : <span className="ra-who-none">Atanmamış</span>}
+                                            </div>
+                                            <div>
+                                                {c.aiTopic ? <span className="ra-topic">{c.aiTopic}</span> : <span className="ra-who-none">—</span>}
+                                            </div>
+                                            <div>
+                                                {stage ? (
+                                                    <span className="ra-stage" style={{ background: `${stage.color}14`, color: stage.color }}>{stage.name}</span>
+                                                ) : <span className="ra-who-none">—</span>}
+                                                <div className="ra-sub">{c.createdAt ? trShort(new Date(c.createdAt)) : ''}</div>
+                                            </div>
+                                            <div>
+                                                <button className="ra-note-btn" onClick={() => handleOpenNoteModal(c.contactId)}>
+                                                    <FileText size={12} /> Not Ekle
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                        )
+                    )}
+
+                    {/* ── Arama Notları (kapatılan aramalar) ── */}
+                    {bottomTab === 'notes' && (
+                        shownNotes.length === 0 ? (
+                            <div className="ra-empty">
+                                <div className="ra-empty-icon"><StickyNote size={24} /></div>
+                                <h3>Not bulunamadı</h3>
+                                <p>Temsilciler arama sonrası not eklediğinde burada görünür.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="ra-day">
+                                    <span className="ra-day-name">Temsilci arama notları</span>
+                                    <span className="ra-day-rule" />
+                                    <span className="ra-day-meta">{tr(shownNotes.length)} not</span>
+                                </div>
+                                {shownNotes.map(n => {
+                                    const d = new Date(n.completedAt || n.createdAt);
+                                    const av = avatarOf(n.contact?.name);
+                                    const agent = n.assignee?.name || n.creator?.name;
+                                    const sent = SENTIMENT[n.callSentiment];
+                                    return (
+                                        <div className="ra-row-uncalled" key={n.id}>
+                                            <div className="ra-avatar" style={{ background: av.bg, color: av.color }}>{av.initials}</div>
+                                            <div>
+                                                <div className="ra-name">{n.contact?.name || '—'}</div>
+                                                <div className="ra-phone">{trShort(d)} {trTime(d)}</div>
+                                            </div>
+                                            <div>
+                                                {agent ? (
+                                                    <span className="ra-who">
+                                                        <span className="ra-mini-avatar">{initials2(agent)}</span>
+                                                        <span>{agent}</span>
+                                                    </span>
+                                                ) : <span className="ra-who-none">—</span>}
+                                            </div>
+                                            <div>
+                                                <span className="ra-status" style={{ color: n.callSuccessful ? '#047857' : '#b91c1c' }}>
+                                                    <i style={{ background: n.callSuccessful ? '#10b981' : '#ef4444' }} />
+                                                    {n.callSuccessful ? 'Ulaşıldı' : 'Ulaşılamadı'}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                {sent ? (
+                                                    <span className="ra-status" style={{ color: sent.color }}><i style={{ background: sent.dot }} />{sent.label}</span>
+                                                ) : <span className="ra-who-none">—</span>}
+                                            </div>
+                                            <div />
+                                            {(n.result || n.description) && <div className="ra-note">{n.result || n.description}</div>}
+                                        </div>
+                                    );
+                                })}
+                            </>
+                        )
+                    )}
+                </div>
+
+            </div>
             {/* Modal - Numaralı Kişiler Listesi */}
             {showPhoneModal && (
                 <div className="modal-overlay">
@@ -788,88 +721,8 @@ const AramaAnalizi = () => {
                 </div>
             )}
 
-            {/* Arama Notu Ekle Modal */}
-            {/* Arama Notları Raporu */}
-            {analytics?.callTrackingStats?.closureNotes?.length > 0 && (
-                <div className="call-notes-report" style={{ marginTop: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                            📝 Arama Notları
-                            <span style={{ background: '#6366f1', color: 'white', borderRadius: '12px', padding: '2px 10px', fontSize: '0.75rem', fontWeight: 600 }}>
-                                {analytics.callTrackingStats.closureNotes.length}
-                            </span>
-                        </h2>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {(() => {
-                                const notes = analytics.callTrackingStats.closureNotes;
-                                const successful = notes.filter(n => n.callSuccessful === true).length;
-                                const failed = notes.filter(n => n.callSuccessful === false).length;
-                                const positive = notes.filter(n => n.callSentiment === 'Positive').length;
-                                const negative = notes.filter(n => n.callSentiment === 'Negative').length;
-                                const neutral = notes.filter(n => n.callSentiment === 'Neutral').length;
-                                return (
-                                    <>
-                                        <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>✅ Ulaşıldı: {successful}</span>
-                                        <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>❌ Ulaşılamadı: {failed}</span>
-                                        {positive > 0 && <span style={{ background: '#dbeafe', color: '#2563eb', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>😊 Olumlu: {positive}</span>}
-                                        {negative > 0 && <span style={{ background: '#fef3c7', color: '#d97706', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>😞 Olumsuz: {negative}</span>}
-                                        {neutral > 0 && <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>😐 Nötr: {neutral}</span>}
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Tarih</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Temsilci</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Müşteri</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Durum</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Duygu</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Not</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {analytics.callTrackingStats.closureNotes.map(note => (
-                                    <tr key={note.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#475569', whiteSpace: 'nowrap' }}>
-                                            {new Date(note.completedAt || note.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                                            <br />
-                                            <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                                                {new Date(note.completedAt || note.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        </td>
-                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#1e293b', fontWeight: 500 }}>
-                                            {note.assignee?.name || note.creator?.name || '—'}
-                                        </td>
-                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#1e293b' }}>
-                                            {note.contact?.name || '—'}
-                                        </td>
-                                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                                            {note.callSuccessful ? (
-                                                <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600 }}>Ulaşıldı</span>
-                                            ) : (
-                                                <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600 }}>Ulaşılamadı</span>
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '1rem' }}>
-                                            {note.callSentiment === 'Positive' ? '😊' : note.callSentiment === 'Negative' ? '😞' : note.callSentiment === 'Neutral' ? '😐' : '—'}
-                                        </td>
-                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#475569', maxWidth: '300px' }}>
-                                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                                                {note.result || note.description || '—'}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+            {/* Arama Notları artık üstteki sekmede — ayrı bir tablo olarak
+                tekrarlanmıyordu bile, aynı veri iki yerde duruyordu. */}
 
             {noteModalOpen && (
                 <div className="modal-overlay">

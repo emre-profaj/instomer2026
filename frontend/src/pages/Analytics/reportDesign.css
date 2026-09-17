@@ -330,3 +330,27 @@
     .ra-surface { box-shadow: none; border: 1px solid #e5e7eb; break-inside: avoid; }
     .ra-row { break-inside: avoid; }
 }
+
+/* ── Sekmeler (Arama Analizi gibi çok listeli sayfalar için) ── */
+.ra-tabs { display: inline-flex; gap: 2px; padding: 3px; background: #f1f2f5; border-radius: 12px; }
+.ra-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 15px; border: 0; border-radius: 9px; background: transparent;
+    font-size: 0.775rem; font-weight: 600; color: #6b7480;
+    cursor: pointer; white-space: nowrap;
+    transition: color .16s, background .16s, box-shadow .16s;
+}
+.ra-tab:hover { color: var(--ink); }
+.ra-tab.active {
+    background: #fff; color: var(--ink);
+    box-shadow: 0 1px 2px rgba(15,23,42,.10), 0 0 0 1px rgba(15,23,42,.04);
+}
+.ra-tab b {
+    font-size: 0.72rem; font-weight: 700; color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+}
+.ra-tab.active b { color: var(--accent-deep); }
+
+/* Tıklanabilir metrik — hero'dan kişi listesini açmak gibi */
+.ra-clickable { cursor: pointer; }
+.ra-clickable:hover .ra-metric-value { color: var(--accent-deep); }
