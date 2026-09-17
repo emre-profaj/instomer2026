@@ -1,22 +1,39 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * AKTİVİTE RAPORU
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * Bu sayfa liste değil, diğer rapor sayfalarına açılan KAPI. Bu yüzden
+ * ortak tasarım dilini (reportDesign.css) kullanır ama düzeni onlardan
+ * farklıdır: hero + kapı kartları + özet şeritler.
+ *
+ * HUNİ ÇİZİLMEDİ — bilerek. "Numaralı → arandı" gerçek bir dönüşüm;
+ * ama randevu görüşmenin devamı DEĞİL (Metropol Eylül 2026: 13 görüşme,
+ * 263 randevu — randevuların çoğunu bot veriyor). Zincir iki adımda
+ * kesiliyor, gerisi yan yana çıktı olarak duruyor.
+ *
+ * Görüşme/randevu dökümü burada tek şeride indirildi: ayrıntıyı artık
+ * kendi detay sayfaları gösteriyor, aynı sayı iki yerde tam boy
+ * tekrarlanmıyor.
+ *
+ * DİKKAT: backend'de `overdue` ayrı sayılıyor, planned/completed/
+ * cancelled ile TOPLANMIYOR (dueDate'i geçmiş planlıların alt kümesi).
+ * Bu yüzden şeride katılmıyor, ayrı gösteriliyor. Şeritteki "Diğer",
+ * hiçbir kovaya girmeyen durumları (ör. SCHEDULED) açığa çıkarır.
+ */
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    Phone, PhoneCall, PhoneOff, Users, RefreshCw, Filter, ArrowLeft,
-    TrendingUp, Handshake, Calendar, ListChecks, MessageSquare,
-    UserCheck, CheckCircle2, FileText
-} from 'lucide-react';
+import { RefreshCw, FileText, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
-import './CeoReport.css';
-import './CeoDetailReport.css';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../Analytics/reportDesign.css';
+import './ActivityReport.css';
 
-const formatNumber = (n) => {
-    if (!n && n !== 0) return '0';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return n.toLocaleString('tr-TR');
-};
+const TZ = 'Europe/Istanbul';
+const trShort = (d) => new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, day: 'numeric', month: 'short' }).format(d);
+const tr = (n) => Number(n || 0).toLocaleString('tr-TR');
+const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
 const ActivityReport = () => {
     const { currentWorkspace } = useAuth();
@@ -41,20 +58,17 @@ const ActivityReport = () => {
         try {
             const dateParams = getDateRangeLogic(dateFilter, startDate, endDate);
             const params = { ...dateParams, comparePrevious: true };
-
             const [analyticsRes, performanceRes, dailyStatsRes] = await Promise.all([
                 contactAPI.getAnalytics(currentWorkspace.id, params),
                 contactAPI.getAgentPerformance(currentWorkspace.id, params),
                 contactAPI.getDailyStats(currentWorkspace.id, dateParams).catch(e => {
                     console.warn('Daily stats failed:', e.message);
                     return { data: null };
-                })
+                }),
             ]);
             setAnalytics(analyticsRes.data);
             setAgentPerformance(performanceRes.data);
-            if (dailyStatsRes && dailyStatsRes.data) {
-                setContactStats(dailyStatsRes.data);
-            }
+            if (dailyStatsRes?.data) setContactStats(dailyStatsRes.data);
         } catch (error) {
             console.error('Error fetching activity report:', error);
         } finally {
@@ -62,231 +76,278 @@ const ActivityReport = () => {
         }
     };
 
-    const getDateRange = () => {
-        return getDateRangeLogic(dateFilter, startDate, endDate);
-    };
-
-    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
+    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const as = analytics?.activityStats || {};
     const ct = analytics?.callTrackingStats || {};
     const appt = analytics?.appointmentStats || {};
     const meet = analytics?.meetingStats || {};
-    const numarali = contactStats?.totals?.withPhone || ct.totalWithPhone || 0;
-    const kaciArandi = ct.totalCalled || 0;
-    const toplamArama = ct.totalCompleted || 0;
-    const aranmayan = Math.max(0, numarali - kaciArandi);
-    const aramaOrani = numarali > 0 ? ((kaciArandi / numarali) * 100).toFixed(1) : 0;
+
+    const withPhone = contactStats?.totals?.withPhone || ct.totalWithPhone || 0;
+    const called = ct.totalCalled || 0;
+    const notCalled = Math.max(0, withPhone - called);
+    const calledPct = withPhone ? (called / withPhone) * 100 : 0;
+
+    const chart = useMemo(() => {
+        const rows = contactStats?.dailyStats || [];
+        const buckets = rows
+            .map(r => ({ key: r.date, date: new Date(`${r.date}T12:00:00Z`), count: r.total || 0 }))
+            .filter(b => !isNaN(b.date));
+        return { buckets, peak: buckets.length ? Math.max(...buckets.map(b => b.count)) : 0 };
+    }, [contactStats]);
+
+    const doors = [
+        { label: 'Arama', value: ct.totalCallCount ?? ct.totalCompleted ?? 0, sub: 'temsilci araması', to: '/call-analytics' },
+        { label: 'Görüşme', value: meet.total || 0, sub: 'yüz yüze / toplantı', to: '/meeting-analytics' },
+        { label: 'Randevu', value: appt.total || 0, sub: 'takvim randevusu', to: '/appointment-analytics' },
+        { label: 'AI Araması', value: analytics?.aiCallStats?.totalCount || 0, sub: 'sesli asistan', to: '/ai-call-analytics' },
+        { label: 'Ziyaret', value: as.visitCount || 0, sub: 'kayıtlı ziyaret' },
+    ];
+
+    const statusCells = [
+        { label: 'Bekleyen', dot: '#f59e0b', value: as.plannedCount || 0, sub: 'henüz yapılmadı' },
+        { label: 'Tamamlanan', dot: '#10b981', value: as.completedCount || 0, sub: 'kapatıldı' },
+        { label: 'Devam Eden', dot: '#0ea5e9', value: as.inProgressCount || 0, sub: 'sürüyor' },
+        { label: 'Gecikmiş', dot: '#ef4444', value: as.overdueCount || 0, sub: 'tarihi geçti' },
+    ];
+
+    const totalAct = as.totalActivities || 0;
+    const types = [
+        { label: 'Arama', count: as.callCount || 0, color: '#ef4444' },
+        { label: 'Görüşme', count: as.meetingCount || 0, color: '#6366f1' },
+        { label: 'Görev', count: as.taskCount || 0, color: '#10b981' },
+        { label: 'Not', count: as.noteCount || 0, color: '#94a3b8' },
+    ].filter(t => t.count > 0).sort((a, b) => b.count - a.count);
+
+    /** Segmentli şerit — overdue KATILMAZ (alt küme), kalan "Diğer" olur. */
+    const bandOf = (s, plannedKey, plannedLabel) => {
+        const total = s.total || 0;
+        const planned = s[plannedKey] || 0;
+        const completed = s.completed || 0;
+        const cancelled = s.cancelled || 0;
+        const other = Math.max(0, total - planned - completed - cancelled);
+        const segs = [
+            { label: plannedLabel, value: planned, color: '#f59e0b' },
+            { label: 'Tamamlandı', value: completed, color: '#10b981' },
+            { label: 'İptal', value: cancelled, color: '#94a3b8' },
+            { label: 'Diğer', value: other, color: '#cbd5e1' },
+        ].filter(x => x.value > 0);
+        return { total, segs, overdue: s.overdue || 0 };
+    };
+
+    const agents = useMemo(
+        () => (agentPerformance?.agents || [])
+            .filter(a => (a.callCount || 0) > 0)
+            .sort((a, b) => (b.callCount || 0) - (a.callCount || 0)),
+        [agentPerformance]
+    );
+    const agentTotal = agents.reduce((s, a) => s + (a.callCount || 0), 0);
+    const agentMax = agents.length ? agents[0].callCount : 1;
 
     if (loading && !analytics) {
         return (
-            <div className="ceo-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-                <div style={{ textAlign: 'center', color: '#64748b' }}>
-                    <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-                    <p>Yükleniyor...</p>
+            <div className="ra-page">
+                <div className="ra-loading">
+                    <RefreshCw className="ra-spin" size={30} />
+                    <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>Aktivite Raporu yükleniyor…</p>
                 </div>
             </div>
         );
     }
 
-    return (
-        <div className="ceo-report">
-            <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
-
-            <div className="ceo-detail-header">
-                <div className="ceo-detail-header-left">
-                    <h1><Phone size={24} style={{ color: '#059669' }} /> Aktivite & Arama Raporu</h1>
-                    <p>Arama, görüşme, randevu ve aktivite detayları</p>
-                </div>
-
+    const renderBand = (title, band, to) => (
+        <div className="ra-mini">
+            <div className="ra-mini-head">
+                <span className="ra-mini-title">{title}</span>
+                <span className="ra-mini-total">{tr(band.total)} toplam</span>
+                <button className="ra-mini-link" onClick={() => navigate(to)}>detay →</button>
             </div>
-
-            {/* Filters */}
-            <div className="ceo-filter-bar">
-                <div className="ceo-filter-left">
-                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                    <div className="ceo-pill-group">
-                        {dateFilterOptions.map(item => (
-                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+            {band.total > 0 ? (
+                <>
+                    <div className="ra-bar">
+                        {band.segs.map(s => (
+                            <span key={s.label} style={{ width: `${(s.value / band.total) * 100}%`, background: s.color }}
+                                title={`${s.label}: ${s.value}`} />
                         ))}
                     </div>
-                    {dateFilter === 'custom' && (
-                        <div className="ceo-custom-dates">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
-                        </div>
-                    )}
-                </div>
-                <div className="ceo-filter-right">
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
-            </div>
-
-            {/* KPI Grid */}
-            <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-                {/* Calls */}
-                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/call-analytics')}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><PhoneCall size={20} /></div>
-                    <div className="kpi-label">Toplam Arama</div>
-                    <div className="kpi-value">{formatNumber(toplamArama)}</div>
-                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
-                </div>
-
-                {/* Meetings */}
-                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/meeting-analytics')}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div>
-                    <div className="kpi-label">Görüşme (Toplantı)</div>
-                    <div className="kpi-value">{formatNumber(meet.total || 0)}</div>
-                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
-                </div>
-
-                {/* Appointments */}
-                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/appointment-analytics')}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #8b5cf6, #8b5cf688)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#f3e8ff', color: '#8b5cf6' }}><Calendar size={20} /></div>
-                    <div className="kpi-label">Toplam Randevu</div>
-                    <div className="kpi-value">{formatNumber(appt.total || 0)}</div>
-                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
-                </div>
-
-                {/* AI Calls */}
-                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/ai-call-analytics')}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #0ea5e9, #0ea5e988)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Phone size={20} /></div>
-                    <div className="kpi-label">AI Araması</div>
-                    <div className="kpi-value">{formatNumber(analytics?.aiCallStats?.totalCount || 0)}</div>
-                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
-                </div>
-
-                {/* Visits */}
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#f59e0b' }}><Users size={20} /></div>
-                    <div className="kpi-label">Ziyaretler</div>
-                    <div className="kpi-value">{formatNumber(as.visitCount || 0)}</div>
-                    <div className="kpi-sub">Kayıtlı toplam ziyaret</div>
-                </div>
-            </div>
-
-            {/* Agent Call Leaderboard */}
-            {agentPerformance?.agents?.filter(a => (a.callCount || 0) > 0).length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#eff6ff', color: '#3b82f6' }}><UserCheck size={18} /></div>
-                        <h2>Arama Lider Tablosu</h2>
-                    </div>
-                    <div className="ceo-section-body">
-                        {agentPerformance.agents
-                            .filter(a => (a.callCount || 0) > 0)
-                            .sort((a, b) => (b.callCount || 0) - (a.callCount || 0))
-                            .map((agent, idx) => {
-                                const totalCalls = agentPerformance.agents.reduce((s, a) => s + (a.callCount || 0), 0) || 1;
-                                const pct = ((agent.callCount / totalCalls) * 100).toFixed(0);
-                                return (
-                                    <div key={agent.userId || idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, background: idx === 0 ? '#eff6ff' : '#f8fafc', border: idx === 0 ? '1px solid #bfdbfe' : '1px solid #f1f5f9', marginBottom: 6 }}>
-                                        <div className={`medal-badge ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : 'default'}`}>{idx + 1}</div>
-                                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b', flex: 1 }}>{agent.name}</span>
-                                        <span style={{ fontWeight: 800, fontSize: '1.05rem', color: idx === 0 ? '#3b82f6' : '#475569' }}>{agent.callCount}</span>
-                                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>arama ({pct}%)</span>
-                                    </div>
-                                );
-                            })}
-                    </div>
-                </div>
-            )}
-
-            {/* Activity Distribution */}
-            <div className="ceo-section" style={{ marginBottom: 20 }}>
-                <div className="ceo-section-header">
-                    <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><ListChecks size={18} /></div>
-                    <h2>Aktivite Dağılımı</h2>
-                </div>
-                <div className="ceo-section-body">
-                    <div className="ceo-mini-grid cols-4" style={{ marginBottom: 16 }}>
-                        <div className="ceo-mini-card" style={{ background: '#eff6ff' }}><div className="mini-value" style={{ color: '#1d4ed8' }}>{as.plannedCount || 0}</div><div className="mini-label" style={{ color: '#3b82f6' }}>Bekleyen</div></div>
-                        <div className="ceo-mini-card" style={{ background: '#f0fdf4' }}><div className="mini-value" style={{ color: '#16a34a' }}>{as.completedCount || 0}</div><div className="mini-label" style={{ color: '#059669' }}>Tamamlanan</div></div>
-                        <div className="ceo-mini-card" style={{ background: '#fffbeb' }}><div className="mini-value" style={{ color: '#d97706' }}>{as.inProgressCount || 0}</div><div className="mini-label" style={{ color: '#b45309' }}>Devam Eden</div></div>
-                        <div className="ceo-mini-card" style={{ background: '#fef2f2' }}><div className="mini-value" style={{ color: '#dc2626' }}>{as.overdueCount || 0}</div><div className="mini-label" style={{ color: '#dc2626' }}>Gecikmiş</div></div>
-                    </div>
-                    <div className="ceo-label">Tip Dağılımı</div>
-                    {[
-                        { label: 'Arama', count: as.callCount || 0, icon: <PhoneCall size={14} />, color: '#059669' },
-                        { label: 'Görüşme', count: as.meetingCount || 0, icon: <Handshake size={14} />, color: '#6366f1' },
-                        { label: 'Görev', count: as.taskCount || 0, icon: <ListChecks size={14} />, color: '#f59e0b' },
-                        { label: 'Not', count: as.noteCount || 0, icon: <MessageSquare size={14} />, color: '#64748b' },
-                    ].map(item => {
-                        const total = as.totalActivities || 1;
-                        const pct = total > 0 ? ((item.count / total) * 100) : 0;
-                        return (
-                            <div key={item.label} className="ceo-type-row">
-                                <div className="type-icon" style={{ color: item.color }}>{item.icon}</div>
-                                <span className="type-label">{item.label}</span>
-                                <span className="type-count">{item.count}</span>
-                                <div className="ceo-type-bar"><div className="ceo-type-bar-fill" style={{ width: `${pct}%`, background: item.color }} /></div>
-                                <span className="type-pct">{pct.toFixed(0)}%</span>
+                    <div className="ra-legend" style={{ marginTop: 11 }}>
+                        {band.segs.map(s => (
+                            <div className="ra-legend-item" key={s.label}>
+                                <i className="ra-dot" style={{ background: s.color }} />
+                                <span className="ra-legend-text">{s.label}</span>
+                                <span className="ra-legend-count">{tr(s.value)}</span>
                             </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Meeting & Appointment */}
-            {((appt.total || 0) > 0 || (meet.total || 0) > 0) && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#f0fdf4', color: '#10b981' }}><Calendar size={18} /></div>
-                        <h2>Görüşme & Randevu</h2>
-                    </div>
-                    <div className="ceo-section-body">
-                        <div style={{ marginBottom: 20 }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Handshake size={15} style={{ color: '#6366f1' }} /> Görüşmeler <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({meet.total || 0} toplam)</span></div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                {[{ label: 'Planlanan', value: meet.planned, color: '#f59e0b', icon: '📅' }, { label: 'Tamamlanan', value: meet.completed, color: '#10b981', icon: '✅' }, { label: 'Tarihi Geçmiş', value: meet.overdue, color: '#ef4444', icon: '⏰' }, { label: 'İptal Edildi', value: meet.cancelled, color: '#64748b', icon: '❌' }].map(item => (
-                                    <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
-                                        <div style={{ fontSize: 20 }}>{item.icon}</div>
-                                        <div><div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div></div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div style={{ marginBottom: 20 }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={15} style={{ color: '#0ea5e9' }} /> Randevular <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({appt.total || 0} toplam)</span></div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                {[{ label: 'Planlanan', value: appt.scheduled, color: '#f59e0b', icon: '📅' }, { label: 'Tamamlanan', value: appt.completed, color: '#10b981', icon: '✅' }, { label: 'Tarihi Geçmiş', value: appt.overdue, color: '#ef4444', icon: '⏰' }, { label: 'İptal Edildi', value: appt.cancelled, color: '#64748b', icon: '❌' }].map(item => (
-                                    <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
-                                        <div style={{ fontSize: 20 }}>{item.icon}</div>
-                                        <div><div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div></div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Agent breakdown */}
-                        {agentPerformance?.agents?.filter(a => (a.appointmentCount || 0) > 0 || (a.meetingCount || 0) > 0).length > 0 && (
-                            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                                <div className="ceo-label">Temsilci Bazlı</div>
-                                {agentPerformance.agents.filter(a => (a.appointmentCount || 0) > 0 || (a.meetingCount || 0) > 0).sort((a, b) => ((b.appointmentCount || 0) + (b.meetingCount || 0)) - ((a.appointmentCount || 0) + (a.meetingCount || 0))).map((agent, idx) => (
-                                    <div key={agent.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: idx === 0 ? '#eff6ff' : '#f8fafc', border: idx === 0 ? '1px solid #bfdbfe' : '1px solid #f1f5f9', marginBottom: 6 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                            <div className={`medal-badge ${idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : 'default'}`}>{idx + 1}</div>
-                                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{agent.name}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Handshake size={13} style={{ color: '#6366f1' }} /><span style={{ fontSize: '1rem', fontWeight: 800, color: '#6366f1' }}>{agent.meetingCount || 0}</span><span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>görüşme</span></div>
-                                            <div style={{ width: 1, height: 18, background: '#e2e8f0' }} />
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Calendar size={13} style={{ color: '#0ea5e9' }} /><span style={{ fontSize: '1rem', fontWeight: 800, color: '#0ea5e9' }}>{agent.appointmentCount || 0}</span><span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>randevu</span></div>
-                                        </div>
-                                    </div>
-                                ))}
+                        ))}
+                        {band.overdue > 0 && (
+                            <div className="ra-legend-item" style={{ color: '#b91c1c' }}>
+                                <AlertTriangle size={12} />
+                                <span className="ra-legend-text" style={{ color: '#b91c1c' }}>tarihi geçmiş</span>
+                                <span className="ra-legend-count" style={{ color: '#b91c1c' }}>{tr(band.overdue)}</span>
                             </div>
                         )}
                     </div>
-                </div>
+                </>
+            ) : (
+                <div className="ra-bar" />
             )}
+        </div>
+    );
+
+    return (
+        <div className="ra-page">
+            <div className="ra-wrap">
+
+                <div className="ra-head">
+                    <div>
+                        <div className="ra-eyebrow">Raporlar</div>
+                        <h1>Aktivite Raporu</h1>
+                        <p>Arama, görüşme, randevu ve temsilci etkinliğinin dönem özeti</p>
+                    </div>
+                    <div className="ra-head-actions">
+                        <button className="ra-btn" onClick={fetchData} disabled={loading}>
+                            <RefreshCw className={loading ? 'ra-spin' : ''} size={14} /> Güncelle
+                        </button>
+                        <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                            <FileText size={14} /> Raporu İndir
+                        </button>
+                    </div>
+                </div>
+
+                <div className="ra-filters">
+                    <div className="ra-pills">
+                        {dateFilterOptions.map(o => (
+                            <button key={o.key} className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(o.key)}>{o.label}</button>
+                        ))}
+                    </div>
+                    {dateFilter === 'custom' && (
+                        <div className="ra-dates">
+                            <input type="date" className="ra-date-input" value={startDate}
+                                onChange={e => setStartDate(e.target.value)} />
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                            <input type="date" className="ra-date-input" value={endDate}
+                                onChange={e => setEndDate(e.target.value)} />
+                        </div>
+                    )}
+                </div>
+
+                <div className="ra-surface ra-hero">
+                    <div className="ra-hero-left">
+                        <div className="ra-metric-label">Numaralı Başvuru</div>
+                        <div className="ra-metric-value">{tr(withPhone)}</div>
+                        <div className="ra-metric-note">Ulaşılabilir kişi havuzu</div>
+                        <div className="ra-split">
+                            <div className="ra-split-bar">
+                                <i style={{ width: `${calledPct}%`, background: 'var(--accent)' }} title={`Arandı: ${called}`} />
+                                <i style={{ width: `${100 - calledPct}%`, background: '#cbd5e1' }} title={`Aranmadı: ${notCalled}`} />
+                            </div>
+                            <div className="ra-split-legend">
+                                <div className="ra-split-item">Arandı<b>{tr(called)} <span style={{ fontSize: '.72rem', color: '#94a3b8', fontWeight: 600 }}>%{Math.round(calledPct)}</span></b></div>
+                                <div className="ra-split-item" style={{ textAlign: 'right' }}>Aranmadı<b>{tr(notCalled)}</b></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="ra-hero-right">
+                        <div className="ra-chart-head">
+                            <span className="ra-chart-title">Günlük yeni başvuru</span>
+                            {chart.peak > 0 && <span className="ra-chart-peak">en yoğun: {tr(chart.peak)} kişi</span>}
+                        </div>
+                        {chart.buckets.length > 0 ? (
+                            <>
+                                <div className="ra-chart">
+                                    {chart.buckets.map(b => (
+                                        <div key={b.key} className="ra-col" title={`${trShort(b.date)} · ${b.count} başvuru`}>
+                                            <i style={{ height: `${chart.peak ? Math.max(3, (b.count / chart.peak) * 100) : 3}%` }} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="ra-chart-axis">
+                                    <span>{trShort(chart.buckets[0].date)}</span>
+                                    <span>{trShort(chart.buckets[chart.buckets.length - 1].date)}</span>
+                                </div>
+                            </>
+                        ) : <div className="ra-chart" />}
+                    </div>
+                </div>
+
+                <div className="ra-doors">
+                    {doors.map(d => (
+                        <button key={d.label} type="button"
+                            className={`ra-door${d.to ? '' : ' ra-door-flat'}`}
+                            onClick={d.to ? () => navigate(d.to) : undefined}>
+                            <div className="ra-door-top">
+                                <span className="ra-door-label">{d.label}</span>
+                                <span className="ra-door-arrow"><ArrowRight size={17} /></span>
+                            </div>
+                            <div className="ra-door-value">{tr(d.value)}</div>
+                            <div className="ra-door-sub">{d.sub}</div>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="ra-surface ra-strip" style={{ marginBottom: 22 }}>
+                    {statusCells.map(c => (
+                        <div className="ra-cell" key={c.label}>
+                            <div className="ra-cell-label"><i className="ra-cell-dot" style={{ background: c.dot }} />{c.label}</div>
+                            <div className="ra-cell-value">{tr(c.value)}</div>
+                            <div className="ra-cell-sub">{c.sub}</div>
+                        </div>
+                    ))}
+                </div>
+
+                {types.length > 0 && (
+                    <div className="ra-surface" style={{ marginBottom: 22 }}>
+                        <div className="ra-section-head"><h2>Aktivite Tipleri</h2><span>{tr(totalAct)} kayıt</span></div>
+                        <div className="ra-section-body">
+                            {types.map(t => {
+                                const p = totalAct ? (t.count / totalAct) * 100 : 0;
+                                return (
+                                    <div className="ra-typerow" key={t.label}>
+                                        <span className="lbl">{t.label}</span>
+                                        <span className="num">{tr(t.count)}</span>
+                                        <div className="bar"><i style={{ width: `${p}%`, background: t.color }} /></div>
+                                        <span className="pct">%{Math.round(p)}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {((meet.total || 0) > 0 || (appt.total || 0) > 0) && (
+                    <div className="ra-surface" style={{ marginBottom: 22 }}>
+                        <div className="ra-section-head"><h2>Görüşme &amp; Randevu</h2><span>ayrıntı detay sayfalarında</span></div>
+                        <div className="ra-section-body">
+                            {renderBand('Görüşmeler', bandOf(meet, 'planned', 'Bekliyor'), '/meeting-analytics')}
+                            {renderBand('Randevular', bandOf(appt, 'scheduled', 'Planlandı'), '/appointment-analytics')}
+                        </div>
+                    </div>
+                )}
+
+                {agents.length > 0 && (
+                    <div className="ra-surface">
+                        <div className="ra-section-head">
+                            <h2>Arama Lider Tablosu</h2>
+                            <span>{tr(agents.length)} temsilci · {tr(agentTotal)} arama</span>
+                        </div>
+                        <div className="ra-section-body">
+                            {agents.map((a, i) => (
+                                <div className="ra-rank" key={a.userId || i}>
+                                    <span className={`ra-rank-no${i < 3 ? ' top' : ''}`}>{i + 1}</span>
+                                    <span className="ra-rank-name">{a.name}</span>
+                                    <div className="ra-rank-bar">
+                                        <i style={{ width: `${agentMax ? (a.callCount / agentMax) * 100 : 0}%` }} />
+                                    </div>
+                                    <span className="ra-rank-val">{tr(a.callCount)}</span>
+                                    <span className="ra-rank-pct">%{pctOf(a.callCount, agentTotal)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+            </div>
         </div>
     );
 };
