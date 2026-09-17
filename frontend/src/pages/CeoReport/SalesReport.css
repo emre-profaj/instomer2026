@@ -59,12 +59,6 @@
 .ra-slist .cell { font-size: 0.78rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ra-slist .money { font-size: 0.82rem; font-weight: 700; color: #047857; text-align: right; font-variant-numeric: tabular-nums; }
 .ra-slist .dt { font-size: 0.72rem; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
-.ra-tag {
-    display: inline-block; padding: 2px 9px; border-radius: 999px;
-    font-size: 0.7rem; font-weight: 600;
-    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
 @media (max-width: 1100px) {
     .ra-lvl2 { padding-left: 20px; padding-right: 20px; grid-template-columns: 18px 20px 1fr 52px 96px; }
     .ra-sales { padding-left: 20px; padding-right: 20px; }

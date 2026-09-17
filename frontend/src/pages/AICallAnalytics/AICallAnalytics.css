@@ -8,13 +8,6 @@
 /* AI Call sayfasına özel eklentiler — Randevu Analizi dilinin devamı */
 
 .ra-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.ra-select {
-    appearance: none;
-    padding: 9px 30px 9px 13px; border: 1px solid #e6e9ee; border-radius: 11px;
-    background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center;
-    font-size: 0.78rem; font-weight: 600; color: var(--ink-2); cursor: pointer;
-}
-
 /* Seçim kutusu */
 .ra-check {
     width: 17px; height: 17px; border-radius: 5px;

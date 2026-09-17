@@ -465,3 +465,24 @@
     .ra-brow { grid-template-columns: 22px 1fr; row-gap: 9px; align-items: start; padding: 15px 20px; }
     .ra-brow > *:nth-child(n+3) { grid-column: 2; }
 }
+
+/* ── Açılır seçici ve etiket — üç sayfa kullanıyor ────── */
+.ra-select {
+    appearance: none;
+    padding: 9px 30px 9px 13px; border: 1px solid #e6e9ee; border-radius: 11px;
+    background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center;
+    font-size: 0.78rem; font-weight: 600; color: var(--ink-2); cursor: pointer;
+}
+
+.ra-tag {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 600;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+
+/* Kapı ızgarası: sabit 4 kolon isteyen sayfalar için */
+.ra-doors.cols-4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1250px) { .ra-doors.cols-4 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px)  { .ra-doors.cols-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px)  { .ra-doors.cols-4 { grid-template-columns: 1fr; } }

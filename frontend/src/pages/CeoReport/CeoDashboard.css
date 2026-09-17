@@ -1,0 +1,207 @@
+/* ═══════════════════════════════════════════════════════════════
+   GENEL RAPOR (Dashboard) — SAYFAYA ÖZGÜ
+   Ortak dil: ../Analytics/reportDesign.css
+   Bu sayfa rapor değil GÖSTERGE PANELİ: satır değil panel düzeni,
+   kendi SVG grafikleri, dönem karşılaştırması ve ısı haritası var.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Panel ızgarası: rapor değil gösterge paneli, satır değil panel düzeni */
+.ra-grid {
+    display: grid; grid-template-columns: repeat(12, 1fr);
+    gap: 18px; margin-bottom: 22px;
+}
+.ra-panel { grid-column: span 6; display: flex; flex-direction: column; }
+.ra-panel.w4 { grid-column: span 4; }
+.ra-panel.w8 { grid-column: span 8; }
+.ra-panel.w12 { grid-column: span 12; }
+.ra-panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 18px 22px 12px;
+}
+.ra-panel-head h3 {
+    margin: 0; font-size: 0.87rem; font-weight: 700;
+    letter-spacing: -0.015em; color: var(--ink);
+    display: flex; align-items: center; gap: 8px;
+}
+.ra-panel-head .hint { font-size: 0.71rem; color: var(--ink-3); }
+.ra-panel-head a { font-size: 0.73rem; font-weight: 600; color: var(--accent-deep); text-decoration: none; }
+.ra-panel-head a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ra-panel-body { padding: 0 22px 20px; flex: 1; }
+.ra-panel-split { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 22px; }
+.ra-vline { background: var(--line); }
+
+/* Trend rozeti — bu sayfaya özgü, dönem karşılaştırması */
+.ra-trend {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 0.7rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 999px;
+}
+.ra-trend.up { background: #ecfdf5; color: #047857; }
+.ra-trend.down { background: #fef2f2; color: #b91c1c; }
+.ra-trend.flat { background: #f1f5f9; color: #64748b; }
+
+/* Şeritteki KPI hücresine trend eklemek için */
+.ra-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Yatay çubuk listesi (kanal, temsilci) */
+.ra-hbars { display: flex; flex-direction: column; gap: 10px; }
+.ra-hbar { display: grid; grid-template-columns: minmax(96px, 150px) 1fr 54px; gap: 12px; align-items: center; }
+.ra-hbar .nm { font-size: 0.775rem; font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-hbar .bar { height: 8px; border-radius: 999px; background: #f1f2f5; overflow: hidden; }
+.ra-hbar .bar i { display: block; height: 100%; border-radius: 999px; }
+.ra-hbar .val { font-size: 0.8rem; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Mini istatistik ikilisi */
+.ra-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 14px; }
+.ra-duo-item { }
+.ra-duo-item .k { font-size: 0.71rem; font-weight: 600; color: var(--ink-3); }
+.ra-duo-item .v { font-size: 1.25rem; font-weight: 700; color: var(--ink); letter-spacing: -0.025em; font-variant-numeric: tabular-nums; margin-top: 3px; }
+.ra-duo-item .s { font-size: 0.68rem; color: var(--ink-3); }
+
+/* Isı haritası */
+.ra-heat { display: grid; grid-template-columns: 34px repeat(24, 1fr); gap: 3px; }
+.ra-heat .hh { font-size: 0.6rem; color: var(--ink-3); text-align: center; font-variant-numeric: tabular-nums; }
+.ra-heat .dl { font-size: 0.66rem; font-weight: 600; color: var(--ink-3); display: flex; align-items: center; }
+.ra-heat i { display: block; aspect-ratio: 1; border-radius: 3px; min-height: 13px; }
+.ra-heat-legend { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 0.68rem; color: var(--ink-3); }
+.ra-heat-legend .sc { display: flex; gap: 3px; }
+.ra-heat-legend .sc i { width: 15px; height: 11px; border-radius: 3px; }
+
+/* Akış listesi */
+.ra-funnel { padding: 11px 0; }
+.ra-funnel + .ra-funnel { box-shadow: inset 0 1px 0 var(--line); }
+.ra-funnel-top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.ra-funnel-nm { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+.ra-funnel-ct { font-size: 0.73rem; color: var(--ink-3); margin-left: auto; font-variant-numeric: tabular-nums; }
+.ra-funnel-bar { display: flex; height: 9px; border-radius: 999px; overflow: hidden; background: #f1f2f5; }
+.ra-funnel-bar i { display: block; height: 100%; }
+.ra-funnel-bar i + i { border-left: 2px solid #fff; }
+.ra-funnel-stages { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; }
+.ra-funnel-stage { display: flex; align-items: center; gap: 6px; font-size: 0.71rem; color: var(--ink-3); }
+.ra-funnel-stage i { width: 7px; height: 7px; border-radius: 2px; }
+.ra-funnel-stage b { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* Grafik alanı */
+.ra-svg { width: 100%; height: auto; display: block; }
+.ra-chart-empty { padding: 34px 0; text-align: center; font-size: 0.8rem; color: var(--ink-3); }
+
+@media (max-width: 1200px) {
+    .ra-panel, .ra-panel.w4, .ra-panel.w8 { grid-column: span 12; }
+    .ra-panel-split { grid-template-columns: 1fr; gap: 18px; }
+    .ra-vline { display: none; }
+    .ra-heat { grid-template-columns: 28px repeat(24, 1fr); gap: 2px; }
+    .ra-heat i { min-height: 9px; }
+}
+
+
+
+/* Mini tablo — Son Gelen Talepler / Son Satışlar */
+.ra-mini-title {
+    font-size: 0.68rem; font-weight: 700; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .09em; margin: 18px 0 10px;
+}
+.ra-mt { display: block; }
+.ra-mt-row {
+    display: grid; gap: 12px; align-items: center; padding: 9px 0;
+}
+.ra-mt-row + .ra-mt-row { box-shadow: inset 0 1px 0 var(--line); }
+.ra-mt-row.head { padding-top: 0; padding-bottom: 8px; box-shadow: none; }
+.ra-mt-row.head span { font-size: 0.64rem; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; }
+.ra-mt-row .t { font-size: 0.78rem; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-mt-row .c { font-size: 0.76rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-mt-row .n { font-size: 0.78rem; font-weight: 700; color: #047857; text-align: right; font-variant-numeric: tabular-nums; }
+.ra-mt-row .d { font-size: 0.71rem; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-cols-req .ra-mt-row { grid-template-columns: minmax(150px,1.6fr) minmax(110px,1fr) 120px 96px 68px; }
+.ra-cols-deal .ra-mt-row { grid-template-columns: minmax(150px,1.5fr) minmax(110px,1fr) minmax(100px,.9fr) 84px 104px 68px; }
+
+/* Talep kalitesi oranları */
+.ra-quality { display: flex; flex-direction: column; gap: 14px; }
+.ra-quality-row .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.ra-quality-row .k { font-size: 0.755rem; font-weight: 600; color: var(--ink-2); }
+.ra-quality-row .v { font-size: 0.86rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ra-quality-row .bar { height: 7px; border-radius: 999px; background: #f1f2f5; overflow: hidden; }
+.ra-quality-row .bar i { display: block; height: 100%; border-radius: 999px; }
+.ra-quality-row .s { font-size: 0.68rem; color: var(--ink-3); margin-top: 5px; }
+
+.ra-split3 { display: grid; grid-template-columns: 1fr 1px 1.4fr 1px 1fr; gap: 22px; }
+@media (max-width: 1200px) {
+    .ra-split3 { grid-template-columns: 1fr; gap: 20px; }
+    .ra-cols-req .ra-mt-row { grid-template-columns: 1fr 88px; }
+    .ra-cols-req .ra-mt-row > *:nth-child(n+3) { grid-column: 1; }
+    .ra-cols-deal .ra-mt-row { grid-template-columns: 1fr 100px; }
+    .ra-cols-deal .ra-mt-row > *:nth-child(n+3) { grid-column: 1; }
+    .ra-mt-row.head { display: none; }
+}
+
+
+/* Satış hunisi — Teklif → Sipariş → Kazanılan */
+.ra-sfunnel { display: flex; height: 11px; border-radius: 999px; overflow: hidden; background: #f1f2f5; margin-top: 4px; }
+.ra-sfunnel i { display: block; height: 100%; }
+.ra-sfunnel i + i { border-left: 2px solid #fff; }
+.ra-sfunnel-labels { display: flex; gap: 20px; margin-top: 10px; flex-wrap: wrap; }
+.ra-sfunnel-labels span { display: flex; align-items: center; gap: 7px; font-size: 0.74rem; color: var(--ink-3); }
+.ra-sfunnel-labels i { width: 8px; height: 8px; border-radius: 2px; }
+.ra-sfunnel-labels b { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* Takım dağılımı listesi */
+.ra-teamlist { display: flex; flex-direction: column; gap: 9px; }
+.ra-teamitem { display: grid; grid-template-columns: 9px 1fr 62px 58px; gap: 10px; align-items: center; }
+.ra-teamitem i { width: 9px; height: 9px; border-radius: 3px; }
+.ra-teamitem .nm { font-size: 0.775rem; font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-teamitem .m { font-size: 0.71rem; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-teamitem .c { font-size: 0.8rem; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-group-label {
+    font-size: 0.65rem; font-weight: 700; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .09em; margin: 14px 0 8px;
+}
+
+/* Kısmi dönem uyarısı — trend rozeti yanında */
+.ra-trend.partial { background: #fffbeb; color: #92400e; }
+.ra-partial-note {
+    margin: -8px 0 18px; padding: 10px 14px; border-radius: 11px;
+    background: #fffbeb; box-shadow: inset 0 0 0 1px #fde68a;
+    font-size: 0.76rem; color: #92400e; line-height: 1.5;
+}
+
+/* Lead tablosu (çalışma alanına özel bölüm) */
+.ra-cols-lead .ra-mt-row { grid-template-columns: 34px minmax(160px,1.6fr) minmax(120px,1fr) 96px 68px; }
+@media (max-width: 1200px) {
+    .ra-cols-lead .ra-mt-row { grid-template-columns: 34px 1fr 78px; }
+    .ra-cols-lead .ra-mt-row > *:nth-child(n+4) { grid-column: 2 / -1; }
+}
+
+/* ═══════ YAZDIRMA ═══════
+   Bu kurallar eskiden CeoReport.css'teydi. Sayfa artık o dosyayı
+   import etmiyor; taşınmasaydı logo başlığı EKRANDA da görünürdü
+   (varsayılanı display:none orada tanımlı). */
+.print-logo-header { display: none; }
+
+@media print {
+    .print-logo-header {
+        display: flex !important;
+        align-items: center; justify-content: space-between;
+        padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;
+    }
+
+    .sidebar, .admin-sidebar, .admin-header, .mobile-bottom-nav,
+    .workspace-selector, .menu-btn, .workspace-dropdown,
+    .insto-bot-fab, .insto-bot-window, .notification-banner,
+    .ra-filters, .ra-head-actions, .ra-doors, .ra-back {
+        display: none !important;
+    }
+
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    html, body, #root, .layout, .content, .admin-layout, .admin-main,
+    .content-area, .main-content, .ra-page {
+        display: block !important; position: static !important;
+        margin: 0 !important; padding: 0 !important;
+        width: 100% !important; max-width: 100% !important;
+        height: auto !important; min-height: auto !important;
+        overflow: visible !important; background: #fff !important;
+    }
+
+    .ra-grid { display: block !important; }
+    .ra-panel, .ra-surface { break-inside: avoid; margin-bottom: 14px; box-shadow: none !important; border: 1px solid #e5e7eb; }
+    .ra-split3, .ra-panel-split { grid-template-columns: 1fr !important; }
+}
