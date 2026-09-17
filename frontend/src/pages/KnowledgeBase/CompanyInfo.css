@@ -33,11 +33,26 @@
        kendi gri zeminini kurar. Negatif kenar boşlukları .base-content
        dolgusunu (24px 28px) iptal eder ki zemin kenarlara kadar gitsin. */
     background: #f7f8fa;
-    margin: -24px -28px;
+    margin: -24px -28px 0;
     padding: 24px 28px 0;
-    /* Negatif kenar boşlukları yüzünden 48px eksik kalmasın: zemin
-       içerik azken de aşağıya kadar insin. */
-    min-height: calc(100% + 48px);
+    min-height: calc(100% + 24px);
+
+    /* Kaydet çubuğu içerik kısayken de en altta dursun diye sütun flex;
+       ölçüldü: flex olmadan çubuğun altında 56px boşluk kalıyordu. */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Kapsayıcının alt dolgusu çubuğun altında beyaz bir şerit bırakıyordu.
+   Yalnızca bu sayfa içerideyken kapatılır. */
+.base-content:has(> .cb-page) {
+    padding-bottom: 0;
+}
+
+/* Kaydırılabilir sütun flex'te alt öğeler sıkışır (rapor sayfalarında
+   aynı tuzağa düşülmüştü) — sıkışmayı kapat. */
+.cb-page > * {
+    flex-shrink: 0;
 }
 
 /* ── Başlık ───────────────────────────────────── */
@@ -47,7 +62,10 @@
     justify-content: space-between;
     gap: 24px;
     flex-wrap: wrap;
-    margin-bottom: 20px;
+    /* Ayırıcı çizgi çapa butonlarındaydı; onlar kalkınca başlığa geçti. */
+    padding-bottom: 20px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
 }
 
 .cb-eyebrow {
@@ -71,41 +89,6 @@
     font-size: 14px;
     color: var(--ink-3);
     margin-top: 7px;
-}
-
-.cb-head-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-/* ── Bölüm çapaları ───────────────────────────── */
-.cb-anchors {
-    display: flex;
-    gap: 7px;
-    flex-wrap: wrap;
-    margin-bottom: 22px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--line);
-}
-
-.cb-anchor {
-    font-size: 12.5px;
-    font-weight: 500;
-    color: var(--ink-2);
-    background: var(--cb-card);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 7px 14px;
-    cursor: pointer;
-    text-decoration: none;
-    transition: 0.15s;
-}
-
-.cb-anchor:hover {
-    border-color: #d8dde5;
-    background: #fcfcfd;
-    color: var(--ink);
 }
 
 /* ── Bölüm kartı ──────────────────────────────── */
@@ -638,6 +621,7 @@ select.cb-in {
 .cb-bar {
     position: sticky;
     bottom: 0;
+    margin-top: auto;
     z-index: 20;
     /* .base-content dolgusu (24px 28px) kadar dışarı taşar ki
        çubuk içeriğin tamamını kaplasın. */

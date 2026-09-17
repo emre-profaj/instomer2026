@@ -934,25 +934,6 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                             <h1 className="cb-title">Şirket Bilgileri</h1>
                             <div className="cb-sub">Yapay zekânın müşterilere aktardığı temel firma bilgileri burada tutulur.</div>
                         </div>
-                        <div className="cb-head-right">
-                            <button
-                                className="cb-btn primary"
-                                onClick={handleSaveCompanyInfo}
-                                disabled={savingCompany}
-                            >
-                                {savingCompany ? 'Kaydediliyor...' : 'Kaydet'}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* ── Bölüm çapaları ── */}
-                    <div className="cb-anchors">
-                        <a className="cb-anchor" href="#cb-kimlik">Kimlik</a>
-                        <a className="cb-anchor" href="#cb-iletisim">İletişim</a>
-                        <a className="cb-anchor" href="#cb-faaliyet">Faaliyet &amp; Bölgeler</a>
-                        <a className="cb-anchor" href="#cb-saatler">Çalışma Saatleri</a>
-                        <a className="cb-anchor" href="#cb-tatiller">Tatiller</a>
-                        <a className="cb-anchor" href="#cb-aciklama">Açıklama</a>
                     </div>
 
                     {/* ── 1. KİMLİK ── */}
