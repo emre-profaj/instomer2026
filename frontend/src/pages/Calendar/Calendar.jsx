@@ -17,6 +17,11 @@ import './Calendar.css';
 
 const APPOINTMENT_STATUSES = [
     { value: 'SCHEDULED', label: 'Planlandı', color: '#3b82f6' },
+    // Bot randevuyu aldı ama hastane sistemine (HBYS) yazıldığı DOĞRULANAMADI.
+    // Müşteriye "temsilcimiz teyit edip dönüş yapacak" denir; temsilci hastane
+    // sisteminden kontrol edip Planlandı'ya çeker. Kehribar renk kasıtlı:
+    // takvimde "bu randevu henüz kesin değil" diye ayırt edilsin.
+    { value: 'PENDING_CONFIRMATION', label: 'Teyit Bekliyor', color: '#d97706' },
     { value: 'COMPLETED', label: 'Tamamlandı', color: '#10b981' },
     { value: 'CANCELLED', label: 'İptal Edildi', color: '#ef4444' },
     { value: 'NO_SHOW', label: 'Gelmedi', color: '#f59e0b' }

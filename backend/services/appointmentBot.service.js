@@ -1001,9 +1001,17 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
 
     // ── ADIM 2: Probel bağlıysa VE gerekli tokenlar varsa → Probel'e de gönder ──
     // probelHastaToken ve probelRandevuId fonksiyon başında (ADIM 1 öncesi) okundu.
+    //
+    // probelDurum, müşteriye ne söyleneceğini belirler:
+    //   'yok'        → hastane sistemi bağlı değil; yalnızca Instomer randevusu
+    //   'onaylandi'  → Probel kaydı doğrulandı (HTTP 2xx, hata yok)
+    //   'teyit'      → bağlı ama KAYIT DOĞRULANAMADI → temsilci teyit edecek
+    let probelDurum = 'yok';
+    let probelNot = null;
     try {
         const hasConnection = await checkHealthConnection(workspaceId);
         if (hasConnection) {
+            probelDurum = 'teyit';   // aksi kanıtlanana kadar doğrulanmamış say
             console.log(`🔑 [AppointmentBot] ADIM 2 — hasta_token: ${probelHastaToken || 'YOK'}, randevu_id: ${probelRandevuId || 'YOK'}`);
 
             // LOCAL_ token = hasta Probel'de kayıtlı değil → Probel'e gönderme
@@ -1013,22 +1021,52 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                 const { createAppointment } = await import('./probel_appointment.service.js');
                 const probelResult = await createAppointment(workspaceId, probelHastaToken, probelRandevuId);
                 if (probelResult.success) {
+                    probelDurum = 'onaylandi';
                     console.log('✅ [AppointmentBot] Probel HBYS randevusu da oluşturuldu');
                 } else {
-                    console.warn('⚠️ [AppointmentBot] Probel HBYS başarısız (non-critical):', probelResult.message);
+                    probelNot = probelResult.message || 'Probel kaydı doğrulanamadı';
+                    console.warn('⚠️ [AppointmentBot] Probel HBYS BAŞARISIZ → temsilci teyidi gerekiyor:', probelNot);
                 }
             } else if (!isRealProbelToken) {
-                console.warn(`⚠️ [AppointmentBot] Probel atlandı — hasta sistemde kayıtlı değil (LOCAL token). Sadece Instomer DB'ye kaydedildi.`);
+                probelNot = 'Hasta Probel sisteminde kayıtlı değil (LOCAL token)';
+                console.warn(`⚠️ [AppointmentBot] ${probelNot} → temsilci teyidi gerekiyor`);
             } else {
-                console.warn(`⚠️ [AppointmentBot] Probel atlandı — randevu_id: ${probelRandevuId || 'YOK'}`);
+                probelNot = `Probel randevu_id yok (${probelRandevuId || 'YOK'})`;
+                console.warn(`⚠️ [AppointmentBot] ${probelNot} → temsilci teyidi gerekiyor`);
             }
         }
     } catch (probelErr) {
-        console.warn('⚠️ [AppointmentBot] Probel adımı atlandı (non-critical):', probelErr.message);
+        probelNot = probelErr.message || 'Probel bağlantı hatası';
+        console.warn('⚠️ [AppointmentBot] Probel adımı HATA → temsilci teyidi gerekiyor:', probelNot);
     }
 
+    // ── DOĞRULANMAMIŞ KAYIT → TEMSİLCİYE İŞARETLE ────────────────────────────
+    // Eskiden her durumda "Randevunuz başarıyla oluşturuldu!" deniyordu; Probel'e
+    // yazılamayan randevularda hasta randevusu olduğunu sanıp hastaneye gidiyordu.
+    if (probelDurum === 'teyit' && localAppointmentId) {
+        try {
+            await prisma.appointment.update({
+                where: { id: localAppointmentId },
+                data: {
+                    status: 'PENDING_CONFIRMATION',
+                    notes: `⚠️ HASTANE SİSTEMİNE YAZILAMADI — temsilci teyidi gerekiyor.\nSebep: ${probelNot}`
+                }
+            });
+            console.warn(`🔖 [AppointmentBot] Randevu ${localAppointmentId} teyit bekliyor olarak işaretlendi`);
+        } catch (markErr) {
+            console.error('❌ [AppointmentBot] Teyit işareti konulamadı:', markErr.message);
+        }
+    }
 
-    // Her durumda success döndür — local DB kaydı yapıldı (veya hata loglandı)
+    if (probelDurum === 'teyit') {
+        return {
+            success: true,
+            appointmentId: localAppointmentId,
+            needsConfirmation: true,
+            message: `Randevu talebinizi aldım. 📋\n\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n🏥 Branş: ${args.branch || ''}\n👨‍⚕️ Doktor: ${args.doctor_name || ''}\n👤 Hasta: ${args.patient_name || ''}\n\nHastane sistemine kaydı için temsilcimiz teyit edip size dönüş yapacak. İyi günler dilerim! 🙏`
+        };
+    }
+
     return {
         success: true,
         appointmentId: localAppointmentId,
