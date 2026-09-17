@@ -24,7 +24,7 @@
     min-height: 100%;
     font-feature-settings: "tnum" 0;
 }
-.ra-wrap { max-width: 1280px; margin: 0 auto; }
+.ra-wrap { width: 100%; }
 
 /* Yüzey: çerçeve yok, yalnızca çok yumuşak bir yükselti */
 .ra-surface {
