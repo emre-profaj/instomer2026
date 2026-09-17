@@ -8,6 +8,7 @@ import {
     User, Calendar, Edit2
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
+import DealSourceSelect from '../../components/DealSourceSelect/DealSourceSelect';
 import './Sales.css';
 
 // Helper: compute date range from preset
@@ -929,6 +930,20 @@ const Invoices = () => {
                                     <option value="WON">Ödendi</option>
                                     <option value="LOST">İptal</option>
                                 </select>
+                            </div>
+                            {/* Kaynak — fatura, siparişin devamı olan aynı kayıt. Buraya da
+                                konuldu, yoksa faturaya dönüşen bir satışın kaynağı bir daha
+                                hiçbir ekrandan düzeltilemiyordu. */}
+                            <div className="info-row">
+                                <span className="label">Kaynak:</span>
+                                <DealSourceSelect
+                                    workspaceId={currentWorkspace.id}
+                                    deal={selectedDeal}
+                                    onChange={(channel) => {
+                                        setSelectedDeal(prev => ({ ...prev, channel }));
+                                        setDeals(prev => prev.map(d => d.id === selectedDeal.id ? { ...d, channel } : d));
+                                    }}
+                                />
                             </div>
                         </div>
 

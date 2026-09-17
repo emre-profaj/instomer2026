@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI, productAPI } from '../../services/api';
 import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User, Calendar } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
+import DealSourceSelect from '../../components/DealSourceSelect/DealSourceSelect';
 import './Sales.css';
 
 // Helper: compute date range from preset
@@ -618,17 +619,20 @@ const Orders = () => {
                                     <span className="label">Tarih:</span>
                                     <span className="value">{new Date(selectedDeal.orderCreatedAt || selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
                                 </div>
-                                {selectedDeal.channel && (
-                                    <div className="info-row">
-                                        <span className="label">Kaynak:</span>
-                                        <span className="value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <span style={{ fontSize: '1rem' }}>
-                                                {selectedDeal.channel === 'WHATSAPP' ? '📱' : selectedDeal.channel === 'INSTAGRAM' ? '📸' : selectedDeal.channel === 'FACEBOOK' ? '📘' : selectedDeal.channel === 'EMAIL' ? '📧' : selectedDeal.channel === 'WIDGET' ? '🌐' : '📋'}
-                                            </span>
-                                            {selectedDeal.channel}
-                                        </span>
-                                    </div>
-                                )}
+                                {/* Kaynak: eskiden yalnızca dolu olduğunda gösteriliyordu ve
+                                    hiçbir zaman dolmadığı için hiç görünmüyordu. Artık her
+                                    zaman görünür ve buradan seçilir. */}
+                                <div className="info-row">
+                                    <span className="label">Kaynak:</span>
+                                    <DealSourceSelect
+                                        workspaceId={currentWorkspace.id}
+                                        deal={selectedDeal}
+                                        onChange={(channel) => {
+                                            setSelectedDeal(prev => ({ ...prev, channel }));
+                                            setDeals(prev => prev.map(d => d.id === selectedDeal.id ? { ...d, channel } : d));
+                                        }}
+                                    />
+                                </div>
                                 {selectedDeal.sourceNote && (
                                     <div className="info-row">
                                         <span className="label">Kaynak Notu:</span>

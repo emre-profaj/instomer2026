@@ -335,7 +335,8 @@ export const updateDeal = async (req, res) => {
             vatRate,
             paidAmount,
             paymentDate,
-            // Kaynak notu
+            // Kaynak (elle seçilen) ve serbest not
+            channel,
             sourceNote,
             // Protokol No
             protocolNo,
@@ -393,6 +394,10 @@ export const updateDeal = async (req, res) => {
             }
         }
         if (notes !== undefined) updateData.notes = notes;
+        // Kaynak: sipariş detayındaki seçim kutusundan gelir.
+        // Teklif → Sipariş → Fatura aynı kayıt olduğu için bir kez seçilir,
+        // üç ekranda da aynı değeri gösterir.
+        if (channel !== undefined) updateData.channel = channel || null;
         if (sourceNote !== undefined) updateData.sourceNote = sourceNote;
         if (protocolNo !== undefined) updateData.protocolNo = protocolNo || null;
         if (quoteNumber !== undefined) updateData.quoteNumber = quoteNumber;
