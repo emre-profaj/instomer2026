@@ -502,7 +502,7 @@ select.cb-in {
 
 .cb-days {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     gap: 9px;
 }
 
@@ -510,6 +510,8 @@ select.cb-in {
     display: flex;
     align-items: center;
     gap: 12px;
+    /* Saat kutuları taşarsa komşu karta binerdi; kart içeride tutar. */
+    overflow: hidden;
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 10px 13px;
@@ -527,7 +529,8 @@ select.cb-in {
     align-items: center;
     gap: 9px;
     cursor: pointer;
-    min-width: 116px;
+    flex: 0 0 auto;
+    min-width: 104px;
     font-size: 13px;
     font-weight: 600;
     margin: 0;
@@ -538,6 +541,12 @@ select.cb-in {
 }
 
 .cb-time {
+    /* input[type=time] genişliği tarayıcıdan tarayıcıya değişiyor
+       (Chrome ~80px, Safari ~120px) ve satırı taşırıyordu. flex-basis
+       sıfırlanarak kutular kalan alanı paylaşır — artık tarayıcının
+       verdiği kendiliğinden genişliğe bağlı değil. */
+    flex: 1 1 0;
+    min-width: 0;
     font: inherit;
     font-size: 12.5px;
     border: 1px solid var(--line);
@@ -549,11 +558,13 @@ select.cb-in {
 }
 
 .cb-dash {
+    flex: 0 0 auto;
     color: var(--ink-3);
     font-size: 13px;
 }
 
 .cb-closed {
+    flex: 1 1 auto;
     font-size: 12px;
     color: var(--ink-3);
     font-style: italic;
