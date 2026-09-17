@@ -1,25 +1,57 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * TALEP RAPORU
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * Aynı talebi dört farklı eksende sayan bir döküm sayfası:
+ * temsilci, konu, akış, kaynak. Ortak rapor dili (reportDesign.css).
+ *
+ * Eski sayfadaki her şey duruyor: geri düğmesi, beş KPI, değerlendirme
+ * çubuğu, aktivite dökümü, dört bölüm, açılır alt dökümler
+ * (temsilci→konu, konu→kaynak, akış→aşamalar), Toplam satırları ve
+ * boş durum mesajları.
+ *
+ * SEKME YAPILMADI — bilerek. "Raporu İndir" window.print() kullanıyor;
+ * sekmeli yapıda gizli bölümler yazdırılmaz. Bunun yerine üstte çapa
+ * çubuğu var: sayfa uzun (Metropol'de 17+43+7+5 = 72 satır) ama
+ * istediğiniz bölüme tek tıkla iniyorsunuz ve çıktı eksiksiz.
+ *
+ * Teklif kolonu veri yoksa hiç gösterilmiyor — Metropol'de 65 sipariş
+ * ve 3,6 milyon ₺ ciro var ama sıfır teklif (QUOTE aşaması hiç
+ * kullanılmıyor).
+ */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, DollarSign,
-    Users, ShoppingCart, TrendingUp, ChevronRight, Hash, Layers,
-    UserCheck, PhoneCall, MessageSquare, Calendar, FileText, Package, Globe
-} from 'lucide-react';
+import { RefreshCw, FileText, ArrowLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
-import './CeoReport.css';
-import './CeoDetailReport.css';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../Analytics/reportDesign.css';
+import './RequestReport.css';
 
-const formatNumber = (n) => {
-    if (!n && n !== 0) return '0';
-    return n.toLocaleString('tr-TR');
-};
+const tr = (n) => Number(n || 0).toLocaleString('tr-TR');
+const money = (n) => Number(n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
 
-const formatCurrency = (n) => {
-    if (!n && n !== 0) return '0 ₺';
-    return (n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
-};
+const sum = (arr, f) => arr.reduce((s, x) => s + (f(x) || 0), 0);
+
+const Metric = ({ v, k, isMoney }) => (
+    <div className="ra-metric">
+        <div className={`v${v ? (isMoney ? ' money' : '') : ' zero'}`}>{v ? (isMoney ? money(v) : tr(v)) : '—'}</div>
+        <div className="k">{k}</div>
+    </div>
+);
+const SubCell = ({ v, isMoney }) => (
+    <span className={`n${v ? (isMoney ? ' money' : '') : ' zero'}`}>{v ? (isMoney ? money(v) : tr(v)) : '—'}</span>
+);
+const Section = ({ id, title, meta, cols, children }) => (
+    <div className="ra-surface" id={id} style={{ marginBottom: 22, '--cols': cols }}>
+        <div className="ra-sec"><h2>{title}</h2><span className="meta">{meta}</span></div>
+        {children}
+    </div>
+);
+const Empty = ({ text }) => (
+    <div className="ra-empty"><h3>{text}</h3><p>Bu dönemde kayıt bulunamadı.</p></div>
+);
 
 const RequestReport = () => {
     const { currentWorkspace } = useAuth();
@@ -39,14 +71,13 @@ const RequestReport = () => {
         sessionStorage.setItem('reportEndDate', endDate);
     }, [dateFilter, startDate, endDate]);
 
-    const getDateRange = () => getDateRangeLogic(dateFilter, startDate, endDate);
-
     const fetchData = async () => {
         if (!currentWorkspace?.id) return;
         setLoading(true);
         try {
-            const params = getDateRange();
-            const res = await contactAPI.getRequestReport(currentWorkspace.id, params);
+            const res = await contactAPI.getRequestReport(
+                currentWorkspace.id, getDateRangeLogic(dateFilter, startDate, endDate)
+            );
             setData(res.data);
         } catch (err) {
             console.error('Request report error:', err);
@@ -55,556 +86,403 @@ const RequestReport = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
+    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (loading && !data) {
         return (
-            <div className="ceo-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-                <div style={{ textAlign: 'center', color: '#64748b' }}>
-                    <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-                    <p>Yükleniyor...</p>
+            <div className="ra-page">
+                <div className="ra-loading">
+                    <RefreshCw className="ra-spin" size={30} />
+                    <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>Talep Raporu yükleniyor…</p>
                 </div>
             </div>
         );
     }
 
     const {
-        totalCount = 0, totalCases = 0, totalDeals = 0,
-        withPhoneCount = 0,
+        totalCount = 0, totalCases = 0, totalDeals = 0, withPhoneCount = 0,
         totalWonCount = 0, totalWonAmount = 0,
         totalLostCount = 0, totalActiveCount = 0, totalClosedCount = 0,
         conversionRate = 0, lostRate = 0,
         totalCalls = 0, totalMeetings = 0, totalAppointments = 0,
         totalProposals = 0, totalOrders = 0,
-        agentTable = [], topicGroups = [], funnelGroups = [], sourceGroups = []
+        agentTable = [], topicGroups = [], funnelGroups = [], sourceGroups = [],
     } = data || {};
 
-    return (
-        <div className="ceo-report">
-            <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
+    /** Teklif hiç kullanılmıyorsa kolonu göstermiyoruz. */
+    const hasProposals = totalProposals > 0;
+    const COLS = hasProposals ? 7 : 6;
 
-            <div className="ceo-detail-header">
-                <div className="ceo-detail-header-left">
-                    <h1><ClipboardList size={24} style={{ color: '#6366f1' }} /> Talep Raporu</h1>
-                    <p>Kategori, temsilci ve akış bazlı talep analizi</p>
+    const evalSegs = [
+        { label: 'Olumlu (Satış)', count: totalWonCount, color: '#10b981' },
+        { label: 'Olumsuz', count: totalLostCount, color: '#ef4444' },
+        { label: 'Devam Eden', count: totalActiveCount, color: '#f59e0b' },
+        { label: 'Kapatıldı', count: totalClosedCount, color: '#cbd5e1' },
+    ].filter(x => x.count > 0);
+
+    const acts = [
+        { nm: 'Arama', v: totalCalls, c: '#ef4444' },
+        { nm: 'Görüşme', v: totalMeetings, c: '#6366f1' },
+        { nm: 'Randevu', v: totalAppointments, c: '#f59e0b' },
+        { nm: 'Teklif', v: totalProposals, c: '#a78bfa' },
+        { nm: 'Sipariş', v: totalOrders, c: '#10b981' },
+    ];
+    const actMax = Math.max(1, ...acts.map(a => a.v || 0));
+
+    const strip = [
+        { label: 'Olumlu', dot: '#10b981', value: tr(totalWonCount), sub: `%${conversionRate} dönüşüm` },
+        { label: 'Ciro', dot: '#047857', value: money(totalWonAmount), sub: 'kazanılan tutar' },
+        { label: 'Olumsuz', dot: '#ef4444', value: tr(totalLostCount), sub: `%${lostRate} kayıp` },
+        { label: 'Devam Eden', dot: '#f59e0b', value: tr(totalActiveCount), sub: 'açık talep' },
+        { label: 'Kapatıldı', dot: '#94a3b8', value: tr(totalClosedCount), sub: 'sonuçlanmış' },
+        { label: 'Numaralı Kişi', dot: '#6366f1', value: tr(withPhoneCount), sub: 'ulaşılabilir' },
+    ];
+
+    // ── Temsilci bazlı ──────────────────────────────────────
+    const agents = [...agentTable].sort((a, b) => b.caseCount - a.caseCount);
+    const agentMax = Math.max(1, ...agents.map(a => a.caseCount));
+
+    // ── Konu bazlı ──────────────────────────────────────────
+    const topics = [...topicGroups].sort((a, b) => b.count - a.count);
+    const topicMax = Math.max(1, ...topics.map(t => t.count));
+
+    // ── Akış bazlı ──────────────────────────────────────────
+    const funnels = [...funnelGroups].sort((a, b) => b.count - a.count);
+    const funnelMax = Math.max(1, ...funnels.map(f => f.count));
+
+    // ── Kaynak bazlı ────────────────────────────────────────
+    const sources = [...sourceGroups].sort((a, b) => b.count - a.count);
+    const sourceMax = Math.max(1, ...sources.map(s => s.count));
+
+    return (
+        <div className="ra-page">
+            <div className="ra-wrap">
+
+                <button className="ra-back" onClick={() => navigate('/general-report')}>
+                    <ArrowLeft size={15} /> Dashboard
+                </button>
+
+                <div className="ra-head">
+                    <div>
+                        <div className="ra-eyebrow">Raporlar</div>
+                        <h1>Talep Raporu</h1>
+                        <p>Kategori, temsilci, akış ve kaynak bazlı talep analizi</p>
+                    </div>
+                    <div className="ra-head-actions">
+                        <button className="ra-btn" onClick={fetchData} disabled={loading}>
+                            <RefreshCw className={loading ? 'ra-spin' : ''} size={14} /> Güncelle
+                        </button>
+                        <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                            <FileText size={14} /> Raporu İndir
+                        </button>
+                    </div>
                 </div>
 
-            </div>
-
-            {/* Filters */}
-            <div className="ceo-filter-bar">
-                <div className="ceo-filter-left">
-                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                    <div className="ceo-pill-group">
-                        {dateFilterOptions.map(item => (
-                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                <div className="ra-filters">
+                    <div className="ra-pills">
+                        {dateFilterOptions.map(o => (
+                            <button key={o.key} className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(o.key)}>{o.label}</button>
                         ))}
                     </div>
                     {dateFilter === 'custom' && (
-                        <div className="ceo-custom-dates">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
+                        <div className="ra-dates">
+                            <input type="date" className="ra-date-input" value={startDate}
+                                onChange={e => setStartDate(e.target.value)} />
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                            <input type="date" className="ra-date-input" value={endDate}
+                                onChange={e => setEndDate(e.target.value)} />
                         </div>
                     )}
                 </div>
-                <div className="ceo-filter-right">
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
-            </div>
 
-            {/* ═══ KPI KARTLARI ═══ */}
-            <div style={{ display: 'flex', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
-                <div style={{
-                    flex: '1 1 140px', minWidth: 140,
-                    background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    borderRadius: 16, padding: '18px 22px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <Users size={14} /> Toplam Talep
-                    </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(totalCount)}</div>
-                    <div style={{ fontSize: '0.68rem', opacity: 0.7 }}>{totalCases} case · {totalDeals} satış</div>
-                </div>
-
-                <div style={{
-                    flex: '1 1 140px', minWidth: 140,
-                    background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
-                    borderRadius: 16, padding: '18px 22px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(16, 185, 129, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <ShoppingCart size={14} /> ✅ Olumlu
-                    </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalWonCount}</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, opacity: 0.9 }}>{formatCurrency(totalWonAmount)} · %{conversionRate}</div>
-                </div>
-
-                <div style={{
-                    flex: '1 1 140px', minWidth: 140,
-                    background: 'linear-gradient(135deg, #ef4444 0%, #f87171 100%)',
-                    borderRadius: 16, padding: '18px 22px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(239, 68, 68, 0.25)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        ❌ Olumsuz
-                    </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalLostCount}</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, opacity: 0.9 }}>%{lostRate}</div>
-                </div>
-
-                <div style={{
-                    flex: '1 1 140px', minWidth: 140,
-                    background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
-                    borderRadius: 16, padding: '18px 22px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(245, 158, 11, 0.25)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        ⏳ Devam Eden
-                    </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalActiveCount}</div>
-                    <div style={{ fontSize: '0.68rem', opacity: 0.7 }}>{totalClosedCount} kapatıldı</div>
-                </div>
-
-                <div style={{
-                    flex: '1 1 140px', minWidth: 140,
-                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                    borderRadius: 16, padding: '18px 22px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 70, height: 70, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <Phone size={14} /> Kişi
-                    </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(withPhoneCount)}</div>
-                </div>
-            </div>
-
-            {/* ═══ TALEP DEĞERLENDİRME ÇUBUĞU ═══ */}
-            {totalCount > 0 && (
-                <div style={{
-                    background: '#fff', borderRadius: 16, padding: '20px 24px', marginBottom: 24,
-                    border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)'
-                }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <TrendingUp size={16} style={{ color: '#6366f1' }} /> Talep Değerlendirme Özeti
-                    </div>
-                    {/* Progress Bar */}
-                    <div style={{ display: 'flex', height: 32, borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-                        {totalWonCount > 0 && (
-                            <div style={{
-                                width: `${(totalWonCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #10b981, #34d399)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
-                            }}>✅ {totalWonCount}</div>
-                        )}
-                        {totalLostCount > 0 && (
-                            <div style={{
-                                width: `${(totalLostCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #ef4444, #f87171)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
-                            }}>❌ {totalLostCount}</div>
-                        )}
-                        {totalActiveCount > 0 && (
-                            <div style={{
-                                width: `${(totalActiveCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
-                            }}>⏳ {totalActiveCount}</div>
-                        )}
-                        {totalClosedCount > 0 && (
-                            <div style={{
-                                width: `${(totalClosedCount / totalCount) * 100}%`, background: 'linear-gradient(90deg, #94a3b8, #cbd5e1)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.75rem', fontWeight: 800, color: '#fff', minWidth: 40
-                            }}>🔒 {totalClosedCount}</div>
-                        )}
-                    </div>
-                    {/* Legend */}
-                    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                        {[
-                            { label: 'Olumlu (Satış)', count: totalWonCount, pct: conversionRate, color: '#10b981' },
-                            { label: 'Olumsuz', count: totalLostCount, pct: lostRate, color: '#ef4444' },
-                            { label: 'Devam Eden', count: totalActiveCount, pct: totalCount > 0 ? Math.round((totalActiveCount / totalCount) * 1000) / 10 : 0, color: '#f59e0b' },
-                            { label: 'Kapatıldı', count: totalClosedCount, pct: totalCount > 0 ? Math.round((totalClosedCount / totalCount) * 1000) / 10 : 0, color: '#94a3b8' },
-                        ].map(item => (
-                            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <div style={{ width: 10, height: 10, borderRadius: 3, background: item.color }} />
-                                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151' }}>{item.label}</span>
-                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: item.color }}>{item.count}</span>
-                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>(%{item.pct})</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* ═══ AKTİVİTE TABLOSU ═══ */}
-            <div style={{
-                background: '#fff', borderRadius: 16, marginBottom: 24,
-                border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                overflow: 'hidden'
-            }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                            {[
-                                { label: 'ARAMA', color: '#6366f1' },
-                                { label: 'GÖRÜŞME', color: '#8b5cf6' },
-                                { label: 'RANDEVU', color: '#f59e0b' },
-                                { label: 'TEKLİF', color: '#ec4899' },
-                                { label: 'SİPARİŞ', color: '#10b981' },
-                                { label: 'CİRO (SATIŞ)', color: '#059669' },
-                            ].map((col, i) => (
-                                <th key={i} style={{
-                                    padding: '14px 12px', textAlign: 'center',
-                                    fontSize: '0.72rem', fontWeight: 700, color: '#64748b',
-                                    textTransform: 'uppercase', letterSpacing: '0.05em'
-                                }}>
-                                    <span style={{ color: col.color }}>{col.label}</span>
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#6366f1' }}>{formatNumber(totalCalls)}</td>
-                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#8b5cf6' }}>{formatNumber(totalMeetings)}</td>
-                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#f59e0b' }}>{formatNumber(totalAppointments)}</td>
-                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#ec4899' }}>{formatNumber(totalProposals)}</td>
-                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#10b981' }}>{formatNumber(totalOrders)}</td>
-                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#059669' }}>{formatCurrency(totalWonAmount)}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            {/* ═══ TEMSİLCİ BAZLI TABLO ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24, overflow: 'visible' }}>
-                <div className="ceo-section-header">
-                    <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><UserCheck size={18} /></div>
-                    <h2>Temsilci Bazlı Talep Raporu</h2>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{agentTable.length} temsilci</span>
-                </div>
-                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    {agentTable.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
-                            <UserCheck size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
-                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Temsilci verisi bulunamadı</p>
-                        </div>
-                    ) : (
-                        <table className="ceo-league-table" style={{ minWidth: 800 }}>
-                            <thead>
-                                <tr>
-                                    <th>Temsilci</th>
-                                    <th>Talep</th>
-                                    <th>Kişi</th>
-                                    <th>Arama</th>
-                                    <th>Görüşme</th>
-                                    <th>Randevu</th>
-                                    <th>Teklif</th>
-                                    <th>Sipariş</th>
-                                    <th>Ciro (Satış)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {agentTable.map((agent, idx) => {
-                                    const isExpanded = expandedAgent === (agent.agentId || idx);
-                                    const topicEntries = Object.entries(agent.topicBreakdown || {}).sort((a, b) => b[1].count - a[1].count);
-                                    return (
-                                        <React.Fragment key={agent.agentId || idx}>
-                                            <tr
-                                                style={{ cursor: topicEntries.length > 0 ? 'pointer' : 'default' }}
-                                                onClick={() => topicEntries.length > 0 && setExpandedAgent(isExpanded ? null : (agent.agentId || idx))}
-                                            >
-                                                <td>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                        {topicEntries.length > 0 && (
-                                                            <ChevronRight size={14} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
-                                                        )}
-                                                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', color: '#6366f1', flexShrink: 0 }}>
-                                                            {agent.agentName?.charAt(0)}
-                                                        </div>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{agent.agentName}</div>
-                                                    </div>
-                                                </td>
-                                                <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{agent.caseCount}</span></td>
-                                                <td><span style={{ fontWeight: 700 }}>{agent.contactCount}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: agent.calls > 0 ? '#059669' : '#d1d5db' }}>{agent.calls}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: agent.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{agent.meetings}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: agent.appointments > 0 ? '#f97316' : '#d1d5db' }}>{agent.appointments}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: agent.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{agent.proposals}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: agent.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{agent.orders}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: agent.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{agent.wonAmount ? formatCurrency(agent.wonAmount) : '0 ₺'}</span></td>
-                                            </tr>
-                                            {isExpanded && topicEntries.length > 0 && (
-                                                <tr>
-                                                    <td colSpan={9} style={{ padding: 0, background: '#f8fafc' }}>
-                                                        <div style={{ padding: '16px 20px 16px 56px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                                                                <ClipboardList size={14} style={{ color: '#6366f1' }} />
-                                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>{agent.agentName} — Konu Dağılımı</span>
-                                                                <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600 }}>{topicEntries.length} konu</span>
-                                                            </div>
-                                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                                                <thead>
-                                                                    <tr style={{ background: '#e2e8f0' }}>
-                                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
-                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Talep</th>
-                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Satış</th>
-                                                                        <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>Ciro</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    {topicEntries.slice(0, 20).map(([topic, td]) => (
-                                                                        <tr key={topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                                            <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic}</td>
-                                                                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#6366f1' }}>{td.count}</td>
-                                                                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: td.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{td.wonCount || 0}</td>
-                                                                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: td.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{td.wonAmount ? formatCurrency(td.wonAmount) : '—'}</td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    );
-                                })}
-                                {/* Toplam satırı */}
-                                <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
-                                    <td style={{ color: '#059669' }}>Toplam</td>
-                                    <td><span style={{ color: '#6366f1' }}>{agentTable.reduce((s, a) => s + a.caseCount, 0)}</span></td>
-                                    <td><span style={{ color: '#0f172a' }}>{agentTable.reduce((s, a) => s + a.contactCount, 0)}</span></td>
-                                    <td><span style={{ color: '#059669' }}>{totalCalls}</span></td>
-                                    <td><span style={{ color: '#0ea5e9' }}>{totalMeetings}</span></td>
-                                    <td><span style={{ color: '#f97316' }}>{totalAppointments}</span></td>
-                                    <td><span style={{ color: '#8b5cf6' }}>{totalProposals}</span></td>
-                                    <td><span style={{ color: '#f59e0b' }}>{totalOrders}</span></td>
-                                    <td><span style={{ color: '#10b981' }}>{formatCurrency(totalWonAmount)}</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    )}
-                </div>
-            </div>
-
-            {/* ═══ KONU BAZLI TALEP TABLOSU ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24, overflow: 'visible' }}>
-                <div className="ceo-section-header">
-                    <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
-                    <h2>Konu Bazlı Talep Raporu</h2>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
-                </div>
-                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    {topicGroups.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
-                            <TrendingUp size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
-                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Konu verisi bulunamadı</p>
-                        </div>
-                    ) : (
-                        <table className="ceo-league-table" style={{ minWidth: 800 }}>
-                            <thead>
-                                <tr>
-                                    <th>Konu</th>
-                                    <th>Talep</th>
-                                    <th>Arama</th>
-                                    <th>Görüşme</th>
-                                    <th>Randevu</th>
-                                    <th>Teklif</th>
-                                    <th>Sipariş</th>
-                                    <th>Satış</th>
-                                    <th>Ciro</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {topicGroups.map((group, gi) => {
-                                    const isTopicExpanded = expandedTopics[group.name];
-                                    return (
-                                        <React.Fragment key={gi}>
-                                            <tr
-                                                style={{ borderBottom: (!isTopicExpanded && gi < topicGroups.length - 1) ? '1px solid #f1f5f9' : 'none', cursor: group.sources?.length > 0 ? 'pointer' : 'default' }}
-                                                onClick={() => group.sources?.length > 0 && setExpandedTopics(p => ({ ...p, [group.name]: !p[group.name] }))}
-                                            >
-                                                <td>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                        {group.sources?.length > 0 && <ChevronRight size={12} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: isTopicExpanded ? 'rotate(90deg)' : 'none' }} />}
-                                                        <span style={{ fontSize: '0.9rem' }}>{group.icon || '📁'}</span>
-                                                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: group.color || '#0f172a' }}>{group.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{group.count}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.calls > 0 ? '#059669' : '#d1d5db' }}>{group.calls}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{group.meetings}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.appointments > 0 ? '#f97316' : '#d1d5db' }}>{group.appointments}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{group.proposals}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{group.orders}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonCount}</span></td>
-                                                <td><span style={{ fontWeight: 700, color: group.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonAmount ? formatCurrency(group.wonAmount) : '—'}</span></td>
-                                            </tr>
-                                            {isTopicExpanded && group.sources?.map((src, si) => (
-                                                <tr key={`${gi}-src-${si}`} style={{ background: '#f8fafc', borderBottom: si < group.sources.length - 1 ? '1px solid #f1f5f9' : (gi < topicGroups.length - 1 ? '1px solid #e2e8f0' : 'none') }}>
-                                                    <td style={{ paddingLeft: 48 }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                            <Globe size={11} style={{ color: '#8b5cf6' }} />
-                                                            <span style={{ fontWeight: 600, fontSize: '0.78rem', color: '#64748b' }}>{src.name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td><span style={{ fontWeight: 600, fontSize: '0.78rem', color: '#6366f1' }}>{src.count}</span></td>
-                                                    <td colSpan={5}></td>
-                                                    <td><span style={{ fontWeight: 600, fontSize: '0.78rem', color: src.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{src.wonCount}</span></td>
-                                                    <td><span style={{ fontWeight: 600, fontSize: '0.78rem', color: src.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{src.wonAmount ? formatCurrency(src.wonAmount) : '—'}</span></td>
-                                                </tr>
-                                            ))}
-                                        </React.Fragment>
-                                    );
-                                })}
-                                <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
-                                    <td style={{ color: '#059669' }}>Toplam</td>
-                                    <td><span style={{ color: '#6366f1' }}>{topicGroups.reduce((s, g) => s + g.count, 0)}</span></td>
-                                    <td><span style={{ color: '#059669' }}>{topicGroups.reduce((s, g) => s + g.calls, 0)}</span></td>
-                                    <td><span style={{ color: '#0ea5e9' }}>{topicGroups.reduce((s, g) => s + g.meetings, 0)}</span></td>
-                                    <td><span style={{ color: '#f97316' }}>{topicGroups.reduce((s, g) => s + g.appointments, 0)}</span></td>
-                                    <td><span style={{ color: '#8b5cf6' }}>{topicGroups.reduce((s, g) => s + g.proposals, 0)}</span></td>
-                                    <td><span style={{ color: '#f59e0b' }}>{topicGroups.reduce((s, g) => s + g.orders, 0)}</span></td>
-                                    <td><span style={{ color: '#10b981' }}>{topicGroups.reduce((s, g) => s + g.wonCount, 0)}</span></td>
-                                    <td><span style={{ color: '#10b981' }}>{formatCurrency(topicGroups.reduce((s, g) => s + g.wonAmount, 0))}</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    )}
-                </div>
-            </div>
-
-            {/* ═══ AKIŞ BAZLI TALEP RAPORU ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24 }}>
-                <div className="ceo-section-header">
-                    <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><Layers size={18} /></div>
-                    <h2>Akış Bazlı Talep Raporu</h2>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{funnelGroups.length} akış</span>
-                </div>
-                <div className="ceo-section-body" style={{ padding: 0 }}>
-                    {funnelGroups.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
-                            <Layers size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
-                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Akış verisi bulunamadı</p>
-                        </div>
-                    ) : funnelGroups.map((group, gi) => {
-                        const isExpanded = expandedFunnels[group.name];
-                        return (
-                            <div key={gi} style={{ borderBottom: gi < funnelGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                <div
-                                    onClick={() => setExpandedFunnels(p => ({ ...p, [group.name]: !p[group.name] }))}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', transition: 'background 0.15s' }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                >
-                                    <ChevronRight size={14} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }} />
-                                    <Layers size={16} style={{ color: '#8b5cf6' }} />
-                                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
-                                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#8b5cf6' }}>{group.count}</span>
-                                    {group.wonCount > 0 && (
-                                        <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
-                                            {group.wonCount} satış
-                                        </span>
-                                    )}
-                                </div>
-                                {isExpanded && group.stages && (
-                                    <div style={{ padding: '4px 16px 12px 46px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                        {group.stages.map((s, i) => (
-                                            <span key={i} style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                padding: '4px 10px', borderRadius: 8,
-                                                background: `${s.color || '#64748b'}15`,
-                                                fontSize: '0.75rem', fontWeight: 700, color: s.color || '#64748b'
-                                            }}>
-                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color || '#64748b' }} />
-                                                {s.name} <span style={{ fontWeight: 800, marginLeft: 2 }}>{s.count}</span>
-                                            </span>
+                <div className="ra-surface ra-hero">
+                    <div className="ra-hero-left">
+                        <div className="ra-metric-label">Toplam Talep</div>
+                        <div className="ra-metric-value">{tr(totalCount)}</div>
+                        <div className="ra-metric-note">{tr(totalCases)} başvuru · {tr(totalDeals)} satış kaydı</div>
+                        <div className="ra-split">
+                            {totalCount > 0 ? (
+                                <>
+                                    <div className="ra-bar">
+                                        {evalSegs.map(e => (
+                                            <span key={e.label} style={{ width: `${(e.count / totalCount) * 100}%`, background: e.color }}
+                                                title={`${e.label}: ${e.count}`} />
                                         ))}
                                     </div>
-                                )}
+                                    <div className="ra-legend" style={{ marginTop: 12 }}>
+                                        {evalSegs.map(e => (
+                                            <div className="ra-legend-item" key={e.label}>
+                                                <i className="ra-dot" style={{ background: e.color }} />
+                                                <span className="ra-legend-text">{e.label}</span>
+                                                <span className="ra-legend-count">{tr(e.count)}</span>
+                                                <span style={{ fontSize: '.72rem', color: '#94a3b8' }}>
+                                                    %{((e.count / totalCount) * 100).toFixed(1)}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : <div className="ra-bar" />}
+                        </div>
+                    </div>
+
+                    <div className="ra-hero-right">
+                        <div className="ra-chart-head">
+                            <span className="ra-chart-title">Taleplere ne yapıldı</span>
+                            <span className="ra-chart-peak">dönem toplamı</span>
+                        </div>
+                        <div className="ra-acts">
+                            {acts.map(a => (
+                                <div className="ra-actrow" key={a.nm}>
+                                    <span className="nm">{a.nm}</span>
+                                    <div className="bar"><i style={{ width: `${((a.v || 0) / actMax) * 100}%`, background: a.c }} /></div>
+                                    <span className="val">{a.v ? tr(a.v) : '—'}</span>
+                                </div>
+                            ))}
+                            <div className="ra-acts-money">
+                                <span className="k">Ciro (satış)</span>
+                                <span className="v">{money(totalWonAmount)}</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="ra-surface ra-strip" style={{ marginBottom: 22 }}>
+                    {strip.map(c => (
+                        <div className="ra-cell" key={c.label}>
+                            <div className="ra-cell-label"><i className="ra-cell-dot" style={{ background: c.dot }} />{c.label}</div>
+                            <div className="ra-cell-value">{c.value}</div>
+                            <div className="ra-cell-sub">{c.sub}</div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="ra-anchors">
+                    <a className="ra-anchor" href="#s-agent">Temsilci <b>{tr(agentTable.length)}</b></a>
+                    <a className="ra-anchor" href="#s-topic">Konu <b>{tr(topicGroups.length)}</b></a>
+                    <a className="ra-anchor" href="#s-funnel">Akış <b>{tr(funnelGroups.length)}</b></a>
+                    <a className="ra-anchor" href="#s-source">Kaynak <b>{tr(sourceGroups.length)}</b></a>
+                </div>
+
+                {/* ── Temsilci Bazlı ── */}
+                <Section id="s-agent" title="Temsilci Bazlı" meta={`${tr(agentTable.length)} temsilci`} cols={COLS}>
+                    {agents.length === 0 ? <Empty text="Temsilci kaydı yok" /> : (
+                        <>
+                            {agents.map((a, i) => {
+                                const key = a.agentId || i;
+                                const rows = Object.entries(a.topicBreakdown || {}).sort((x, y) => y[1].count - x[1].count);
+                                const open = expandedAgent === key;
+                                return (
+                                    <React.Fragment key={key}>
+                                        <div className={`ra-brow${rows.length ? ' clickable' : ''}${open ? ' open' : ''}`}
+                                            onClick={rows.length ? () => setExpandedAgent(open ? null : key) : undefined}>
+                                            {rows.length ? <span className="caret"><ChevronRight size={14} /></span> : <span />}
+                                            <div>
+                                                <div className="nm">{a.agentName}</div>
+                                                <div className="sub">{tr(a.contactCount)} kişi · {tr(a.messageCount)} mesaj</div>
+                                            </div>
+                                            <div className="ra-primary">
+                                                <div className="top"><span className="v">{tr(a.caseCount)}</span><span className="u">talep</span></div>
+                                                <div className="bar"><i style={{ width: `${(a.caseCount / agentMax) * 100}%` }} /></div>
+                                            </div>
+                                            <Metric v={a.calls} k="arama" />
+                                            <Metric v={a.meetings} k="görüşme" />
+                                            <Metric v={a.appointments} k="randevu" />
+                                            {hasProposals && <Metric v={a.proposals} k="teklif" />}
+                                            <Metric v={a.dealOrders ?? a.orders} k="sipariş" />
+                                            <Metric v={a.wonCount} k="satış" />
+                                            <Metric v={a.wonAmount} k="ciro" isMoney />
+                                        </div>
+                                        {open && rows.length > 0 && (
+                                            <div className="ra-sub-wrap">
+                                                <div className="ra-sub-head">
+                                                    <span className="ra-sub-title">{a.agentName} — Konu Dağılımı</span>
+                                                    <span className="ra-sub-count">{tr(rows.length)} konu</span>
+                                                </div>
+                                                <div className="ra-srow head">
+                                                    <span>Konu</span>
+                                                    <span style={{ textAlign: 'right' }}>Talep</span>
+                                                    <span style={{ textAlign: 'right' }}>Satış</span>
+                                                    <span style={{ textAlign: 'right' }}>Ciro</span>
+                                                </div>
+                                                {rows.slice(0, 20).map(([t, d]) => (
+                                                    <div className="ra-srow" key={t}>
+                                                        <span className="t" title={t}>{t}</span>
+                                                        <SubCell v={d.count} /><SubCell v={d.wonCount} /><SubCell v={d.wonAmount} isMoney />
+                                                    </div>
+                                                ))}
+                                                <div className="ra-srow" style={{ boxShadow: 'inset 0 1px 0 var(--ink-3)' }}>
+                                                    <span className="t" style={{ fontWeight: 800 }}>Toplam</span>
+                                                    <span className="n" style={{ fontWeight: 800 }}>{tr(sum(rows, r => r[1].count))}</span>
+                                                    <span className="n" style={{ fontWeight: 800 }}>{tr(sum(rows, r => r[1].wonCount))}</span>
+                                                    <span className="n money" style={{ fontWeight: 800 }}>{money(sum(rows, r => r[1].wonAmount))}</span>
+                                                </div>
+                                                {rows.length > 20 && (
+                                                    <div className="ra-sub-more">{tr(rows.length - 20)} konu daha — ilk 20 gösteriliyor</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
+                            <div className="ra-brow total">
+                                <span /><div className="nm">Toplam</div>
+                                <div className="ra-primary"><div className="top"><span className="v">{tr(sum(agents, a => a.caseCount))}</span><span className="u">talep</span></div></div>
+                                <Metric v={sum(agents, a => a.calls)} k="arama" />
+                                <Metric v={sum(agents, a => a.meetings)} k="görüşme" />
+                                <Metric v={sum(agents, a => a.appointments)} k="randevu" />
+                                {hasProposals && <Metric v={sum(agents, a => a.proposals)} k="teklif" />}
+                                <Metric v={sum(agents, a => a.dealOrders ?? a.orders)} k="sipariş" />
+                                <Metric v={sum(agents, a => a.wonCount)} k="satış" />
+                                <Metric v={sum(agents, a => a.wonAmount)} k="ciro" isMoney />
+                            </div>
+                        </>
+                    )}
+                </Section>
+
+                {/* ── Konu Bazlı ── */}
+                <Section id="s-topic" title="Konu Bazlı" meta={`${tr(topicGroups.length)} kategori`} cols={COLS}>
+                    {topics.length === 0 ? <Empty text="Konu kaydı yok" /> : (
+                        <>
+                            {topics.map((g, gi) => {
+                                const srcs = g.sources || [];
+                                const open = !!expandedTopics[g.name];
+                                return (
+                                    <React.Fragment key={g.name || gi}>
+                                        <div className={`ra-brow${srcs.length ? ' clickable' : ''}${open ? ' open' : ''}`}
+                                            onClick={srcs.length ? () => setExpandedTopics(p => ({ ...p, [g.name]: !p[g.name] })) : undefined}>
+                                            {srcs.length ? <span className="caret"><ChevronRight size={14} /></span> : <span />}
+                                            <div>
+                                                <div className="nm">{g.name}</div>
+                                                {srcs.length > 0 && <div className="sub">{tr(srcs.length)} kaynak</div>}
+                                            </div>
+                                            <div className="ra-primary">
+                                                <div className="top"><span className="v">{tr(g.count)}</span><span className="u">talep</span></div>
+                                                <div className="bar"><i style={{ width: `${(g.count / topicMax) * 100}%` }} /></div>
+                                            </div>
+                                            <Metric v={g.calls} k="arama" />
+                                            <Metric v={g.meetings} k="görüşme" />
+                                            <Metric v={g.appointments} k="randevu" />
+                                            {hasProposals && <Metric v={g.proposals} k="teklif" />}
+                                            <Metric v={g.orders} k="sipariş" />
+                                            <Metric v={g.wonCount} k="satış" />
+                                            <Metric v={g.wonAmount} k="ciro" isMoney />
+                                        </div>
+                                        {open && srcs.length > 0 && (
+                                            <div className="ra-sub-wrap">
+                                                <div className="ra-sub-head">
+                                                    <span className="ra-sub-title">{g.name} — Kaynak Dağılımı</span>
+                                                    <span className="ra-sub-count">{tr(srcs.length)} kaynak</span>
+                                                </div>
+                                                <div className="ra-srow head">
+                                                    <span>Kaynak</span>
+                                                    <span style={{ textAlign: 'right' }}>Talep</span>
+                                                    <span style={{ textAlign: 'right' }}>Satış</span>
+                                                    <span style={{ textAlign: 'right' }}>Ciro</span>
+                                                </div>
+                                                {srcs.map(s => (
+                                                    <div className="ra-srow" key={s.name}>
+                                                        <span className="t">{s.name}</span>
+                                                        <SubCell v={s.count} /><SubCell v={s.wonCount} /><SubCell v={s.wonAmount} isMoney />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
+                            <div className="ra-brow total">
+                                <span /><div className="nm">Toplam</div>
+                                <div className="ra-primary"><div className="top"><span className="v">{tr(sum(topics, g => g.count))}</span><span className="u">talep</span></div></div>
+                                <Metric v={sum(topics, g => g.calls)} k="arama" />
+                                <Metric v={sum(topics, g => g.meetings)} k="görüşme" />
+                                <Metric v={sum(topics, g => g.appointments)} k="randevu" />
+                                {hasProposals && <Metric v={sum(topics, g => g.proposals)} k="teklif" />}
+                                <Metric v={sum(topics, g => g.orders)} k="sipariş" />
+                                <Metric v={sum(topics, g => g.wonCount)} k="satış" />
+                                <Metric v={sum(topics, g => g.wonAmount)} k="ciro" isMoney />
+                            </div>
+                        </>
+                    )}
+                </Section>
+
+                {/* ── Akış Bazlı ── */}
+                <Section id="s-funnel" title="Akış Bazlı" meta={`${tr(funnelGroups.length)} akış`} cols={2}>
+                    {funnels.length === 0 ? <Empty text="Akış kaydı yok" /> : funnels.map((g, gi) => {
+                        const stages = g.stages || [];
+                        const open = !!expandedFunnels[g.name];
+                        return (
+                            <React.Fragment key={g.funnelId || gi}>
+                                <div className={`ra-brow${stages.length ? ' clickable' : ''}${open ? ' open' : ''}`}
+                                    onClick={stages.length ? () => setExpandedFunnels(p => ({ ...p, [g.name]: !p[g.name] })) : undefined}>
+                                    {stages.length ? <span className="caret"><ChevronRight size={14} /></span> : <span />}
+                                    <div>
+                                        <div className="nm">{g.name}</div>
+                                        {stages.length > 0 && <div className="sub">{tr(stages.length)} aşama</div>}
+                                    </div>
+                                    <div className="ra-primary">
+                                        <div className="top"><span className="v">{tr(g.count)}</span><span className="u">talep</span></div>
+                                        <div className="bar"><i style={{ width: `${(g.count / funnelMax) * 100}%` }} /></div>
+                                    </div>
+                                    <Metric v={g.wonCount} k="satış" />
+                                    <Metric v={g.wonAmount} k="ciro" isMoney />
+                                </div>
+                                {open && stages.length > 0 && (
+                                    <div className="ra-sub-wrap">
+                                        <div className="ra-sub-head">
+                                            <span className="ra-sub-title">{g.name} — Aşamalar</span>
+                                            <span className="ra-sub-count">{tr(stages.length)} aşama</span>
+                                        </div>
+                                        <div className="ra-stages">
+                                            {stages.map((s, i) => (
+                                                <span className="ra-stage-pill" key={`${s.name}-${i}`}>
+                                                    <i style={{ background: s.color || '#cbd5e1' }} />{s.name} <b>{tr(s.count)}</b>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </React.Fragment>
                         );
                     })}
-                </div>
-        </div>
+                </Section>
 
-            {/* ═══ KAYNAK BAZLI TALEP ANALİZİ ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24, overflow: 'visible' }}>
-                <div className="ceo-section-header">
-                    <div className="ceo-section-icon" style={{ background: '#faf5ff', color: '#8b5cf6' }}><Globe size={18} /></div>
-                    <h2>Kaynak Bazlı Talep Analizi</h2>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{sourceGroups.length} kaynak</span>
-                </div>
-                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    {sourceGroups.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
-                            <Globe size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
-                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Kaynak verisi bulunamadı</p>
-                        </div>
-                    ) : (
-                        <table className="ceo-league-table" style={{ minWidth: 800 }}>
-                            <thead>
-                                <tr>
-                                    <th>Kaynak</th>
-                                    <th>Talep</th>
-                                    <th>Arama</th>
-                                    <th>Görüşme</th>
-                                    <th>Randevu</th>
-                                    <th>Teklif</th>
-                                    <th>Sipariş</th>
-                                    <th>Satış</th>
-                                    <th>Ciro</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {sourceGroups.map((group, gi) => (
-                                    <tr key={gi} style={{ borderBottom: gi < sourceGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <Globe size={14} style={{ color: '#8b5cf6' }} />
-                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{group.name}</span>
-                                            </div>
-                                        </td>
-                                        <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{group.count}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.calls > 0 ? '#059669' : '#d1d5db' }}>{group.calls}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{group.meetings}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.appointments > 0 ? '#f97316' : '#d1d5db' }}>{group.appointments}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{group.proposals}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{group.orders}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonCount}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonAmount ? formatCurrency(group.wonAmount) : '—'}</span></td>
-                                    </tr>
-                                ))}
-                                <tr style={{ background: '#faf5ff', fontWeight: 800 }}>
-                                    <td style={{ color: '#8b5cf6' }}>Toplam</td>
-                                    <td><span style={{ color: '#6366f1' }}>{sourceGroups.reduce((s, g) => s + g.count, 0)}</span></td>
-                                    <td><span style={{ color: '#059669' }}>{sourceGroups.reduce((s, g) => s + g.calls, 0)}</span></td>
-                                    <td><span style={{ color: '#0ea5e9' }}>{sourceGroups.reduce((s, g) => s + g.meetings, 0)}</span></td>
-                                    <td><span style={{ color: '#f97316' }}>{sourceGroups.reduce((s, g) => s + g.appointments, 0)}</span></td>
-                                    <td><span style={{ color: '#8b5cf6' }}>{sourceGroups.reduce((s, g) => s + g.proposals, 0)}</span></td>
-                                    <td><span style={{ color: '#f59e0b' }}>{sourceGroups.reduce((s, g) => s + g.orders, 0)}</span></td>
-                                    <td><span style={{ color: '#10b981' }}>{sourceGroups.reduce((s, g) => s + g.wonCount, 0)}</span></td>
-                                    <td><span style={{ color: '#10b981' }}>{formatCurrency(sourceGroups.reduce((s, g) => s + g.wonAmount, 0))}</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
+                {/* ── Kaynak Bazlı ── */}
+                <Section id="s-source" title="Kaynak Bazlı" meta={`${tr(sourceGroups.length)} kaynak`} cols={COLS}>
+                    {sources.length === 0 ? <Empty text="Kaynak verisi bulunamadı" /> : (
+                        <>
+                            {sources.map(g => (
+                                <div className="ra-brow" key={g.name}>
+                                    <span /><div><div className="nm">{g.name}</div></div>
+                                    <div className="ra-primary">
+                                        <div className="top"><span className="v">{tr(g.count)}</span><span className="u">talep</span></div>
+                                        <div className="bar"><i style={{ width: `${(g.count / sourceMax) * 100}%` }} /></div>
+                                    </div>
+                                    <Metric v={g.calls} k="arama" />
+                                    <Metric v={g.meetings} k="görüşme" />
+                                    <Metric v={g.appointments} k="randevu" />
+                                    {hasProposals && <Metric v={g.proposals} k="teklif" />}
+                                    <Metric v={g.orders} k="sipariş" />
+                                    <Metric v={g.wonCount} k="satış" />
+                                    <Metric v={g.wonAmount} k="ciro" isMoney />
+                                </div>
+                            ))}
+                            <div className="ra-brow total">
+                                <span /><div className="nm">Toplam</div>
+                                <div className="ra-primary"><div className="top"><span className="v">{tr(sum(sources, g => g.count))}</span><span className="u">talep</span></div></div>
+                                <Metric v={sum(sources, g => g.calls)} k="arama" />
+                                <Metric v={sum(sources, g => g.meetings)} k="görüşme" />
+                                <Metric v={sum(sources, g => g.appointments)} k="randevu" />
+                                {hasProposals && <Metric v={sum(sources, g => g.proposals)} k="teklif" />}
+                                <Metric v={sum(sources, g => g.orders)} k="sipariş" />
+                                <Metric v={sum(sources, g => g.wonCount)} k="satış" />
+                                <Metric v={sum(sources, g => g.wonAmount)} k="ciro" isMoney />
+                            </div>
+                        </>
                     )}
-                </div>
+                </Section>
+
             </div>
         </div>
     );
