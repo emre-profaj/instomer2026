@@ -2162,12 +2162,15 @@ export const getCampaignRecipients = async (req, res) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// RETRY FAILED — Başarısız alıcılara tekrar gönderim
+// RETRY — Durum filtresine göre alıcılara tekrar gönderim
+// Body: { groupId?: string, status?: string } — status yoksa varsayılan FAILED
 // ══════════════════════════════════════════════════════════════════════════
 
 export const retryCampaignFailed = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
+        const { groupId, status } = req.body || {};
+        const targetStatus = status || 'FAILED';
 
         const campaign = await prisma.marketingCampaign.findFirst({
             where: { id, workspaceId },
@@ -2182,12 +2185,15 @@ export const retryCampaignFailed = async (req, res) => {
         });
         if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
 
-        const failedRecipients = await prisma.marketingRecipient.findMany({
-            where: { campaignId: id, status: 'FAILED' }
+        const whereClause = { campaignId: id, status: targetStatus };
+        if (groupId) whereClause.groupId = groupId;
+
+        const targetRecipients = await prisma.marketingRecipient.findMany({
+            where: whereClause
         });
 
-        if (failedRecipients.length === 0) {
-            return res.json({ success: true, retried: 0, message: 'Başarısız alıcı yok' });
+        if (targetRecipients.length === 0) {
+            return res.json({ success: true, retried: 0, message: `${targetStatus} durumunda alıcı yok` });
         }
 
         // WhatsApp numarasını bul
@@ -2227,8 +2233,8 @@ export const retryCampaignFailed = async (req, res) => {
 
         res.json({
             success: true,
-            retrying: failedRecipients.length,
-            message: `${failedRecipients.length} başarısız alıcıya tekrar gönderiliyor...`
+            retrying: targetRecipients.length,
+            message: `${targetRecipients.length} alıcıya tekrar gönderiliyor...`
         });
 
         // Arka planda gönder
@@ -2236,7 +2242,7 @@ export const retryCampaignFailed = async (req, res) => {
         setImmediate(async () => {
             let retried = 0, stillFailed = 0;
 
-            for (const recipient of failedRecipients) {
+            for (const recipient of targetRecipients) {
                 try {
                     await prisma.marketingRecipient.update({
                         where: { id: recipient.id },

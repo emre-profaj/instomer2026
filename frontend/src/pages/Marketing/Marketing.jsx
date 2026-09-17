@@ -6,7 +6,7 @@ import api, { marketingV2API } from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
     BarChart2, Phone, Mail, Smartphone, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
-    Loader2, Sparkles, RefreshCw, Calendar, Filter, X, Eye
+    Loader2, Sparkles, RefreshCw, Calendar, Filter, X, Eye, RotateCcw
 } from 'lucide-react';
 import CampaignWizardModal from './CampaignWizardModal';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
@@ -815,127 +815,75 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                             </div>
                                                         </summary>
 
-                                                        {/* Gönderimler Listesi */}
-                                                        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                        {/* ═══ Bölüm 1: GÖNDERİMLER ═══ */}
+                                                        <div style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                            <div style={{
+                                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                                padding: '10px 16px', background: '#f8fafc'
+                                                            }}>
+                                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                    <Send size={13} style={{ color: '#2563eb' }} /> Gönderimler ({grp.sends.length})
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); /* TODO: Yeni gönderim modal */ }}
+                                                                    style={{
+                                                                        padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                                                                        background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer',
+                                                                        display: 'flex', alignItems: 'center', gap: 4
+                                                                    }}
+                                                                >
+                                                                    <Plus size={12} /> Yeni Gönderim
+                                                                </button>
+                                                            </div>
+
                                                             {grp.sends.map((g, idx) => {
-                                                                const chBadge = CHANNEL_BADGE[g.channel] || {};
                                                                 const sent = g.sentCount || 0;
                                                                 const delivered = g.deliveredCount || 0;
                                                                 const read = g.readCount || 0;
                                                                 const failed = g.failedCount || 0;
                                                                 const total = g.totalCount || sent;
-                                                                const rate = total > 0 ? Math.round((delivered / total) * 100) : 0;
                                                                 const dateStr = g.sentAt ? new Date(g.sentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
                                                                     : g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
                                                                     : new Date(g.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
 
                                                                 return (
-                                                                    <div key={g.id} style={{
-                                                                        background: expandedSendId === g.id ? '#fff' : '#fafbfc', borderRadius: 10,
-                                                                        border: expandedSendId === g.id ? '1px solid #2563eb40' : '1px solid #f1f5f9',
-                                                                        overflow: 'hidden', transition: 'all 0.2s'
-                                                                    }}>
-                                                                        {/* Gönderi Başlığı — Tıklanabilir */}
+                                                                    <div key={g.id}>
+                                                                        {/* Gönderi Satırı */}
                                                                         <div
                                                                             onClick={() => toggleSendExpand(g.id)}
                                                                             style={{
                                                                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                                                padding: '12px 16px', cursor: 'pointer', userSelect: 'none'
+                                                                                padding: '10px 16px', cursor: 'pointer', userSelect: 'none',
+                                                                                borderBottom: '1px solid #f1f5f9',
+                                                                                background: expandedSendId === g.id ? '#f0f7ff' : 'transparent',
+                                                                                transition: 'background 0.15s'
                                                                             }}
                                                                         >
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                                <span style={{
-                                                                                    width: 22, height: 22, borderRadius: 6,
-                                                                                    background: chBadge.bg || '#f1f5f9',
-                                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                                    fontSize: 11
-                                                                                }}>{chBadge.icon || <Send size={10}/>}</span>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                                                {expandedSendId === g.id
+                                                                                    ? <ChevronDown size={13} style={{ color: '#2563eb' }} />
+                                                                                    : <ChevronRight size={13} style={{ color: '#94a3b8' }} />}
                                                                                 <div>
-                                                                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                                                                                        {g.name || `Gönderi ${idx + 1}`}
-                                                                                    </span>
-                                                                                    <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>
-                                                                                        📅 {dateStr}
-                                                                                    </span>
+                                                                                    <div style={{ fontWeight: 600, fontSize: 12, color: '#0f172a' }}>
+                                                                                        {g.name || `Gönderi #${idx + 1}`}
+                                                                                    </div>
+                                                                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>📅 {dateStr}</div>
                                                                                 </div>
                                                                             </div>
-                                                                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                                                {g.list && <span style={{ fontSize: 11, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 5, fontWeight: 500 }}>🎯 {g.list.name}</span>}
-                                                                                {g.segmentName && <span style={{ fontSize: 11, background: '#faf5ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 5, fontWeight: 500 }}>📊 {g.segmentName}</span>}
-                                                                                <span style={{
-                                                                                    padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
-                                                                                    background: g.status === 'COMPLETED' ? '#dcfce7' : g.status === 'SENDING' ? '#dbeafe' : '#f3f4f6',
-                                                                                    color: g.status === 'COMPLETED' ? '#166534' : g.status === 'SENDING' ? '#1e40af' : '#6b7280'
-                                                                                }}>{g.status || 'DRAFT'}</span>
-                                                                                {expandedSendId === g.id ? <ChevronDown size={14} style={{ color: '#2563eb' }} /> : <ChevronRight size={14} style={{ color: '#94a3b8' }} />}
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                                {g.list && <span style={{ fontSize: 10, background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>🎯 {g.list.name}</span>}
+                                                                                {g.segmentName && <span style={{ fontSize: 10, background: '#faf5ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>📊 {g.segmentName}</span>}
+                                                                                <span style={{ fontSize: 11, fontWeight: 600, color: '#0f172a' }}>{total} kişi</span>
+                                                                                {delivered > 0 && <span style={{ fontSize: 10, fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 5 }}>✅ {delivered}</span>}
+                                                                                {read > 0 && <span style={{ fontSize: 10, fontWeight: 600, background: '#f3e8ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 5 }}>👁 {read}</span>}
+                                                                                {failed > 0 && <span style={{ fontSize: 10, fontWeight: 600, background: '#fef2f2', color: '#dc2626', padding: '2px 7px', borderRadius: 5 }}>❌ {failed}</span>}
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* İstatistikler */}
-                                                                        {sent > 0 && (
-                                                                            <div style={{ padding: '0 16px 8px' }}>
-                                                                                <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#64748b', marginBottom: 4 }}>
-                                                                                    <span>Gönderilen: <strong style={{ color: '#334155' }}>{sent}</strong></span>
-                                                                                    <span>Teslim: <strong style={{ color: '#16a34a' }}>{delivered}</strong></span>
-                                                                                    <span>Okunan: <strong style={{ color: '#7c3aed' }}>{read}</strong></span>
-                                                                                    {failed > 0 && <span>Başarısız: <strong style={{ color: '#dc2626' }}>{failed}</strong></span>}
-                                                                                    <span style={{ marginLeft: 'auto', fontWeight: 600, color: rate >= 80 ? '#16a34a' : rate >= 50 ? '#f59e0b' : '#dc2626' }}>%{rate}</span>
-                                                                                </div>
-                                                                                <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, overflow: 'hidden' }}>
-                                                                                    <div style={{
-                                                                                        height: '100%', borderRadius: 2,
-                                                                                        background: rate >= 80 ? '#16a34a' : rate >= 50 ? '#f59e0b' : '#dc2626',
-                                                                                        width: `${rate}%`, transition: 'width 0.5s ease'
-                                                                                    }} />
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {/* Bağlı Mesajlar — İçerik Önizlemesi */}
-                                                                        {g.groupMessages && g.groupMessages.length > 0 && (
-                                                                            <div style={{ padding: '0 16px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                                                                {g.groupMessages.map(gm => {
-                                                                                    const msg = gm.message;
-                                                                                    if (!msg) return null;
-                                                                                    const chB = CHANNEL_BADGE[msg.channel] || {};
-                                                                                    const preview = msg.content || msg.emailBody || msg.bodyText || '';
-                                                                                    return (
-                                                                                        <div key={gm.messageId || gm.id} style={{
-                                                                                            background: '#fff', border: '1px solid #e2e8f0',
-                                                                                            borderRadius: 8, padding: '8px 12px'
-                                                                                        }}>
-                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: preview ? 6 : 0 }}>
-                                                                                                <MessageSquare size={12} style={{ color: chB.color || '#64748b' }} />
-                                                                                                <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{msg.name || 'Mesaj'}</span>
-                                                                                                {msg.templateName && (
-                                                                                                    <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 4 }}>
-                                                                                                        📋 {msg.templateName}
-                                                                                                    </span>
-                                                                                                )}
-                                                                                                <span style={{ fontSize: 9, background: chB.bg || '#f3f4f6', color: chB.color || '#64748b', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
-                                                                                                    {chB.label || msg.channel}
-                                                                                                </span>
-                                                                                            </div>
-                                                                                            {preview && (
-                                                                                                <div style={{
-                                                                                                    fontSize: 12, color: '#475569', lineHeight: 1.5,
-                                                                                                    background: '#f8fafc', padding: '6px 10px', borderRadius: 6,
-                                                                                                    whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'hidden',
-                                                                                                    borderLeft: `3px solid ${chB.color || '#e2e8f0'}`
-                                                                                                }}>
-                                                                                                    {preview.length > 200 ? preview.substring(0, 200) + '...' : preview}
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        )}
-
-                                                                        {/* ── EXPANDED: Alıcı Listesi ── */}
+                                                                        {/* ── EXPANDED: Alıcı Listesi + Aksiyon Çubuğu ── */}
                                                                         {expandedSendId === g.id && (
                                                                             <div style={{
-                                                                                borderTop: '1px solid #e2e8f0', padding: '16px',
+                                                                                borderTop: '1px solid #e2e8f0', padding: '14px 16px',
                                                                                 background: '#f8fafc'
                                                                             }}>
                                                                                 {recipientsLoading ? (
@@ -950,46 +898,107 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                                 ) : (
                                                                                     <>
                                                                                         {/* Durum Filtreleri */}
-                                                                                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                                                        <div style={{ display: 'flex', gap: 5, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                                                                                             {[
                                                                                                 { key: 'ALL', label: 'Tümü', color: '#475569' },
                                                                                                 { key: 'SENT', label: '📤 Gönderildi', color: '#2563eb' },
                                                                                                 { key: 'DELIVERED', label: '✅ Teslim', color: '#16a34a' },
-                                                                                                { key: 'READ', label: '👁️ Okunan', color: '#7c3aed' },
+                                                                                                { key: 'READ', label: '👁️ Okundu', color: '#7c3aed' },
                                                                                                 { key: 'FAILED', label: '❌ Başarısız', color: '#dc2626' },
                                                                                                 { key: 'PENDING', label: '⏳ Bekleyen', color: '#f59e0b' }
                                                                                             ].map(f => {
                                                                                                 const cnt = f.key === 'ALL' ? sendRecipients.length : sendRecipients.filter(r => r.status === f.key).length;
                                                                                                 if (f.key !== 'ALL' && cnt === 0) return null;
+                                                                                                const isActive = recipientFilter === f.key;
                                                                                                 return (
                                                                                                     <button key={f.key}
                                                                                                         onClick={(e) => { e.stopPropagation(); setRecipientFilter(f.key); }}
                                                                                                         style={{
-                                                                                                            padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                                                                                                            border: recipientFilter === f.key ? `1px solid ${f.color}` : '1px solid #e2e8f0',
-                                                                                                            background: recipientFilter === f.key ? f.color + '15' : '#fff',
-                                                                                                            color: recipientFilter === f.key ? f.color : '#64748b',
-                                                                                                            cursor: 'pointer'
+                                                                                                            padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                                                                                                            border: isActive && f.key !== 'ALL' ? 'none' : '1px solid #e2e8f0',
+                                                                                                            background: isActive && f.key !== 'ALL' ? '#2563eb' : isActive ? '#f8fafc' : '#fff',
+                                                                                                            color: isActive && f.key !== 'ALL' ? '#fff' : isActive ? '#0f172a' : '#64748b',
+                                                                                                            cursor: 'pointer',
+                                                                                                            boxShadow: isActive && f.key !== 'ALL' ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
+                                                                                                            transition: 'all 0.15s'
                                                                                                         }}
                                                                                                     >{f.label} ({cnt})</button>
                                                                                                 );
                                                                                             })}
                                                                                             <div style={{ marginLeft: 'auto', position: 'relative' }}>
                                                                                                 <input
-                                                                                                    placeholder="Ara..."
+                                                                                                    placeholder="Kişi ara..."
                                                                                                     value={recipientSearch}
                                                                                                     onChange={e => setRecipientSearch(e.target.value)}
                                                                                                     onClick={e => e.stopPropagation()}
                                                                                                     style={{
-                                                                                                        padding: '5px 10px 5px 28px', borderRadius: 6, border: '1px solid #e2e8f0',
-                                                                                                        fontSize: 12, width: 160, outline: 'none'
+                                                                                                        padding: '5px 10px 5px 28px', borderRadius: 7, border: '1px solid #e2e8f0',
+                                                                                                        fontSize: 11, width: 140, outline: 'none'
                                                                                                     }}
                                                                                                 />
                                                                                                 <Search size={13} style={{ position: 'absolute', left: 8, top: 7, color: '#94a3b8' }} />
                                                                                             </div>
                                                                                         </div>
+
+                                                                                        {/* ★ AKSİYON ÇUBUĞU — Filtre seçilince belirir */}
+                                                                                        {recipientFilter !== 'ALL' && (() => {
+                                                                                            const filteredCount = sendRecipients.filter(r => r.status === recipientFilter).length;
+                                                                                            const statusLabels = { SENT: 'Gönderilen', DELIVERED: 'Teslim edilen', READ: 'Okuyan', FAILED: 'Başarısız', PENDING: 'Bekleyen' };
+                                                                                            return (
+                                                                                                <div style={{
+                                                                                                    display: 'flex', alignItems: 'center', gap: 10,
+                                                                                                    background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                                                                                                    borderRadius: 10, padding: '10px 16px', marginTop: 8, marginBottom: 8,
+                                                                                                    animation: 'fadeSlideUp 0.25s ease'
+                                                                                                }}>
+                                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 'auto' }}>
+                                                                                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', animation: 'pulse 1.5s infinite' }} />
+                                                                                                        <span style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 600 }}>
+                                                                                                            {statusLabels[recipientFilter] || recipientFilter} {filteredCount} kişi seçili
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                    <button
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            if (window.confirm(`${filteredCount} kişiye aynı mesajı tekrar göndermek istediğinize emin misiniz?`)) {
+                                                                                                                api.post(`/marketing-v2/${wsId}/campaigns/${detailCampaignId}/retry`, {
+                                                                                                                    groupId: g.id, status: recipientFilter
+                                                                                                                }).then(() => {
+                                                                                                                    alert(`${filteredCount} kişiye tekrar gönderim başlatıldı!`);
+                                                                                                                    toggleSendExpand(g.id);
+                                                                                                                    setTimeout(() => toggleSendExpand(g.id), 300);
+                                                                                                                }).catch(err => alert('Hata: ' + (err.response?.data?.error || err.message)));
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        style={{
+                                                                                                            padding: '6px 14px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                                                                                                            background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer',
+                                                                                                            display: 'flex', alignItems: 'center', gap: 4
+                                                                                                        }}
+                                                                                                    >
+                                                                                                        <RotateCcw size={12} /> Bu {filteredCount} Kişiye Tekrar Gönder
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            /* TODO: Yeni mesaj seçim modal'ı */
+                                                                                                            alert(`${filteredCount} kişiye yeni gönderim başlatılacak.\nMesaj seçim ekranı açılacak.`);
+                                                                                                        }}
+                                                                                                        style={{
+                                                                                                            padding: '6px 14px', borderRadius: 7, fontSize: 11, fontWeight: 600,
+                                                                                                            background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer',
+                                                                                                            display: 'flex', alignItems: 'center', gap: 4
+                                                                                                        }}
+                                                                                                    >
+                                                                                                        <Send size={12} /> Bu {filteredCount} Kişiye Yeni Gönderim Başlat
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })()}
+                                                                                        <style>{`@keyframes fadeSlideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }`}</style>
+
                                                                                         {/* Alıcı Tablosu */}
-                                                                                        <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                                                                                        <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #e2e8f0', marginTop: 4 }}>
                                                                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                                                                                                 <thead>
                                                                                                     <tr style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
@@ -1051,6 +1060,55 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                 );
                                                             })}
                                                         </div>
+
+                                                        {/* ═══ Bölüm 2: MESAJ İÇERİĞİ (grup seviyesinde 1 kez) ═══ */}
+                                                        {(() => {
+                                                            const allMessages = grp.sends.flatMap(s => (s.groupMessages || []).map(gm => gm.message).filter(Boolean));
+                                                            const uniqueMessages = allMessages.filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
+                                                            if (uniqueMessages.length === 0) return null;
+                                                            return (
+                                                                <div style={{ padding: '14px 16px' }}>
+                                                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                                                                        <MessageSquare size={14} style={{ color: '#2563eb' }} /> Mesaj İçeriği
+                                                                    </span>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                                        {uniqueMessages.map(msg => {
+                                                                            const chB = CHANNEL_BADGE[msg.channel] || {};
+                                                                            const preview = msg.content || msg.emailBody || msg.bodyText || '';
+                                                                            return (
+                                                                                <div key={msg.id} style={{
+                                                                                    background: '#fff', border: '1px solid #e2e8f0',
+                                                                                    borderRadius: 10, padding: '10px 14px'
+                                                                                }}>
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: preview ? 8 : 0 }}>
+                                                                                        <MessageSquare size={13} style={{ color: chB.color || '#64748b' }} />
+                                                                                        <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{msg.name || 'Mesaj'}</span>
+                                                                                        {msg.templateName && (
+                                                                                            <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 4 }}>
+                                                                                                📋 {msg.templateName}
+                                                                                            </span>
+                                                                                        )}
+                                                                                        <span style={{ fontSize: 10, background: chB.bg || '#f3f4f6', color: chB.color || '#64748b', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                                                                                            {chB.label || msg.channel}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    {preview && (
+                                                                                        <div style={{
+                                                                                            fontSize: 12, color: '#475569', lineHeight: 1.6,
+                                                                                            background: '#f8fafc', padding: '8px 12px', borderRadius: 8,
+                                                                                            whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'hidden',
+                                                                                            borderLeft: `3px solid ${chB.color || '#e2e8f0'}`
+                                                                                        }}>
+                                                                                            {preview.length > 300 ? preview.substring(0, 300) + '...' : preview}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </details>
                                                 );
                                             })}
