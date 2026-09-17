@@ -521,7 +521,12 @@ export const getConversations = async (req, res) => {
 
         const maskedConversations = conversations.map(c => {
             if (c.messages && c.messages.length > 0) {
-                c.messages[0].content = maskSensitiveInfo(c.messages[0].content);
+                // Maskeleme yalnızca müşterinin yazdığı mesajlarda: kurum içi
+                // ve bot mesajlarında randevu tarihleri de maskeleniyordu
+                // ("📅 Tarih: **/**/****").
+                if (c.messages[0].isFromContact) {
+                    c.messages[0].content = maskSensitiveInfo(c.messages[0].content);
+                }
             }
             // Planlanan aktivite bilgisi
             const acts = activityMap[c.contactId] || { types: [], overdue: false, nextDueDate: null };
@@ -785,7 +790,9 @@ export const getConversation = async (req, res) => {
         if (conversation.messages) {
             conversation.messages = conversation.messages.map(msg => ({
                 ...msg,
-                content: maskSensitiveInfo(msg.content)
+                // Yalnızca müşteri mesajları maskelenir (TC / doğum tarihi).
+                // Bot ve temsilci mesajlarındaki randevu tarihleri korunur.
+                content: msg.isFromContact ? maskSensitiveInfo(msg.content) : msg.content
             }));
         }
 

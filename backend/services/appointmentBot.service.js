@@ -36,14 +36,14 @@ function parseAppointmentDateTime(dateStr, timeStr, durationMinutes = 30) {
         let day, month, year;
 
         // "12.05.2026" veya "12-05-2026"
-        const dmyMatch = dateStr.match(/^(\d{1,2})[.\-](\d{1,2})[.\-](\d{4})$/);
+        const dmyMatch = dateStr.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
         if (dmyMatch) {
             day   = parseInt(dmyMatch[1]);
             month = parseInt(dmyMatch[2]);
             year  = parseInt(dmyMatch[3]);
         } else {
             // "2026-05-12" (ISO)
-            const isoMatch = dateStr.match(/^(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})$/);
+            const isoMatch = dateStr.match(/^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/);
             if (isoMatch) {
                 year  = parseInt(isoMatch[1]);
                 month = parseInt(isoMatch[2]);
@@ -69,10 +69,12 @@ function parseAppointmentDateTime(dateStr, timeStr, durationMinutes = 30) {
         console.log(`📅 [parseAppointmentDateTime] "${dateStr} ${timeStr}" → startTime: ${startTime.toISOString()} (TR: ${startTime.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })})`);
         return { startTime, endTime };
     } catch (err) {
-        console.warn(`⚠️ [parseAppointmentDateTime] Parse failed ("${dateStr}" "${timeStr}"), falling back to NOW:`, err.message);
-        const startTime = new Date();
-        const endTime   = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
-        return { startTime, endTime };
+        // ESKİ DAVRANIŞ: "şu an"a düşüyordu. Yani tarih çözülemediğinde randevu
+        // rastgele bir saate kaydediliyor, müşteriye ise "Randevunuz
+        // oluşturuldu" deniyordu. Sessiz ve yanlış bir kayıt yerine hatayı
+        // yukarı bildiriyoruz; çağıran taraf müşteriden saat istiyor.
+        console.error(`❌ [parseAppointmentDateTime] Tarih çözülemedi ("${dateStr}" "${timeStr}"):`, err.message);
+        return { startTime: null, endTime: null, error: err.message };
     }
 }
 
@@ -920,7 +922,15 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             }
         }
 
-        const { startTime, endTime } = parseAppointmentDateTime(date, time);
+        const { startTime, endTime, error: dateError } = parseAppointmentDateTime(date, time);
+        if (!startTime) {
+            console.error(`❌ [AppointmentBot] Randevu oluşturulmadı — tarih/saat anlaşılamadı: "${date}" "${time}"`);
+            return {
+                success: false,
+                message: 'Randevu tarih ve saatini anlayamadım. Lütfen gün ve saati net olarak yazın (örnek: 18.09.2026 saat 14:30).',
+                error: dateError || 'invalid_datetime'
+            };
+        }
 
         const admin = await prisma.workspaceMember.findFirst({
             where: { workspaceId },

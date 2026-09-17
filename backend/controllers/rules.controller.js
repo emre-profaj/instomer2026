@@ -11,7 +11,16 @@ import { invalidatePolicyCache } from '../services/policy/automationPolicy.servi
 // ────────────────────────────────────────────────────────────────────────────
 function parseCallTimingFromMessages(messagesText) {
     if (!messagesText) return null;
-    const text = messagesText.toLowerCase();
+
+    // ── Tarih ve kimlik/telefon sayılarını saat aramasından ÇIKAR ──────────
+    // Gerçek vaka: hasta doğum tarihini "04.07.1992" yazdı; aşağıdaki saat
+    // kalıbı "04.07"yi yakalayıp randevuyu 04:07'ye kaydetti ve müşteriye
+    // 04:07 hatırlatması gitti. Tarihler, TC ve telefon numaraları saat
+    // olarak okunmamalı.
+    const text = messagesText.toLowerCase()
+        .replace(/\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b/g, ' ')  // 04.07.1992, 4/7/92
+        .replace(/\b\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}\b/g, ' ')    // 1992-07-04
+        .replace(/\b\d{6,}\b/g, ' ');                              // TC, telefon
 
     const now = new Date();
     const TR_OFFSET_H = 3; // Turkey UTC+3
@@ -38,8 +47,12 @@ function parseCallTimingFromMessages(messagesText) {
     let explicitHour = null;
     let explicitMinute = 0;
 
-    // Pattern A: '14:00', '14.30', 'saat 14:00', 'saat 14.30', '14:00te', '14:00 a', '14:00 da'
-    const hmMatch = text.match(/(?:saat\s*)?([01]?\d|2[0-3])[.:]([0-5]\d)/i);
+    // Pattern A: iki nokta saat için tek başına yeterli ('14:00'); nokta
+    // ayırıcı ise belirsiz olduğu için yalnızca "saat" önekiyle kabul edilir
+    // ('saat 14.30'). Aksi halde ondalıklı sayılar ve tarih parçaları saat
+    // sanılıyordu.
+    const hmMatch = text.match(/\bsaat\s*([01]?\d|2[0-3])[.:]([0-5]\d)\b/i)
+        || text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
     if (hmMatch) {
         explicitHour = parseInt(hmMatch[1], 10);
         explicitMinute = parseInt(hmMatch[2], 10);
@@ -70,6 +83,16 @@ function parseCallTimingFromMessages(messagesText) {
         if (/öğle/.test(text)) return { hour: 12, min: 0 };
         return null;
     };
+
+    // Makul randevu/arama saati dışındaki değerleri yok say — Pattern C'de bu
+    // kontrol vardı, A ve B'de yoktu. Gece yarısı bir randevu neredeyse her
+    // zaman hatalı ayrıştırmanın sonucudur; bu durumda mesai içi varsayılana
+    // düşmek yanlış saatten iyidir.
+    if (explicitHour !== null && (explicitHour < 7 || explicitHour > 22)) {
+        console.warn(`⚠️ [Timing] Makul olmayan saat yok sayıldı: ${explicitHour}:${String(explicitMinute).padStart(2, '0')}`);
+        explicitHour = null;
+        explicitMinute = 0;
+    }
 
     const period = getPeriodHour();
     const finalHour = explicitHour !== null ? explicitHour : (period ? period.hour : null);
