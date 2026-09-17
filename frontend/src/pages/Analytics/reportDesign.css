@@ -130,6 +130,28 @@
 .ra-split { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
 .ra-split-bar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: #f1f2f5; }
 .ra-split-bar i { display: block; height: 100%; }
+
+/* ── Segmentli şerit + açıklama ──────────────────────────
+   Hero'daki iki parçalı .ra-split-bar'ın çok segmentli hâli.
+   Görüşme/Randevu dökümü ve durum dağılımları bunu kullanır.
+   NOT: Bu tanımlar bir ara dosyadan düşmüştü; .ra-bar display:flex
+   almayınca şerit hiç çizilmiyor, .ra-legend-item'lar da boşluksuz
+   alt alta yığılıyordu ("Bekliyor12" gibi). */
+.ra-bar {
+    display: flex; height: 10px;
+    border-radius: 999px; overflow: hidden; background: #f1f2f5;
+}
+.ra-bar span { display: block; height: 100%; }
+.ra-bar span + span { border-left: 2px solid #fff; }
+
+.ra-legend { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.ra-legend-item { display: flex; align-items: center; gap: 8px; }
+.ra-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.ra-legend-text { font-size: 0.775rem; font-weight: 600; color: var(--ink-2); }
+.ra-legend-count {
+    font-size: 0.79rem; font-weight: 700; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
 .ra-split-legend { display: flex; justify-content: space-between; gap: 12px; margin-top: 11px; }
 .ra-split-item { font-size: 0.72rem; color: var(--ink-3); font-weight: 600; }
 .ra-split-item b {
