@@ -24,24 +24,26 @@ function parseDateEndTR(dateStr) {
 export const getAppointments = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { startDate, endDate, assignedToId, status, resourceId } = req.query;
+        const { startDate, endDate, assignedToId, status, resourceId, dateField } = req.query;
 
         let where = { workspaceId };
 
-        // Date range filter
-// Date range filter
+        // Tarih aralığı — hangi alana göre?
+        //   startTime (varsayılan) → "bu ay hangi randevular var" (takvim bunu kullanır)
+        //   createdAt             → "bu ay kaç randevu oluşturduk" (Randevu Analizi)
+        // Takvimin davranışı değişmesin diye varsayılan startTime bırakıldı.
+        const rangeField = dateField === 'createdAt' ? 'createdAt' : 'startTime';
         if (startDate || endDate) {
-            where.startTime = {};
+            const range = {};
             if (startDate) {
                 const parsed = parseDateStartTR(startDate);
-                if (!isNaN(parsed.getTime())) where.startTime.gte = parsed;
+                if (!isNaN(parsed.getTime())) range.gte = parsed;
             }
             if (endDate) {
                 const parsed = parseDateEndTR(endDate);
-                if (!isNaN(parsed.getTime())) where.startTime.lte = parsed;
+                if (!isNaN(parsed.getTime())) range.lte = parsed;
             }
-            // If both are invalid, remove the filter
-            if (Object.keys(where.startTime).length === 0) delete where.startTime;
+            if (Object.keys(range).length > 0) where[rangeField] = range;
         }
 
         // Filter by assigned agent
