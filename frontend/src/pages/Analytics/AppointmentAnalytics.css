@@ -1,0 +1,331 @@
+/* ═══════════════════════════════════════════════════════════════
+   RANDEVU ANALİZİ
+   Kendi dosyasında duruyor: diğer rapor sayfaları ortak CSS
+   paylaşıyor, buradaki bir değişiklik onları bozmasın.
+
+   Tasarım kararı: kutu yerine YÜZEY. Her metriğin kendi çerçevesi
+   olduğunda göz nereye bakacağını bilemiyor. Az sayıda geniş beyaz
+   yüzey, aralarında saç teli inceliğinde ayraçlar ve cömert boşluk.
+   ═══════════════════════════════════════════════════════════════ */
+
+.ra-page {
+    --ink: #0b1220;
+    --ink-2: #475569;
+    --ink-3: #94a3b8;
+    --line: #f0eced;
+    /* Instomer markası — index.css'teki --primary ile aynı */
+    --accent: #ef4444;
+    --accent-deep: #dc2626;
+    --accent-soft: #fef2f2;
+    --surface: #ffffff;
+
+    padding: 32px 36px 64px;
+    background: #fafafb;
+    min-height: 100%;
+    font-feature-settings: "tnum" 0;
+}
+.ra-wrap { max-width: 1280px; margin: 0 auto; }
+
+/* Yüzey: çerçeve yok, yalnızca çok yumuşak bir yükselti */
+.ra-surface {
+    background: var(--surface);
+    border-radius: 22px;
+    box-shadow:
+        0 0 0 1px rgba(15, 23, 42, .04),
+        0 1px 2px rgba(15, 23, 42, .03),
+        0 12px 28px -18px rgba(15, 23, 42, .18);
+}
+
+/* ── Başlık ─────────────────────────────────────────────── */
+.ra-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap; margin-bottom: 26px;
+}
+.ra-eyebrow {
+    font-size: 0.68rem; font-weight: 700; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .12em; margin-bottom: 7px;
+}
+.ra-head h1 {
+    margin: 0; font-size: 1.75rem; font-weight: 700;
+    letter-spacing: -0.035em; color: var(--ink); line-height: 1.1;
+}
+.ra-head p { margin: 7px 0 0; font-size: 0.83rem; color: var(--ink-3); }
+.ra-head-actions { display: flex; gap: 8px; }
+
+.ra-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 11px;
+    border: 1px solid #e6e9ee; background: #fff; color: var(--ink-2);
+    font-size: 0.79rem; font-weight: 600; cursor: pointer;
+    transition: background .16s, border-color .16s, transform .16s;
+}
+.ra-btn:hover:not(:disabled) { background: #f7f8fa; border-color: #d8dde5; }
+.ra-btn:active:not(:disabled) { transform: translateY(1px); }
+.ra-btn:disabled { opacity: .55; cursor: default; }
+.ra-btn-primary {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+    box-shadow: 0 1px 2px rgba(239, 68, 68, .28);
+}
+.ra-btn-primary:hover:not(:disabled) { background: var(--accent-deep); border-color: var(--accent-deep); }
+
+/* ── Filtreler: çubuk değil, serbest satır ──────────────── */
+.ra-filters {
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap; margin-bottom: 20px;
+}
+.ra-pills {
+    display: flex; gap: 2px; flex-wrap: wrap;
+    padding: 3px; background: #f1f2f5; border-radius: 12px;
+}
+.ra-pill {
+    padding: 7px 14px; border: 0; border-radius: 9px; background: transparent;
+    font-size: 0.765rem; font-weight: 600; color: #6b7480;
+    cursor: pointer; white-space: nowrap;
+    transition: color .16s, background .16s, box-shadow .16s;
+}
+.ra-pill:hover { color: var(--ink); }
+.ra-pill.active {
+    background: #fff; color: var(--accent-deep);
+    box-shadow: 0 1px 2px rgba(15,23,42,.10), 0 0 0 1px rgba(15,23,42,.04);
+}
+.ra-seg { display: inline-flex; gap: 2px; padding: 3px; background: #f1f2f5; border-radius: 12px; }
+.ra-seg button {
+    padding: 7px 14px; border: 0; border-radius: 9px; background: transparent;
+    font-size: 0.765rem; font-weight: 600; color: #6b7480; cursor: pointer; white-space: nowrap;
+    transition: color .16s, background .16s, box-shadow .16s;
+}
+.ra-seg button:hover { color: var(--ink); }
+.ra-seg button.active {
+    background: #fff; color: var(--accent-deep);
+    box-shadow: 0 1px 2px rgba(15,23,42,.10), 0 0 0 1px rgba(15,23,42,.04);
+}
+.ra-dates { display: flex; align-items: center; gap: 7px; }
+.ra-date-input {
+    padding: 7px 11px; border: 1px solid #e6e9ee; border-radius: 10px;
+    font-size: 0.77rem; color: var(--ink-2); background: #fff;
+}
+.ra-spacer { flex: 1 1 auto; }
+
+/* ── Hero: büyük sayı + günlük dağılım ──────────────────── */
+.ra-hero {
+    display: grid; grid-template-columns: minmax(230px, 300px) 1fr;
+    margin-bottom: 18px; overflow: hidden;
+}
+.ra-hero-left { padding: 34px 34px 30px; border-right: 1px solid var(--line); }
+.ra-hero-right { padding: 26px 34px 22px; display: flex; flex-direction: column; }
+
+.ra-metric-label {
+    font-size: 0.68rem; font-weight: 700; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .12em;
+}
+.ra-metric-value {
+    font-size: 3.6rem; font-weight: 700; line-height: 1;
+    letter-spacing: -0.045em; color: var(--ink);
+    font-variant-numeric: tabular-nums; margin: 12px 0 0;
+}
+.ra-metric-note { font-size: 0.775rem; color: var(--ink-3); margin-top: 12px; line-height: 1.5; }
+
+/* Kim verdi — ince oran şeridi */
+.ra-split { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+.ra-split-bar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: #f1f2f5; }
+.ra-split-bar i { display: block; height: 100%; }
+.ra-split-legend { display: flex; justify-content: space-between; gap: 12px; margin-top: 11px; }
+.ra-split-item { font-size: 0.72rem; color: var(--ink-3); font-weight: 600; }
+.ra-split-item b {
+    display: block; font-size: 0.95rem; color: var(--ink);
+    font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px;
+}
+
+/* Günlük dağılım grafiği */
+.ra-chart-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-bottom: 18px;
+}
+.ra-chart-title { font-size: 0.78rem; font-weight: 700; color: var(--ink-2); }
+.ra-chart-peak { font-size: 0.72rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ra-chart {
+    display: flex; align-items: flex-end; gap: 3px;
+    height: 116px; flex: 1;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 1px;
+}
+.ra-col {
+    flex: 1 1 0; min-width: 0; height: 100%;
+    display: flex; align-items: flex-end;
+    border-radius: 5px 5px 0 0;
+    transition: background .16s;
+}
+.ra-col:hover { background: #fdf6f6; }
+.ra-col i {
+    display: block; width: 100%; border-radius: 5px 5px 0 0;
+    background: linear-gradient(180deg, #fca5a5 0%, #f87171 100%);
+    min-height: 3px; transition: opacity .16s;
+}
+.ra-col:hover i { opacity: .82; }
+.ra-col.is-today i { background: linear-gradient(180deg, #ef4444 0%, #c81e1e 100%); }
+.ra-chart-axis {
+    display: flex; justify-content: space-between;
+    font-size: 0.68rem; color: var(--ink-3); margin-top: 9px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Metrik şeridi: kutular yok, dikey saç teli ayraçlar ── */
+.ra-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-bottom: 26px; overflow: hidden;
+}
+.ra-cell { padding: 22px 26px; border-left: 1px solid var(--line); }
+.ra-cell:first-child { border-left: 0; }
+.ra-cell-label {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.71rem; font-weight: 600; color: var(--ink-3);
+}
+.ra-cell-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.ra-cell-value {
+    font-size: 1.7rem; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.035em; font-variant-numeric: tabular-nums;
+    line-height: 1.15; margin-top: 8px;
+}
+.ra-cell-sub { font-size: 0.71rem; color: var(--ink-3); margin-top: 3px; }
+
+/* ── Liste ──────────────────────────────────────────────── */
+.ra-list-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; padding: 22px 28px 18px;
+}
+.ra-list-head h2 {
+    margin: 0; font-size: 1.02rem; font-weight: 700;
+    letter-spacing: -0.02em; color: var(--ink);
+}
+.ra-count { margin-left: 10px; font-size: 0.78rem; font-weight: 600; color: var(--ink-3); }
+.ra-search {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 14px; background: #f7f8fa; border-radius: 11px;
+    min-width: 268px; transition: background .16s, box-shadow .16s;
+}
+.ra-search:focus-within { background: #fff; box-shadow: 0 0 0 2px rgba(239,68,68,.22); }
+.ra-search input {
+    border: 0; background: transparent; outline: none;
+    font-size: 0.81rem; color: var(--ink); width: 100%;
+}
+.ra-search svg { color: var(--ink-3); flex-shrink: 0; }
+
+/* Gün başlığı — editoryal: etiket + sağa uzayan ince çizgi */
+.ra-day {
+    display: flex; align-items: center; gap: 14px;
+    padding: 20px 28px 10px;
+}
+.ra-day-name {
+    font-size: 0.73rem; font-weight: 700; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: .09em; white-space: nowrap;
+}
+.ra-day-rule { flex: 1; height: 1px; background: var(--line); }
+.ra-day-meta { font-size: 0.71rem; color: var(--ink-3); white-space: nowrap; }
+.ra-day-today {
+    font-size: 0.62rem; font-weight: 700; color: var(--accent-deep);
+    background: var(--accent-soft); padding: 3px 9px; border-radius: 999px;
+    letter-spacing: .05em;
+}
+
+.ra-row {
+    display: grid;
+    grid-template-columns: 58px 36px minmax(150px, 1fr) minmax(150px, 1.15fr) minmax(110px, .8fr) 118px;
+    gap: 16px; align-items: center;
+    padding: 14px 28px;
+    transition: background .14s;
+}
+.ra-row + .ra-row { box-shadow: inset 0 1px 0 var(--line); }
+.ra-row:hover { background: #fffafa; }
+
+.ra-time {
+    font-size: 0.86rem; font-weight: 700; color: var(--ink);
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+}
+.ra-avatar {
+    width: 34px; height: 34px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: -0.01em;
+}
+.ra-name { font-size: 0.855rem; font-weight: 650; color: var(--ink); letter-spacing: -0.012em; }
+.ra-phone {
+    font-size: 0.71rem; color: var(--ink-3); margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+}
+.ra-title { font-size: 0.81rem; color: var(--ink-2); }
+.ra-sub { font-size: 0.71rem; color: var(--ink-3); margin-top: 2px; }
+
+/* Kim verdi — bağırmayan bir işaret */
+.ra-who { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.ra-who svg { flex-shrink: 0; color: var(--accent); }
+.ra-who span {
+    font-size: 0.765rem; font-weight: 600; color: var(--ink-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ra-who-none { font-size: 0.765rem; color: #cbd2dc; }
+
+/* Durum — dolu rozet yerine nokta + metin */
+.ra-status {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 0.755rem; font-weight: 650; white-space: nowrap;
+}
+.ra-status i { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+
+.ra-note {
+    grid-column: 3 / -1;
+    font-size: 0.745rem; color: var(--ink-3);
+    margin-top: 6px; padding-left: 11px;
+    border-left: 2px solid var(--line);
+    line-height: 1.5;
+}
+
+/* ── Boş / yükleniyor ───────────────────────────────────── */
+.ra-empty { padding: 72px 28px 80px; text-align: center; }
+.ra-empty-icon {
+    width: 56px; height: 56px; border-radius: 18px;
+    background: #f7f8fa; color: #c3cad4;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 18px;
+}
+.ra-empty h3 {
+    margin: 0 0 8px; font-size: 0.97rem; font-weight: 700;
+    color: var(--ink-2); letter-spacing: -0.015em;
+}
+.ra-empty p {
+    margin: 0 auto; max-width: 430px;
+    font-size: 0.81rem; color: var(--ink-3); line-height: 1.65;
+}
+
+.ra-loading {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 120px 20px; color: var(--ink-3);
+}
+.ra-spin { animation: ra-spin 1s linear infinite; }
+@keyframes ra-spin { to { transform: rotate(360deg); } }
+
+/* ── Dar ekran ──────────────────────────────────────────── */
+@media (max-width: 1020px) {
+    .ra-page { padding: 20px 16px 48px; }
+    .ra-hero { grid-template-columns: 1fr; }
+    .ra-hero-left { border-right: 0; border-bottom: 1px solid var(--line); padding: 26px 22px 24px; }
+    .ra-hero-right { padding: 22px; }
+    .ra-metric-value { font-size: 2.9rem; }
+    .ra-cell { border-left: 0; box-shadow: inset 0 1px 0 var(--line); }
+    .ra-row {
+        grid-template-columns: 52px 32px 1fr;
+        row-gap: 8px; align-items: start; padding: 16px 20px;
+    }
+    .ra-row > *:nth-child(4),
+    .ra-row > *:nth-child(5),
+    .ra-row > *:nth-child(6) { grid-column: 3; }
+    .ra-note { grid-column: 3; }
+    .ra-day, .ra-list-head { padding-left: 20px; padding-right: 20px; }
+    .ra-search { min-width: 0; width: 100%; }
+}
+
+/* ── Yazdırma ───────────────────────────────────────────── */
+@media print {
+    .ra-filters, .ra-head-actions, .ra-search { display: none !important; }
+    .ra-page { background: #fff; padding: 0; }
+    .ra-surface { box-shadow: none; border: 1px solid #e5e7eb; break-inside: avoid; }
+    .ra-row { break-inside: avoid; }
+}

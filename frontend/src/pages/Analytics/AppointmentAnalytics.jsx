@@ -3,43 +3,76 @@
  * RANDEVU ANALİZİ
  * ═══════════════════════════════════════════════════════════════
  *
- * Bu sayfa eskiden ActivityListAnalytics'i type="APPOINTMENT" ile
- * kullanıyordu — yani `contact_activities` tablosuna bakıyordu.
- *
- * Oradaki APPOINTMENT kayıtlarının TAMAMINI (1029/1029) tek bir kaynak
- * yazıyor: APPOINTMENT_AUTO_PLAN otomasyonu. Botla, takvimden elle veya
- * sesli botla açılan randevular doğrudan createAppointment() tek kapısına
- * gidiyor ve hiç aktivite kaydı üretmiyor.
- *
- * Sonuç: sayfa hem eksik hem fazla sayıyordu (Eylül 2026 ölçümü):
- *   Özemeksan       9 randevu →   0 görünüyordu
- *   Auto Uce        2 randevu →   0 görünüyordu
- *   Metropol S.G.  90 randevu → 123 görünüyordu (randevusuz otomasyon kaydı)
- *
- * Artık doğrudan `appointments` tablosunu okuyor — takvimde ne varsa o.
+ * Doğrudan `appointments` tablosunu okur — takvimde ne varsa o.
+ * (Eskiden contact_activities'e bakıyordu; oraya yalnızca
+ *  APPOINTMENT_AUTO_PLAN otomasyonu yazdığı için sayfa hem eksik
+ *  hem fazla sayıyordu.)
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Calendar, CheckCircle2, Clock, RefreshCw, Search, X,
-    MessageSquare, FileText, Filter, Bot, UserX
+    RefreshCw, Search, FileText, Bot, User, CalendarOff
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
 import { appointmentAPI } from '../../services/api';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
-import './AramaAnalizi.css';
-import '../CeoReport/CeoReport.css';
-import '../CeoReport/CeoDetailReport.css';
+import './AppointmentAnalytics.css';
 
-// Takvimdeki durumlarla birebir aynı — orada ne yazıyorsa burada da o yazsın
-const STATUS_UI = {
-    SCHEDULED:            { label: '⏳ Planlandı',    color: '#c2410c', bg: '#fff7ed', border: '#fdba74' },
-    PENDING_CONFIRMATION: { label: '⚠️ Teyit Bekliyor', color: '#92400e', bg: '#fffbeb', border: '#fcd34d' },
-    COMPLETED:            { label: '✓ Tamamlandı',   color: '#15803d', bg: '#dcfce7', border: '#86efac' },
-    CANCELLED:            { label: '✗ İptal',        color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
-    NO_SHOW:              { label: '⊘ Gelmedi',      color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
+const TZ = 'Europe/Istanbul';
+
+// Takvimdeki durumlarla birebir aynı — iki ekran farklı şey söylemesin
+const STATUS = {
+    SCHEDULED:            { label: 'Planlandı',      dot: '#f59e0b' },
+    PENDING_CONFIRMATION: { label: 'Teyit Bekliyor', dot: '#eab308' },
+    COMPLETED:            { label: 'Tamamlandı',     dot: '#10b981' },
+    // Marka rengi kırmızı olduğu için iptal nötr griye alındı: aksan
+    // rengiyle yarışmasın, "iptal" bir uyarı değil sonlanmış bir durumdur.
+    CANCELLED:            { label: 'İptal',          dot: '#94a3b8' },
+    NO_SHOW:              { label: 'Gelmedi',        dot: '#a78bfa' },
 };
-const statusUi = (s) => STATUS_UI[s] || { label: s || '—', color: '#475569', bg: '#f8fafc', border: '#e2e8f0' };
+const statusOf = (s) => STATUS[s] || { label: s || 'Bilinmiyor', dot: '#cbd5e1' };
+
+const fmt = (opts) => new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, ...opts });
+const trTime = (d) => fmt({ hour: '2-digit', minute: '2-digit' }).format(d);
+const trDay  = (d) => fmt({ weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+const trShort = (d) => fmt({ day: 'numeric', month: 'short' }).format(d);
+/** Türkiye takvimine göre gün anahtarı — sunucu UTC olduğu için şart */
+const trKey = (d) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(d);
+
+// Ad baş harfleri için sakin bir palet — aynı kişi hep aynı rengi alsın
+const AVATARS = [
+    ['#fef2f2', '#b91c1c'], ['#fff7ed', '#c2410c'], ['#fffbeb', '#b45309'],
+    ['#f8fafc', '#475569'], ['#fdf2f8', '#be185d'], ['#f5f3ff', '#6d28d9'],
+];
+const avatarOf = (name) => {
+    const s = String(name || '?');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    const [bg, color] = AVATARS[h % AVATARS.length];
+    const initials = s.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toLocaleUpperCase('tr');
+    return { bg, color, initials: initials || '?' };
+};
+
+/**
+ * Notu ekrana basmadan önce temizler.
+ *
+ * Bazı randevuların `notes` alanı yalnızca "Conversation ID: <uuid>"
+ * içeriyor. Bu bir not değil, teknik bir iz — ama VERİTABANINDAN
+ * SİLİNEMEZ: hatırlatma cron'u sohbeti bu satırdan buluyor
+ * (server.js → apt.notes?.match(/Conversation ID: (.+)/)).
+ * Bu yüzden yalnızca gösterimde ayıklıyoruz.
+ */
+const cleanNote = (raw) => {
+    if (!raw) return '';
+    const kept = String(raw)
+        .split(/\r?\n/)
+        .filter(line => !/^\s*conversation\s*id\s*:/i.test(line))
+        .join('\n')
+        .trim();
+    return kept;
+};
 
 const AppointmentAnalytics = () => {
     const { currentWorkspace } = useAuth();
@@ -52,13 +85,13 @@ const AppointmentAnalytics = () => {
     const [dateFilter, setDateFilter] = useState('thisMonth');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    // Randevu tarihi mi, kayıt tarihi mi? İkisi farklı soru:
-    // "bu ay hangi randevular var" ≠ "bu ay kaç randevu aldık"
+    // "Bu ay hangi randevular var" ile "bu ay kaç randevu aldık" ayrı sorular
     const [dateField, setDateField] = useState('startTime');
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         if (currentWorkspace?.id) loadData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentWorkspace?.id, dateFilter, startDate, endDate, dateField]);
 
     const loadData = async (isRefresh = false) => {
@@ -81,231 +114,286 @@ const AppointmentAnalytics = () => {
         }
     };
 
-    const formatDateTime = (dateStr) => {
-        if (!dateStr) return '—';
-        return new Date(dateStr).toLocaleString('tr-TR', {
-            timeZone: 'Europe/Istanbul',
-            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-        });
-    };
+    const filtered = useMemo(() => {
+        if (!searchTerm) return appointments;
+        const t = searchTerm.toLocaleLowerCase('tr');
+        return appointments.filter(a => [
+            a.contactName, a.contactPhone, a.assignedTo?.name,
+            a.title, a.branch, a.doctorName,
+        ].some(v => String(v || '').toLocaleLowerCase('tr').includes(t)));
+    }, [appointments, searchTerm]);
 
-    const filtered = appointments.filter(a => {
-        if (!searchTerm) return true;
-        const t = searchTerm.toLowerCase();
-        return (
-            (a.contactName || '').toLowerCase().includes(t) ||
-            (a.contactPhone || '').includes(t) ||
-            (a.assignedTo?.name || '').toLowerCase().includes(t) ||
-            (a.title || '').toLowerCase().includes(t) ||
-            (a.branch || '').toLowerCase().includes(t)
-        );
-    });
+    const stats = useMemo(() => {
+        const by = {};
+        let bot = 0, human = 0, today = 0, upcoming = 0;
+        const now = new Date();
+        const todayKey = trKey(now);
+        const in7 = new Date(now.getTime() + 7 * 864e5);
 
-    const count = (s) => appointments.filter(a => a.status === s).length;
-    const summary = {
-        total: appointments.length,
-        completed: count('COMPLETED'),
-        planned: count('SCHEDULED') + count('PENDING_CONFIRMATION'),
-        cancelled: count('CANCELLED'),
-        noShow: count('NO_SHOW'),
-    };
+        for (const a of appointments) {
+            by[a.status] = (by[a.status] || 0) + 1;
+            if (a.assignedTo?.isBot) bot++; else if (a.assignedTo) human++;
+            const st = new Date(a.startTime);
+            if (trKey(st) === todayKey) today++;
+            if (st >= now && st <= in7) upcoming++;
+        }
+        const total = appointments.length;
+        const known = bot + human;
+        return {
+            total, by, bot, human, today, upcoming,
+            botPct: known ? (bot / known) * 100 : 0,
+            humanPct: known ? (human / known) * 100 : 0,
+        };
+    }, [appointments]);
+
+    // Dönem boyunca günlük dağılım — çok uzun aralıkta gün yerine ay
+    const chart = useMemo(() => {
+        const dates = appointments.map(a => new Date(a.startTime)).filter(d => !isNaN(d));
+        if (!dates.length) return { buckets: [], peak: 0, byMonth: false };
+
+        const min = new Date(Math.min(...dates));
+        const max = new Date(Math.max(...dates));
+        const spanDays = Math.round((max - min) / 864e5);
+        const byMonth = spanDays > 70;
+
+        const keyOf = (d) => byMonth
+            ? fmt({ year: 'numeric', month: '2-digit' }).format(d)
+            : trKey(d);
+        const map = new Map();
+        for (const d of dates) {
+            const k = keyOf(d);
+            if (!map.has(k)) map.set(k, { key: k, date: d, count: 0 });
+            map.get(k).count++;
+        }
+        const buckets = [...map.values()].sort((a, b) => a.date - b.date);
+        return { buckets, peak: Math.max(...buckets.map(b => b.count)), byMonth };
+    }, [appointments]);
+
+    // Gün gün gruplama — randevu listesi doğası gereği zaman eksenlidir
+    const groups = useMemo(() => {
+        const map = new Map();
+        for (const a of [...filtered].sort((x, y) => new Date(x.startTime) - new Date(y.startTime))) {
+            const k = trKey(new Date(a.startTime));
+            if (!map.has(k)) map.set(k, []);
+            map.get(k).push(a);
+        }
+        return [...map.entries()];
+    }, [filtered]);
+
+    const todayKey = trKey(new Date());
+    const activeLabel = dateFilterOptions.find(o => o.key === dateFilter)?.label || '';
 
     if (loading && appointments.length === 0) {
         return (
-            <div className="arama-analizi-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center', color: '#6366f1' }}>
-                    <RefreshCw className="spin" size={40} style={{ marginBottom: 12 }} />
-                    <p style={{ fontWeight: 600 }}>Randevu Analizi Yükleniyor...</p>
+            <div className="ra-page">
+                <div className="ra-loading">
+                    <RefreshCw className="ra-spin" size={30} />
+                    <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>Randevu Analizi yükleniyor…</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="arama-analizi-container">
-            <div className="ceo-detail-header">
-                <div className="ceo-detail-header-left">
-                    <h1>Randevu Analizi</h1>
-                    <p>Takvimdeki tüm randevular — bot, temsilci ve otomasyon dahil</p>
-                </div>
-            </div>
+        <div className="ra-page">
+            <div className="ra-wrap">
 
-            <div className="ceo-filter-bar">
-                <div className="ceo-filter-left">
-                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                    <div className="ceo-pill-group">
-                        {dateFilterOptions.map(item => (
-                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`}
-                                onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                <div className="ra-head">
+                    <div>
+                        <div className="ra-eyebrow">Raporlar</div>
+                        <h1>Randevu Analizi</h1>
+                        <p>Takvimdeki tüm randevular — bot, temsilci ve otomasyon dahil</p>
+                    </div>
+                    <div className="ra-head-actions">
+                        <button className="ra-btn" onClick={() => loadData(true)} disabled={refreshing}>
+                            <RefreshCw className={refreshing ? 'ra-spin' : ''} size={14} /> Güncelle
+                        </button>
+                        <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                            <FileText size={14} /> Raporu İndir
+                        </button>
+                    </div>
+                </div>
+
+                <div className="ra-filters">
+                    <div className="ra-pills">
+                        {dateFilterOptions.map(o => (
+                            <button key={o.key}
+                                className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(o.key)}>{o.label}</button>
                         ))}
                     </div>
                     {dateFilter === 'custom' && (
-                        <div className="ceo-custom-dates">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
+                        <div className="ra-dates">
+                            <input type="date" className="ra-date-input" value={startDate}
+                                onChange={e => setStartDate(e.target.value)} />
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                            <input type="date" className="ra-date-input" value={endDate}
+                                onChange={e => setEndDate(e.target.value)} />
                         </div>
                     )}
-                    <div className="ceo-pill-group" style={{ marginLeft: '8px' }}>
-                        <button className={`ceo-pill${dateField === 'startTime' ? ' active' : ''}`}
+                    <div className="ra-spacer" />
+                    <div className="ra-seg" role="group" aria-label="Tarih ölçütü">
+                        <button className={dateField === 'startTime' ? 'active' : ''}
                             title="Randevunun yapılacağı tarihe göre"
                             onClick={() => setDateField('startTime')}>Randevu tarihi</button>
-                        <button className={`ceo-pill${dateField === 'createdAt' ? ' active' : ''}`}
+                        <button className={dateField === 'createdAt' ? 'active' : ''}
                             title="Randevunun sisteme girildiği tarihe göre"
                             onClick={() => setDateField('createdAt')}>Kayıt tarihi</button>
                     </div>
                 </div>
-                <div className="ceo-filter-right">
-                    <button className="ceo-refresh-btn" onClick={() => loadData(true)} disabled={refreshing}>
-                        <RefreshCw className={refreshing ? 'spin' : ''} size={14} /> Güncelle
-                    </button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}>
-                        <FileText size={14} /> Raporu İndir
-                    </button>
-                </div>
-            </div>
 
-            <div className="stats-grid">
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><Calendar size={22} /></div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Toplam Randevu</span>
-                        <span className="stat-card-value">{summary.total}</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#f0fdf4', color: '#16a34a' }}><CheckCircle2 size={22} /></div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Tamamlanan</span>
-                        <span className="stat-card-value" style={{ color: '#16a34a' }}>{summary.completed}</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#fffbeb', color: '#d97706' }}><Clock size={22} /></div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Bekleyen (Planlı)</span>
-                        <span className="stat-card-value" style={{ color: '#d97706' }}>{summary.planned}</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#f5f3ff', color: '#7c3aed' }}><UserX size={22} /></div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">Gelmedi</span>
-                        <span className="stat-card-value" style={{ color: '#7c3aed' }}>{summary.noShow}</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-card-icon" style={{ background: '#fef2f2', color: '#dc2626' }}><X size={22} /></div>
-                    <div className="stat-card-info">
-                        <span className="stat-card-label">İptal Edilen</span>
-                        <span className="stat-card-value" style={{ color: '#dc2626' }}>{summary.cancelled}</span>
-                    </div>
-                </div>
-            </div>
+                {/* Hero — tek büyük sayı + dönem boyunca dağılım */}
+                <div className="ra-surface ra-hero">
+                    <div className="ra-hero-left">
+                        <div className="ra-metric-label">Toplam Randevu</div>
+                        <div className="ra-metric-value">{stats.total}</div>
+                        <div className="ra-metric-note">
+                            {activeLabel} · {dateField === 'startTime' ? 'randevu tarihine göre' : 'kayıt tarihine göre'}
+                        </div>
 
-            <div className="content-section">
-                <div className="section-header">
-                    <h2>Randevu Listesi</h2>
-                    <div className="section-actions">
-                        <div className="search-box">
-                            <Search size={16} />
-                            <input type="text" placeholder="Kişi, temsilci, hizmet veya branş ara..."
-                                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        <div className="ra-split">
+                            <div className="ra-split-bar">
+                                <i style={{ width: `${stats.botPct}%`, background: 'var(--accent)' }} title={`AI Agent: ${stats.bot}`} />
+                                <i style={{ width: `${stats.humanPct}%`, background: '#cbd5e1' }} title={`Temsilci: ${stats.human}`} />
+                            </div>
+                            <div className="ra-split-legend">
+                                <div className="ra-split-item">
+                                    AI Agent<b>{stats.bot} <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>%{Math.round(stats.botPct)}</span></b>
+                                </div>
+                                <div className="ra-split-item" style={{ textAlign: 'right' }}>
+                                    Temsilci<b>{stats.human} <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>%{Math.round(stats.humanPct)}</span></b>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+                    <div className="ra-hero-right">
+                        <div className="ra-chart-head">
+                            <span className="ra-chart-title">{chart.byMonth ? 'Aylık dağılım' : 'Günlük dağılım'}</span>
+                            {chart.peak > 0 && <span className="ra-chart-peak">en yoğun: {chart.peak} randevu</span>}
+                        </div>
+                        {chart.buckets.length > 0 ? (
+                            <>
+                                <div className="ra-chart">
+                                    {chart.buckets.map(b => (
+                                        <div key={b.key}
+                                            className={`ra-col${!chart.byMonth && b.key === todayKey ? ' is-today' : ''}`}
+                                            title={`${trShort(b.date)} · ${b.count} randevu`}>
+                                            <i style={{ height: `${Math.max(3, (b.count / chart.peak) * 100)}%` }} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="ra-chart-axis">
+                                    <span>{trShort(chart.buckets[0].date)}</span>
+                                    <span>{trShort(chart.buckets[chart.buckets.length - 1].date)}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="ra-chart" />
+                        )}
+                    </div>
                 </div>
 
-                <div className="table-responsive">
-                    <table className="modern-table" style={{ fontSize: '0.82rem' }}>
-                        <thead>
-                            <tr>
-                                <th>Kişi Adı</th>
-                                <th>Randevu</th>
-                                <th>Temsilci / Bot</th>
-                                <th>Randevu Tarihi</th>
-                                <th>Kayıt Tarihi</th>
-                                <th style={{ textAlign: 'center' }}>Durum</th>
-                                <th>Not</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filtered.length === 0 ? (
-                                <tr>
-                                    <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                                        <MessageSquare size={32} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
-                                        Bu aralıkta randevu bulunamadı.
-                                    </td>
-                                </tr>
-                            ) : (
-                                filtered.map((a) => {
-                                    const ui = statusUi(a.status);
-                                    return (
-                                        <tr key={a.id}>
-                                            <td>
-                                                <div style={{ fontWeight: 700, color: '#0f172a' }}>{a.contactName || 'Bilinmiyor'}</div>
-                                                <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{a.contactPhone || ''}</div>
-                                            </td>
-                                            <td>
-                                                <div style={{ color: '#334155' }}>{a.title || '—'}</div>
-                                                {(a.branch || a.doctorName) && (
-                                                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                                                        {[a.branch, a.doctorName].filter(Boolean).join(' · ')}
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td>
-                                                {a.assignedTo ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                        fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: '12px',
-                                                        background: a.assignedTo.isBot ? '#f0f9ff' : '#eef2ff',
-                                                        color: a.assignedTo.isBot ? '#0369a1' : '#6366f1'
-                                                    }}>
-                                                        {a.assignedTo.isBot && <Bot size={11} />}
-                                                        {a.assignedTo.name}
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>Atanmamış</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <span style={{ color: '#0f172a', fontSize: '0.76rem', fontWeight: 600 }}>
-                                                    {formatDateTime(a.startTime)}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
-                                                    {formatDateTime(a.createdAt)}
-                                                </span>
-                                            </td>
-                                            <td style={{ textAlign: 'center' }}>
-                                                <span style={{
-                                                    fontSize: '0.68rem', background: ui.bg, color: ui.color,
-                                                    border: `1px solid ${ui.border}`, borderRadius: '999px',
-                                                    padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap'
-                                                }}>
-                                                    {ui.label}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {a.notes || a.description ? (
-                                                    <span style={{ fontSize: '0.76rem', color: '#334155', fontStyle: 'italic' }}
-                                                        title={a.notes || a.description}>
-                                                        "{(a.notes || a.description).length > 50
-                                                            ? (a.notes || a.description).substring(0, 50) + '...'
-                                                            : (a.notes || a.description)}"
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: '#cbd5e1' }}>—</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
+                {/* Metrik şeridi — kutu yok, dikey ayraçlar */}
+                <div className="ra-surface ra-strip">
+                    {[
+                        { label: 'Bugün', dot: '#10b981', value: stats.today, sub: 'bugünkü randevu' },
+                        { label: 'Yaklaşan', dot: '#ef4444', value: stats.upcoming, sub: 'önümüzdeki 7 gün' },
+                        { label: 'Planlandı', dot: STATUS.SCHEDULED.dot, value: stats.by.SCHEDULED || 0, sub: 'bekleyen randevu' },
+                        { label: 'Tamamlandı', dot: STATUS.COMPLETED.dot, value: stats.by.COMPLETED || 0, sub: 'gerçekleşen' },
+                        { label: 'Gelmedi', dot: STATUS.NO_SHOW.dot, value: stats.by.NO_SHOW || 0, sub: 'randevuya gelmeyen' },
+                        { label: 'İptal', dot: STATUS.CANCELLED.dot, value: stats.by.CANCELLED || 0, sub: 'iptal edilen' },
+                    ].map(c => (
+                        <div className="ra-cell" key={c.label}>
+                            <div className="ra-cell-label">
+                                <i className="ra-cell-dot" style={{ background: c.dot }} />{c.label}
+                            </div>
+                            <div className="ra-cell-value">{c.value}</div>
+                            <div className="ra-cell-sub">{c.sub}</div>
+                        </div>
+                    ))}
                 </div>
+
+                <div className="ra-surface">
+                    <div className="ra-list-head">
+                        <h2>Randevu Listesi<span className="ra-count">{filtered.length} kayıt</span></h2>
+                        <div className="ra-search">
+                            <Search size={15} />
+                            <input type="text" placeholder="Kişi, temsilci, hizmet veya branş ara…"
+                                value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        </div>
+                    </div>
+
+                    {groups.length === 0 ? (
+                        <div className="ra-empty">
+                            <div className="ra-empty-icon">
+                                {searchTerm ? <Search size={24} /> : <CalendarOff size={24} />}
+                            </div>
+                            <h3>{searchTerm ? 'Aramanızla eşleşen randevu yok' : 'Bu dönemde randevu yok'}</h3>
+                            <p>
+                                {searchTerm
+                                    ? 'Farklı bir isim, telefon veya branş deneyin.'
+                                    : 'Başka bir dönem seçebilirsiniz. Hiç randevu görünmüyorsa Otomasyonlar’daki “Randevu Talebi Algılama” kapalı olabilir — kapalıyken bot randevu oluşturmaz.'}
+                            </p>
+                        </div>
+                    ) : (
+                        groups.map(([key, items]) => {
+                            const d = new Date(items[0].startTime);
+                            return (
+                                <div key={key}>
+                                    <div className="ra-day">
+                                        <span className="ra-day-name">{trDay(d)}</span>
+                                        {key === todayKey && <span className="ra-day-today">BUGÜN</span>}
+                                        <span className="ra-day-rule" />
+                                        <span className="ra-day-meta">{items.length} randevu</span>
+                                    </div>
+                                    {items.map(a => {
+                                        const st = statusOf(a.status);
+                                        const av = avatarOf(a.contactName);
+                                        const note = cleanNote(a.notes) || cleanNote(a.description);
+                                        return (
+                                            <div className="ra-row" key={a.id}>
+                                                <div className="ra-time">{trTime(new Date(a.startTime))}</div>
+                                                <div className="ra-avatar" style={{ background: av.bg, color: av.color }}>
+                                                    {av.initials}
+                                                </div>
+                                                <div>
+                                                    <div className="ra-name">{a.contactName || 'Bilinmiyor'}</div>
+                                                    {a.contactPhone && <div className="ra-phone">{a.contactPhone}</div>}
+                                                </div>
+                                                <div>
+                                                    <div className="ra-title">{a.title || '—'}</div>
+                                                    {(a.branch || a.doctorName) && (
+                                                        <div className="ra-sub">
+                                                            {[a.branch, a.doctorName].filter(Boolean).join(' · ')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    {a.assignedTo ? (
+                                                        <span className="ra-who">
+                                                            {a.assignedTo.isBot ? <Bot size={13} /> : <User size={13} style={{ color: '#94a3b8' }} />}
+                                                            <span>{a.assignedTo.name}</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="ra-who-none">Atanmamış</span>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <span className="ra-status" style={{ color: '#334155' }}>
+                                                        <i style={{ background: st.dot }} />{st.label}
+                                                    </span>
+                                                </div>
+                                                {note && <div className="ra-note">{note}</div>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+
             </div>
         </div>
     );
