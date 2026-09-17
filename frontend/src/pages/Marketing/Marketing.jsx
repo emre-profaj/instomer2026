@@ -477,7 +477,36 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     const backToList = () => {
         setDetailCampaignId(null);
         setDetailView(null);
+        setExpandedSendId(null);
+        setSendRecipients([]);
     };
+
+    // Gönderi drill-down: karta tıklayınca alıcı listesini yükle
+    const [expandedSendId, setExpandedSendId] = useState(null);
+    const [sendRecipients, setSendRecipients] = useState([]);
+    const [recipientsLoading, setRecipientsLoading] = useState(false);
+    const [recipientFilter, setRecipientFilter] = useState('ALL');
+    const [recipientSearch, setRecipientSearch] = useState('');
+
+    const toggleSendExpand = useCallback(async (groupId) => {
+        if (expandedSendId === groupId) {
+            setExpandedSendId(null);
+            setSendRecipients([]);
+            return;
+        }
+        setExpandedSendId(groupId);
+        setRecipientsLoading(true);
+        setRecipientFilter('ALL');
+        setRecipientSearch('');
+        try {
+            const res = await api.get(`/marketing-v2/${wsId}/campaigns/${detailCampaignId}/recipients?groupId=${groupId}&limit=200`);
+            setSendRecipients(res.data?.recipients || []);
+        } catch (e) {
+            console.error('Recipients load error:', e);
+            setSendRecipients([]);
+        }
+        setRecipientsLoading(false);
+    }, [wsId, expandedSendId, detailCampaignId]);
 
     const handleSave = async (data) => {
         try {
@@ -802,11 +831,18 @@ function CampaignsTab({ wsId, onGoToGroups }) {
 
                                                                 return (
                                                                     <div key={g.id} style={{
-                                                                        background: '#fafbfc', borderRadius: 10, border: '1px solid #f1f5f9',
-                                                                        padding: '12px 16px'
+                                                                        background: expandedSendId === g.id ? '#fff' : '#fafbfc', borderRadius: 10,
+                                                                        border: expandedSendId === g.id ? '1px solid #2563eb40' : '1px solid #f1f5f9',
+                                                                        overflow: 'hidden', transition: 'all 0.2s'
                                                                     }}>
-                                                                        {/* Gönderi Başlığı */}
-                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: sent > 0 ? 8 : 0 }}>
+                                                                        {/* Gönderi Başlığı — Tıklanabilir */}
+                                                                        <div
+                                                                            onClick={() => toggleSendExpand(g.id)}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                                padding: '12px 16px', cursor: 'pointer', userSelect: 'none'
+                                                                            }}
+                                                                        >
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                                                 <span style={{
                                                                                     width: 22, height: 22, borderRadius: 6,
@@ -816,7 +852,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                                 }}>{chBadge.icon || <Send size={10}/>}</span>
                                                                                 <div>
                                                                                     <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                                                                                        Gönderi {idx + 1}
+                                                                                        {g.name || `Gönderi ${idx + 1}`}
                                                                                     </span>
                                                                                     <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>
                                                                                         📅 {dateStr}
@@ -831,12 +867,13 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                                     background: g.status === 'COMPLETED' ? '#dcfce7' : g.status === 'SENDING' ? '#dbeafe' : '#f3f4f6',
                                                                                     color: g.status === 'COMPLETED' ? '#166534' : g.status === 'SENDING' ? '#1e40af' : '#6b7280'
                                                                                 }}>{g.status || 'DRAFT'}</span>
+                                                                                {expandedSendId === g.id ? <ChevronDown size={14} style={{ color: '#2563eb' }} /> : <ChevronRight size={14} style={{ color: '#94a3b8' }} />}
                                                                             </div>
                                                                         </div>
 
                                                                         {/* İstatistikler */}
                                                                         {sent > 0 && (
-                                                                            <div>
+                                                                            <div style={{ padding: '0 16px 8px' }}>
                                                                                 <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#64748b', marginBottom: 4 }}>
                                                                                     <span>Gönderilen: <strong style={{ color: '#334155' }}>{sent}</strong></span>
                                                                                     <span>Teslim: <strong style={{ color: '#16a34a' }}>{delivered}</strong></span>
@@ -856,7 +893,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
 
                                                                         {/* Bağlı Mesajlar */}
                                                                         {g.groupMessages && g.groupMessages.length > 0 && (
-                                                                            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                                            <div style={{ padding: '0 16px 8px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                                                                 {g.groupMessages.map(gm => (
                                                                                     <span key={gm.messageId || gm.id} style={{
                                                                                         display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -866,6 +903,122 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                                         <MessageSquare size={10} /> {gm.message?.name || 'Mesaj'}
                                                                                     </span>
                                                                                 ))}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* ── EXPANDED: Alıcı Listesi ── */}
+                                                                        {expandedSendId === g.id && (
+                                                                            <div style={{
+                                                                                borderTop: '1px solid #e2e8f0', padding: '16px',
+                                                                                background: '#f8fafc'
+                                                                            }}>
+                                                                                {recipientsLoading ? (
+                                                                                    <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>
+                                                                                        <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
+                                                                                        <div style={{ marginTop: 6, fontSize: 13 }}>Alıcılar yükleniyor...</div>
+                                                                                    </div>
+                                                                                ) : sendRecipients.length === 0 ? (
+                                                                                    <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>
+                                                                                        Bu gönderi için alıcı kaydı bulunamadı.
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        {/* Durum Filtreleri */}
+                                                                                        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                                                            {[
+                                                                                                { key: 'ALL', label: 'Tümü', color: '#475569' },
+                                                                                                { key: 'SENT', label: '📤 Gönderildi', color: '#2563eb' },
+                                                                                                { key: 'DELIVERED', label: '✅ Teslim', color: '#16a34a' },
+                                                                                                { key: 'READ', label: '👁️ Okunan', color: '#7c3aed' },
+                                                                                                { key: 'FAILED', label: '❌ Başarısız', color: '#dc2626' },
+                                                                                                { key: 'PENDING', label: '⏳ Bekleyen', color: '#f59e0b' }
+                                                                                            ].map(f => {
+                                                                                                const cnt = f.key === 'ALL' ? sendRecipients.length : sendRecipients.filter(r => r.status === f.key).length;
+                                                                                                if (f.key !== 'ALL' && cnt === 0) return null;
+                                                                                                return (
+                                                                                                    <button key={f.key}
+                                                                                                        onClick={(e) => { e.stopPropagation(); setRecipientFilter(f.key); }}
+                                                                                                        style={{
+                                                                                                            padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                                                                                                            border: recipientFilter === f.key ? `1px solid ${f.color}` : '1px solid #e2e8f0',
+                                                                                                            background: recipientFilter === f.key ? f.color + '15' : '#fff',
+                                                                                                            color: recipientFilter === f.key ? f.color : '#64748b',
+                                                                                                            cursor: 'pointer'
+                                                                                                        }}
+                                                                                                    >{f.label} ({cnt})</button>
+                                                                                                );
+                                                                                            })}
+                                                                                            <div style={{ marginLeft: 'auto', position: 'relative' }}>
+                                                                                                <input
+                                                                                                    placeholder="Ara..."
+                                                                                                    value={recipientSearch}
+                                                                                                    onChange={e => setRecipientSearch(e.target.value)}
+                                                                                                    onClick={e => e.stopPropagation()}
+                                                                                                    style={{
+                                                                                                        padding: '5px 10px 5px 28px', borderRadius: 6, border: '1px solid #e2e8f0',
+                                                                                                        fontSize: 12, width: 160, outline: 'none'
+                                                                                                    }}
+                                                                                                />
+                                                                                                <Search size={13} style={{ position: 'absolute', left: 8, top: 7, color: '#94a3b8' }} />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        {/* Alıcı Tablosu */}
+                                                                                        <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                                                                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                                                                                <thead>
+                                                                                                    <tr style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
+                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Kişi</th>
+                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Telefon / E-posta</th>
+                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Durum</th>
+                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Zaman</th>
+                                                                                                    </tr>
+                                                                                                </thead>
+                                                                                                <tbody>
+                                                                                                    {sendRecipients
+                                                                                                        .filter(r => recipientFilter === 'ALL' || r.status === recipientFilter)
+                                                                                                        .filter(r => {
+                                                                                                            if (!recipientSearch.trim()) return true;
+                                                                                                            const q = recipientSearch.toLowerCase();
+                                                                                                            return (r.name || '').toLowerCase().includes(q) ||
+                                                                                                                (r.phone || '').includes(q) ||
+                                                                                                                (r.email || '').toLowerCase().includes(q) ||
+                                                                                                                (r.contact?.name || '').toLowerCase().includes(q);
+                                                                                                        })
+                                                                                                        .map(r => {
+                                                                                                            const displayName = r.contact?.name || r.name || 'İsimsiz';
+                                                                                                            const contact_info = r.phone || r.email || '-';
+                                                                                                            const statusMap = {
+                                                                                                                PENDING: { label: '⏳ Bekliyor', bg: '#fef3c7', color: '#92400e' },
+                                                                                                                SENT: { label: '📤 Gönderildi', bg: '#dbeafe', color: '#1e40af' },
+                                                                                                                DELIVERED: { label: '✅ Teslim', bg: '#dcfce7', color: '#166534' },
+                                                                                                                READ: { label: '👁️ Okundu', bg: '#ede9fe', color: '#5b21b6' },
+                                                                                                                FAILED: { label: '❌ Başarısız', bg: '#fee2e2', color: '#991b1b' }
+                                                                                                            };
+                                                                                                            const st = statusMap[r.status] || { label: r.status, bg: '#f3f4f6', color: '#6b7280' };
+                                                                                                            const timeStr = r.readAt ? new Date(r.readAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                                                                                                                : r.deliveredAt ? new Date(r.deliveredAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                                                                                                                : r.sentAt ? new Date(r.sentAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                                                                                                                : '-';
+                                                                                                            return (
+                                                                                                                <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                                                                                                    <td style={{ padding: '8px 12px', fontWeight: 500, color: '#1e293b' }}>{displayName}</td>
+                                                                                                                    <td style={{ padding: '8px 12px', color: '#64748b' }}>{contact_info}</td>
+                                                                                                                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                                                                                                        <span style={{
+                                                                                                                            padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
+                                                                                                                            background: st.bg, color: st.color
+                                                                                                                        }}>{st.label}</span>
+                                                                                                                        {r.failReason && <div style={{ fontSize: 10, color: '#dc2626', marginTop: 2 }}>{r.failReason}</div>}
+                                                                                                                    </td>
+                                                                                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#94a3b8', fontSize: 11 }}>{timeStr}</td>
+                                                                                                                </tr>
+                                                                                                            );
+                                                                                                        })}
+                                                                                                </tbody>
+                                                                                            </table>
+                                                                                        </div>
+                                                                                    </>
+                                                                                )}
                                                                             </div>
                                                                         )}
                                                                     </div>

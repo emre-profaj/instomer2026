@@ -2112,9 +2112,10 @@ export const getCampaignFullDetail = async (req, res) => {
 export const getCampaignRecipients = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, page = 1, limit = 50, search } = req.query;
+        const { status, page = 1, limit = 50, search, groupId } = req.query;
 
         const where = { campaignId: id };
+        if (groupId) where.groupId = groupId;
         if (status && status !== 'ALL') where.status = status;
         if (search) {
             where.OR = [
@@ -2138,9 +2139,11 @@ export const getCampaignRecipients = async (req, res) => {
         ]);
 
         // Durum özeti
+        const statusWhere = { campaignId: id };
+        if (groupId) statusWhere.groupId = groupId;
         const statusCounts = await prisma.marketingRecipient.groupBy({
             by: ['status'],
-            where: { campaignId: id },
+            where: statusWhere,
             _count: { id: true }
         });
 
