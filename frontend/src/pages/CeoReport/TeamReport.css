@@ -1,0 +1,169 @@
+/* ═══════════════════════════════════════════════════════════════
+   TAKIM VE TEMSİLCİLER — SAYFAYA ÖZGÜ
+   Ortak dil: ../Analytics/reportDesign.css
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* Takım karşılaştırma çubukları (hero'nun sağı) */
+.ra-teams { display: flex; flex-direction: column; gap: 11px; flex: 1; justify-content: center; }
+.ra-teamrow { display: grid; grid-template-columns: minmax(96px, 150px) 1fr 52px; gap: 12px; align-items: center; }
+.ra-teamrow .nm { font-size: 0.775rem; font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-teamrow .bar { height: 8px; border-radius: 999px; background: #f1f2f5; overflow: hidden; }
+.ra-teamrow .bar i { display: block; height: 100%; border-radius: 999px; }
+.ra-teamrow .val { font-size: 0.82rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Üye satırı */
+.ra-member {
+    display: grid;
+    grid-template-columns: 26px 38px minmax(140px, 1.15fr) minmax(120px, 1.1fr) repeat(var(--metrics, 4), minmax(62px, 78px));
+    gap: 14px; align-items: center; padding: 13px 28px;
+    transition: background .14s;
+}
+.ra-member + .ra-member { box-shadow: inset 0 1px 0 var(--line); }
+.ra-member:hover { background: #fffafa; }
+.ra-member.clickable { cursor: pointer; }
+
+.ra-pos {
+    width: 24px; height: 24px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; background: #f1f5f9; color: #64748b;
+}
+.ra-pos.top { background: var(--accent-soft); color: var(--accent-deep); }
+
+.ra-face {
+    width: 36px; height: 36px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; overflow: hidden; flex-shrink: 0;
+}
+.ra-face img { width: 100%; height: 100%; object-fit: cover; }
+.ra-face.bot { background: #eff6ff; color: #1d4ed8; }
+
+.ra-m-name { font-size: 0.855rem; font-weight: 650; color: var(--ink); letter-spacing: -0.012em; }
+.ra-m-sub { font-size: 0.71rem; color: var(--ink-3); margin-top: 2px; }
+.ra-chip {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 0.64rem; font-weight: 700; margin-left: 6px; vertical-align: 1px;
+}
+
+/* Sıralama ölçütünün çubuğu — neye göre sıraladığın görünür olsun */
+.ra-primary { display: flex; flex-direction: column; gap: 5px; }
+.ra-primary .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ra-primary .v { font-size: 0.86rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ra-primary .u { font-size: 0.68rem; color: var(--ink-3); }
+.ra-primary .bar { height: 6px; border-radius: 999px; background: #f1f2f5; overflow: hidden; }
+.ra-primary .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #fca5a5, #ef4444); }
+
+.ra-metric { text-align: right; }
+.ra-metric .v { font-size: 0.84rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ra-metric .v.zero { color: #d7dce3; font-weight: 600; }
+.ra-metric .k { font-size: 0.65rem; color: var(--ink-3); margin-top: 2px; }
+
+/* Konu dökümü */
+.ra-topics { padding: 6px 28px 20px 106px; background: #fcfcfd; box-shadow: inset 0 1px 0 var(--line); }
+.ra-topic-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 12px; margin: 4px 6px 0 0; border-radius: 999px;
+    background: #fff; box-shadow: inset 0 0 0 1px var(--line);
+    font-size: 0.74rem; color: var(--ink-2);
+}
+.ra-topic-pill b { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Bölüm başlığı */
+.ra-sec { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 20px 28px 12px; }
+.ra-sec h2 { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.ra-sec .meta { font-size: 0.75rem; color: var(--ink-3); }
+.ra-teamhead { display: flex; align-items: center; gap: 12px; padding: 18px 28px 8px; }
+.ra-teamdot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.ra-teamname { font-size: 0.73rem; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .09em; }
+
+@media (max-width: 1100px) {
+    .ra-member { grid-template-columns: 26px 38px 1fr; row-gap: 10px; align-items: start; padding: 15px 20px; }
+    .ra-member > *:nth-child(n+4) { grid-column: 3; }
+    .ra-metric { text-align: left; }
+    .ra-topics { padding-left: 20px; padding-right: 20px; }
+    .ra-sec, .ra-teamhead { padding-left: 20px; padding-right: 20px; }
+}
+
+/* Konu dağılımı — satıra tıklayınca açılır */
+.ra-caret { color: #c3cad4; transition: transform .16s, color .16s; }
+.ra-member.open .ra-caret { transform: rotate(90deg); color: var(--accent); }
+.ra-member.open { background: #fffafa; }
+
+.ra-topics-head {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 4px 28px 12px 106px;
+}
+.ra-topics-title { font-size: 0.8rem; font-weight: 700; color: var(--ink); }
+.ra-topics-count { font-size: 0.71rem; color: var(--ink-3); }
+
+.ra-trow {
+    display: grid; grid-template-columns: minmax(150px, 1fr) 68px 68px 68px 104px;
+    gap: 12px; align-items: center;
+    padding: 8px 28px 8px 106px;
+}
+.ra-trow + .ra-trow { box-shadow: inset 0 1px 0 var(--line); }
+.ra-trow.head {
+    padding-top: 0; padding-bottom: 7px; box-shadow: none;
+}
+.ra-trow.head span {
+    font-size: 0.65rem; font-weight: 700; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .09em;
+}
+.ra-trow.total { box-shadow: inset 0 1px 0 var(--ink-3); padding-top: 11px; }
+.ra-trow.total .t, .ra-trow.total span { font-weight: 800; color: var(--ink); }
+.ra-trow .t {
+    font-size: 0.79rem; font-weight: 600; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ra-trow .n {
+    font-size: 0.79rem; font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.ra-trow .n.zero { color: #d7dce3; font-weight: 600; }
+.ra-trow .n.money { color: #047857; }
+.ra-topics-more { padding: 10px 28px 18px 106px; font-size: 0.73rem; color: var(--ink-3); }
+.ra-topics-wrap { background: #fcfcfd; box-shadow: inset 0 1px 0 var(--line); padding-top: 16px; padding-bottom: 6px; }
+
+@media (max-width: 1100px) {
+    .ra-topics-head, .ra-trow, .ra-topics-more { padding-left: 20px; padding-right: 20px; }
+    .ra-trow { grid-template-columns: 1fr 52px 52px 52px 90px; gap: 8px; }
+}
+
+.ra-back {
+    display: inline-flex; align-items: center; gap: 7px;
+    margin-bottom: 16px; padding: 7px 13px;
+    border: 1px solid #e6e9ee; border-radius: 10px; background: #fff;
+    font-size: 0.77rem; font-weight: 600; color: var(--ink-2);
+    cursor: pointer; transition: background .15s, border-color .15s;
+}
+.ra-back:hover { background: #f7f8fa; border-color: #d8dde5; }
+
+/* Takım kartı (Takımlara Göre görünümü) */
+.ra-teamcard { margin: 0 28px 18px; border-radius: 16px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
+.ra-teamcard-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; padding: 13px 20px;
+}
+.ra-teamcard-head .nm { display: flex; align-items: center; gap: 10px; }
+.ra-teamcard-head h3 { margin: 0; font-size: 0.87rem; font-weight: 700; color: var(--ink); letter-spacing: -0.015em; }
+.ra-teamcard-head .desc { font-size: 0.73rem; color: var(--ink-3); }
+.ra-teamcard-head .cnt {
+    font-size: 0.71rem; font-weight: 700; color: var(--ink-2);
+    background: #fff; padding: 3px 10px; border-radius: 999px;
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+.ra-teamcard .ra-member { padding-left: 20px; padding-right: 20px; }
+.ra-teamcard .ra-member:first-of-type { box-shadow: inset 0 1px 0 var(--line); }
+.ra-teamsum {
+    display: grid; gap: 14px; align-items: center;
+    grid-template-columns: 26px 38px minmax(140px, 1.15fr) minmax(120px, 1.1fr) repeat(var(--metrics, 4), minmax(58px, 78px));
+    padding: 13px 20px; background: #fafbfc; box-shadow: inset 0 1px 0 var(--ink-3);
+}
+.ra-teamsum .lbl { grid-column: 1 / 5; font-size: 0.78rem; font-weight: 800; color: var(--ink); }
+.ra-teamsum .v { font-size: 0.84rem; font-weight: 800; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-empty-team { padding: 18px 20px; font-size: 0.78rem; color: var(--ink-3); box-shadow: inset 0 1px 0 var(--line); }
+.ra-viewnote {
+    margin: 26px 0 10px; padding: 11px 16px; border-radius: 12px;
+    background: #fffbeb; box-shadow: inset 0 0 0 1px #fde68a;
+    font-size: 0.77rem; color: #92400e;
+}
