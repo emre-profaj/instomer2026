@@ -43,14 +43,6 @@
 /* Şeritteki KPI hücresine trend eklemek için */
 .ra-cell-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-/* Yatay çubuk listesi (kanal, temsilci) */
-.ra-hbars { display: flex; flex-direction: column; gap: 10px; }
-.ra-hbar { display: grid; grid-template-columns: minmax(96px, 150px) 1fr 54px; gap: 12px; align-items: center; }
-.ra-hbar .nm { font-size: 0.775rem; font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ra-hbar .bar { height: 8px; border-radius: 999px; background: #f1f2f5; overflow: hidden; }
-.ra-hbar .bar i { display: block; height: 100%; border-radius: 999px; }
-.ra-hbar .val { font-size: 0.8rem; font-weight: 700; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
-
 /* Mini istatistik ikilisi */
 .ra-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 14px; }
 .ra-duo-item { }
@@ -80,10 +72,6 @@
 .ra-funnel-stage { display: flex; align-items: center; gap: 6px; font-size: 0.71rem; color: var(--ink-3); }
 .ra-funnel-stage i { width: 7px; height: 7px; border-radius: 2px; }
 .ra-funnel-stage b { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-
-/* Grafik alanı */
-.ra-svg { width: 100%; height: auto; display: block; }
-.ra-chart-empty { padding: 34px 0; text-align: center; font-size: 0.8rem; color: var(--ink-3); }
 
 @media (max-width: 1200px) {
     .ra-panel, .ra-panel.w4, .ra-panel.w8 { grid-column: span 12; }

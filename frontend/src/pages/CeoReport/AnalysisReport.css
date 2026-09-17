@@ -1,0 +1,85 @@
+/* ═══════════════════════════════════════════════════════════════
+   ANALİZ RAPORU — SAYFAYA ÖZGÜ
+   Ortak dil: ../Analytics/reportDesign.css
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* Tıklanabilir KPI hücresi — şerit aynı zamanda çapraz süzgeç */
+.ra-cell.click { cursor: pointer; transition: background .14s; }
+.ra-cell.click:hover { background: #fffafa; }
+.ra-cell.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(239,68,68,.22); }
+.ra-cell.on .ra-cell-value { color: var(--accent-deep); }
+
+.ra-activefilter {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin: -8px 0 18px; padding: 10px 15px; border-radius: 11px;
+    background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(239,68,68,.18);
+    font-size: 0.78rem; color: #7f1d1d;
+}
+.ra-activefilter b { font-weight: 700; }
+.ra-activefilter button {
+    margin-left: auto; border: 0; background: none; cursor: pointer;
+    font-size: 0.75rem; font-weight: 600; color: var(--accent-deep);
+    text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* Boyut süzgeçleri */
+.ra-dims { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+.ra-dims .lbl { font-size: 0.72rem; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .07em; }
+
+/* Aşama dağılımı mini şerit (satır içinde) */
+.ra-stagebar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: #f1f2f5; }
+.ra-stagebar i { display: block; height: 100%; }
+.ra-stagebar i + i { border-left: 1px solid #fff; }
+.ra-stagelist { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 7px; }
+.ra-stagelist span { display: flex; align-items: center; gap: 5px; font-size: 0.69rem; color: var(--ink-3); }
+.ra-stagelist i { width: 7px; height: 7px; border-radius: 2px; }
+.ra-stagelist b { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* İkinci kademe (konu / temsilci) */
+.ra-lvl { display: grid; grid-template-columns: 18px 1fr 72px 92px; gap: 10px; align-items: center;
+    padding: 9px 28px 9px 58px; cursor: pointer; transition: background .14s; }
+.ra-lvl:hover { background: #fff5f5; }
+.ra-lvl .caret { color: #cbd2dc; transition: transform .16s; }
+.ra-lvl.open .caret { transform: rotate(90deg); color: var(--accent); }
+.ra-lvl .nm { font-size: 0.785rem; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-lvl .n { font-size: 0.77rem; font-weight: 700; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-lvl .m { font-size: 0.78rem; font-weight: 700; color: #047857; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Üçüncü kademe: kişi satırları */
+.ra-people { padding: 2px 28px 12px 90px; }
+.ra-person {
+    display: grid; grid-template-columns: minmax(120px,1.2fr) 124px minmax(110px,1fr) minmax(110px,1fr) 88px 64px;
+    gap: 10px; align-items: center; padding: 7px 0 7px 14px;
+    border-left: 2px solid var(--line);
+}
+.ra-person + .ra-person { box-shadow: inset 0 1px 0 var(--line); }
+.ra-person.head { padding-bottom: 8px; border-left-color: transparent; }
+.ra-person.head span { font-size: 0.63rem; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; }
+.ra-person .nm { font-size: 0.765rem; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-person .ph { font-size: 0.71rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ra-person .c { font-size: 0.73rem; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ra-person .amt { font-size: 0.75rem; font-weight: 700; color: #047857; text-align: right; font-variant-numeric: tabular-nums; }
+.ra-person .dt { font-size: 0.68rem; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.ra-people-more { padding: 8px 28px 12px 104px; font-size: 0.72rem; color: var(--ink-3); }
+
+/* Kişi listesi (arama kutusuyla) */
+.ra-plist {
+    display: grid; grid-template-columns: minmax(130px,1.2fr) 126px minmax(120px,1.1fr) minmax(110px,1fr) minmax(100px,.9fr) 84px;
+    gap: 12px; align-items: center; padding: 11px 28px; transition: background .14s;
+}
+.ra-plist + .ra-plist { box-shadow: inset 0 1px 0 var(--line); }
+.ra-plist:hover { background: #fffafa; }
+.ra-plist.head { padding-bottom: 9px; box-shadow: none; }
+.ra-plist.head span { font-size: 0.64rem; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; }
+
+@media (max-width: 1100px) {
+    .ra-lvl { padding-left: 20px; padding-right: 20px; }
+    .ra-people, .ra-people-more { padding-left: 20px; padding-right: 20px; }
+    .ra-person { grid-template-columns: 1fr 110px; row-gap: 4px; }
+    .ra-person > *:nth-child(n+3) { grid-column: 1; }
+    .ra-person.head { display: none; }
+    .ra-plist { grid-template-columns: 1fr 110px; row-gap: 6px; padding: 14px 20px; }
+    .ra-plist > *:nth-child(n+3) { grid-column: 1 / -1; }
+    .ra-plist.head { display: none; }
+}

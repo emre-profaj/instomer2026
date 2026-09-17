@@ -1,14 +1,103 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * ANALİZ RAPORU
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * Aynı kişi kümesini iki eksende, üç kademeli açılımla gösterir:
+ * temsilci → konu → kişiler, ve konu → temsilci → kişiler.
+ * Üstelik dört ölçüt (Toplam/Numaralı/İlgili/Satış) aynı zamanda
+ * çapraz süzgeç: tıklayınca alttaki bütün listeler daralır.
+ *
+ * SAYFANIN ÇEKTİĞİ AMA HİÇ GÖSTERMEDİĞİ İKİ ŞEY VARDI:
+ *   1. contactSearch — isim/telefon/konu/temsilci üzerinde çalışan
+ *      filtre mantığı yazılmış ama ARAMA KUTUSU hiç render edilmiyordu.
+ *      Yazamadığınız bir arama. Kutu eklendi, mantık zaten hazırdı.
+ *   2. salesList — API'den 65 satış geliyor, değişkene atanıyor ve
+ *      unutuluyordu. Ayrı bir bölüm olarak eklendi.
+ * (showContacts state'i de hiç kullanılmıyordu — kaldırıldı.)
+ *
+ * 500 SINIRI: API en fazla 500 kişi döndürüyor ama özet sayıları
+ * dönemin tamamını (974) kapsıyor. Yani kartlardaki sayı ile
+ * listelerdeki sayı birbirini tutmuyor — bu backend'den geliyor,
+ * gizlemek yerine listenin altında açıkça yazılıyor.
+ *
+ * "İlgili" süzgecinin kuralı backend'dekiyle AYNI bırakıldı
+ * (OPPORTUNITY / HOT_OPPORTUNITY / MEETING_PLANNED / PROPOSAL /
+ * CONVERTED). Yalnızca arayüzde değiştirmek yeni bir çelişki yaratırdı.
+ */
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    BarChart3, RefreshCw, Filter, ArrowLeft, Users, Phone,
-    Sparkles, ChevronDown, ChevronRight, Search, X, Download, ShoppingCart, FileText
-} from 'lucide-react';
+import { RefreshCw, FileText, ArrowLeft, ChevronRight, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
-import './CeoReport.css';
-import './CeoDetailReport.css';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../Analytics/reportDesign.css';
+import './AnalysisReport.css';
+
+const tr = (n) => Number(n || 0).toLocaleString('tr-TR');
+const money = (n) => Number(n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
+const dt = (s) => (s ? new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: 'short' }).format(new Date(s)) : '—');
+
+/** Backend'deki `relevantStatuses` ile birebir aynı olmalı. */
+const RELEVANT = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
+const KPI_LABELS = { withPhone: 'Numaralı', noPhone: 'Numarasız', interested: 'İlgili / Potansiyel', won: 'Satış Yapılan' };
+
+const StageTag = ({ name, color }) => (
+    name ? <span className="ra-tag" style={{ background: `${color || '#94a3b8'}14`, color: color || '#64748b' }}>{name}</span> : <span>—</span>
+);
+
+const PeopleRows = ({ list }) => {
+    if (!list.length) {
+        return (
+            <div className="ra-people">
+                <div style={{ fontSize: '.76rem', color: '#94a3b8', padding: '6px 0 6px 14px' }}>
+                    Bu kırılımda listelenecek kişi yok
+                </div>
+            </div>
+        );
+    }
+    return (
+        <div className="ra-people">
+            <div className="ra-person head">
+                <span>İsim</span><span>Telefon</span><span>Konu</span><span>Aşama</span>
+                <span style={{ textAlign: 'right' }}>Satış</span><span style={{ textAlign: 'right' }}>Tarih</span>
+            </div>
+            {list.slice(0, 10).map(c => (
+                <div className="ra-person" key={c.id}>
+                    <span className="nm" title={c.name}>{c.name || '—'}</span>
+                    <span className="ph">{c.phone || '—'}</span>
+                    <span className="c" title={c.topic}>{c.topic || '—'}</span>
+                    <span className="c"><StageTag name={c.stageName} color={c.stageColor} /></span>
+                    <span className="amt">{c.dealTotal ? money(c.dealTotal) : '—'}</span>
+                    <span className="dt">{dt(c.createdAt)}</span>
+                </div>
+            ))}
+            {list.length > 10 && (
+                <div className="ra-people-more" style={{ paddingLeft: 14 }}>{tr(list.length - 10)} kişi daha</div>
+            )}
+        </div>
+    );
+};
+
+/** Aşama dağılımı — hem hero'da hem açılan kırılımlarda */
+const StageBreakdown = ({ stages }) => {
+    const arr = Object.entries(stages || {}).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
+    const total = arr.reduce((s, x) => s + x.count, 0) || 1;
+    if (!arr.length) return null;
+    return (
+        <>
+            <div className="ra-stagebar">
+                {arr.map(x => <i key={x.name} style={{ width: `${(x.count / total) * 100}%`, background: x.color || '#cbd5e1' }} title={`${x.name}: ${tr(x.count)}`} />)}
+            </div>
+            <div className="ra-stagelist">
+                {arr.slice(0, 5).map(x => (
+                    <span key={x.name}><i style={{ background: x.color || '#cbd5e1' }} />{x.name} <b>{tr(x.count)}</b></span>
+                ))}
+                {arr.length > 5 && <span>+{arr.length - 5} aşama</span>}
+            </div>
+        </>
+    );
+};
 
 const AnalysisReport = () => {
     const { currentWorkspace } = useAuth();
@@ -21,11 +110,12 @@ const AnalysisReport = () => {
     const [agentFilter, setAgentFilter] = useState('');
     const [topicFilter, setTopicFilter] = useState('');
     const [stageFilter, setStageFilter] = useState('');
-    const [expandedAgents, setExpandedAgents] = useState(new Set());
-    const [showContacts, setShowContacts] = useState(true);
-    const [contactSearch, setContactSearch] = useState('');
     const [kpiFilter, setKpiFilter] = useState(null);
-    const [expandedTopics, setExpandedTopics] = useState(new Set()); // for drill-down
+    const [contactSearch, setContactSearch] = useState('');
+    const [openAgent, setOpenAgent] = useState(null);
+    const [openAgentTopic, setOpenAgentTopic] = useState(null);
+    const [openTopic, setOpenTopic] = useState(null);
+    const [openTopicAgent, setOpenTopicAgent] = useState(null);
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -37,8 +127,7 @@ const AnalysisReport = () => {
         if (!currentWorkspace?.id) return;
         setLoading(true);
         try {
-            const dateParams = getDateRangeLogic(dateFilter, startDate, endDate);
-            const params = { ...dateParams };
+            const params = { ...getDateRangeLogic(dateFilter, startDate, endDate) };
             if (agentFilter) params.agentId = agentFilter;
             if (topicFilter) params.topic = topicFilter;
             if (stageFilter) params.stageId = stageFilter;
@@ -51,379 +140,393 @@ const AnalysisReport = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, agentFilter, topicFilter, stageFilter]);
+    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, agentFilter, topicFilter, stageFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const summary = data?.summary || {};
-    const pivotData = data?.pivotData || [];
-    const agentSummaries = data?.agentSummaries || [];
-    const contacts = data?.contacts || [];
-    const salesList = data?.salesList || [];
+    const pivotData = useMemo(() => data?.pivotData || [], [data]);
+    const agentSummaries = useMemo(() => data?.agentSummaries || [], [data]);
+    const contacts = useMemo(() => data?.contacts || [], [data]);
+    const salesList = useMemo(() => data?.salesList || [], [data]);
     const filters = data?.filters || { agents: [], topics: [], stages: [] };
 
-    // Toggle agent expansion
-    const toggleAgent = (agentId) => {
-        setExpandedAgents(prev => {
-            const next = new Set(prev);
-            next.has(agentId) ? next.delete(agentId) : next.add(agentId);
-            return next;
-        });
-    };
+    /** KPI kartı bir çapraz süzgeç: alttaki bütün listeler bundan besleniyor. */
+    const kpiFiltered = useMemo(() => {
+        if (kpiFilter === 'withPhone') return contacts.filter(c => c.phone && c.phone.trim());
+        if (kpiFilter === 'noPhone') return contacts.filter(c => !c.phone || !c.phone.trim());
+        if (kpiFilter === 'interested') return contacts.filter(c => RELEVANT.includes(c.status));
+        if (kpiFilter === 'won') return contacts.filter(c => c.dealTotal > 0);
+        return contacts;
+    }, [contacts, kpiFilter]);
 
-    // Group pivot data by agent
-    const agentGroups = {};
-    for (const row of pivotData) {
-        if (!agentGroups[row.agentId]) agentGroups[row.agentId] = [];
-        agentGroups[row.agentId].push(row);
-    }
-
-    // Group pivot data by topic (for byTopic view)
-    const topicGroups = {};
-    for (const row of pivotData) {
-        if (!topicGroups[row.topic]) topicGroups[row.topic] = { topic: row.topic, totalCount: 0, wonCount: 0, wonAmount: 0, agents: [], stages: {} };
-        const tg = topicGroups[row.topic];
-        tg.totalCount += row.count;
-        tg.wonCount += (row.wonCount || 0);
-        tg.wonAmount += (row.wonAmount || 0);
-        tg.agents.push({ agentId: row.agentId, agentName: row.agentName, count: row.count, wonCount: row.wonCount || 0, wonAmount: row.wonAmount || 0 });
-        for (const [sName, sData] of Object.entries(row.stages || {})) {
-            if (!tg.stages[sName]) tg.stages[sName] = { count: 0, color: sData.color };
-            tg.stages[sName].count += sData.count;
-        }
-    }
-    const topicSummaries = Object.values(topicGroups).sort((a, b) => b.totalCount - a.totalCount);
-
-    // Toggle topic expansion for drill-down
-    const toggleTopicExpand = (key) => {
-        setExpandedTopics(prev => {
-            const next = new Set(prev);
-            next.has(key) ? next.delete(key) : next.add(key);
-            return next;
-        });
-    };
-
-    // Get contacts for a specific agent+topic or just topic (respects KPI filter)
-    const getContactsForFilter = (agentId, topic) => {
-        return kpiFiltered.filter(c => {
-            if (agentId && c.assigneeId !== agentId && !(agentId === '__unassigned' && !c.assigneeId)) return false;
-            if (topic && c.topic !== topic) return false;
-            return true;
-        });
-    };
-
-    // Filter contacts by KPI + search
-    const relevantStatusList = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
-    let kpiFiltered = contacts;
-    if (kpiFilter === 'withPhone') kpiFiltered = contacts.filter(c => c.phone && c.phone.trim());
-    else if (kpiFilter === 'noPhone') kpiFiltered = contacts.filter(c => !c.phone || !c.phone.trim());
-    else if (kpiFilter === 'interested') kpiFiltered = contacts.filter(c => relevantStatusList.includes(c.status));
-    else if (kpiFilter === 'won') kpiFiltered = contacts.filter(c => c.dealTotal > 0);
-
-    const filteredContacts = contactSearch
-        ? kpiFiltered.filter(c =>
-            (c.name || '').toLowerCase().includes(contactSearch.toLowerCase()) ||
+    const searched = useMemo(() => {
+        if (!contactSearch) return kpiFiltered;
+        const q = contactSearch.toLocaleLowerCase('tr');
+        return kpiFiltered.filter(c =>
+            (c.name || '').toLocaleLowerCase('tr').includes(q) ||
             (c.phone || '').includes(contactSearch) ||
-            (c.topic || '').toLowerCase().includes(contactSearch.toLowerCase()) ||
-            (c.assigneeName || '').toLowerCase().includes(contactSearch.toLowerCase())
-        )
-        : kpiFiltered;
+            (c.topic || '').toLocaleLowerCase('tr').includes(q) ||
+            (c.assigneeName || '').toLocaleLowerCase('tr').includes(q)
+        );
+    }, [kpiFiltered, contactSearch]);
 
-    const statusLabels = {
-        NEW: 'Yeni', OPPORTUNITY: 'Fırsat', HOT_OPPORTUNITY: 'Sıcak Fırsat',
-        INFORMED: 'Bilgi Verildi', MEETING_PLANNED: 'Görüşme Planlandı',
-        PROPOSAL: 'Teklif', CONVERTED: 'Satış', UNREACHABLE: 'Ulaşılamadı', LOST: 'Kayıp'
-    };
-    const statusColors = {
-        NEW: '#6366f1', OPPORTUNITY: '#f59e0b', HOT_OPPORTUNITY: '#ef4444',
-        INFORMED: '#0ea5e9', MEETING_PLANNED: '#8b5cf6',
-        PROPOSAL: '#f97316', CONVERTED: '#10b981', UNREACHABLE: '#94a3b8', LOST: '#ef4444'
-    };
+    const peopleFor = (agentId, topic) => kpiFiltered.filter(c => {
+        if (agentId === '__unassigned') { if (c.assigneeId) return false; }
+        else if (agentId && c.assigneeId !== agentId) return false;
+        if (topic && c.topic !== topic) return false;
+        return true;
+    });
+
+    const byAgent = useMemo(() => {
+        const m = {};
+        for (const r of pivotData) (m[r.agentId] = m[r.agentId] || []).push(r);
+        return m;
+    }, [pivotData]);
+
+    const topicList = useMemo(() => {
+        const m = {};
+        for (const r of pivotData) {
+            const t = m[r.topic] = m[r.topic] || { topic: r.topic, total: 0, won: 0, amount: 0, agents: [], stages: {} };
+            t.total += r.count; t.won += r.wonCount || 0; t.amount += r.wonAmount || 0;
+            t.agents.push({ id: r.agentId, name: r.agentName, count: r.count, won: r.wonCount || 0, amount: r.wonAmount || 0 });
+            for (const [k, v] of Object.entries(r.stages || {})) {
+                if (!t.stages[k]) t.stages[k] = { count: 0, color: v.color };
+                t.stages[k].count += v.count;
+            }
+        }
+        return Object.values(m).sort((a, b) => b.total - a.total);
+    }, [pivotData]);
+
+    const allStages = useMemo(() => {
+        const m = {};
+        for (const a of agentSummaries) {
+            for (const [k, v] of Object.entries(a.stages || {})) {
+                if (!m[k]) m[k] = { count: 0, color: v.color };
+                m[k].count += v.count;
+            }
+        }
+        return Object.entries(m).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
+    }, [agentSummaries]);
+    const stageMax = allStages[0]?.count || 1;
+
+    const agentMax = Math.max(1, ...agentSummaries.map(a => a.totalCount));
+    const topicMax = Math.max(1, ...topicList.map(t => t.total));
+    const noPhone = Math.max(0, (summary.totalCount || 0) - (summary.withPhone || 0));
+    const capped = contacts.length >= 500;
 
     if (loading && !data) {
         return (
-            <div className="ceo-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-                <div style={{ textAlign: 'center', color: '#64748b' }}>
-                    <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', marginBottom: '12px' }} />
-                    <p>Analiz yükleniyor...</p>
+            <div className="ra-page">
+                <div className="ra-loading">
+                    <RefreshCw className="ra-spin" size={30} />
+                    <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>Analiz yükleniyor…</p>
                 </div>
             </div>
         );
     }
 
-    return (
-        <div className="ceo-report">
-            <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
+    const STRIP = [
+        { key: null, k: 'Toplam Kişi', dot: '#ef4444', v: tr(summary.totalCount), sub: 'dönemdeki kişi' },
+        { key: 'withPhone', k: 'Numaralı', dot: '#0ea5e9', v: tr(summary.withPhone), sub: `%${summary.totalCount ? Math.round((summary.withPhone / summary.totalCount) * 100) : 0}` },
+        { key: 'noPhone', k: 'Numarasız', dot: '#94a3b8', v: tr(noPhone), sub: 'telefon yok' },
+        { key: 'interested', k: 'İlgili / Potansiyel', dot: '#f59e0b', v: tr(summary.interested), sub: `%${summary.totalCount ? Math.round((summary.interested / summary.totalCount) * 100) : 0}` },
+        { key: 'won', k: 'Satış', dot: '#10b981', v: tr(summary.wonCount), sub: `${tr(summary.contactsWithDeal)} kişi` },
+        { key: null, k: 'Ciro', dot: '#047857', v: money(summary.wonAmount), sub: 'kazanılan' },
+    ];
 
-            <div className="ceo-detail-header">
-                <div className="ceo-detail-header-left">
-                    <h1><BarChart3 size={24} style={{ color: '#8b5cf6' }} /> Analiz</h1>
-                    <p>Temsilci × Konu × Aşama kırılımlı detaylı analiz</p>
+    return (
+        <div className="ra-page">
+            <div className="ra-wrap">
+
+                <button className="ra-back" onClick={() => navigate('/general-report')}>
+                    <ArrowLeft size={15} /> Dashboard
+                </button>
+
+                <div className="ra-head">
+                    <div>
+                        <div className="ra-eyebrow">Raporlar</div>
+                        <h1>Analiz Raporu</h1>
+                        <p>Temsilci ve konu kırılımında kişi analizi</p>
+                    </div>
+                    <div className="ra-head-actions">
+                        <button className="ra-btn" onClick={fetchData} disabled={loading}>
+                            <RefreshCw className={loading ? 'ra-spin' : ''} size={14} /> Güncelle
+                        </button>
+                        <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                            <FileText size={14} /> Raporu İndir
+                        </button>
+                    </div>
                 </div>
 
-            </div>
-
-            {/* Filters */}
-            <div className="ceo-filter-bar">
-                <div className="ceo-filter-left" style={{ flexWrap: 'wrap', gap: 12 }}>
-                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                    <div className="ceo-pill-group">
-                        {dateFilterOptions.map(item => (
-                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                <div className="ra-filters">
+                    <div className="ra-pills">
+                        {dateFilterOptions.map(o => (
+                            <button key={o.key} className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(o.key)}>{o.label}</button>
                         ))}
                     </div>
                     {dateFilter === 'custom' && (
-                        <div className="ceo-custom-dates">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
+                        <div className="ra-dates">
+                            <input type="date" className="ra-date-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                            <input type="date" className="ra-date-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
                         </div>
                     )}
                 </div>
-                <div className="ceo-filter-right">
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
-            </div>
 
-            {/* Dimension Filters */}
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', margin: '0 0 20px' }}>
-                <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 260 }}>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Temsilci</label>
-                    <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 600, color: '#1e293b', background: agentFilter ? '#f0f9ff' : '#fff', cursor: 'pointer' }}>
+                <div className="ra-dims">
+                    <span className="lbl">Kırılım</span>
+                    <select className="ra-select" value={agentFilter} onChange={e => setAgentFilter(e.target.value)}>
                         <option value="">Tüm Temsilciler</option>
                         {filters.agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
-                </div>
-                <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 260 }}>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Konu Grubu</label>
-                    <select value={topicFilter} onChange={e => setTopicFilter(e.target.value)}
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 600, color: '#1e293b', background: topicFilter ? '#faf5ff' : '#fff', cursor: 'pointer' }}>
-                        <option value="">Tüm Konular</option>
+                    <select className="ra-select" value={topicFilter} onChange={e => setTopicFilter(e.target.value)}>
+                        <option value="">Tüm Konular ({tr(filters.topics.length)})</option>
                         {filters.topics.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
-                </div>
-                <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 260 }}>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Aşama</label>
-                    <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 600, color: '#1e293b', background: stageFilter ? '#ecfdf5' : '#fff', cursor: 'pointer' }}>
+                    <select className="ra-select" value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
                         <option value="">Tüm Aşamalar</option>
                         {filters.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                 </div>
-                {(agentFilter || topicFilter || stageFilter) && (
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                        <button onClick={() => { setAgentFilter(''); setTopicFilter(''); setStageFilter(''); }}
-                            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <X size={14} /> Temizle
-                        </button>
+
+                <div className="ra-surface ra-hero">
+                    <div className="ra-hero-left">
+                        <div className="ra-metric-label">Toplam Kişi</div>
+                        <div className="ra-metric-value">{tr(summary.totalCount)}</div>
+                        <div className="ra-metric-note">{tr(filters.topics.length)} farklı konu</div>
+                        <div className="ra-split">
+                            <div className="ra-split-bar">
+                                <i style={{ width: `${((summary.withPhone || 0) / (summary.totalCount || 1)) * 100}%`, background: 'var(--accent)' }} />
+                                <i style={{ width: `${(noPhone / (summary.totalCount || 1)) * 100}%`, background: '#cbd5e1' }} />
+                            </div>
+                            <div className="ra-split-legend">
+                                <div className="ra-split-item">Numaralı<b>{tr(summary.withPhone)} <span style={{ fontSize: '.72rem', color: '#94a3b8', fontWeight: 600 }}>%{summary.totalCount ? Math.round((summary.withPhone / summary.totalCount) * 100) : 0}</span></b></div>
+                                <div className="ra-split-item" style={{ textAlign: 'right' }}>Numarasız<b>{tr(noPhone)}</b></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="ra-hero-right">
+                        <div className="ra-chart-head">
+                            <span className="ra-chart-title">Aşama dağılımı</span>
+                            <span className="ra-chart-peak">{tr(allStages.length)} aşama</span>
+                        </div>
+                        {allStages.length ? (
+                            <div className="ra-hbars">
+                                {allStages.slice(0, 7).map(x => (
+                                    <div className="ra-hbar" key={x.name}>
+                                        <span className="nm" title={x.name}>{x.name}</span>
+                                        <div className="bar"><i style={{ width: `${(x.count / stageMax) * 100}%`, background: x.color || '#cbd5e1' }} /></div>
+                                        <span className="val">{tr(x.count)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : <div className="ra-chart-empty">Aşama verisi yok</div>}
+                    </div>
+                </div>
+
+                <div className="ra-surface ra-strip" style={{ marginBottom: kpiFilter ? 14 : 22 }}>
+                    {STRIP.map(c => (
+                        <div className={`ra-cell${c.key !== undefined ? ' click' : ''}${kpiFilter === c.key && c.key ? ' on' : ''}`}
+                            key={c.k}
+                            onClick={() => setKpiFilter(kpiFilter === c.key ? null : c.key)}>
+                            <div className="ra-cell-label"><i className="ra-cell-dot" style={{ background: c.dot }} />{c.k}</div>
+                            <div className="ra-cell-value">{c.v}</div>
+                            <div className="ra-cell-sub">{c.sub}</div>
+                        </div>
+                    ))}
+                </div>
+
+                {kpiFilter && (
+                    <div className="ra-activefilter">
+                        Süzgeç: <b>{KPI_LABELS[kpiFilter]}</b> — listeler bu seçime göre daraltıldı
+                        ({tr(kpiFiltered.length)} kişi)
+                        <button onClick={() => setKpiFilter(null)}>✕ Kaldır</button>
                     </div>
                 )}
-            </div>
 
-            {/* KPI Summary - Clickable */}
-            {kpiFilter && (
-                <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6366f1' }}>
-                        Filtre: {kpiFilter === 'withPhone' ? 'Numaralı' : kpiFilter === 'noPhone' ? 'Numarasız' : kpiFilter === 'interested' ? 'İlgili / Potansiyel' : 'Satış Yapılan'} ({filteredContacts.length} kişi)
-                    </span>
-                    <button onClick={() => setKpiFilter(null)} style={{ border: 'none', background: '#fef2f2', color: '#dc2626', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, cursor: 'pointer' }}>✕ Kaldır</button>
+                <div className="ra-anchors">
+                    <a className="ra-anchor" href="#s-agent">Temsilciye Göre <b>{tr(agentSummaries.length)}</b></a>
+                    <a className="ra-anchor" href="#s-topic">Konuya Göre <b>{tr(topicList.length)}</b></a>
+                    <a className="ra-anchor" href="#s-people">Kişiler <b>{tr(searched.length)}</b></a>
+                    <a className="ra-anchor" href="#s-sales">Satışlar <b>{tr(salesList.length)}</b></a>
                 </div>
-            )}
-            <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(null)} style={{ cursor: 'pointer', outline: !kpiFilter ? '2px solid #6366f1' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} /><div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div><div className="kpi-label">Toplam Kişi</div><div className="kpi-value">{summary.totalCount || 0}</div></div>
-                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(kpiFilter === 'withPhone' ? null : 'withPhone')} style={{ cursor: 'pointer', outline: kpiFilter === 'withPhone' ? '2px solid #0ea5e9' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #0ea5e9, #0ea5e988)' }} /><div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Phone size={20} /></div><div className="kpi-label">Numaralı</div><div className="kpi-value">{summary.withPhone || 0}</div></div>
-                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(kpiFilter === 'interested' ? null : 'interested')} style={{ cursor: 'pointer', outline: kpiFilter === 'interested' ? '2px solid #f59e0b' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} /><div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><Sparkles size={20} /></div><div className="kpi-label">İlgili / Potansiyel</div><div className="kpi-value">{summary.interested || 0}</div></div>
-                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(kpiFilter === 'won' ? null : 'won')} style={{ cursor: 'pointer', outline: kpiFilter === 'won' ? '2px solid #10b981' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><BarChart3 size={20} /></div><div className="kpi-label">Satış</div><div className="kpi-value">{summary.wonCount || 0}</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #059669, #05966988)' }} /><div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}><BarChart3 size={20} /></div><div className="kpi-label">Ciro</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{(summary.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</div></div>
-            </div>
 
-            {/* ═══ Temsilciye Göre ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 20 }}>
-                <div className="ceo-section-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><BarChart3 size={18} /></div>
+                {/* ── Temsilciye Göre ── */}
+                <div className="ra-surface" id="s-agent" style={{ marginBottom: 22, '--cols': 2 }}>
+                    <div className="ra-sec">
                         <h2>Temsilciye Göre</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: 10 }}>
-                            {agentSummaries.length} temsilci
-                        </span>
-                        {kpiFilter && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#f59e0b', background: '#fffbeb', padding: '2px 8px', borderRadius: 6 }}>Filtre aktif</span>}
+                        <span className="meta">{tr(agentSummaries.length)} temsilci · {tr(pivotData.length)} kırılım</span>
                     </div>
-                </div>
-                <div className="ceo-section-body" style={{ padding: 0 }}>
-                    {agentSummaries.length === 0 ? (
-                        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}><BarChart3 size={28} style={{ marginBottom: 8 }} /><p>Veri bulunamadı</p></div>
-                    ) : (
-                        <div>
-                            {agentSummaries.map((agent) => {
-                                const isExpanded = expandedAgents.has(agent.agentId);
-                                const agentTopics = agentGroups[agent.agentId] || [];
-                                const agentContacts = kpiFiltered.filter(c => c.assigneeId === agent.agentId || (agent.agentId === '__unassigned' && !c.assigneeId));
-                                const withPhone = agentContacts.filter(c => c.phone && c.phone.trim()).length;
-                                const agentDeals = agentContacts.filter(c => c.dealTotal > 0);
-                                const agentDealAmount = agentDeals.reduce((sum, c) => sum + (c.dealWonAmount || 0), 0);
-                                if (kpiFilter && agentContacts.length === 0) return null;
-                                return (
-                                    <div key={agent.agentId} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                        <div onClick={() => toggleAgent(agent.agentId)}
-                                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', cursor: 'pointer', background: isExpanded ? '#f8fafc' : '#fff', transition: 'background 0.15s' }}>
-                                            <ChevronRight size={16} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
-                                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.8rem', color: '#6366f1', flexShrink: 0 }}>
-                                                {agent.agentName?.charAt(0) || '?'}
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{agent.agentName}</div>
-                                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>{agent.topicCount} konu · {withPhone} numaralı</div>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#6366f1' }}>{agentContacts.length}</span>
-                                                {agentDeals.length > 0 && (
-                                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
-                                                        {agentDeals.length} satış · {agentDealAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
-                                                    </span>
-                                                )}
-                                            </div>
+                    {agentSummaries.length === 0
+                        ? <div className="ra-empty"><h3>Veri bulunamadı</h3><p>Bu dönemde kayıt yok.</p></div>
+                        : agentSummaries.map(a => {
+                            const rows = (byAgent[a.agentId] || []).slice().sort((x, y) => y.count - x.count);
+                            const open = openAgent === a.agentId;
+                            return (
+                                <React.Fragment key={a.agentId}>
+                                    <div className={`ra-brow clickable${open ? ' open' : ''}`}
+                                        onClick={() => setOpenAgent(open ? null : a.agentId)}>
+                                        <span className="caret"><ChevronRight size={14} /></span>
+                                        <div><div className="nm">{a.agentName}</div><div className="sub">{tr(a.topicCount)} konu</div></div>
+                                        <div className="ra-primary">
+                                            <div className="top"><span className="v">{tr(a.totalCount)}</span><span className="u">kişi</span></div>
+                                            <div className="bar"><i style={{ width: `${(a.totalCount / agentMax) * 100}%` }} /></div>
                                         </div>
-                                        {isExpanded && (
-                                            <div style={{ padding: '0 20px 16px 60px' }}>
-                                                {agentTopics.map((row) => {
-                                                    const topicKey = `${agent.agentId}|||${row.topic}`;
-                                                    const isTopicOpen = expandedTopics.has(topicKey);
-                                                    const topicContacts = getContactsForFilter(agent.agentId, row.topic);
-                                                    const tcWithPhone = topicContacts.filter(c => c.phone && c.phone.trim()).length;
-                                                    const tcDeals = topicContacts.filter(c => c.dealTotal > 0);
-                                                    const tcDealAmount = tcDeals.reduce((sum, c) => sum + (c.dealWonAmount || 0), 0);
-                                                    if (kpiFilter && topicContacts.length === 0) return null;
-                                                    return (
-                                                        <div key={row.topic} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                            <div onClick={() => toggleTopicExpand(topicKey)}
-                                                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', cursor: 'pointer', background: isTopicOpen ? '#faf5ff' : 'transparent', borderRadius: 6, transition: 'background 0.15s' }}>
-                                                                <ChevronRight size={14} style={{ color: '#94a3b8', transform: isTopicOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
-                                                                <span style={{ fontWeight: 700, color: '#1e293b', flex: 1, fontSize: '0.85rem' }}>{row.topic}</span>
-                                                                <span style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.85rem' }}>{topicContacts.length}</span>
-                                                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 6px', borderRadius: 5 }}>{tcWithPhone} tel</span>
-                                                                {tcDeals.length > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '1px 6px', borderRadius: 5 }}>{tcDeals.length} satış · {tcDealAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span>}
-                                                            </div>
-                                                            {isTopicOpen && topicContacts.length > 0 && (
-                                                                <div style={{ padding: '4px 0 12px 28px' }}>
-                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                                                                        <thead><tr style={{ background: '#f1f5f9' }}>
-                                                                            <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
-                                                                            <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
-                                                                            <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
-                                                                            <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
-                                                                            <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
-                                                                        </tr></thead>
-                                                                        <tbody>
-                                                                            {topicContacts.map((c, ci) => (
-                                                                                <tr key={c.id || ci} style={{ borderBottom: '1px solid #f8fafc' }}>
-                                                                                    <td style={{ padding: '5px 8px', fontWeight: 600, color: '#1e293b' }}>{c.name}</td>
-                                                                                    <td style={{ padding: '5px 8px', color: '#475569' }}>{c.phone || '—'}</td>
-                                                                                    <td style={{ padding: '5px 8px' }}><span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>{statusLabels[c.status] || c.status}</span></td>
-                                                                                    <td style={{ padding: '5px 8px' }}>{c.stageName ? <span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>{c.stageName}</span> : '—'}</td>
-                                                                                    <td style={{ padding: '5px 8px' }}>{c.dealTotal > 0 ? <span style={{ fontWeight: 800, color: '#059669', fontSize: '0.72rem' }}>✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : '—'}</td>
-                                                                                </tr>
-                                                                            ))}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
-                                                            )}
+                                        <div className="ra-metric"><div className="v">{tr(a.topicCount)}</div><div className="k">konu</div></div>
+                                        <div className="ra-metric"><div className={`v${a.wonCount ? '' : ' zero'}`}>{a.wonCount ? tr(a.wonCount) : '—'}</div><div className="k">satış</div></div>
+                                    </div>
+                                    {open && (
+                                        <>
+                                            <div className="ra-sub-wrap" style={{ padding: '14px 28px 6px 58px' }}>
+                                                <StageBreakdown stages={a.stages} />
+                                            </div>
+                                            {rows.slice(0, 8).map(r => {
+                                                const k = `${a.agentId}__${r.topic}`;
+                                                const o = openAgentTopic === k;
+                                                return (
+                                                    <React.Fragment key={k}>
+                                                        <div className={`ra-lvl${o ? ' open' : ''}`} onClick={() => setOpenAgentTopic(o ? null : k)}>
+                                                            <span className="caret"><ChevronRight size={11} /></span>
+                                                            <span className="nm" title={r.topic}>{r.topic}</span>
+                                                            <span className="n">{tr(r.count)} kişi</span>
+                                                            <span className="m">{r.wonAmount ? money(r.wonAmount) : '—'}</span>
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                                        {o && <PeopleRows list={peopleFor(a.agentId, r.topic)} />}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                            {rows.length > 8 && <div className="ra-people-more">{tr(rows.length - 8)} konu daha</div>}
+                                        </>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
                 </div>
-            </div>
 
-            {/* ═══ Konuya Göre ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 20 }}>
-                <div className="ceo-section-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><BarChart3 size={18} /></div>
-                        <h2>Konuya Göre</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: 10 }}>
-                            {topicSummaries.length} konu
-                        </span>
-                        {kpiFilter && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#f59e0b', background: '#fffbeb', padding: '2px 8px', borderRadius: 6 }}>Filtre aktif</span>}
-                    </div>
-                </div>
-                <div className="ceo-section-body" style={{ padding: 0 }}>
-                    {topicSummaries.length === 0 ? (
-                        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}><BarChart3 size={28} style={{ marginBottom: 8 }} /><p>Veri bulunamadı</p></div>
-                    ) : (
-                        <div>
-                            {topicSummaries.map((tg) => {
-                                const isExpanded = expandedTopics.has(tg.topic);
-                                const topicContacts = kpiFiltered.filter(c => c.topic === tg.topic);
-                                const tcWithPhone = topicContacts.filter(c => c.phone && c.phone.trim()).length;
-                                const tcDeals = topicContacts.filter(c => c.dealTotal > 0);
-                                const tcDealAmount = tcDeals.reduce((sum, c) => sum + (c.dealWonAmount || 0), 0);
-                                if (kpiFilter && topicContacts.length === 0) return null;
-                                return (
-                                    <div key={tg.topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                        <div onClick={() => toggleTopicExpand(tg.topic)}
-                                            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', cursor: 'pointer', background: isExpanded ? '#faf5ff' : '#fff', transition: 'background 0.15s' }}>
-                                            <ChevronRight size={16} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
-                                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.7rem', color: '#8b5cf6', flexShrink: 0 }}>
-                                                {tg.topic?.charAt(0) || '?'}
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{tg.topic}</div>
-                                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>{tg.agents.length} temsilci · {tcWithPhone} numaralı</div>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#8b5cf6' }}>{topicContacts.length}</span>
-                                                {tcDeals.length > 0 && (
-                                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
-                                                        {tcDeals.length} satış · {tcDealAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
-                                                    </span>
-                                                )}
-                                            </div>
+                {/* ── Konuya Göre ── */}
+                <div className="ra-surface" id="s-topic" style={{ marginBottom: 22, '--cols': 2 }}>
+                    <div className="ra-sec"><h2>Konuya Göre</h2><span className="meta">{tr(topicList.length)} konu</span></div>
+                    {topicList.length === 0
+                        ? <div className="ra-empty"><h3>Veri bulunamadı</h3><p>Bu dönemde kayıt yok.</p></div>
+                        : topicList.slice(0, 30).map(t => {
+                            const open = openTopic === t.topic;
+                            return (
+                                <React.Fragment key={t.topic}>
+                                    <div className={`ra-brow clickable${open ? ' open' : ''}`}
+                                        onClick={() => setOpenTopic(open ? null : t.topic)}>
+                                        <span className="caret"><ChevronRight size={14} /></span>
+                                        <div><div className="nm" title={t.topic}>{t.topic}</div><div className="sub">{tr(t.agents.length)} temsilci</div></div>
+                                        <div className="ra-primary">
+                                            <div className="top"><span className="v">{tr(t.total)}</span><span className="u">kişi</span></div>
+                                            <div className="bar"><i style={{ width: `${(t.total / topicMax) * 100}%` }} /></div>
                                         </div>
-                                        {isExpanded && topicContacts.length > 0 && (
-                                            <div style={{ padding: '0 20px 16px 60px' }}>
-                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                                    <thead><tr style={{ background: '#f5f3ff' }}>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>#</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
-                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
-                                                    </tr></thead>
-                                                    <tbody>
-                                                        {topicContacts.map((c, ci) => (
-                                                            <tr key={c.id || ci} style={{ borderBottom: '1px solid #f8fafc' }}>
-                                                                <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.75rem' }}>{ci + 1}</td>
-                                                                <td style={{ padding: '5px 10px', fontWeight: 700, color: '#1e293b' }}>{c.name}</td>
-                                                                <td style={{ padding: '5px 10px', color: '#475569' }}>{c.phone || '—'}</td>
-                                                                <td style={{ padding: '5px 10px' }}><span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>{statusLabels[c.status] || c.status}</span></td>
-                                                                <td style={{ padding: '5px 10px' }}>{c.stageName ? <span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>{c.stageName}</span> : '—'}</td>
-                                                                <td style={{ padding: '5px 10px' }}>{c.dealTotal > 0 ? <span style={{ fontWeight: 800, color: '#059669', fontSize: '0.72rem' }}>✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : '—'}</td>
-                                                                <td style={{ padding: '5px 10px', fontWeight: 600, color: c.assigneeName ? '#1e293b' : '#d1d5db', fontSize: '0.78rem' }}>{c.assigneeName || '—'}</td>
-                                                                <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.73rem' }}>{c.conversationDate ? new Date(c.conversationDate).toLocaleDateString('tr-TR') : '—'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
+                                        <div className="ra-metric"><div className={`v${t.won ? '' : ' zero'}`}>{t.won ? tr(t.won) : '—'}</div><div className="k">satış</div></div>
+                                        <div className="ra-metric"><div className={`v${t.amount ? ' money' : ' zero'}`}>{t.amount ? money(t.amount) : '—'}</div><div className="k">ciro</div></div>
                                     </div>
-                                );
-                            })}
+                                    {open && (
+                                        <>
+                                            <div className="ra-sub-wrap" style={{ padding: '14px 28px 6px 58px' }}>
+                                                <StageBreakdown stages={t.stages} />
+                                            </div>
+                                            {t.agents.slice().sort((x, y) => y.count - x.count).slice(0, 8).map(ag => {
+                                                const k = `${t.topic}__${ag.id}`;
+                                                const o = openTopicAgent === k;
+                                                return (
+                                                    <React.Fragment key={k}>
+                                                        <div className={`ra-lvl${o ? ' open' : ''}`} onClick={() => setOpenTopicAgent(o ? null : k)}>
+                                                            <span className="caret"><ChevronRight size={11} /></span>
+                                                            <span className="nm">{ag.name}</span>
+                                                            <span className="n">{tr(ag.count)} kişi</span>
+                                                            <span className="m">{ag.amount ? money(ag.amount) : '—'}</span>
+                                                        </div>
+                                                        {o && <PeopleRows list={peopleFor(ag.id, t.topic)} />}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
+                    {topicList.length > 30 && (
+                        <div className="ra-people-more" style={{ paddingLeft: 28 }}>{tr(topicList.length - 30)} konu daha — en kalabalık 30 gösteriliyor</div>
+                    )}
+                </div>
+
+                {/* ── Kişiler (arama kutusu buraya eklendi) ── */}
+                <div className="ra-surface" id="s-people" style={{ marginBottom: 22 }}>
+                    <div className="ra-list-head">
+                        <h2>Kişiler<span className="ra-count">{tr(searched.length)} kayıt</span></h2>
+                        <div className="ra-search">
+                            <Search size={15} />
+                            <input type="text" placeholder="İsim, telefon, konu veya temsilci ara…"
+                                value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+                        </div>
+                    </div>
+                    {searched.length === 0 ? (
+                        <div className="ra-empty">
+                            <h3>{contactSearch ? 'Aramanızla eşleşen kişi yok' : 'Kişi bulunamadı'}</h3>
+                            <p>{contactSearch ? 'Farklı bir isim, telefon veya konu deneyin.' : 'Bu dönemde kayıt yok.'}</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="ra-plist head">
+                                <span>İsim</span><span>Telefon</span><span>Konu</span><span>Aşama</span><span>Temsilci</span>
+                                <span style={{ textAlign: 'right' }}>Satış</span>
+                            </div>
+                            {searched.slice(0, 100).map(c => (
+                                <div className="ra-plist" key={c.id}>
+                                    <span style={{ fontSize: '.83rem', fontWeight: 650, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name || '—'}</span>
+                                    <span style={{ fontSize: '.73rem', color: 'var(--ink-3)', fontVariantNumeric: 'tabular-nums' }}>{c.phone || '—'}</span>
+                                    <span style={{ fontSize: '.77rem', color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.topic}>{c.topic || '—'}</span>
+                                    <span><StageTag name={c.stageName} color={c.stageColor} /></span>
+                                    <span style={{ fontSize: '.76rem', color: 'var(--ink-2)' }}>{c.assigneeName || 'Atanmamış'}</span>
+                                    <span style={{ fontSize: '.8rem', fontWeight: 700, color: c.dealTotal ? '#047857' : '#d7dce3', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                        {c.dealTotal ? money(c.dealTotal) : '—'}
+                                    </span>
+                                </div>
+                            ))}
+                            {searched.length > 100 && (
+                                <div className="ra-people-more" style={{ paddingLeft: 28 }}>{tr(searched.length - 100)} kişi daha — ilk 100 gösteriliyor</div>
+                            )}
+                        </>
+                    )}
+                    {capped && (
+                        <div className="ra-people-more" style={{ paddingLeft: 28 }}>
+                            Liste en fazla 500 kişi getirir — üstteki kart sayıları dönemin tamamını kapsar, listeler bu 500 kaydı.
                         </div>
                     )}
                 </div>
+
+                {/* ── Satışlar (eskiden çekiliyor ama gösterilmiyordu) ── */}
+                <div className="ra-surface" id="s-sales">
+                    <div className="ra-sec">
+                        <h2>Satışlar</h2>
+                        <span className="meta">{tr(salesList.length)} satış · {money(summary.wonAmount)}</span>
+                    </div>
+                    {salesList.length === 0 ? (
+                        <div className="ra-empty"><h3>Satış kaydı yok</h3><p>Bu dönemde kazanılmış satış bulunamadı.</p></div>
+                    ) : (
+                        <>
+                            <div className="ra-plist head">
+                                <span>Müşteri</span><span>Telefon</span><span>Başlık</span><span>Konu</span><span>Temsilci</span>
+                                <span style={{ textAlign: 'right' }}>Tutar</span>
+                            </div>
+                            {salesList.map(x => (
+                                <div className="ra-plist" key={x.dealId}>
+                                    <span style={{ fontSize: '.83rem', fontWeight: 650, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.contactName || '—'}</span>
+                                    <span style={{ fontSize: '.73rem', color: 'var(--ink-3)', fontVariantNumeric: 'tabular-nums' }}>{x.phone || '—'}</span>
+                                    <span style={{ fontSize: '.78rem', color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={x.title}>{x.title || '—'}</span>
+                                    <span style={{ fontSize: '.76rem', color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.topic || '—'}</span>
+                                    <span style={{ fontSize: '.76rem', color: 'var(--ink-2)' }}>{x.agentName || x.assigneeName || '—'}</span>
+                                    <span style={{ fontSize: '.82rem', fontWeight: 700, color: '#047857', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(x.amount)}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                </div>
+
             </div>
-
-
         </div>
     );
 };
