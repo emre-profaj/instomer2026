@@ -614,7 +614,8 @@ export const getCompanyInfo = async (req, res) => {
                 businessAreas: true,
                 serviceRegions: true,
                 googleMapsUrl: true,
-                companyWeeklySchedule: true
+                companyWeeklySchedule: true,
+                companyScheduleEnabled: true
             }
         });
 
@@ -650,7 +651,8 @@ export const updateCompanyInfo = async (req, res) => {
             businessAreas,
             serviceRegions,
             googleMapsUrl,
-            companyWeeklySchedule
+            companyWeeklySchedule,
+            companyScheduleEnabled
         } = req.body;
 
         const updateData = {};
@@ -672,6 +674,7 @@ export const updateCompanyInfo = async (req, res) => {
         if (serviceRegions !== undefined) updateData.serviceRegions = typeof serviceRegions === 'string' ? serviceRegions : JSON.stringify(serviceRegions);
         if (googleMapsUrl !== undefined) updateData.googleMapsUrl = googleMapsUrl;
         if (companyWeeklySchedule !== undefined) updateData.companyWeeklySchedule = companyWeeklySchedule;
+        if (companyScheduleEnabled !== undefined) updateData.companyScheduleEnabled = !!companyScheduleEnabled;
 
         const workspace = await prisma.workspace.update({
             where: { id: workspaceId },
@@ -693,7 +696,8 @@ export const updateCompanyInfo = async (req, res) => {
                 businessAreas: true,
                 serviceRegions: true,
                 googleMapsUrl: true,
-                companyWeeklySchedule: true
+                companyWeeklySchedule: true,
+                companyScheduleEnabled: true
             }
         });
 

@@ -18,6 +18,7 @@
  */
 
 import prisma from '../lib/prisma.js';
+import { buildScheduleKnowledgeLines } from './companySchedule.service.js';
 
 export async function getBaseKnowledgeContext(workspaceId) {
     if (!workspaceId) return { text: '', summary: {}, structuredData: {} };
@@ -51,6 +52,7 @@ export async function getBaseKnowledgeContext(workspaceId) {
                     businessAreas: true,
                     serviceRegions: true,
                     companyWeeklySchedule: true,
+                    companyScheduleEnabled: true,
                     industry: true
                 }
             }),
@@ -174,35 +176,9 @@ export async function getBaseKnowledgeContext(workspaceId) {
             } catch {}
 
             // Çalışma Saatleri ve Resmi Tatil Politikası
-            if (workspace.companyWorkingHours) {
-                lines.push(`Haftalık Çalışma Saatleri Özeti: ${workspace.companyWorkingHours}`);
-            }
-
-            // Yapılandırılmış 7 Günlük Tablo
-            if (workspace.companyWeeklySchedule) {
-                try {
-                    const schedData = typeof workspace.companyWeeklySchedule === 'string'
-                        ? JSON.parse(workspace.companyWeeklySchedule)
-                        : workspace.companyWeeklySchedule;
-                    const days = Array.isArray(schedData) ? schedData : (schedData.schedule || []);
-                    if (days.length > 0) {
-                        const schedLines = days.map(d => {
-                            const label = d.label || ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][d.day] || `Gün ${d.day}`;
-                            return d.enabled ? `  • ${label}: ${d.start || '09:00'} - ${d.end || '18:00'}` : `  • ${label}: KAPALI`;
-                        });
-                        lines.push(`Detaylı 7 Günlük Çalışma Çizelgesi:\n${schedLines.join('\n')}`);
-                    }
-                    if (schedData.holidays) {
-                        if (schedData.holidays.closedOnPublicHolidays !== false) {
-                            lines.push(`Resmi Tatiller & Bayramlar: Resmi tatil günlerinde ve dini bayramlarda (1 Ocak, 23 Nisan, 1 Mayıs, 19 Mayıs, 15 Temmuz, 30 Ağustos, 29 Ekim, Ramazan Bayramı, Kurban Bayramı) firmamız KAPALIDIR / hizmet vermemektedir.`);
-                        } else {
-                            lines.push(`Resmi Tatiller & Bayramlar: Resmi tatil günlerinde hizmet verilmektedir (${schedData.holidays.holidayWorkingHours || 'Özel saatler geçerlidir'}).`);
-                        }
-                    } else {
-                        lines.push(`Resmi Tatiller: Resmi tatiller ve bayram günlerinde kapalıdır.`);
-                    }
-                } catch {}
-            }
+            // Ayarlardaki anahtar kapalıysa buradan HİÇBİR saat satırı çıkmaz:
+            // saatler yalnızca bilgi bankası belgelerinden okunur.
+            lines.push(...buildScheduleKnowledgeLines(workspace));
 
             if (lines.length > 0) {
                 sections.push(`🏢 ŞİRKET BİLGİLERİ VE ÇALIŞMA SAATLERİ:\n${lines.join('\n')}`);

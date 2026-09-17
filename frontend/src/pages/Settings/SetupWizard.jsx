@@ -253,6 +253,8 @@ const SetupWizard = () => {
   const [logoUploading, setLogoUploading] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
   const [companyInfoLoading, setCompanyInfoLoading] = useState(false);
+  // Bilgi Bankası ekranındaki çizelge anahtarı — burada yalnızca uyarı göstermek için okunur
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
 
   const [weeklySchedule, setWeeklySchedule] = useState(() => {
     if (currentWorkspace?.companyWeeklySchedule) {
@@ -454,6 +456,8 @@ const SetupWizard = () => {
       }
       setServiceRegions(Array.isArray(sRegions) ? sRegions : []);
 
+      setScheduleEnabled(info.companyScheduleEnabled !== false);
+
       // Weekly schedule
       let sched = DEFAULT_WEEKLY_SCHEDULE;
       if (info.companyWeeklySchedule) {
@@ -553,7 +557,9 @@ const SetupWizard = () => {
         companyPhone: companyPhone || '',
         companyEmail: companyEmail || '',
         companyWebsite: companyWebsite || '',
-        companyWorkingHours: scheduleText,
+        // Çizelge pasifken türetilmiş özeti göndermiyoruz — kullanılmayan bir
+        // değeri ezip yanlış saatleri kalıcılaştırırdı.
+        ...(scheduleEnabled ? { companyWorkingHours: scheduleText } : {}),
         founder: founder || '',
         industry: companyIndustry || 'GENERAL',
         businessAreas: JSON.stringify(businessAreas || []),
@@ -2924,6 +2930,16 @@ GENEL DAVRANIŞ KURALLARI:
             <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: '#64748b' }}>
               Haftanın 7 günü için çalışma ve randevu saatlerini ayrı ayrı belirleyin.
             </p>
+            {!scheduleEnabled && (
+              <p style={{
+                margin: '8px 0 0 0', padding: '8px 10px', borderRadius: '8px',
+                background: '#fffbeb', border: '1px solid #fde68a',
+                fontSize: '12px', color: '#92400e', lineHeight: 1.5, maxWidth: '520px'
+              }}>
+                Bu çizelge şu anda <strong>yok sayılıyor</strong>: çalışma saatleri bilgi
+                bankasından okunuyor. Anahtar Bilgi Bankası → Firma Bilgileri ekranındadır.
+              </p>
+            )}
           </div>
 
           {/* Hızlı Şablonlar */}

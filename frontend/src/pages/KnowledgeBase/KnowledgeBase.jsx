@@ -97,6 +97,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         businessAreas: [],
         serviceRegions: [],
         googleMapsUrl: '',
+        scheduleEnabled: true,
         weeklySchedule: [
             { day: 0, label: 'Pazartesi', enabled: true, start: '09:00', end: '18:00' },
             { day: 1, label: 'Salı', enabled: true, start: '09:00', end: '18:00' },
@@ -436,6 +437,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                 businessAreas,
                 serviceRegions,
                 googleMapsUrl: info.googleMapsUrl || '',
+                scheduleEnabled: info.companyScheduleEnabled !== false,
                 weeklySchedule,
                 holidaysConfig
             });
@@ -456,6 +458,8 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                 ? 'Resmi tatil ve bayramlarda KAPALI'
                 : 'Resmi tatil ve bayramlarda AÇIK';
             const fullWorkingHours = `${scheduleText} | ${holidayText}${companyInfo.holidaysConfig?.note ? ` (${companyInfo.holidaysConfig.note})` : ''}`;
+            // Çizelge pasifken bu türetilmiş özeti GÖNDERMİYORUZ: kaydedilse de
+            // kullanılmayacak, ama eski değeri ezip yanlış saatleri kalıcılaştırırdı.
 
             await workspaceAPI.updateCompanyInfo(currentWorkspace.id, {
                 companyName: companyInfo.name,
@@ -464,12 +468,13 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                 companyPhone: companyInfo.phone,
                 companyEmail: companyInfo.email,
                 companyWebsite: companyInfo.website,
-                companyWorkingHours: fullWorkingHours,
+                ...(companyInfo.scheduleEnabled ? { companyWorkingHours: fullWorkingHours } : {}),
                 founder: companyInfo.founder,
                 industry: companyInfo.industry,
                 businessAreas: JSON.stringify(companyInfo.businessAreas),
                 serviceRegions: JSON.stringify(companyInfo.serviceRegions),
                 googleMapsUrl: companyInfo.googleMapsUrl,
+                companyScheduleEnabled: companyInfo.scheduleEnabled,
                 companyWeeklySchedule: {
                     schedule: companyInfo.weeklySchedule,
                     holidays: companyInfo.holidaysConfig
@@ -1215,7 +1220,42 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
 
                     {/* Çalışma Saatleri - 7 Gün */}
                     <div className="form-group">
-                        <label style={{ marginBottom: '12px', display: 'block' }}>🕐 Çalışma Saatleri</label>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            gap: '12px', marginBottom: '12px', flexWrap: 'wrap'
+                        }}>
+                            <label style={{ margin: 0 }}>🕐 Çalışma Saatleri</label>
+                            <label style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                                color: companyInfo.scheduleEnabled ? '#2563eb' : '#64748b'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    role="switch"
+                                    checked={companyInfo.scheduleEnabled}
+                                    onChange={(e) => setCompanyInfo(prev => ({ ...prev, scheduleEnabled: e.target.checked }))}
+                                    style={{ accentColor: '#2563eb', width: '16px', height: '16px' }}
+                                />
+                                {companyInfo.scheduleEnabled ? 'Bu çizelge kullanılıyor' : 'Bilgi bankasından okunuyor'}
+                            </label>
+                        </div>
+
+                        {!companyInfo.scheduleEnabled && (
+                            <div style={{
+                                padding: '10px 12px', marginBottom: '12px', borderRadius: '8px',
+                                background: '#fffbeb', border: '1px solid #fde68a',
+                                fontSize: '12px', color: '#92400e', lineHeight: 1.5
+                            }}>
+                                Aşağıdaki çizelge <strong>yok sayılıyor</strong>. Yapay zekâ çalışma
+                                saatlerini yalnızca bilgi bankası belgelerinizden okur — bölümlere göre
+                                farklı saat işleyen yerler (ör. kadınlar / erkekler) için bunu kullanın.
+                                Saate bağlı otomasyonlar (mesai dışı cevabı, “çalışma saatleriniz?”
+                                otomatik yanıtı) bu durumda çalışmaz.
+                            </div>
+                        )}
+
+                        <div style={{ opacity: companyInfo.scheduleEnabled ? 1 : 0.45 }}>
                         <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
                             <button className="btn btn-outline" style={{ fontSize: '11px', padding: '4px 10px' }}
                                 onClick={() => setCompanyInfo(prev => ({
@@ -1395,6 +1435,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                     }}
                                 />
                             </div>
+                        </div>
                         </div>
                     </div>
 

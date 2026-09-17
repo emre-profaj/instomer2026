@@ -110,6 +110,9 @@ model Workspace {
   serviceRegions        String   @default("[]") // Hizmet ve satış bölgeleri JSON array ["İstanbul / Kadıköy", ...]
   googleMapsUrl         String?              // Google Maps konum linki
   companyWeeklySchedule Json?               // Yapılandırılmış 7 günlük çalışma saatleri [{day,enabled,start,end}]
+  // Çizelge anahtarı: false → 7 günlük tablo yok sayılır, çalışma saatleri
+  // yalnızca bilgi bankasından okunur (bölümlere göre farklı saat işleyenler için)
+  companyScheduleEnabled Boolean @default(true)
 
   // Fatura ayarları
   invoiceTaxOffice String? // Vergi Dairesi
