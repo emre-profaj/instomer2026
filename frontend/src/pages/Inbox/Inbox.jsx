@@ -6489,9 +6489,13 @@ const Inbox = () => {
                                                                     })()}
                                                                 </span>
                                                                 <span className="message-sender-tag">
+                                                                    {/* Bot mesajlarında sohbete atanmış botun adı yazılır.
+                                                                        Message modelinde bot referansı YOK; tek kaynak
+                                                                        conversation.assignedBot. Sohbet sırasında bot
+                                                                        değiştiyse eski mesajlar da güncel adı gösterir. */}
                                                                     {msg.senderId
                                                                         ? `👤 ${msg.sender?.name || 'Agent'}`
-                                                                        : '🤖 AI Bot'}
+                                                                        : `🤖 ${selectedItem?.assignedBot?.name || 'AI Bot'}`}
                                                                 </span>
                                                                 <span className={`message-status ${msg.status?.toLowerCase() || 'sent'}`}>
                                                                     {msg.status === 'READ' ? (

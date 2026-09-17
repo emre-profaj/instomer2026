@@ -950,9 +950,10 @@ const ChatPopup = ({ conversationId, onClose }) => {
                                                             {getChannelIcon(channel)} {getChannelName(channel)}
                                                         </span>
                                                         <span className="chat-popup-msg-sender-tag">
+                                                            {/* Inbox ile aynı: botun adı, yoksa genel etiket */}
                                                             {msg.senderId
                                                                 ? `👤 ${msg.sender?.name || 'Agent'}`
-                                                                : '🤖 AI Bot'}
+                                                                : `🤖 ${conversation?.assignedBot?.name || 'AI Bot'}`}
                                                         </span>
                                                         <span className="chat-popup-msg-status">
                                                             {renderStatus(msg)}
