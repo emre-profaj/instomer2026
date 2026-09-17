@@ -21,8 +21,7 @@
  * kullanılmıyor).
  */
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { RefreshCw, FileText, ArrowLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, FileText, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
@@ -55,7 +54,6 @@ const Empty = ({ text }) => (
 
 const RequestReport = () => {
     const { currentWorkspace } = useAuth();
-    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
@@ -157,10 +155,6 @@ const RequestReport = () => {
     return (
         <div className="ra-page">
             <div className="ra-wrap">
-
-                <button className="ra-back" onClick={() => navigate('/general-report')}>
-                    <ArrowLeft size={15} /> Dashboard
-                </button>
 
                 <div className="ra-head">
                     <div>

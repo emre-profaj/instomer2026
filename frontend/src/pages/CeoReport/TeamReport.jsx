@@ -26,8 +26,7 @@
  * daralıyor (Mia Yapı'da 6, Metropol'de 8 metrik).
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { RefreshCw, FileText, ArrowLeft, ChevronRight, Bot, Users } from 'lucide-react';
+import { RefreshCw, FileText, ChevronRight, Bot, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
@@ -62,7 +61,6 @@ const SORTS = [
 
 const TeamReport = () => {
     const { currentWorkspace } = useAuth();
-    const navigate = useNavigate();
     const [agentPerformance, setAgentPerformance] = useState(null);
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
@@ -353,10 +351,6 @@ const TeamReport = () => {
     return (
         <div className="ra-page" style={{ '--metrics': METRICS.length }}>
             <div className="ra-wrap">
-
-                <button className="ra-back" onClick={() => navigate('/general-report')}>
-                    <ArrowLeft size={15} /> Dashboard
-                </button>
 
                 <div className="ra-head">
                     <div>
