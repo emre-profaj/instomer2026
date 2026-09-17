@@ -621,11 +621,12 @@ select.cb-in {
 .cb-bar {
     position: sticky;
     bottom: 0;
-    margin-top: auto;
     z-index: 20;
-    /* .base-content dolgusu (24px 28px) kadar dışarı taşar ki
-       çubuk içeriğin tamamını kaplasın. */
-    margin: 22px -28px 0;
+    /* .base-content dolgusu (28px) kadar yana taşar ki çubuk içeriğin
+       tamamını kaplasın. margin-top: auto kısayoldan SONRA gelmeli;
+       önce yazılırsa kısayol onu ezer ve çubuk en alta inmez. */
+    margin: 0 -28px;
+    margin-top: auto;
     padding: 14px 28px;
     background: rgba(255, 255, 255, 0.93);
     backdrop-filter: blur(8px);
