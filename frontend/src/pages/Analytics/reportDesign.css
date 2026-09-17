@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════
-   RANDEVU ANALİZİ
-   Kendi dosyasında duruyor: diğer rapor sayfaları ortak CSS
-   paylaşıyor, buradaki bir değişiklik onları bozmasın.
+   RAPOR SAYFALARI — ORTAK TASARIM DİLİ
+   Randevu Analizi ve AI Call Raporlama bunu paylaşır.
+   Sayfaya özgü kurallar kendi dosyasında durur (ör. AICallAnalytics.css).
+   Aynı kuralı iki yere kopyalamak yerine tek yerden besleniyorlar.
 
    Tasarım kararı: kutu yerine YÜZEY. Her metriğin kendi çerçevesi
    olduğunda göz nereye bakacağını bilemiyor. Az sayıda geniş beyaz

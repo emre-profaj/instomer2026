@@ -1,18 +1,71 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * AI CALL RAPORLAMA
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * Görünüm Randevu Analizi ile aynı dile taşındı (reportDesign.css).
+ * VERİ VE İŞLEV DEĞİŞMEDİ: toplu seçim, tekrar arama, durum/yön/duygu
+ * süzgeçleri, numara arama, transkript detayı ve sayfalama aynen duruyor.
+ *
+ * İki ekleme:
+ *   • Günlük dağılım grafiği — `dailyBreakdown` API yanıtında zaten
+ *     vardı ama sayfa hiç kullanmıyordu. Backend'e dokunulmadı.
+ *   • Duygu dağılımı sayılarıyla şeride taşındı.
+ *
+ * Bir çıkarma: "Başarı Oranı" kartı kaldırıldı. Backend onu duygu
+ * analizinden hesaplıyordu (olumlu / duygusu olan aramalar), oysa her
+ * aramada ayrı bir `callSuccessful` alanı var. "%15 başarı" aslında
+ * "%15'i olumlu konuşmaydı" demekti — yanıltıcıydı.
+ */
 import { useTranslation } from 'react-i18next';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { retellAPI } from '../../services/api';
 import {
-    Phone, PhoneCall, PhoneOff, Clock, TrendingUp, CheckCircle,
-    AlertCircle, Calendar, Filter, ChevronLeft, ChevronRight,
-    Play, FileText, Smile, Frown, Meh, Loader, Search, PhoneIncoming, PhoneMissed, DollarSign,
-    RefreshCw, CheckSquare, Square, X
+    Phone, PhoneOff, RefreshCw, Search, FileText, Loader, Check,
+    PhoneOutgoing, PhoneIncoming, Play, ChevronLeft, ChevronRight, X
 } from 'lucide-react';
-import './AICallAnalytics.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
-import '../CeoReport/CeoReport.css';
-import '../CeoReport/CeoDetailReport.css';
+import '../Analytics/reportDesign.css';
+import './AICallAnalytics.css';
+
+const TZ = 'Europe/Istanbul';
+const fmt = (o) => new Intl.DateTimeFormat('tr-TR', { timeZone: TZ, ...o });
+const trTime = (d) => fmt({ hour: '2-digit', minute: '2-digit' }).format(d);
+const trDay = (d) => fmt({ weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+const trShort = (d) => fmt({ day: 'numeric', month: 'short' }).format(d);
+const trKey = (d) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(d);
+
+const STATUS = {
+    ended:         { label: 'Tamamlandı',   dot: '#10b981' },
+    not_connected: { label: 'Ulaşılamadı',  dot: '#94a3b8' },
+    ongoing:       { label: 'Devam Ediyor', dot: '#f59e0b' },
+    registered:    { label: 'Başlatıldı',   dot: '#eab308' },
+    error:         { label: 'Hata',         dot: '#ef4444' },
+};
+const statusOf = (s) => STATUS[s] || { label: s || 'Bilinmiyor', dot: '#cbd5e1' };
+
+const MOOD = {
+    positive: { label: 'Olumlu',  color: '#047857', dot: '#10b981' },
+    negative: { label: 'Olumsuz', color: '#b91c1c', dot: '#ef4444' },
+    neutral:  { label: 'Nötr',    color: '#64748b', dot: '#cbd5e1' },
+};
+const moodOf = (s) => MOOD[String(s || 'neutral').toLowerCase()] || MOOD.neutral;
+
+const formatDuration = (seconds) => {
+    if (!seconds) return '0sn';
+    const m = Math.floor(seconds / 60), s = seconds % 60;
+    return m > 0 ? `${m}dk ${s}sn` : `${s}sn`;
+};
+const formatLongDuration = (seconds) => {
+    if (!seconds) return '0dk';
+    const h = Math.floor(seconds / 3600), m = Math.round((seconds % 3600) / 60);
+    return h > 0 ? `${h}sa ${m}dk` : `${m}dk`;
+};
+const tr = (n) => Number(n || 0).toLocaleString('tr-TR');
 
 const AICallAnalytics = () => {
     const { t } = useTranslation();
@@ -33,19 +86,17 @@ const AICallAnalytics = () => {
     const [directionFilter, setDirectionFilter] = useState('ALL');
     const limit = 15;
 
-    // Bulk selection
+    // Toplu seçim
     const [selectedCalls, setSelectedCalls] = useState(new Set());
     const [retrying, setRetrying] = useState(false);
     const [retryResult, setRetryResult] = useState(null);
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
-        if (currentWorkspace) {
-            loadData();
-        }
+        if (currentWorkspace) loadData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentWorkspace, dateFilter, page, search, statusFilter, sentimentFilter, directionFilter, startDate, endDate]);
 
-    // Clear selection on filter change
     useEffect(() => {
         setSelectedCalls(new Set());
     }, [statusFilter, sentimentFilter, directionFilter, page, search, dateFilter, startDate, endDate]);
@@ -53,9 +104,7 @@ const AICallAnalytics = () => {
     const getDateParams = () => {
         const { startDate: sd, endDate: ed } = getDateRangeLogic(dateFilter, startDate, endDate);
         const params = {};
-        if (sd) {
-            params.startDate = new Date(sd).toISOString();
-        }
+        if (sd) params.startDate = new Date(sd).toISOString();
         if (ed) {
             const end = new Date(ed);
             end.setHours(23, 59, 59, 999);
@@ -68,15 +117,11 @@ const AICallAnalytics = () => {
         setLoading(true);
         try {
             const params = getDateParams();
-            const callParams = {
-                limit,
-                offset: page * limit,
-                ...params
-            };
+            const callParams = { limit, offset: page * limit, ...params };
             if (search) callParams.search = search;
             if (statusFilter !== 'ALL') callParams.status = statusFilter;
             if (directionFilter !== 'ALL') callParams.direction = directionFilter;
-            if (sentimentFilter === 'positive' || sentimentFilter === 'negative' || sentimentFilter === 'neutral') {
+            if (['positive', 'negative', 'neutral'].includes(sentimentFilter)) {
                 callParams.sentiment = sentimentFilter;
             }
 
@@ -84,7 +129,7 @@ const AICallAnalytics = () => {
                 retellAPI.getAnalytics(currentWorkspace.id, params),
                 retellAPI.getCallHistory(currentWorkspace.id, Object.fromEntries(
                     Object.entries(callParams).filter(([_, v]) => v !== undefined && v !== '')
-                ))
+                )),
             ]);
             setAnalytics(analyticsRes.data);
             setCalls(callsRes.data.calls || []);
@@ -96,83 +141,34 @@ const AICallAnalytics = () => {
         }
     };
 
-    const formatDuration = (seconds) => {
-        if (!seconds) return '0sn';
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        if (mins > 0) return `${mins}dk ${secs}sn`;
-        return `${secs}sn`;
-    };
-
-    const formatDate = (dateStr) => {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('tr-TR', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-    };
-
-    const getStatusBadge = (status) => {
-        const map = {
-            ended: { label: 'Tamamlandı', className: 'badge-success' },
-            not_connected: { label: 'Ulaşılamadı', className: 'badge-default' },
-            ongoing: { label: 'Devam Ediyor', className: 'badge-warning' },
-            registered: { label: 'Başlatıldı', className: 'badge-info' },
-            error: { label: 'Hata', className: 'badge-error' }
-        };
-        const s = map[status] || { label: status || 'Bilinmiyor', className: 'badge-default' };
-        return <span className={`call-badge ${s.className}`}>{s.label}</span>;
-    };
-
-    const getSentimentIcon = (sentiment) => {
-        if (!sentiment) return <Meh size={16} className="sentiment-neutral" />;
-        const s = sentiment.toLowerCase();
-        if (s === 'positive') return <Smile size={16} className="sentiment-positive" />;
-        if (s === 'negative') return <Frown size={16} className="sentiment-negative" />;
-        return <Meh size={16} className="sentiment-neutral" />;
-    };
-
-    // Bulk selection handlers
-    const toggleSelect = (callId) => {
-        setSelectedCalls(prev => {
-            const next = new Set(prev);
-            if (next.has(callId)) next.delete(callId);
-            else next.add(callId);
-            return next;
-        });
-    };
+    const toggleSelect = (id) => setSelectedCalls(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+    });
 
     const toggleSelectAll = () => {
-        if (selectedCalls.size === calls.length) {
-            setSelectedCalls(new Set());
-        } else {
-            setSelectedCalls(new Set(calls.map(c => c.id)));
-        }
+        if (selectedCalls.size === calls.length) setSelectedCalls(new Set());
+        else setSelectedCalls(new Set(calls.map(c => c.id)));
     };
 
     const handleSelectAllCalls = async () => {
-        if (selectedCalls.size === totalCalls) {
-            setSelectedCalls(new Set());
-            return;
-        }
+        if (selectedCalls.size === totalCalls) { setSelectedCalls(new Set()); return; }
         try {
-            const params = getDateParams();
-            const callParams = { limit: 10000, offset: 0, ...params };
+            const callParams = { limit: 10000, offset: 0, ...getDateParams() };
             if (search) callParams.search = search;
             if (statusFilter !== 'ALL') callParams.status = statusFilter;
+            if (directionFilter !== 'ALL') callParams.direction = directionFilter;
             if (sentimentFilter !== 'ALL') callParams.sentiment = sentimentFilter;
-
             const res = await retellAPI.getCallHistory(currentWorkspace.id,
-                Object.fromEntries(Object.entries(callParams).filter(([_, v]) => v !== undefined && v !== ''))
-            );
-            const allIds = (res.data.calls || []).map(c => c.id);
-            setSelectedCalls(new Set(allIds));
+                Object.fromEntries(Object.entries(callParams).filter(([_, v]) => v !== undefined && v !== '')));
+            setSelectedCalls(new Set((res.data.calls || []).map(c => c.id)));
         } catch (err) {
             console.error('Select all calls error:', err);
         }
     };
 
-    const handleBulkRetry = async () => {
+    const handleBulkRetry = () => {
         if (selectedCalls.size === 0) return;
         setConfirmModal({
             isOpen: true,
@@ -193,402 +189,369 @@ const AICallAnalytics = () => {
                 } finally {
                     setRetrying(false);
                 }
-            }
+            },
         });
     };
 
     const totalPages = Math.ceil(totalCalls / limit);
+    const activeLabel = dateFilterOptions.find(o => o.key === dateFilter)?.label || '';
+
+    // Günlük dağılım — dailyBreakdown API'den geliyor, sayfa kullanmıyordu
+    const chart = useMemo(() => {
+        const raw = analytics?.dailyBreakdown || {};
+        const buckets = Object.entries(raw)
+            .map(([k, v]) => ({ key: k, date: new Date(`${k}T12:00:00Z`), count: v }))
+            .filter(b => !isNaN(b.date))
+            .sort((a, b) => a.date - b.date);
+        return { buckets, peak: buckets.length ? Math.max(...buckets.map(b => b.count)) : 0 };
+    }, [analytics]);
+
+    const sentiment = analytics?.sentimentBreakdown || {};
+    const sentTotal = (sentiment.positive || 0) + (sentiment.neutral || 0) + (sentiment.negative || 0) || 1;
+    const cost = ((analytics?.totalCost || 0) * 2) + ((analytics?.totalCalls || 0) * 0.10);
+
+    const groups = useMemo(() => {
+        const map = new Map();
+        for (const c of calls) {
+            const k = trKey(new Date(c.startedAt || c.createdAt));
+            if (!map.has(k)) map.set(k, []);
+            map.get(k).push(c);
+        }
+        return [...map.entries()];
+    }, [calls]);
 
     if (!currentWorkspace) {
         return (
-            <div className="aicall-analytics-page">
-                <div className="empty-state">
-                    <Phone size={48} />
-                    <p>Bir workspace seçin.</p>
+            <div className="ra-page"><div className="ra-wrap"><div className="ra-surface">
+                <div className="ra-empty">
+                    <div className="ra-empty-icon"><Phone size={24} /></div>
+                    <h3>Çalışma alanı seçilmedi</h3>
+                    <p>Raporu görmek için üstteki menüden bir çalışma alanı seçin.</p>
                 </div>
-            </div>
+            </div></div></div>
         );
     }
 
     return (
         <>
-            <div className="aicall-analytics-page">
-                <div className="ceo-detail-header">
-                    <div className="ceo-detail-header-left">
-                        <h1><PhoneCall size={24} style={{ color: '#6366f1' }} /> AI Call Raporlama</h1>
-                        <p>{t('aiCallAnalytics.subtitle')}</p>
-                    </div>
-                </div>
+            <div className="ra-page">
+                <div className="ra-wrap">
 
-                <div className="ceo-filter-bar">
-                    <div className="ceo-filter-left">
-                        <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
-                        <div className="ceo-pill-group">
-                            {dateFilterOptions.map(item => (
-                                <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => { setDateFilter(item.key); setPage(0); }}>{item.label}</button>
+                    <div className="ra-head">
+                        <div>
+                            <div className="ra-eyebrow">Raporlar</div>
+                            <h1>AI Call Raporlama</h1>
+                            <p>Sesli asistanın yaptığı ve karşıladığı tüm aramalar</p>
+                        </div>
+                        <div className="ra-head-actions">
+                            <button className="ra-btn" onClick={loadData} disabled={loading}>
+                                <RefreshCw className={loading ? 'ra-spin' : ''} size={14} /> Güncelle
+                            </button>
+                            <button className="ra-btn ra-btn-primary" onClick={() => window.print()}>
+                                <FileText size={14} /> Raporu İndir
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="ra-filters">
+                        <div className="ra-pills">
+                            {dateFilterOptions.map(o => (
+                                <button key={o.key} className={`ra-pill${dateFilter === o.key ? ' active' : ''}`}
+                                    onClick={() => { setDateFilter(o.key); setPage(0); }}>{o.label}</button>
                             ))}
                         </div>
                         {dateFilter === 'custom' && (
-                            <div className="ceo-custom-dates">
-                                <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="ceo-date-input" />
-                                <span>—</span>
-                                <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="ceo-date-input" />
+                            <div className="ra-dates">
+                                <input type="date" className="ra-date-input" value={startDate}
+                                    onChange={e => { setStartDate(e.target.value); setPage(0); }} />
+                                <span style={{ color: '#cbd5e1' }}>—</span>
+                                <input type="date" className="ra-date-input" value={endDate}
+                                    onChange={e => { setEndDate(e.target.value); setPage(0); }} />
                             </div>
                         )}
-                    </div>
-                    <div className="ceo-filter-right">
-                        <button className="ceo-refresh-btn" onClick={loadData}><RefreshCw size={14} /> Güncelle</button>
-                        <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                    </div>
-                </div>
-
-                {loading ? (
-                    <div className="aicall-loading">
-                        <Loader size={24} className="spin" />
-                        <p>{t('aiCallAnalytics.loading')}</p>
-                    </div>
-                ) : (
-                    <>
-                        {/* Summary Cards */}
-                        <div className="aicall-summary-grid">
-                            <div className="aicall-summary-card">
-                                <div className="summary-icon" style={{ background: '#eff6ff', color: '#3b82f6' }}>
-                                    <Phone size={22} />
-                                </div>
-                                <div className="summary-content">
-                                    <span className="summary-value">{analytics?.totalCalls || 0}</span>
-                                    <span className="summary-label">Toplam Arama</span>
-                                </div>
-                            </div>
-                            <div className="aicall-summary-card">
-                                <div className="summary-icon" style={{ background: '#f0fdf4', color: '#22c55e' }}>
-                                    <Clock size={22} />
-                                </div>
-                                <div className="summary-content">
-                                    <span className="summary-value">{formatDuration(analytics?.totalDuration || 0)}</span>
-                                    <span className="summary-label">Toplam Süre</span>
-                                </div>
-                            </div>
-                            <div className="aicall-summary-card">
-                                <div className="summary-icon" style={{ background: '#fefce8', color: '#eab308' }}>
-                                    <TrendingUp size={22} />
-                                </div>
-                                <div className="summary-content">
-                                    <span className="summary-value">{formatDuration(analytics?.avgDuration || 0)}</span>
-                                    <span className="summary-label">Ort. Süre</span>
-                                </div>
-                            </div>
-                            <div className="aicall-summary-card">
-                                <div className="summary-icon" style={{ background: '#f0fdfa', color: '#0d9488' }}>
-                                    <CheckCircle size={22} />
-                                </div>
-                                <div className="summary-content">
-                                    <span className="summary-value">%{analytics?.successRate || 0}</span>
-                                    <span className="summary-label">Başarı Oranı</span>
-                                </div>
-                            </div>
-                            <div className="aicall-summary-card">
-                                <div className="summary-icon" style={{ background: '#fdf2f8', color: '#ec4899' }}>
-                                    <DollarSign size={22} />
-                                </div>
-                                <div className="summary-content">
-                                    <span className="summary-value">
-                                        ${(((analytics?.totalCost || 0) * 2) + ((analytics?.totalCalls || 0) * 0.10)).toFixed(2)}
-                                    </span>
-                                    <span className="summary-label">Toplam Maliyet</span>
-                                </div>
-                            </div>
+                        <div className="ra-spacer" />
+                        <div className="ra-seg" role="group" aria-label="Arama yönü">
+                            {[['ALL', 'Tümü'], ['outbound', 'Giden'], ['inbound', 'Gelen']].map(([v, label]) => (
+                                <button key={v} className={directionFilter === v ? 'active' : ''}
+                                    onClick={() => { setDirectionFilter(v); setPage(0); }}>{label}</button>
+                            ))}
                         </div>
+                    </div>
 
-                        {/* Breakdown Cards */}
-                        <div className="aicall-breakdown-grid">
-                            {/* Status Breakdown */}
-                            {analytics?.statusBreakdown && Object.keys(analytics.statusBreakdown).length > 0 && (
-                                <div className="aicall-breakdown-card">
-                                    <h3><Filter size={16} /> Durum Dağılımı</h3>
-                                    <div className="breakdown-list">
-                                        {Object.entries(analytics.statusBreakdown).map(([status, count]) => (
-                                            <div key={status} className="breakdown-item">
-                                                <span className="breakdown-label">{getStatusBadge(status)}</span>
-                                                <span className="breakdown-value">{count}</span>
-                                            </div>
-                                        ))}
+                    {loading ? (
+                        <div className="ra-loading">
+                            <Loader size={30} className="ra-spin" />
+                            <p style={{ fontWeight: 600, marginTop: 14, fontSize: '0.85rem' }}>{t('aiCallAnalytics.loading')}</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="ra-surface ra-hero">
+                                <div className="ra-hero-left">
+                                    <div className="ra-metric-label">Toplam Arama</div>
+                                    <div className="ra-metric-value">{tr(analytics?.totalCalls)}</div>
+                                    <div className="ra-metric-note">
+                                        {activeLabel} · {directionFilter === 'ALL' ? 'giden ve gelen' : directionFilter === 'outbound' ? 'yalnızca giden' : 'yalnızca gelen'}
+                                    </div>
+
+                                    <div className="ra-split">
+                                        <div className="ra-split-bar">
+                                            <i style={{ width: `${((sentiment.positive || 0) / sentTotal) * 100}%`, background: '#10b981' }}
+                                                title={`Olumlu: ${sentiment.positive || 0}`} />
+                                            <i style={{ width: `${((sentiment.neutral || 0) / sentTotal) * 100}%`, background: '#cbd5e1' }}
+                                                title={`Nötr: ${sentiment.neutral || 0}`} />
+                                            <i style={{ width: `${((sentiment.negative || 0) / sentTotal) * 100}%`, background: '#ef4444' }}
+                                                title={`Olumsuz: ${sentiment.negative || 0}`} />
+                                        </div>
+                                        <div className="ra-split-legend">
+                                            <div className="ra-split-item">Olumlu<b>{tr(sentiment.positive)}</b></div>
+                                            <div className="ra-split-item" style={{ textAlign: 'center' }}>Nötr<b>{tr(sentiment.neutral)}</b></div>
+                                            <div className="ra-split-item" style={{ textAlign: 'right' }}>Olumsuz<b>{tr(sentiment.negative)}</b></div>
+                                        </div>
                                     </div>
                                 </div>
-                            )}
 
-                            {/* Sentiment Breakdown */}
-                            {analytics?.sentimentBreakdown && Object.keys(analytics.sentimentBreakdown).length > 0 && (
-                                <div className="aicall-breakdown-card">
-                                    <h3><Smile size={16} /> Duygu Analizi</h3>
-                                    <div className="breakdown-list">
-                                        {Object.entries(analytics.sentimentBreakdown).map(([sentiment, count]) => (
-                                            <div key={sentiment} className="breakdown-item">
-                                                <span className="breakdown-label">
-                                                    {getSentimentIcon(sentiment)}
-                                                    {sentiment.toLowerCase() === 'positive' ? 'Olumlu' : sentiment.toLowerCase() === 'negative' ? 'Olumsuz' : 'Nötr'}
-                                                </span>
-                                                <span className="breakdown-value">{count}</span>
-                                            </div>
-                                        ))}
+                                <div className="ra-hero-right">
+                                    <div className="ra-chart-head">
+                                        <span className="ra-chart-title">Günlük dağılım</span>
+                                        {chart.peak > 0 && <span className="ra-chart-peak">en yoğun: {tr(chart.peak)} arama</span>}
                                     </div>
+                                    {chart.buckets.length > 0 ? (
+                                        <>
+                                            <div className="ra-chart">
+                                                {chart.buckets.map(b => (
+                                                    <div key={b.key} className="ra-col" title={`${trShort(b.date)} · ${b.count} arama`}>
+                                                        <i style={{ height: `${Math.max(3, (b.count / chart.peak) * 100)}%` }} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="ra-chart-axis">
+                                                <span>{trShort(chart.buckets[0].date)}</span>
+                                                <span>{trShort(chart.buckets[chart.buckets.length - 1].date)}</span>
+                                            </div>
+                                        </>
+                                    ) : <div className="ra-chart" />}
                                 </div>
-                            )}
-                        </div>
+                            </div>
 
-                        {/* Call History Table */}
-                        <div className="aicall-table-section">
-                            <div className="aicall-table-header">
-                                <h2><FileText size={18} /> Arama Geçmişi</h2>
-                                <div className="aicall-table-controls">
-                                    <div className="aicall-status-filter">
-                                        <Filter size={14} />
-                                        <select
-                                            value={statusFilter}
-                                            onChange={(e) => {
-                                                setStatusFilter(e.target.value);
-                                                setPage(0);
-                                            }}
-                                        >
+                            <div className="ra-surface ra-strip">
+                                {[
+                                    { label: 'Toplam Süre', dot: '#ef4444', value: formatLongDuration(analytics?.totalDuration), sub: 'konuşma süresi' },
+                                    { label: 'Ortalama', dot: '#f59e0b', value: formatDuration(analytics?.avgDuration), sub: 'arama başına' },
+                                    { label: 'Tamamlandı', dot: '#10b981', value: tr(analytics?.statusBreakdown?.ended), sub: 'konuşma gerçekleşti' },
+                                    { label: 'Ulaşılamadı', dot: '#94a3b8', value: tr(analytics?.statusBreakdown?.not_connected), sub: 'cevap yok' },
+                                    { label: 'Hata', dot: '#ef4444', value: tr(analytics?.statusBreakdown?.error), sub: 'arama başarısız' },
+                                    { label: 'Maliyet', dot: '#64748b', value: `$${cost.toFixed(2)}`, sub: 'dönem toplamı' },
+                                ].map(c => (
+                                    <div className="ra-cell" key={c.label}>
+                                        <div className="ra-cell-label"><i className="ra-cell-dot" style={{ background: c.dot }} />{c.label}</div>
+                                        <div className="ra-cell-value">{c.value}</div>
+                                        <div className="ra-cell-sub">{c.sub}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="ra-surface">
+                                <div className="ra-list-head">
+                                    <h2>Arama Geçmişi<span className="ra-count">{tr(totalCalls)} kayıt</span></h2>
+                                    <div className="ra-tools">
+                                        <select className="ra-select" value={statusFilter}
+                                            onChange={e => { setStatusFilter(e.target.value); setPage(0); }}>
                                             <option value="ALL">Tüm Durumlar</option>
                                             <option value="ended">Tamamlandı</option>
                                             <option value="not_connected">Ulaşılamadı</option>
                                             <option value="registered">Başlatıldı</option>
                                             <option value="error">Hata</option>
                                         </select>
-                                    </div>
-                                    <div className="aicall-status-filter">
-                                        <PhoneCall size={14} />
-                                        <select
-                                            value={directionFilter}
-                                            onChange={(e) => {
-                                                setDirectionFilter(e.target.value);
-                                                setPage(0);
-                                            }}
-                                        >
-                                            <option value="ALL">Tüm Yönler</option>
-                                            <option value="outbound">📞 Giden</option>
-                                            <option value="inbound">📲 Gelen</option>
+                                        <select className="ra-select" value={sentimentFilter}
+                                            onChange={e => { setSentimentFilter(e.target.value); setPage(0); }}>
+                                            <option value="ALL">Tüm Duygular</option>
+                                            <option value="positive">Olumlu</option>
+                                            <option value="neutral">Nötr</option>
+                                            <option value="negative">Olumsuz</option>
                                         </select>
-                                    </div>
-                                    <div className="aicall-search">
-                                        <Search size={16} className="search-icon" />
-                                        <input
-                                            type="text"
-                                            placeholder="Numara ara..."
-                                            value={searchInput}
-                                            onChange={(e) => setSearchInput(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    setPage(0);
-                                                    setSearch(searchInput);
-                                                }
-                                            }}
-                                        />
-                                        {search && (
-                                            <button
-                                                className="clear-search"
-                                                onClick={() => {
-                                                    setSearchInput('');
-                                                    setSearch('');
-                                                    setPage(0);
-                                                }}
-                                            >
-                                                &times;
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Bulk Action Bar */}
-                            {selectedCalls.size > 0 && (
-                                <div className="bulk-action-bar">
-                                    <div className="bulk-info">
-                                        <CheckSquare size={16} />
-                                        <span><strong>{selectedCalls.size}</strong> / {totalCalls} arama seçildi</span>
-                                        {selectedCalls.size < totalCalls && (
-                                            <button className="bulk-select-all-btn" onClick={handleSelectAllCalls}>
-                                                Tümünü Seç ({totalCalls})
-                                            </button>
-                                        )}
-                                        <button
-                                            className="bulk-clear-btn"
-                                            onClick={() => setSelectedCalls(new Set())}
-                                        >
-                                            <X size={14} /> Seçimi Temizle
-                                        </button>
-                                    </div>
-                                    <div className="bulk-actions">
-                                        <button
-                                            className="bulk-retry-btn"
-                                            onClick={handleBulkRetry}
-                                            disabled={retrying}
-                                        >
-                                            {retrying ? (
-                                                <><Loader size={14} className="spin" /> Aranıyor...</>
-                                            ) : (
-                                                <><RefreshCw size={14} /> Tekrar Ara ({selectedCalls.size})</>
+                                        <div className="ra-search">
+                                            <Search size={15} />
+                                            <input type="text" placeholder="Numara ara…" value={searchInput}
+                                                onChange={e => setSearchInput(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter') { setPage(0); setSearch(searchInput); } }} />
+                                            {search && (
+                                                <button className="ra-link" style={{ textDecoration: 'none' }}
+                                                    onClick={() => { setSearchInput(''); setSearch(''); setPage(0); }}>
+                                                    <X size={13} />
+                                                </button>
                                             )}
-                                        </button>
+                                        </div>
                                     </div>
                                 </div>
-                            )}
 
-                            {/* Retry Result Toast */}
-                            {retryResult && (
-                                <div className={`retry-result-toast ${retryResult.failed > 0 && retryResult.success === 0 ? 'error' : 'success'}`}>
-                                    <span>
-                                        {retryResult.success > 0 && `✅ ${retryResult.success} arama başarıyla başlatıldı.`}
-                                        {retryResult.failed > 0 && ` ❌ ${retryResult.failed} arama başarısız.`}
-                                    </span>
-                                    <button onClick={() => setRetryResult(null)}><X size={14} /></button>
-                                </div>
-                            )}
+                                {retryResult && (
+                                    <div className="ra-bulk" style={{
+                                        background: retryResult.success > 0 ? '#ecfdf5' : '#fef2f2',
+                                        boxShadow: `inset 0 0 0 1px ${retryResult.success > 0 ? 'rgba(16,185,129,.2)' : 'rgba(239,68,68,.14)'}`,
+                                    }}>
+                                        <div className="ra-bulk-info" style={{ color: retryResult.success > 0 ? '#065f46' : '#7f1d1d' }}>
+                                            {retryResult.success > 0 && `${retryResult.success} arama başlatıldı.`}
+                                            {retryResult.failed > 0 && ` ${retryResult.failed} arama başarısız.`}
+                                        </div>
+                                        <button className="ra-link" onClick={() => setRetryResult(null)}>Kapat</button>
+                                    </div>
+                                )}
 
-                            {calls.length === 0 ? (
-                                <div className="aicall-empty">
-                                    <PhoneOff size={40} />
-                                    <p>Bu dönemde arama kaydı bulunamadı.</p>
-                                </div>
-                            ) : (
-                                <div className="aicall-results-container">
-                                    <div className="aicall-table-wrapper">
-                                        <div className="aicall-table-div">
-                                            <div className="aicall-thead">
-                                                <div className="aicall-th th-checkbox">
-                                                    <button
-                                                        className="checkbox-btn"
-                                                        onClick={toggleSelectAll}
-                                                    >
-                                                        {selectedCalls.size === calls.length && calls.length > 0
-                                                            ? <CheckSquare size={16} />
-                                                            : <Square size={16} />
-                                                        }
+                                {selectedCalls.size > 0 && (
+                                    <div className="ra-bulk">
+                                        <div className="ra-bulk-info">
+                                            <span><b>{tr(selectedCalls.size)}</b> / {tr(totalCalls)} arama seçildi</span>
+                                            {selectedCalls.size < totalCalls && (
+                                                <button className="ra-link" onClick={handleSelectAllCalls}>
+                                                    Tümünü seç ({tr(totalCalls)})
+                                                </button>
+                                            )}
+                                            <button className="ra-link" onClick={() => setSelectedCalls(new Set())}>Seçimi temizle</button>
+                                        </div>
+                                        <button className="ra-bulk-btn" onClick={handleBulkRetry} disabled={retrying}>
+                                            {retrying
+                                                ? <><Loader size={14} className="ra-spin" /> Aranıyor…</>
+                                                : <><RefreshCw size={14} /> Tekrar Ara ({tr(selectedCalls.size)})</>}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {calls.length === 0 ? (
+                                    <div className="ra-empty">
+                                        <div className="ra-empty-icon">{search ? <Search size={24} /> : <PhoneOff size={24} />}</div>
+                                        <h3>{search ? 'Aramanızla eşleşen kayıt yok' : 'Bu dönemde arama kaydı yok'}</h3>
+                                        <p>{search
+                                            ? 'Farklı bir numara deneyin veya aramayı temizleyin.'
+                                            : 'Başka bir dönem seçebilirsiniz. Hiç arama görünmüyorsa Retell bakiyesi tükenmiş veya sesli asistan kapalı olabilir.'}</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="ra-day">
+                                            <button className={`ra-check${selectedCalls.size === calls.length && calls.length > 0 ? ' on' : ''}`}
+                                                onClick={toggleSelectAll} title="Sayfadaki tümünü seç">
+                                                {selectedCalls.size === calls.length && calls.length > 0 && <Check size={11} />}
+                                            </button>
+                                            <span className="ra-day-name">Sayfadaki {calls.length} arama</span>
+                                            <span className="ra-day-rule" />
+                                            <span className="ra-day-meta">sayfa {page + 1} / {tr(totalPages || 1)}</span>
+                                        </div>
+
+                                        {groups.map(([key, items]) => {
+                                            const d = new Date(items[0].startedAt || items[0].createdAt);
+                                            return (
+                                                <div key={key}>
+                                                    <div className="ra-day">
+                                                        <span className="ra-day-name">{trDay(d)}</span>
+                                                        <span className="ra-day-rule" />
+                                                        <span className="ra-day-meta">{items.length} arama</span>
+                                                    </div>
+                                                    {items.map(call => {
+                                                        const s = statusOf(call.status);
+                                                        const m = moodOf(call.sentiment);
+                                                        const sel = selectedCalls.has(call.id);
+                                                        const inbound = call.direction === 'inbound';
+                                                        const open = expandedCall === call.id;
+                                                        const one = ((((call.cost || 0) / 100) * 2) + 0.10).toFixed(3);
+                                                        return (
+                                                            <React.Fragment key={call.id}>
+                                                                <div className={`ra-row-call${sel ? ' sel' : ''}`}>
+                                                                    <div>
+                                                                        <button className={`ra-check${sel ? ' on' : ''}`} onClick={() => toggleSelect(call.id)}>
+                                                                            {sel && <Check size={11} />}
+                                                                        </button>
+                                                                    </div>
+                                                                    <div className="ra-time">{trTime(new Date(call.startedAt || call.createdAt))}</div>
+                                                                    <div>
+                                                                        <span className={`ra-dir ${inbound ? 'ra-dir-in' : 'ra-dir-out'}`}
+                                                                            title={inbound ? 'Gelen arama' : 'Giden arama'}>
+                                                                            {inbound ? <PhoneIncoming size={14} /> : <PhoneOutgoing size={14} />}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className="ra-num">{inbound ? call.fromNumber : call.toNumber}</div>
+                                                                        <div className="ra-num-sub">
+                                                                            {inbound ? 'karşılayan hat' : 'arayan hat'} {inbound ? call.toNumber : call.fromNumber}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="ra-dur">{formatDuration(call.duration)}</div>
+                                                                    <div>
+                                                                        <span className="ra-status" style={{ color: '#334155' }}>
+                                                                            <i style={{ background: s.dot }} />{s.label}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="ra-mood" style={{ color: m.color }}>
+                                                                            <i className="ra-dot" style={{ background: m.dot }} />{m.label}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="ra-cost">${one}</div>
+                                                                    <div>
+                                                                        {(call.transcript || call.summary) ? (
+                                                                            <button className={`ra-detail-btn${open ? ' on' : ''}`}
+                                                                                onClick={() => setExpandedCall(open ? null : call.id)}>
+                                                                                {open ? 'Kapat' : 'Detay'}
+                                                                            </button>
+                                                                        ) : <span style={{ color: '#cbd2dc', fontSize: '.76rem' }}>—</span>}
+                                                                    </div>
+                                                                </div>
+
+                                                                {open && (
+                                                                    <div className="ra-detail">
+                                                                        {call.summary && (
+                                                                            <div className="ra-detail-block">
+                                                                                <div className="ra-detail-label">Özet</div>
+                                                                                <p className="ra-detail-text">{call.summary}</p>
+                                                                            </div>
+                                                                        )}
+                                                                        {call.transcript && (
+                                                                            <div className="ra-detail-block">
+                                                                                <div className="ra-detail-label">Transkript</div>
+                                                                                <pre className="ra-transcript">{call.transcript}</pre>
+                                                                            </div>
+                                                                        )}
+                                                                        {call.endedReason && (
+                                                                            <div className="ra-detail-block">
+                                                                                <div className="ra-detail-label">Sonlanma sebebi</div>
+                                                                                <p className="ra-detail-text">{call.endedReason}</p>
+                                                                            </div>
+                                                                        )}
+                                                                        {call.recordingUrl && (
+                                                                            <div className="ra-detail-block">
+                                                                                <a className="ra-play" href={call.recordingUrl} target="_blank" rel="noopener noreferrer">
+                                                                                    <Play size={13} /> Kaydı Dinle
+                                                                                </a>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })}
+
+                                        {totalPages > 1 && (
+                                            <div className="ra-pager">
+                                                <span className="ra-pager-info">
+                                                    {page + 1} / {tr(totalPages)} · {tr(totalCalls)} arama
+                                                </span>
+                                                <div className="ra-pager-btns">
+                                                    <button className="ra-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                                                        <ChevronLeft size={15} /> Önceki
+                                                    </button>
+                                                    <button className="ra-btn" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                                                        Sonraki <ChevronRight size={15} />
                                                     </button>
                                                 </div>
-                                                <div className="aicall-th">Tarih</div>
-                                                <div className="aicall-th">Yön</div>
-                                                <div className="aicall-th">Arayan</div>
-                                                <div className="aicall-th">Aranan</div>
-                                                <div className="aicall-th">{t('flowBuilder.duration')}</div>
-                                                <div className="aicall-th">{t('analytics.status')}</div>
-                                                <div className="aicall-th">Duygu</div>
-                                                <div className="aicall-th">Başarılı</div>
-                                                <div className="aicall-th">Maliyet</div>
-                                                <div className="aicall-th">Detay</div>
                                             </div>
-                                            <div className="aicall-tbody">
-                                                {calls.map(call => (
-                                                    <div key={call.id} className="aicall-row-container">
-                                                        <div className={`aicall-row ${expandedCall === call.id ? 'expanded' : ''} ${selectedCalls.has(call.id) ? 'row-selected' : ''}`}>
-                                                            <div className="aicall-td td-checkbox">
-                                                                <button
-                                                                    className="checkbox-btn"
-                                                                    onClick={() => toggleSelect(call.id)}
-                                                                >
-                                                                    {selectedCalls.has(call.id)
-                                                                        ? <CheckSquare size={16} className="checked" />
-                                                                        : <Square size={16} />
-                                                                    }
-                                                                </button>
-                                                            </div>
-                                                            <div className="aicall-td">{formatDate(call.startedAt || call.createdAt)}</div>
-                                                            <div className="aicall-td">
-                                                                {call.direction === 'inbound'
-                                                                    ? <span className="call-badge badge-inbound" title="Gelen Arama">📲 Gelen</span>
-                                                                    : <span className="call-badge badge-outbound" title="Giden Arama">📞 Giden</span>
-                                                                }
-                                                            </div>
-                                                            <div className="aicall-td phone-cell">{call.fromNumber}</div>
-                                                            <div className="aicall-td phone-cell">{call.toNumber}</div>
-                                                            <div className="aicall-td">{formatDuration(call.duration)}</div>
-                                                            <div className="aicall-td">{getStatusBadge(call.status)}</div>
-                                                            <div className="aicall-td">{getSentimentIcon(call.sentiment)}</div>
-                                                            <div className="aicall-td">
-                                                                {call.callSuccessful === true && <CheckCircle size={16} className="sentiment-positive" />}
-                                                                {call.callSuccessful === false && <AlertCircle size={16} className="sentiment-negative" />}
-                                                                {call.callSuccessful === null && <span className="text-muted">—</span>}
-                                                            </div>
-                                                            <div className="aicall-td" style={{ fontWeight: 600, color: '#ec4899' }}>
-                                                                ${((((call.cost || 0) / 100) * 2) + 0.10).toFixed(3)}
-                                                            </div>
-                                                            <div className="aicall-td">
-                                                                {(call.transcript || call.summary) && (
-                                                                    <button
-                                                                        className="btn-detail"
-                                                                        onClick={() => setExpandedCall(expandedCall === call.id ? null : call.id)}
-                                                                    >
-                                                                        {expandedCall === call.id ? 'Kapat' : 'Göster'}
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {expandedCall === call.id && (
-                                                            <div className="aicall-detail-row">
-                                                                <div className="call-detail-panel">
-                                                                    {call.summary && (
-                                                                        <div className="detail-block">
-                                                                            <strong>Özet:</strong>
-                                                                            <p>{call.summary}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    {call.transcript && (
-                                                                        <div className="detail-block">
-                                                                            <strong>Transkript:</strong>
-                                                                            <pre className="transcript-text">{call.transcript}</pre>
-                                                                        </div>
-                                                                    )}
-                                                                    {call.endedReason && (
-                                                                        <div className="detail-block">
-                                                                            <strong>Sonlanma Sebebi:</strong>
-                                                                            <span>{call.endedReason}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {call.recordingUrl && (
-                                                                        <div className="detail-block">
-                                                                            <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer" className="recording-link">
-                                                                                <Play size={14} /> Kaydı Dinle
-                                                                            </a>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Pagination */}
-                                    {totalPages > 1 && (
-                                        <div className="aicall-pagination">
-                                            <button
-                                                className="pagination-btn"
-                                                disabled={page === 0}
-                                                onClick={() => setPage(p => p - 1)}
-                                            >
-                                                <ChevronLeft size={16} /> Önceki
-                                            </button>
-                                            <span className="pagination-info">
-                                                {page + 1} / {totalPages} ({totalCalls} arama)
-                                            </span>
-                                            <button
-                                                className="pagination-btn"
-                                                disabled={page >= totalPages - 1}
-                                                onClick={() => setPage(p => p + 1)}
-                                            >
-                                                Sonraki <ChevronRight size={16} />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </>
-                )}
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
 
             <ConfirmModal

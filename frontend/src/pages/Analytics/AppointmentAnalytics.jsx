@@ -16,7 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
 import { appointmentAPI } from '../../services/api';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
-import './AppointmentAnalytics.css';
+import './reportDesign.css';
 
 const TZ = 'Europe/Istanbul';
 
