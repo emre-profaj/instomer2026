@@ -24,14 +24,7 @@
 export const PICKABLE_SOURCES = [
     { value: 'INBOUND', label: 'Telefon', icon: '📞' },
     { value: 'WALK_IN', label: 'Yüz Yüze', icon: '🚶' },
-    { value: 'REFERRAL', label: 'Referans', icon: '🤝' },
-    { value: 'SOCIAL_MEDIA', label: 'Sosyal Medya', icon: '📱' },
-    { value: 'GOOGLE', label: 'Google', icon: '🔍' },
-    { value: 'FACEBOOK', label: 'Facebook', icon: '📘' },
-    { value: 'INSTAGRAM', label: 'Instagram', icon: '📸' },
-    { value: 'WEBSITE', label: 'Web Sitesi', icon: '🌐' },
-    { value: 'EVENT', label: 'Etkinlik / Fuar', icon: '🎪' },
-    { value: 'OTHER', label: 'Diğer', icon: '📍' }
+    { value: 'REFERRAL', label: 'Referans', icon: '🤝' }
 ];
 
 // Otomatik düşen kodlar — seçilemez, sadece gösterilir
@@ -46,7 +39,15 @@ const AUTO_SOURCES = {
     FACEBOOK_LEAD: { label: 'Facebook Lead Formu', icon: '📘' },
     AI_CALL: { label: 'AI Arama', icon: '🤖' },
     SMS: { label: 'SMS', icon: '✉️' },
-    PHONE: { label: 'Telefon', icon: '📞' }
+    PHONE: { label: 'Telefon', icon: '📞' },
+    // Kişi kartından gelebilen, satışta seçilemeyen kaynaklar
+    SOCIAL_MEDIA: { label: 'Sosyal Medya', icon: '📱' },
+    GOOGLE: { label: 'Google', icon: '🔍' },
+    FACEBOOK: { label: 'Facebook', icon: '📘' },
+    INSTAGRAM: { label: 'Instagram', icon: '📸' },
+    WEBSITE: { label: 'Web Sitesi', icon: '🌐' },
+    EVENT: { label: 'Etkinlik / Fuar', icon: '🎪' },
+    OTHER: { label: 'Diğer', icon: '📍' }
 };
 
 const PICKABLE_MAP = Object.fromEntries(
