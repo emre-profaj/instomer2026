@@ -20,10 +20,18 @@
     --accent-soft: #fef2f2;
     --surface: #ffffff;
 
-    padding: 32px 36px 64px;
+    padding: 32px 36px 80px;
     background: #fafafb;
     min-height: 100%;
     font-feature-settings: "tnum" 0;
+
+    /* Uygulama kabuğundaki .content bir flex sütun ve kendisi kayıyor.
+       Varsayılan flex-shrink:1 ile bu kutu kapsayıcı yüksekliğine
+       sıkıştırılıyor, içerik kutunun DIŞINA taşıyor ve alttaki dolgu
+       sıkışmış kutunun içinde kalıyordu — sayfa sonu tarayıcının
+       dibine yapışıyordu. flex-shrink:0 kutunun kendi içerik
+       yüksekliğini almasını sağlıyor, dolgu içeriğin altına düşüyor. */
+    flex-shrink: 0;
 }
 .ra-wrap { width: 100%; }
 
@@ -327,7 +335,7 @@
 
 /* ── Dar ekran ──────────────────────────────────────────── */
 @media (max-width: 1020px) {
-    .ra-page { padding: 20px 16px 48px; }
+    .ra-page { padding: 20px 16px 72px; }
     .ra-hero { grid-template-columns: 1fr; }
     .ra-hero-left { border-right: 0; border-bottom: 1px solid var(--line); padding: 26px 22px 24px; }
     .ra-hero-right { padding: 22px; }
