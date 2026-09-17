@@ -891,18 +891,44 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                             </div>
                                                                         )}
 
-                                                                        {/* Bağlı Mesajlar */}
+                                                                        {/* Bağlı Mesajlar — İçerik Önizlemesi */}
                                                                         {g.groupMessages && g.groupMessages.length > 0 && (
-                                                                            <div style={{ padding: '0 16px 8px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                                                {g.groupMessages.map(gm => (
-                                                                                    <span key={gm.messageId || gm.id} style={{
-                                                                                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                                                        background: '#f8fafc', border: '1px solid #e2e8f0',
-                                                                                        borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#475569'
-                                                                                    }}>
-                                                                                        <MessageSquare size={10} /> {gm.message?.name || 'Mesaj'}
-                                                                                    </span>
-                                                                                ))}
+                                                                            <div style={{ padding: '0 16px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                                                {g.groupMessages.map(gm => {
+                                                                                    const msg = gm.message;
+                                                                                    if (!msg) return null;
+                                                                                    const chB = CHANNEL_BADGE[msg.channel] || {};
+                                                                                    const preview = msg.content || msg.emailBody || msg.bodyText || '';
+                                                                                    return (
+                                                                                        <div key={gm.messageId || gm.id} style={{
+                                                                                            background: '#fff', border: '1px solid #e2e8f0',
+                                                                                            borderRadius: 8, padding: '8px 12px'
+                                                                                        }}>
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: preview ? 6 : 0 }}>
+                                                                                                <MessageSquare size={12} style={{ color: chB.color || '#64748b' }} />
+                                                                                                <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{msg.name || 'Mesaj'}</span>
+                                                                                                {msg.templateName && (
+                                                                                                    <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 4 }}>
+                                                                                                        📋 {msg.templateName}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                <span style={{ fontSize: 9, background: chB.bg || '#f3f4f6', color: chB.color || '#64748b', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                                                                                                    {chB.label || msg.channel}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            {preview && (
+                                                                                                <div style={{
+                                                                                                    fontSize: 12, color: '#475569', lineHeight: 1.5,
+                                                                                                    background: '#f8fafc', padding: '6px 10px', borderRadius: 6,
+                                                                                                    whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'hidden',
+                                                                                                    borderLeft: `3px solid ${chB.color || '#e2e8f0'}`
+                                                                                                }}>
+                                                                                                    {preview.length > 200 ? preview.substring(0, 200) + '...' : preview}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
                                                                             </div>
                                                                         )}
 
