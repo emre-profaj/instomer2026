@@ -982,12 +982,18 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                 return (
                                                                     <div key={g.id} style={{ marginBottom: 8 }}>
                                                                         <div
-                                                                            className="pz-card"
+                                                                            className="pz-card clickable"
                                                                             style={{ display: 'grid', gridTemplateColumns: '28px minmax(0,1fr) 90px auto 30px', alignItems: 'center', gap: 12 }}
+                                                                            onClick={() => toggleSendExpand(g.id)}
                                                                         >
                                                                             <span className="pz-av sm"><Send size={14} /></span>
                                                                             <div style={{ minWidth: 0 }}>
-                                                                                <button type="button" className="pz-name" onClick={() => toggleSendExpand(g.id)} aria-expanded={acik}>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="pz-name"
+                                                                                    onClick={e => { e.stopPropagation(); toggleSendExpand(g.id); }}
+                                                                                    aria-expanded={acik}
+                                                                                >
                                                                                     {g.name || `Gönderi #${idx + 1}`}
                                                                                 </button>
                                                                                 <div className="pz-sub">
@@ -1326,12 +1332,20 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                             const duzenlenebilir = !c.isLegacy && !c.isArchive && !c.isSystemTemplate;
 
                             return (
-                                <div className="pz-row camp" key={c.id}>
+                                <div
+                                    className="pz-row camp clickable"
+                                    key={c.id}
+                                    onClick={() => loadCampaignDetail(c.id)}
+                                >
                                     <span className={`pz-av ${isAuto ? 'auto' : ''}`}>{initials(c.name)}</span>
 
                                     <div style={{ minWidth: 0 }}>
                                         <div className="pz-name-wrap">
-                                            <button type="button" className="pz-name" onClick={() => loadCampaignDetail(c.id)}>
+                                            <button
+                                                type="button"
+                                                className="pz-name"
+                                                onClick={e => { e.stopPropagation(); loadCampaignDetail(c.id); }}
+                                            >
                                                 {c.name}
                                             </button>
                                             {c.isSystemTemplate && <span className="pz-tag-auto">OTOMATİK</span>}
@@ -1360,7 +1374,8 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                     <span className={`pz-num pz-r ${hicGonderim ? 'zero' : 'good'}`}>{hicGonderim ? '—' : num(read)}</span>
                                     <span className={`pz-num pz-r ${cost > 0 ? '' : 'zero'}`}>{cost > 0 ? `$${cost.toFixed(2)}` : '—'}</span>
 
-                                    <div className="pz-acts">
+                                    {/* Satırın tamamı tıklanabilir; buradaki düğmeler kampanyayı açmasın */}
+                                    <div className="pz-acts" onClick={e => e.stopPropagation()}>
                                         {c.isSystemTemplate && (
                                             <button
                                                 className="pz-btn pz-btn-sm"
@@ -1719,13 +1734,16 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
 
                             return (
                                 <React.Fragment key={s.id}>
-                                    <div className={`pz-row grp ${isOpen ? 'open' : ''}`}>
+                                    <div
+                                        className={`pz-row grp clickable ${isOpen ? 'open' : ''}`}
+                                        onClick={() => toggleExpand(s.id)}
+                                    >
                                         <span className="pz-av"><Folder size={16} /></span>
                                         <div style={{ minWidth: 0 }}>
                                             <button
                                                 type="button"
                                                 className="pz-name"
-                                                onClick={() => toggleExpand(s.id)}
+                                                onClick={e => { e.stopPropagation(); toggleExpand(s.id); }}
                                                 aria-expanded={isOpen}
                                             >
                                                 {s.name}
@@ -1751,7 +1769,8 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
                                         <span className="pz-status" style={{ color: st.fg }}>
                                             <i style={{ background: st.dot }} />{st.label}
                                         </span>
-                                        <div className="pz-acts">
+                                        {/* Satırın tamamı açıp kapatıyor; buradaki düğmeler onu tetiklemesin */}
+                                        <div className="pz-acts" onClick={e => e.stopPropagation()}>
                                             {s.status !== 'COMPLETED' && (
                                                 <button
                                                     className="pz-btn pz-btn-sm"
@@ -2412,18 +2431,22 @@ function ListsTab({ wsId }) {
                                 <span />
                             </div>
                             {groups.map(g => (
-                                <div className="pz-row list" key={g.id}>
+                                <div
+                                    className="pz-row list clickable"
+                                    key={g.id}
+                                    onClick={() => { setViewGroup(g); setMemberSearch(''); }}
+                                >
                                     <span className="pz-av">{initials(g.name)}</span>
                                     <button
                                         type="button"
                                         className="pz-name"
-                                        onClick={() => { setViewGroup(g); setMemberSearch(''); }}
+                                        onClick={e => { e.stopPropagation(); setViewGroup(g); setMemberSearch(''); }}
                                     >
                                         {g.name}
                                     </button>
                                     <span style={{ fontSize: 12.5, color: '#6b7480' }}>{g.description || '—'}</span>
                                     <span className="pz-num">{num(g._count?.members || 0)}</span>
-                                    <div className="pz-acts">
+                                    <div className="pz-acts" onClick={e => e.stopPropagation()}>
                                         <button className="pz-ico" type="button" aria-label="Kişileri görüntüle" onClick={() => { setViewGroup(g); setMemberSearch(''); }}>
                                             <Eye size={14} />
                                         </button>

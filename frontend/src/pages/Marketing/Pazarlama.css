@@ -237,6 +237,13 @@
 .pz-row.open { background: #fffafa; }
 .pz-r { text-align: right; }
 
+/* Satırın tamamı tıklanabilir: yalnızca ada ve oka tıklanabilmesi
+   hedefi gereksiz küçültüyordu. İçindeki düğmeler olayı durduruyor;
+   klavye yolu ad düğmesi üzerinden açık kalıyor. */
+.pz-row.clickable,
+.pz-card.clickable { cursor: pointer; }
+.pz-card.clickable:hover { background: #fffafa; }
+
 /* Sekmeye göre sütun düzeni */
 .pz-cols.camp, .pz-row.camp { grid-template-columns: 34px minmax(0, 1fr) 104px 80px 72px 72px 78px 150px; }
 .pz-cols.grp,  .pz-row.grp  { grid-template-columns: 34px minmax(0, 1fr) 170px 140px 104px 146px; }
