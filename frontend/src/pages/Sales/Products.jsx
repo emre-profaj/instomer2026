@@ -847,7 +847,9 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                 (activeTab === 'categories' || activeTab === 'productGroups') ? {
                     padding: 0,
                     background: 'transparent',
-                    minHeight: 'auto',
+                    // Sayfanın gri zemini kalan boşluğu doldurabilsin diye
+                    // sarmalayıcı kapsayıcı yüksekliğini alıyor.
+                    minHeight: '100%',
                     display: 'flex',
                     flexDirection: 'column'
                 } : {

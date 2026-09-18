@@ -41,6 +41,13 @@
     margin: 0 -28px;
     padding: 28px 28px 64px;
     background: #fafafb;
+
+    /* Kalan boşluğu doldurur. Olmazsa gri zemin içeriğin bittiği yerde
+       kesiliyor ve altında kapsayıcının beyazı görünüyor — az kayıtlı
+       listede sayfanın yarısı beyaz kalıyordu. `flex-basis: auto` ile
+       içerik daha uzunsa büyümeye devam ediyor; kaydırma yine
+       kapsayıcıda kalıyor. */
+    flex: 1 0 auto;
 }
 
 .ct-surface {
