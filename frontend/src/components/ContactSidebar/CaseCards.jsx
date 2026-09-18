@@ -952,6 +952,24 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 )}
                             </div>
                         )}
+
+                        {/* Kaynak — silik gösterim (admin/rapor amaçlı) */}
+                        {displayCase?.source && (
+                            <div style={{
+                                padding: showOnly === 'actions' ? '4px 0' : '4px 12px 2px',
+                                fontSize: '0.6rem', color: '#94a3b8', opacity: 0.5,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                borderTop: '1px solid #f1f5f9', marginTop: 4, paddingTop: 6,
+                            }}>
+                                <span>📡</span>
+                                <span>
+                                    {{ GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', WHATSAPP_AD: 'WhatsApp Reklam', FORM: 'Form', CAMPAIGN: 'Kampanya', COLD_CALL: 'Cold Call', REFERRAL: 'Referans', ORGANIC: 'Organik', MANUAL: 'Manuel' }[displayCase.source] || displayCase.source}
+                                </span>
+                                {displayCase.campaign?.name && (
+                                    <span style={{ color: '#cbd5e1' }}>• {displayCase.campaign.name}</span>
+                                )}
+                            </div>
+                        )}
                     </>
                 )}
             </>
@@ -1449,6 +1467,19 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     >
                                         ✂️ Böl
                                     </button>
+                                )}
+
+                                {/* Kaynak — silik gösterim */}
+                                {c.source && (
+                                    <div style={{
+                                        fontSize: '0.58rem', color: '#94a3b8', opacity: 0.45,
+                                        display: 'flex', alignItems: 'center', gap: 3,
+                                        marginTop: 4, paddingTop: 4, borderTop: '1px solid #f1f5f9',
+                                    }}>
+                                        <span>📡</span>
+                                        {{ GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', WHATSAPP_AD: 'WhatsApp Reklam', FORM: 'Form', CAMPAIGN: 'Kampanya', COLD_CALL: 'Cold Call', REFERRAL: 'Referans', ORGANIC: 'Organik', MANUAL: 'Manuel' }[c.source] || c.source}
+                                        {c.campaign?.name && <span style={{ color: '#cbd5e1' }}>• {c.campaign.name}</span>}
+                                    </div>
                                 )}
                             </div>
                         );

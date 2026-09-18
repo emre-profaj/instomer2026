@@ -633,6 +633,16 @@ const Quotes = () => {
                                         <span className="value">{selectedDeal.sourceNote}</span>
                                     </div>
                                 )}
+                                {/* Case kaynağı — ilişki üzerinden */}
+                                {selectedDeal.case?.source && (
+                                    <div className="info-row" style={{ opacity: 0.6 }}>
+                                        <span className="label">Case Kaynağı:</span>
+                                        <span className="value" style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                                            {{ GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', WHATSAPP_AD: 'WhatsApp Reklam', FORM: 'Form', CAMPAIGN: 'Kampanya', COLD_CALL: 'Cold Call', REFERRAL: 'Referans', ORGANIC: 'Organik', MANUAL: 'Manuel' }[selectedDeal.case.source] || selectedDeal.case.source}
+                                            {selectedDeal.case.campaign?.name && ` • ${selectedDeal.case.campaign.name}`}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Products */}

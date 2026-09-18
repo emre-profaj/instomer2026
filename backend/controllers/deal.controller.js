@@ -99,6 +99,9 @@ export const getDeals = async (req, res) => {
                     },
                     assignedTo: {
                         select: { id: true, name: true, avatar: true }
+                    },
+                    case: {
+                        select: { id: true, source: true, campaign: { select: { id: true, name: true } } }
                     }
                 },
                 orderBy: { createdAt: 'desc' },
@@ -141,6 +144,9 @@ export const getDeal = async (req, res) => {
                 },
                 conversation: {
                     select: { id: true, channel: true, status: true, lastMessageAt: true }
+                },
+                case: {
+                    select: { id: true, source: true, campaign: { select: { id: true, name: true } } }
                 }
             }
         });

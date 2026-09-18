@@ -1366,6 +1366,9 @@ export const getContacts = async (req, res) => {
                                 updatedAt: true,
                                 assignedToId: true,
                                 assignedTeamId: true,
+                                leadScore: true,
+                                leadTemperature: true,
+                                source: true,
                                 assignedTo: {
                                     select: {
                                         id: true,
@@ -1392,6 +1395,7 @@ export const getContacts = async (req, res) => {
                                 createdAt: true,
                                 assignedByType: true,
                                 source: true,
+                                caseId: true,
                                 assignee: { select: { name: true } },
                                 creator: { select: { name: true } }
                             }
