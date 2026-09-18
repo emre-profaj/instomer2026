@@ -1662,9 +1662,13 @@ function formatDoctorDisplayName(rawName) {
 
                 {/* SATIR 1: Başlık (sol) + Hızlı eylem butonları (sağ) */}
                 <div className="cal-header-row cal-title-row" style={{ justifyContent: 'space-between' }}>
+                    {/* Sayfa başlığı: diğer sayfalarla aynı blok —
+                        üstte küçük kırmızı etiket, altında başlık ve tek
+                        satırlık açıklama. */}
                     <div className="calendar-title">
-                        <CalendarIcon size={24} />
-                        <h1>Aktiviteler</h1>
+                        <p className="tk-eyebrow">Aktiviteler</p>
+                        <h1>Takvim</h1>
+                        <p className="tk-lede">Randevular, planlanan aramalar ve görevler tek görünümde.</p>
                     </div>
 
                     {/* Hızlı eylem butonları ve Google Takvim */}
@@ -1803,24 +1807,6 @@ function formatDoctorDisplayName(rawName) {
                             </button>
                         )}
 
-                        <div className="cal-quick-divider" />
-
-                        {[
-                            { label: 'Arama Notu',        icon: PhoneCall,     type: 'calls',        subtype: 'note'     },
-                            { label: 'Arama Planla',      icon: PhoneCall,     type: 'calls',        subtype: 'planned'  },
-                            { label: 'Görüşme Planla',    icon: CalendarClock, type: 'appointments', subtype: 'meeting'  },
-                            { label: 'Görev Hatırlatıcı', icon: Bell,          type: 'tasks',        subtype: 'reminder' },
-                        ].map((btn) => (
-                            <button
-                                key={btn.label}
-                                className="cal-quick-btn"
-                                onClick={() => openQuickAction(btn)}
-                                title={btn.label}
-                            >
-                                <btn.icon size={20} />
-                                <span>{btn.label}</span>
-                            </button>
-                        ))}
                     </div>
                 </div>
 
@@ -1873,6 +1859,26 @@ function formatDoctorDisplayName(rawName) {
                                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
                                 <span>{isSyncing ? 'Yenileniyor...' : 'Yenile'}</span>
                             </button>
+                        </div>
+                        <div className="cal-quick-actions">
+                        <div className="cal-quick-divider" />
+
+                        {[
+                            { label: 'Arama Notu',        icon: PhoneCall,     type: 'calls',        subtype: 'note'     },
+                            { label: 'Arama Planla',      icon: PhoneCall,     type: 'calls',        subtype: 'planned'  },
+                            { label: 'Görüşme Planla',    icon: CalendarClock, type: 'appointments', subtype: 'meeting'  },
+                            { label: 'Görev Hatırlatıcı', icon: Bell,          type: 'tasks',        subtype: 'reminder' },
+                        ].map((btn) => (
+                            <button
+                                key={btn.label}
+                                className="cal-quick-btn"
+                                onClick={() => openQuickAction(btn)}
+                                title={btn.label}
+                            >
+                                <btn.icon size={20} />
+                                <span>{btn.label}</span>
+                            </button>
+                        ))}
                         </div>
                     </div>
 
