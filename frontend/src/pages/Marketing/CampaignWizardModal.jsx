@@ -3,20 +3,50 @@ import api from '../../services/api';
 import {
     Megaphone, Users, MessageSquare, Phone, Calendar, Clock,
     CheckCircle2, Sparkles, Upload, Image as ImageIcon, AlertCircle,
-    ChevronRight, ArrowLeft, ArrowRight, X, Loader2, Tag, Layers
+    ChevronRight, ArrowLeft, ArrowRight, X, Loader2, Tag, Layers,
+    RotateCcw, Repeat, Zap, CalendarDays, Plus, Trash2, ShieldCheck,
+    Mail, Smartphone
 } from 'lucide-react';
 
 export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSuccess }) {
     if (!isOpen) return null;
 
-    // Wizard Step: 1 = Hedef Kitle, 2 = Kanallar & İçerik, 3 = Zamanlama & Hız, 4 = Özet & Başlat
+    // Wizard Step: 1 = Kampanya Türü & Hedef Kitle, 2 = Gruplar & Kanallar, 3 = Zamanlama & Hız, 4 = Özet & Başlat
     const [step, setStep] = useState(1);
 
-    // Step 1: Campaign Info & Audience
+    // ── 4 TEMEL KAMPANYA TÜRÜ ───────────────────────────────────────
+    // ONE_TIME: Tek Seferlik (Urla One Lansmanı, Anlık Duyuru)
+    // RECURRING: Tekrarlı Gönderim (Haftalık / Aylık Bülten)
+    // EVENT_BASED: Olay Bazlı (30 Gündür Aranmayan Lead, X Akışına Geçenler)
+    // DAY_BASED: Gün / Süreç Bazlı (90-100-120 Gün Pasif, 60 Gün Müşteri, Doğum Günü)
+    const [campaignType, setCampaignType] = useState('ONE_TIME');
+
+    // Tekrarlı Gönderim Ayarları
+    const [recurringFrequency, setRecurringFrequency] = useState('WEEKLY'); // WEEKLY, MONTHLY, BIWEEKLY, DAILY
+    const [recurringDayOfWeek, setRecurringDayOfWeek] = useState(1); // 1 = Pazartesi
+    const [recurringDayOfMonth, setRecurringDayOfMonth] = useState(1);
+    const [recurringTime, setRecurringTime] = useState('10:00');
+
+    // Olay Bazlı Ayarlar
+    const [eventTrigger, setEventTrigger] = useState('UNCONTACTED_LEAD'); // UNCONTACTED_LEAD, STAGE_CHANGE, NEW_LEAD
+    const [uncontactedDays, setUncontactedDays] = useState(30);
+
+    // Gün Bazlı Ayarlar
+    const [dayTrigger, setDayTrigger] = useState('INACTIVE_DAYS'); // INACTIVE_DAYS, CUSTOMER_AGE_DAYS, BIRTHDAY
+    const [dayMilestoneDays, setDayMilestoneDays] = useState(90);
+
+    // Otomatik Yeniden Deneme (Auto-retry)
+    const [autoRetry, setAutoRetry] = useState(true);
+    const [maxRetries, setMaxRetries] = useState(3);
+    const [retryIntervalMinutes, setRetryIntervalMinutes] = useState(15);
+
+    // Kampanya Genel Bilgileri
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [budget, setBudget] = useState('');
-    const [audienceType, setAudienceType] = useState('TAGS'); // 'TAGS' | 'SEGMENT' | 'LIST' | 'ALL'
+
+    // Hedef Kitle
+    const [audienceType, setAudienceType] = useState('SEGMENT'); // 'SEGMENT' | 'TAGS' | 'LIST' | 'ALL'
     const [availableTags, setAvailableTags] = useState([]);
     const [selectedTags, setSelectedTags] = useState([]);
     const [tagSearch, setTagSearch] = useState('');
@@ -30,98 +60,98 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
     const [previewSamples, setPreviewSamples] = useState([]);
     const [previewLoading, setPreviewLoading] = useState(false);
 
-    // Step 2: Channels & Content
-    const [channels, setChannels] = useState(['WHATSAPP']); // ['WHATSAPP'], ['AI_CALL'], or ['WHATSAPP', 'AI_CALL']
+    // ── ÇOKLU GRUP / AD SETS YÖNETİCİSİ ──────────────────────────
+    const [groups, setGroups] = useState([
+        {
+            id: 'g_1',
+            name: 'Grup 1: WhatsApp Duyurusu',
+            channel: 'WHATSAPP',
+            delayDays: 0,
+            targetMilestone: 'IMMEDIATE',
+            templateName: '',
+            bodyText: '',
+            headerMediaUrl: '',
+            agentId: '',
+            callTemplate: ''
+        }
+    ]);
 
-    // WhatsApp Configuration
-    const [waMode, setWaMode] = useState('EXISTING_TEMPLATE'); // 'EXISTING_TEMPLATE' | 'NEW_TEMPLATE'
+    // Kaynaklar (WhatsApp Şablonları & Retell Asistanları)
     const [waTemplates, setWaTemplates] = useState([]);
-    const [selectedTemplateName, setSelectedTemplateName] = useState('');
-    const [selectedTemplateObj, setSelectedTemplateObj] = useState(null);
-    // New Template details
-    const [newTemplateName, setNewTemplateName] = useState('');
-    const [newTemplateBody, setNewTemplateBody] = useState('');
-    const [uploadingMedia, setUploadingMedia] = useState(false);
-    const [mediaHandle, setMediaHandle] = useState('');
-    const [mediaUrl, setMediaUrl] = useState('');
-    const [mediaPreview, setMediaPreview] = useState('');
-
-    // AI Call Configuration
     const [retellAgents, setRetellAgents] = useState([]);
-    const [selectedAgentId, setSelectedAgentId] = useState('');
-    const [callTemplate, setCallTemplate] = useState('');
 
-    // Step 3: Schedule & Speed
+    // Zamanlama & Hız
     const [scheduleType, setScheduleType] = useState('IMMEDIATE'); // 'IMMEDIATE' | 'SCHEDULED'
     const [scheduledAt, setScheduledAt] = useState('');
     const [sendRate, setSendRate] = useState(20);
 
-    // Submitting State
+    // Gönderim Durumu
     const [submitting, setSubmitting] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
 
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────
     // Initial Data Fetching
-    // ─────────────────────────────────────────────────────────────────────────────
-
+    // ─────────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!workspaceId) return;
 
-        // 1. Fetch tags from contacts
+        // 1. Etiketler
         api.get(`/contacts/${workspaceId}?limit=1`)
             .then(res => {
                 if (res.data?.allTags) setAvailableTags(res.data.allTags);
             })
-            .catch(err => console.error('Error fetching tags:', err));
+            .catch(() => {});
 
-        // 2. Fetch Smart Segments
+        // 2. Akıllı Segmentler
         api.get(`/smart-segments/${workspaceId}/segments/definitions`)
             .then(res => {
-                if (res.data?.segments) setSmartSegments(res.data.segments);
+                if (res.data?.segments) {
+                    setSmartSegments(res.data.segments);
+                    if (res.data.segments.length > 0) {
+                        setSelectedSegmentId(res.data.segments[0].id);
+                    }
+                }
             })
-            .catch(err => console.error('Error fetching smart segments:', err));
+            .catch(() => {});
 
-        // 3. Fetch Contact Groups (Lists)
+        // 3. Kayıtlı Listeler
         api.get(`/contact-groups/${workspaceId}/groups`)
             .then(res => {
                 const list = res.data?.groups || res.data || [];
                 setContactGroups(Array.isArray(list) ? list : []);
             })
-            .catch(err => console.error('Error fetching contact groups:', err));
+            .catch(() => {});
 
-        // 4. Fetch WhatsApp Templates
+        // 4. WhatsApp Şablonları
         api.get(`/automations/${workspaceId}/templates`)
             .then(res => {
                 const tpls = res.data?.templates || [];
                 setWaTemplates(tpls);
                 const approved = tpls.filter(t => t.status === 'APPROVED');
-                if (approved.length > 0) {
-                    setSelectedTemplateName(approved[0].name);
-                    setSelectedTemplateObj(approved[0]);
-                } else if (tpls.length > 0) {
-                    setSelectedTemplateName(tpls[0].name);
-                    setSelectedTemplateObj(tpls[0]);
+                const defaultTpl = approved[0] || tpls[0];
+                if (defaultTpl) {
+                    setGroups(prev => prev.map(g => g.channel === 'WHATSAPP' && !g.templateName ? { ...g, templateName: defaultTpl.name } : g));
                 }
             })
-            .catch(err => console.error('Error fetching WA templates:', err));
+            .catch(() => {});
 
-        // 5. Fetch Retell Agents
+        // 5. Retell Asistanları
         api.get(`/retell/${workspaceId}/agents`)
             .then(res => {
                 const agents = res.data?.agents || res.data || [];
                 setRetellAgents(Array.isArray(agents) ? agents : []);
                 if (agents.length > 0) {
-                    setSelectedAgentId(agents[0].agent_id || agents[0].id || '');
+                    const firstAgentId = agents[0].agent_id || agents[0].id || '';
+                    setGroups(prev => prev.map(g => g.channel === 'AI_CALL' && !g.agentId ? { ...g, agentId: firstAgentId } : g));
                 }
             })
-            .catch(err => console.error('Error fetching Retell agents:', err));
+            .catch(() => {});
 
     }, [workspaceId]);
 
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────
     // Audience Preview Handler
-    // ─────────────────────────────────────────────────────────────────────────────
-
+    // ─────────────────────────────────────────────────────────────────
     const updateAudiencePreview = useCallback(async () => {
         if (!workspaceId) return;
         setPreviewLoading(true);
@@ -137,102 +167,173 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 setPreviewCount(res.data.count);
                 setPreviewSamples(res.data.sampleContacts || []);
             }
-        } catch (err) {
-            console.error('Preview error:', err);
+        } catch {
+            setPreviewCount(null);
         } finally {
             setPreviewLoading(false);
         }
     }, [workspaceId, audienceType, selectedTags, selectedSegmentId, selectedListId]);
 
     useEffect(() => {
-        const timeout = setTimeout(updateAudiencePreview, 250);
-        return () => clearTimeout(timeout);
+        const timer = setTimeout(() => {
+            updateAudiencePreview();
+        }, 300);
+        return () => clearTimeout(timer);
     }, [updateAudiencePreview]);
 
-    // Toggle Tag Selection
-    const toggleTag = (tagName) => {
-        setSelectedTags(prev =>
-            prev.includes(tagName) ? prev.filter(t => t !== tagName) : [...prev, tagName]
-        );
-    };
+    // ─────────────────────────────────────────────────────────────────
+    // PRESET YARDIMCILARI (Örnek Şablonları Doldurma)
+    // ─────────────────────────────────────────────────────────────────
+    const applyPreset = (presetType) => {
+        const defaultWa = waTemplates.find(t => t.status === 'APPROVED')?.name || waTemplates[0]?.name || 'genel_sablon';
+        const defaultAgent = retellAgents[0]?.agent_id || retellAgents[0]?.id || '';
 
-    // Toggle Channel
-    const toggleChannel = (channelKey) => {
-        setChannels(prev => {
-            if (prev.includes(channelKey)) {
-                if (prev.length === 1) return prev; // At least one channel required
-                return prev.filter(c => c !== channelKey);
-            } else {
-                return [...prev, channelKey];
-            }
-        });
-    };
-
-    // Media Upload for New Template
-    const handleMediaUpload = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setUploadingMedia(true);
-        setErrorMsg('');
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const res = await api.post(`/automations/${workspaceId}/templates/upload-media`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            if (res.data?.handle) {
-                setMediaHandle(res.data.handle);
-                setMediaUrl(res.data.url || '');
-                setMediaPreview(URL.createObjectURL(file));
-            } else if (res.data?.url) {
-                setMediaUrl(res.data.url);
-                setMediaPreview(URL.createObjectURL(file));
-            }
-        } catch (err) {
-            console.error('Media upload failed:', err);
-            setErrorMsg(err.response?.data?.error || 'Görsel yüklenemedi');
-        } finally {
-            setUploadingMedia(false);
+        if (presetType === 'PASIF_UYE') {
+            setName('Pasif Üye Reaktivasyon');
+            setDescription('90 ve 120 gündür sessiz kalan üyelere WhatsApp ve sesli arama hatırlatması');
+            setCampaignType('DAY_BASED');
+            setDayTrigger('INACTIVE_DAYS');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp (90. Gün)',
+                    channel: 'WHATSAPP',
+                    delayDays: 90,
+                    targetMilestone: 'DAY_90',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: Retell AI Arama (90. Gün)',
+                    channel: 'AI_CALL',
+                    delayDays: 90,
+                    targetMilestone: 'DAY_90',
+                    agentId: defaultAgent,
+                    callTemplate: 'Merhaba, uzun zamandır görüşemedik, size özel yeni fırsatlarımız hakkında bilgi vermek istedim.'
+                },
+                {
+                    id: 'g_3',
+                    name: 'Grup 3: WhatsApp (120. Gün)',
+                    channel: 'WHATSAPP',
+                    delayDays: 120,
+                    targetMilestone: 'DAY_120',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_4',
+                    name: 'Grup 4: Retell AI Arama (120. Gün)',
+                    channel: 'AI_CALL',
+                    delayDays: 120,
+                    targetMilestone: 'DAY_120',
+                    agentId: defaultAgent,
+                    callTemplate: 'Merhaba, tekrar rahatsız ediyorum, avantajlı teklifimiz sona ermeden paylaşmak istedik.'
+                }
+            ]);
+            // İlgili akıllı segmenti seç (varsa INACTIVE_30D veya benzeri)
+            const inactiveSeg = smartSegments.find(s => s.id.includes('INACTIVE'));
+            if (inactiveSeg) setSelectedSegmentId(inactiveSeg.id);
+        } else if (presetType === 'YENI_PROJE') {
+            setName('Urla One Proje Lansmanı');
+            setDescription('Urla One yeni proje duyurusu: WhatsApp şablonu ve Retell AI sesli araması');
+            setCampaignType('ONE_TIME');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: Urla One WhatsApp Şablon 1',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: Urla One Retell Sesli Arama 1',
+                    channel: 'AI_CALL',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    agentId: defaultAgent,
+                    callTemplate: 'Urla One projemiz satışa çıktı, detaylı bilgi aktarmak için arıyorum.'
+                }
+            ]);
+        } else if (presetType === 'UNCONTACTED_LEAD') {
+            setName('30 Gün Aranmayan Lead Takibi');
+            setDescription('30 gündür aranmamış potansiyel müşterilere otomatik lead hatırlatması');
+            setCampaignType('EVENT_BASED');
+            setEventTrigger('UNCONTACTED_LEAD');
+            setUncontactedDays(30);
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Hatırlatma Bildirimi',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: Retell AI Sesli Arama',
+                    channel: 'AI_CALL',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    agentId: defaultAgent,
+                    callTemplate: 'Talebiniz üzerine geri dönüş sağlıyorum.'
+                }
+            ]);
         }
     };
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Launch Campaign
-    // ─────────────────────────────────────────────────────────────────────────────
+    // ── Grup Ekleme / Silme / Güncelleme ────────────────────────────
+    const addGroup = () => {
+        const nextIdx = groups.length + 1;
+        const defaultWa = waTemplates.find(t => t.status === 'APPROVED')?.name || waTemplates[0]?.name || '';
+        setGroups(prev => [
+            ...prev,
+            {
+                id: `g_${Date.now()}`,
+                name: `Grup ${nextIdx}: WhatsApp`,
+                channel: 'WHATSAPP',
+                delayDays: 0,
+                targetMilestone: 'IMMEDIATE',
+                templateName: defaultWa,
+                bodyText: '',
+                agentId: '',
+                callTemplate: ''
+            }
+        ]);
+    };
 
+    const updateGroup = (id, field, value) => {
+        setGroups(prev => prev.map(g => {
+            if (g.id !== id) return g;
+            const updated = { ...g, [field]: value };
+            // Kanal değiştiğinde isim veya şablonu uyarla
+            if (field === 'channel') {
+                if (value === 'WHATSAPP' && !updated.templateName) {
+                    updated.templateName = waTemplates[0]?.name || '';
+                } else if (value === 'AI_CALL' && !updated.agentId) {
+                    updated.agentId = retellAgents[0]?.agent_id || retellAgents[0]?.id || '';
+                }
+            }
+            return updated;
+        }));
+    };
+
+    const removeGroup = (id) => {
+        if (groups.length <= 1) return;
+        setGroups(prev => prev.filter(g => g.id !== id));
+    };
+
+    // ─────────────────────────────────────────────────────────────────
+    // Launch / Submit Handler
+    // ─────────────────────────────────────────────────────────────────
     const handleLaunch = async () => {
         if (!name.trim()) {
             setErrorMsg('Lütfen kampanya adını girin');
-            setStep(1);
-            return;
-        }
-
-        if (channels.length === 0) {
-            setErrorMsg('Lütfen en az bir kanal seçin');
-            setStep(2);
-            return;
-        }
-
-        if (channels.includes('WHATSAPP')) {
-            if (waMode === 'EXISTING_TEMPLATE' && !selectedTemplateName) {
-                setErrorMsg('Lütfen bir WhatsApp şablonu seçin');
-                setStep(2);
-                return;
-            }
-            if (waMode === 'NEW_TEMPLATE' && !newTemplateBody.trim()) {
-                setErrorMsg('Lütfen yeni şablon metnini yazın');
-                setStep(2);
-                return;
-            }
-        }
-
-        if (channels.includes('AI_CALL') && !selectedAgentId) {
-            setErrorMsg('Lütfen sesli arama için bir AI Asistanı seçin');
-            setStep(2);
             return;
         }
 
@@ -241,29 +342,43 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
 
         try {
             const payload = {
-                name: name.trim(),
-                description: description.trim(),
+                name,
+                description,
                 budget: budget ? parseFloat(budget) : null,
+                campaignType,
+                recurringConfig: campaignType === 'RECURRING' ? {
+                    frequency: recurringFrequency,
+                    dayOfWeek: recurringDayOfWeek,
+                    dayOfMonth: recurringDayOfMonth,
+                    time: recurringTime
+                } : undefined,
+                eventTrigger: campaignType === 'EVENT_BASED' ? eventTrigger : undefined,
+                eventConfig: campaignType === 'EVENT_BASED' ? { uncontactedDays: Number(uncontactedDays) } : undefined,
+                dayTrigger: campaignType === 'DAY_BASED' ? dayTrigger : undefined,
+                dayConfig: campaignType === 'DAY_BASED' ? { days: Number(dayMilestoneDays) } : undefined,
+                autoRetry,
+                maxRetries: Number(maxRetries),
+                retryIntervalMinutes: Number(retryIntervalMinutes),
                 audienceType,
-                tagNames: selectedTags,
-                segmentId: selectedSegmentId,
-                listId: selectedListId,
-                channels,
-                whatsappConfig: channels.includes('WHATSAPP') ? {
-                    mode: waMode,
-                    templateName: waMode === 'EXISTING_TEMPLATE' ? selectedTemplateName : (newTemplateName || `${name.toLowerCase().replace(/[^a-z0-9_]/g, '_')}_tpl`),
-                    bodyText: waMode === 'NEW_TEMPLATE' ? newTemplateBody : (selectedTemplateObj?.bodyText || ''),
-                    headerType: mediaHandle || mediaUrl ? 'IMAGE' : undefined,
-                    headerHandle: mediaHandle,
-                    headerMediaUrl: mediaUrl,
-                    category: 'MARKETING'
-                } : {},
-                aiCallConfig: channels.includes('AI_CALL') ? {
-                    agentId: selectedAgentId,
-                    agentName: retellAgents.find(a => (a.agent_id || a.id) === selectedAgentId)?.agent_name || 'Asistan',
-                    callTemplate
-                } : {},
-                sendRate: Number(sendRate),
+                tagNames: audienceType === 'TAGS' ? selectedTags : [],
+                segmentId: audienceType === 'SEGMENT' ? selectedSegmentId : null,
+                listId: audienceType === 'LIST' ? selectedListId : null,
+                groups: groups.map((g, idx) => ({
+                    name: g.name || `Grup ${idx + 1}`,
+                    channel: g.channel,
+                    delayDays: parseInt(g.delayDays, 10) || 0,
+                    targetMilestone: g.delayDays > 0 ? `DAY_${g.delayDays}` : 'IMMEDIATE',
+                    templateName: g.templateName || undefined,
+                    bodyText: g.bodyText || undefined,
+                    headerMediaUrl: g.headerMediaUrl || undefined,
+                    agentId: g.agentId || undefined,
+                    callTemplate: g.callTemplate || undefined,
+                    emailSubject: g.emailSubject || undefined,
+                    emailBody: g.emailBody || undefined,
+                    smsText: g.smsText || undefined,
+                    sendRate: Number(sendRate) || 20
+                })),
+                sendRate: Number(sendRate) || 20,
                 scheduleType,
                 scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? scheduledAt : null
             };
@@ -284,38 +399,39 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
         }
     };
 
-    // Filtered Tags list
     const filteredTags = availableTags.filter(t => t.toLowerCase().includes(tagSearch.toLowerCase()));
 
     return (
         <div className="mkt-modal-overlay" onClick={onClose}>
             <div
                 className="grp-form-modal"
-                style={{ width: 680, maxWidth: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
+                style={{ width: 760, maxWidth: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="grp-modal-header" style={{ padding: '18px 24px' }}>
+                <div className="grp-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #eef2f6' }}>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{ width: 32, height: 32, borderRadius: 8, background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <Sparkles size={18} />
                             </div>
-                            <h2 className="grp-modal-title" style={{ fontSize: 18 }}>Akıllı Kampanya Başlat</h2>
+                            <h2 className="grp-modal-title" style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+                                Akıllı Pazarlama ve Kampanya Sihirbazı
+                            </h2>
                         </div>
-                        <p style={{ margin: '4px 0 0 40px', fontSize: 13, color: '#6b7280' }}>
-                            Hedef kitlenizi seçin, kanalları belirleyin ve tek tıkla yayına alın.
+                        <p style={{ margin: '4px 0 0 40px', fontSize: 13, color: '#64748b' }}>
+                            Tek seferlik lansman, tekrarlı bülten, olay ve gün bazlı otomatik kampanyalar oluşturun.
                         </p>
                     </div>
                     <button className="grp-modal-close" onClick={onClose}><X size={16} /></button>
                 </div>
 
                 {/* Step Indicator */}
-                <div style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', background: '#fafafa', padding: '10px 24px', gap: 8 }}>
+                <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: '#fafafa', padding: '10px 24px', gap: 8 }}>
                     {[
-                        { num: 1, title: 'Hedef Kitle' },
-                        { num: 2, title: 'Kanallar & İçerik' },
-                        { num: 3, title: 'Zamanlama & Hız' },
+                        { num: 1, title: 'Kampanya Türü & Kitle' },
+                        { num: 2, title: 'Gruplar & Kanallar' },
+                        { num: 3, title: 'Zamanlama & Yeniden Deneme' },
                         { num: 4, title: 'Özet & Başlat' }
                     ].map(s => {
                         const active = step === s.num;
@@ -333,7 +449,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                     borderRadius: 6,
                                     background: active ? '#fff' : 'transparent',
                                     boxShadow: active ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
-                                    border: active ? '1px solid #e5e7eb' : '1px solid transparent',
+                                    border: active ? '1px solid #e2e8f0' : '1px solid transparent',
                                     cursor: 'pointer',
                                     transition: 'all 0.15s'
                                 }}
@@ -347,12 +463,12 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                     justifyContent: 'center',
                                     fontSize: 11,
                                     fontWeight: 700,
-                                    background: passed ? '#10b981' : active ? '#2563eb' : '#e5e7eb',
-                                    color: passed || active ? '#fff' : '#6b7280'
+                                    background: passed ? '#10b981' : active ? '#2563eb' : '#e2e8f0',
+                                    color: passed || active ? '#fff' : '#64748b'
                                 }}>
                                     {passed ? '✓' : s.num}
                                 </span>
-                                <span style={{ fontSize: 12, fontWeight: active ? 600 : 500, color: active ? '#111827' : '#6b7280' }}>
+                                <span style={{ fontSize: 12, fontWeight: active ? 650 : 500, color: active ? '#0f172a' : '#64748b' }}>
                                     {s.title}
                                 </span>
                             </div>
@@ -368,22 +484,227 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                     </div>
                 )}
 
-                {/* Modal Body with Scroll */}
+                {/* Modal Body */}
                 <div className="grp-modal-body" style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
 
                     {/* ══════════════════════════════════════════════════════════════
-                        STEP 1: HEDEF KİTLE (AUDIENCE)
+                        STEP 1: KAMPANYA TÜRÜ & HEDEF KİTLE
                     ══════════════════════════════════════════════════════════════ */}
                     {step === 1 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                            {/* Campaign Info */}
+
+                            {/* Hızlı Örnek Doldurma Kısayolları */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', padding: '10px 14px', borderRadius: 8, border: '1px dashed #cbd5e1' }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>💡 Hazır Örnekler:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => applyPreset('PASIF_UYE')}
+                                    style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', color: '#1e293b' }}
+                                >
+                                    📅 Pasif Üye (90-120 Gün)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => applyPreset('YENI_PROJE')}
+                                    style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', color: '#1e293b' }}
+                                >
+                                    ⚡ Urla One / Yeni Proje
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => applyPreset('UNCONTACTED_LEAD')}
+                                    style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', color: '#1e293b' }}
+                                >
+                                    🎯 30 Gün Aranmayan Lead
+                                </button>
+                            </div>
+
+                            {/* 4 Temel Kampanya Türü Kartları */}
+                            <div>
+                                <label className="grp-label" style={{ marginBottom: 8, display: 'block', fontWeight: 700 }}>
+                                    1. Kampanya Türünü Seçin *
+                                </label>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                                    {/* 1. Tek Seferlik */}
+                                    <div
+                                        onClick={() => setCampaignType('ONE_TIME')}
+                                        style={{
+                                            border: campaignType === 'ONE_TIME' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                                            background: campaignType === 'ONE_TIME' ? '#eff6ff' : '#fff',
+                                            borderRadius: 10,
+                                            padding: 12,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#1e40af', fontSize: 13.5 }}>
+                                            <Zap size={16} color="#2563eb" />
+                                            <span>Tek Seferlik Gönderim</span>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
+                                            Yeni bir proje duyurusu ("Urla One"), promosyon veya tüm müşterilere anlık/planlı toplu mesaj.
+                                        </p>
+                                    </div>
+
+                                    {/* 2. Tekrarlı Gönderim */}
+                                    <div
+                                        onClick={() => setCampaignType('RECURRING')}
+                                        style={{
+                                            border: campaignType === 'RECURRING' ? '2px solid #16a34a' : '1px solid #e2e8f0',
+                                            background: campaignType === 'RECURRING' ? '#f0fdf4' : '#fff',
+                                            borderRadius: 10,
+                                            padding: 12,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#166534', fontSize: 13.5 }}>
+                                            <Repeat size={16} color="#16a34a" />
+                                            <span>Tekrarlı Gönderim (Bülten)</span>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
+                                            Haftalık bülten veya aylık bilgilendirme. Belirlenen gün ve saatte dinamik hedef kitleye periyodik gider.
+                                        </p>
+                                    </div>
+
+                                    {/* 3. Olay Bazlı */}
+                                    <div
+                                        onClick={() => setCampaignType('EVENT_BASED')}
+                                        style={{
+                                            border: campaignType === 'EVENT_BASED' ? '2px solid #ea580c' : '1px solid #e2e8f0',
+                                            background: campaignType === 'EVENT_BASED' ? '#fff7ed' : '#fff',
+                                            borderRadius: 10,
+                                            padding: 12,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#9a3412', fontSize: 13.5 }}>
+                                            <TargetIcon size={16} color="#ea580c" />
+                                            <span>Olay Bazlı (Tetikleyici)</span>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
+                                            X akışına geçen müşteriye teşekkür veya 30 gündür aranmayan potansiyel lead'e otomatik arama/mesaj.
+                                        </p>
+                                    </div>
+
+                                    {/* 4. Gün / Süreç Bazlı */}
+                                    <div
+                                        onClick={() => setCampaignType('DAY_BASED')}
+                                        style={{
+                                            border: campaignType === 'DAY_BASED' ? '2px solid #7c3aed' : '1px solid #e2e8f0',
+                                            background: campaignType === 'DAY_BASED' ? '#faf5ff' : '#fff',
+                                            borderRadius: 10,
+                                            padding: 12,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#6b21a8', fontSize: 13.5 }}>
+                                            <CalendarDays size={16} color="#7c3aed" />
+                                            <span>Gün / Süreç Bazlı (Milestone)</span>
+                                        </div>
+                                        <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
+                                            90 gün pasif üyeye WhatsApp/Retell, 120. gün tekrarı, 60 günlük müşteri veya doğum günü tebriği.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Seçilen Türe Özel Ayarlar */}
+                            {campaignType === 'RECURRING' && (
+                                <div style={{ background: '#f0fdf4', padding: 14, borderRadius: 10, border: '1px solid #bbf7d0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>🔄 Tekrarlı Bülten Planlaması:</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                                        <div>
+                                            <label className="grp-label">Sıklık</label>
+                                            <select className="grp-input" value={recurringFrequency} onChange={e => setRecurringFrequency(e.target.value)}>
+                                                <option value="WEEKLY">Haftalık</option>
+                                                <option value="BIWEEKLY">2 Haftada Bir</option>
+                                                <option value="MONTHLY">Aylık</option>
+                                                <option value="DAILY">Günlük</option>
+                                            </select>
+                                        </div>
+                                        {recurringFrequency === 'WEEKLY' && (
+                                            <div>
+                                                <label className="grp-label">Gönderim Günü</label>
+                                                <select className="grp-input" value={recurringDayOfWeek} onChange={e => setRecurringDayOfWeek(parseInt(e.target.value, 10))}>
+                                                    <option value={1}>Pazartesi</option>
+                                                    <option value={2}>Salı</option>
+                                                    <option value={3}>Çarşamba</option>
+                                                    <option value={4}>Perşembe</option>
+                                                    <option value={5}>Cuma</option>
+                                                    <option value={6}>Cumartesi</option>
+                                                    <option value={7}>Pazar</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                        {recurringFrequency === 'MONTHLY' && (
+                                            <div>
+                                                <label className="grp-label">Ayın Günü</label>
+                                                <input type="number" min="1" max="31" className="grp-input" value={recurringDayOfMonth} onChange={e => setRecurringDayOfMonth(parseInt(e.target.value, 10))} />
+                                            </div>
+                                        )}
+                                        <div>
+                                            <label className="grp-label">Saat (TSİ)</label>
+                                            <input type="time" className="grp-input" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {campaignType === 'EVENT_BASED' && (
+                                <div style={{ background: '#fff7ed', padding: 14, borderRadius: 10, border: '1px solid #fed7aa', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#9a3412' }}>🎯 Olay / Tetikleyici Koşulu:</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                                        <div>
+                                            <label className="grp-label">Tetikleyici Olay</label>
+                                            <select className="grp-input" value={eventTrigger} onChange={e => setEventTrigger(e.target.value)}>
+                                                <option value="UNCONTACTED_LEAD">30 Gündür Kimsenin Aramadığı Potansiyel Lead</option>
+                                                <option value="STAGE_CHANGE">Fırsat / Akış Aşamasına Geçenler (X Akışı)</option>
+                                                <option value="NEW_LEAD">Yeni Lead Kaydı Geldiğinde</option>
+                                            </select>
+                                        </div>
+                                        {eventTrigger === 'UNCONTACTED_LEAD' && (
+                                            <div>
+                                                <label className="grp-label">Aranmama Süresi (Gün)</label>
+                                                <input type="number" min="1" max="365" className="grp-input" value={uncontactedDays} onChange={e => setUncontactedDays(e.target.value)} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {campaignType === 'DAY_BASED' && (
+                                <div style={{ background: '#faf5ff', padding: 14, borderRadius: 10, border: '1px solid #e9d5ff', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#6b21a8' }}>📅 Gün / Milestone Kriteri:</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+                                        <div>
+                                            <label className="grp-label">Zaman Kriteri</label>
+                                            <select className="grp-input" value={dayTrigger} onChange={e => setDayTrigger(e.target.value)}>
+                                                <option value="INACTIVE_DAYS">Pasif Üye Hatırlatıcı (90 - 100 - 120 Gün)</option>
+                                                <option value="CUSTOMER_AGE_DAYS">Müşteri Olma Süresi (60 Gün vb.)</option>
+                                                <option value="BIRTHDAY">Doğum Günü Bugün Olanlar</option>
+                                            </select>
+                                        </div>
+                                        {dayTrigger !== 'BIRTHDAY' && (
+                                            <div>
+                                                <label className="grp-label">Eşik Gün Sayısı</label>
+                                                <input type="number" min="1" max="999" className="grp-input" value={dayMilestoneDays} onChange={e => setDayMilestoneDays(e.target.value)} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Kampanya Adı ve Detayları */}
                             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
                                 <div className="grp-field">
                                     <label className="grp-label">Kampanya Adı *</label>
                                     <input
                                         type="text"
                                         className="grp-input"
-                                        placeholder="Örn: 2026 Bahar Kampanyası"
+                                        placeholder="Örn: Urla One Duyurusu veya Pasif Üye Hatırlatıcı"
                                         value={name}
                                         onChange={e => setName(e.target.value)}
                                         autoFocus
@@ -406,21 +727,21 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                 <input
                                     type="text"
                                     className="grp-input"
-                                    placeholder="Kampanyanın hedefi veya notlar"
+                                    placeholder="Kampanya hedefi ve notlar"
                                     value={description}
                                     onChange={e => setDescription(e.target.value)}
                                 />
                             </div>
 
-                            {/* Audience Source Selector Tabs */}
+                            {/* Hedef Kitle Kaynağı */}
                             <div>
-                                <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>Hedef Kitle Kaynağı</label>
+                                <label className="grp-label" style={{ marginBottom: 8, display: 'block', fontWeight: 700 }}>2. Hedef Kitle Kaynağı</label>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                                     {[
-                                        { id: 'TAGS', label: 'Etiketler', icon: <Tag size={16} /> },
                                         { id: 'SEGMENT', label: 'Akıllı Segment', icon: <Sparkles size={16} /> },
+                                        { id: 'TAGS', label: 'Etiketler', icon: <Tag size={16} /> },
                                         { id: 'LIST', label: 'Kayıtlı Liste', icon: <Users size={16} /> },
-                                        { id: 'ALL', label: 'Tüm Kişiler', icon: <Layers size={16} /> }
+                                        { id: 'ALL', label: 'Tüm Müşteriler', icon: <Layers size={16} /> }
                                     ].map(item => (
                                         <button
                                             key={item.id}
@@ -428,12 +749,12 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                             onClick={() => setAudienceType(item.id)}
                                             style={{
                                                 padding: '10px 8px',
-                                                border: audienceType === item.id ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                                                border: audienceType === item.id ? '2px solid #2563eb' : '1px solid #e2e8f0',
                                                 background: audienceType === item.id ? '#eff6ff' : '#fff',
-                                                color: audienceType === item.id ? '#1e40af' : '#4b5563',
+                                                color: audienceType === item.id ? '#1e40af' : '#475569',
                                                 borderRadius: 8,
                                                 fontSize: 12,
-                                                fontWeight: 600,
+                                                fontWeight: 650,
                                                 display: 'flex',
                                                 flexDirection: 'column',
                                                 alignItems: 'center',
@@ -449,55 +770,8 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                 </div>
                             </div>
 
-                            {/* Audience Specific Selectors */}
-                            {audienceType === 'TAGS' && (
-                                <div style={{ background: '#f9fafb', padding: 14, borderRadius: 10, border: '1px solid #e5e7eb' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                                            Kişiler Etiketleri ({selectedTags.length} seçildi)
-                                        </span>
-                                        <input
-                                            type="text"
-                                            placeholder="Etiket ara..."
-                                            value={tagSearch}
-                                            onChange={e => setTagSearch(e.target.value)}
-                                            style={{ padding: '4px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', width: 140 }}
-                                        />
-                                    </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 130, overflowY: 'auto' }}>
-                                        {filteredTags.length === 0 ? (
-                                            <div style={{ fontSize: 12, color: '#9ca3af', padding: 8 }}>Etiket bulunamadı</div>
-                                        ) : (
-                                            filteredTags.map(tag => {
-                                                const isSelected = selectedTags.includes(tag);
-                                                return (
-                                                    <span
-                                                        key={tag}
-                                                        onClick={() => toggleTag(tag)}
-                                                        style={{
-                                                            padding: '5px 12px',
-                                                            borderRadius: 16,
-                                                            fontSize: 12,
-                                                            fontWeight: 500,
-                                                            cursor: 'pointer',
-                                                            background: isSelected ? '#2563eb' : '#fff',
-                                                            color: isSelected ? '#fff' : '#4b5563',
-                                                            border: isSelected ? '1px solid #2563eb' : '1px solid #d1d5db',
-                                                            boxShadow: isSelected ? '0 2px 4px rgba(37,99,235,0.2)' : 'none',
-                                                            transition: 'all 0.1s'
-                                                        }}
-                                                    >
-                                                        {isSelected && '✓ '}#{tag}
-                                                    </span>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
                             {audienceType === 'SEGMENT' && (
-                                <div style={{ background: '#f9fafb', padding: 14, borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                                <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                                     <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>Akıllı Segment Seçin</label>
                                     <select
                                         className="grp-input"
@@ -514,8 +788,48 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                 </div>
                             )}
 
+                            {audienceType === 'TAGS' && (
+                                <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                        <span style={{ fontSize: 13, fontWeight: 650, color: '#334155' }}>
+                                            Kişiler Etiketleri ({selectedTags.length} seçildi)
+                                        </span>
+                                        <input
+                                            type="text"
+                                            placeholder="Etiket ara..."
+                                            value={tagSearch}
+                                            onChange={e => setTagSearch(e.target.value)}
+                                            style={{ padding: '4px 10px', fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 6, outline: 'none', width: 140 }}
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 120, overflowY: 'auto' }}>
+                                        {filteredTags.map(tag => {
+                                            const isSelected = selectedTags.includes(tag);
+                                            return (
+                                                <span
+                                                    key={tag}
+                                                    onClick={() => setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: 14,
+                                                        fontSize: 12,
+                                                        fontWeight: 500,
+                                                        cursor: 'pointer',
+                                                        background: isSelected ? '#2563eb' : '#fff',
+                                                        color: isSelected ? '#fff' : '#475569',
+                                                        border: isSelected ? '1px solid #2563eb' : '1px solid #cbd5e1'
+                                                    }}
+                                                >
+                                                    {isSelected && '✓ '}#{tag}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {audienceType === 'LIST' && (
-                                <div style={{ background: '#f9fafb', padding: 14, borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                                <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                                     <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>Kayıtlı Liste Seçin</label>
                                     <select
                                         className="grp-input"
@@ -532,12 +846,12 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                 </div>
                             )}
 
-                            {/* Live Audience Preview Card */}
+                            {/* Canlı Kitle Tahmin Kartı */}
                             <div style={{
                                 background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
                                 border: '1.5px solid #86efac',
                                 borderRadius: 12,
-                                padding: '14px 18px',
+                                padding: '12px 18px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between'
@@ -554,458 +868,414 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                         )}
                                     </div>
                                     {previewSamples.length > 0 && (
-                                        <div style={{ fontSize: 12, color: '#166534', marginTop: 4 }}>
+                                        <div style={{ fontSize: 11.5, color: '#166534', marginTop: 3 }}>
                                             Örnek: {previewSamples.map(c => c.name || c.phone).slice(0, 3).join(', ')}
                                             {previewCount > 3 ? ` ve ${previewCount - 3} kişi daha` : ''}
                                         </div>
                                     )}
                                 </div>
-                                <span style={{ fontSize: 11, background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>
-                                    Otomatik Liste Eşleştirme
+                                <span style={{ fontSize: 11, background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: 20, fontWeight: 650 }}>
+                                    Dinamik Segmentasyon
                                 </span>
                             </div>
                         </div>
                     )}
 
                     {/* ══════════════════════════════════════════════════════════════
-                        STEP 2: KANALLAR & İÇERİK (CHANNELS & CONTENT)
+                        STEP 2: ÇOKLU GRUP & KANALLAR (AD SETS)
                     ══════════════════════════════════════════════════════════════ */}
                     {step === 2 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                            {/* Channel Multi-selector Cards */}
-                            <div>
-                                <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>
-                                    Gönderim Kanalları (Aynı anda ikisini de seçebilirsiniz)
-                                </label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                    {/* WhatsApp Card */}
-                                    <div
-                                        onClick={() => toggleChannel('WHATSAPP')}
-                                        style={{
-                                            border: channels.includes('WHATSAPP') ? '2px solid #25d366' : '1px solid #e5e7eb',
-                                            background: channels.includes('WHATSAPP') ? '#f0fdf4' : '#fff',
-                                            borderRadius: 10,
-                                            padding: 14,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: 12,
-                                            transition: 'all 0.15s'
-                                        }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={channels.includes('WHATSAPP')}
-                                            onChange={() => {}}
-                                            style={{ marginTop: 3, accentColor: '#25d366' }}
-                                        />
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#15803d', fontSize: 14 }}>
-                                                <MessageSquare size={16} />
-                                                <span>WhatsApp Şablonu</span>
-                                            </div>
-                                            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#4b5563' }}>
-                                                Meta onaylı şablon mesajı veya görsel ile toplu iletim
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* AI Call Card */}
-                                    <div
-                                        onClick={() => toggleChannel('AI_CALL')}
-                                        style={{
-                                            border: channels.includes('AI_CALL') ? '2px solid #6366f1' : '1px solid #e5e7eb',
-                                            background: channels.includes('AI_CALL') ? '#eef2ff' : '#fff',
-                                            borderRadius: 10,
-                                            padding: 14,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: 12,
-                                            transition: 'all 0.15s'
-                                        }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={channels.includes('AI_CALL')}
-                                            onChange={() => {}}
-                                            style={{ marginTop: 3, accentColor: '#6366f1' }}
-                                        />
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#4338ca', fontSize: 14 }}>
-                                                <Phone size={16} />
-                                                <span>AI Sesli Arama</span>
-                                            </div>
-                                            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#4b5563' }}>
-                                                Yapay zeka sesli asistanı ile otomatik dış arama
-                                            </p>
-                                        </div>
-                                    </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+                                        Kampanya Grupları (Ad Sets & Kanallar)
+                                    </h3>
+                                    <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748b' }}>
+                                        Kampanyanız altında birden fazla kanal veya süreç grubu tanımlayabilirsiniz.
+                                    </p>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={addGroup}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                        padding: '7px 12px',
+                                        fontSize: 12.5,
+                                        fontWeight: 650,
+                                        background: '#2563eb',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: 8,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <Plus size={14} /> Yeni Grup Ekle
+                                </button>
                             </div>
 
-                            {/* WhatsApp Content Configuration */}
-                            {channels.includes('WHATSAPP') && (
-                                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#1e293b', fontSize: 14 }}>
-                                            <MessageSquare size={16} color="#16a34a" />
-                                            <span>WhatsApp Mesaj İçeriği</span>
-                                        </div>
-                                        {/* Mode Switcher */}
-                                        <div style={{ display: 'flex', gap: 4, background: '#e2e8f0', padding: 2, borderRadius: 6 }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => setWaMode('EXISTING_TEMPLATE')}
-                                                style={{
-                                                    padding: '4px 10px',
-                                                    fontSize: 11,
-                                                    fontWeight: 600,
-                                                    borderRadius: 4,
-                                                    border: 'none',
-                                                    background: waMode === 'EXISTING_TEMPLATE' ? '#fff' : 'transparent',
-                                                    color: waMode === 'EXISTING_TEMPLATE' ? '#0f172a' : '#64748b',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                Mevcut Şablon
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setWaMode('NEW_TEMPLATE')}
-                                                style={{
-                                                    padding: '4px 10px',
-                                                    fontSize: 11,
-                                                    fontWeight: 600,
-                                                    borderRadius: 4,
-                                                    border: 'none',
-                                                    background: waMode === 'NEW_TEMPLATE' ? '#fff' : 'transparent',
-                                                    color: waMode === 'NEW_TEMPLATE' ? '#0f172a' : '#64748b',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                Yeni Şablon & Görsel
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {waMode === 'EXISTING_TEMPLATE' ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                            <label className="grp-label">Onaylı Şablon Seçin</label>
-                                            <select
-                                                className="grp-input"
-                                                value={selectedTemplateName}
-                                                onChange={e => {
-                                                    setSelectedTemplateName(e.target.value);
-                                                    setSelectedTemplateObj(waTemplates.find(t => t.name === e.target.value) || null);
-                                                }}
-                                            >
-                                                {waTemplates.map(t => (
-                                                    <option key={t.id || t.name} value={t.name}>
-                                                        {t.name} ({t.status || 'APPROVED'}) - {t.language || 'tr'}
-                                                    </option>
-                                                ))}
-                                            </select>
-
-                                            {selectedTemplateObj && (
-                                                <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, color: '#334155' }}>
-                                                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>ŞABLON ÖNİZLEMESİ:</div>
-                                                    <div style={{ whiteSpace: 'pre-wrap' }}>
-                                                        {selectedTemplateObj.bodyText || selectedTemplateObj.components?.find(c => c.type === 'BODY')?.text || selectedTemplateObj.name}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                            <div className="grp-field">
-                                                <label className="grp-label">Şablon Adı (Meta uyumlu küçük harf ve alt çizgi)</label>
+                            {/* Grup Kartları Listesi */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {groups.map((grp, idx) => (
+                                    <div
+                                        key={grp.id}
+                                        style={{
+                                            border: '1.5px solid #e2e8f0',
+                                            borderRadius: 12,
+                                            padding: 16,
+                                            background: '#fff',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <span style={{
+                                                    width: 26, height: 26, borderRadius: '50%',
+                                                    background: '#f1f5f9', color: '#334155',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: 12, fontWeight: 700
+                                                }}>
+                                                    {idx + 1}
+                                                </span>
                                                 <input
                                                     type="text"
-                                                    className="grp-input"
-                                                    placeholder="orn_bahar_kampanyasi"
-                                                    value={newTemplateName}
-                                                    onChange={e => setNewTemplateName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+                                                    value={grp.name}
+                                                    onChange={e => updateGroup(grp.id, 'name', e.target.value)}
+                                                    placeholder="Grup Adı"
+                                                    style={{
+                                                        fontSize: 14,
+                                                        fontWeight: 700,
+                                                        color: '#0f172a',
+                                                        border: '1px solid transparent',
+                                                        borderRadius: 6,
+                                                        padding: '4px 8px',
+                                                        outline: 'none',
+                                                        width: 280
+                                                    }}
+                                                    onFocus={e => e.target.style.borderColor = '#cbd5e1'}
+                                                    onBlur={e => e.target.style.borderColor = 'transparent'}
                                                 />
                                             </div>
 
-                                            <div className="grp-field">
-                                                <label className="grp-label">Mesaj Metni *</label>
-                                                <textarea
-                                                    className="grp-input"
-                                                    rows={3}
-                                                    placeholder="Merhaba {{1}}, size özel teklifimiz için web sitemizi ziyaret edin..."
-                                                    value={newTemplateBody}
-                                                    onChange={e => setNewTemplateBody(e.target.value)}
-                                                />
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                {grp.delayDays > 0 && (
+                                                    <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>
+                                                        {grp.delayDays}. Gün Hatırlatması
+                                                    </span>
+                                                )}
+                                                {groups.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeGroup(grp.id)}
+                                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}
+                                                        title="Grubu Sil"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
                                             </div>
+                                        </div>
 
-                                            {/* Media Upload */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 2fr', gap: 12 }}>
+                                            {/* Kanal */}
                                             <div>
-                                                <label className="grp-label" style={{ marginBottom: 6, display: 'block' }}>
-                                                    Şablon Başlık Görseli <span className="grp-label-opt">(Meta'ya yüklenir)</span>
-                                                </label>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                    <label style={{
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: 6,
-                                                        padding: '8px 14px',
-                                                        background: '#fff',
-                                                        border: '1.5px dashed #cbd5e1',
-                                                        borderRadius: 8,
-                                                        fontSize: 13,
-                                                        fontWeight: 500,
-                                                        color: '#475569',
-                                                        cursor: uploadingMedia ? 'not-allowed' : 'pointer'
-                                                    }}>
-                                                        {uploadingMedia ? <Loader2 size={16} className="mkt-spin" /> : <Upload size={16} />}
-                                                        <span>{uploadingMedia ? 'Yükleniyor...' : 'Görsel Seç'}</span>
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            style={{ display: 'none' }}
-                                                            disabled={uploadingMedia}
-                                                            onChange={handleMediaUpload}
-                                                        />
-                                                    </label>
+                                                <label className="grp-label">Kanal</label>
+                                                <select
+                                                    className="grp-input"
+                                                    value={grp.channel}
+                                                    onChange={e => updateGroup(grp.id, 'channel', e.target.value)}
+                                                >
+                                                    <option value="WHATSAPP">💬 WhatsApp</option>
+                                                    <option value="AI_CALL">📞 Retell AI Sesli Arama</option>
+                                                    <option value="EMAIL">✉️ E-posta</option>
+                                                    <option value="SMS">📱 SMS</option>
+                                                </select>
+                                            </div>
 
-                                                    {mediaPreview && (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                            <img src={mediaPreview} alt="preview" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }} />
-                                                            <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Görsel hazır</span>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                            {/* Gecikme Günü / Süreç */}
+                                            <div>
+                                                <label className="grp-label">Süreç Günü (Delay)</label>
+                                                <select
+                                                    className="grp-input"
+                                                    value={grp.delayDays}
+                                                    onChange={e => updateGroup(grp.id, 'delayDays', parseInt(e.target.value, 10))}
+                                                >
+                                                    <option value={0}>Hemen / 0. Gün</option>
+                                                    <option value={30}>30. Gün</option>
+                                                    <option value={60}>60. Gün</option>
+                                                    <option value={90}>90. Gün</option>
+                                                    <option value={100}>100. Gün</option>
+                                                    <option value={120}>120. Gün</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Mesaj / Asistan Seçimi */}
+                                            <div>
+                                                {grp.channel === 'WHATSAPP' && (
+                                                    <>
+                                                        <label className="grp-label">WhatsApp Onaylı Şablon</label>
+                                                        <select
+                                                            className="grp-input"
+                                                            value={grp.templateName}
+                                                            onChange={e => updateGroup(grp.id, 'templateName', e.target.value)}
+                                                        >
+                                                            <option value="">-- Şablon seçin --</option>
+                                                            {waTemplates.map(t => (
+                                                                <option key={t.id || t.name} value={t.name}>
+                                                                    {t.name} ({t.status || 'APPROVED'})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </>
+                                                )}
+
+                                                {grp.channel === 'AI_CALL' && (
+                                                    <>
+                                                        <label className="grp-label">Retell AI Sesli Asistan</label>
+                                                        <select
+                                                            className="grp-input"
+                                                            value={grp.agentId}
+                                                            onChange={e => updateGroup(grp.id, 'agentId', e.target.value)}
+                                                        >
+                                                            <option value="">-- Asistan seçin --</option>
+                                                            {retellAgents.map(a => (
+                                                                <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
+                                                                    {a.agent_name || a.agent_id || 'Asistan'}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </>
+                                                )}
+
+                                                {grp.channel === 'EMAIL' && (
+                                                    <>
+                                                        <label className="grp-label">E-posta Konusu</label>
+                                                        <input
+                                                            type="text"
+                                                            className="grp-input"
+                                                            placeholder="Örn: Haftalık Bülten #12"
+                                                            value={grp.emailSubject || ''}
+                                                            onChange={e => updateGroup(grp.id, 'emailSubject', e.target.value)}
+                                                        />
+                                                    </>
+                                                )}
+
+                                                {grp.channel === 'SMS' && (
+                                                    <>
+                                                        <label className="grp-label">SMS Metni</label>
+                                                        <input
+                                                            type="text"
+                                                            className="grp-input"
+                                                            placeholder="SMS mesaj metni..."
+                                                            value={grp.smsText || ''}
+                                                            onChange={e => updateGroup(grp.id, 'smsText', e.target.value)}
+                                                        />
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* AI Call Configuration */}
-                            {channels.includes('AI_CALL') && (
-                                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#1e293b', fontSize: 14, marginBottom: 12 }}>
-                                        <Phone size={16} color="#4f46e5" />
-                                        <span>AI Sesli Arama Yapılandırması</span>
                                     </div>
-
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                                        <div className="grp-field">
-                                            <label className="grp-label">Arayacak AI Sesli Asistanı *</label>
-                                            <select
-                                                className="grp-input"
-                                                value={selectedAgentId}
-                                                onChange={e => setSelectedAgentId(e.target.value)}
-                                            >
-                                                {retellAgents.map(a => (
-                                                    <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
-                                                        {a.agent_name || a.name || 'İsimsiz Asistan'} ({a.agent_id || a.id})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div className="grp-field">
-                                            <label className="grp-label">Arama Konusu & Özel Talimat <span className="grp-label-opt">(Opsiyonel)</span></label>
-                                            <textarea
-                                                className="grp-input"
-                                                rows={2}
-                                                placeholder="Müşteriyi bahar kampanyamız hakkında bilgilendir ve randevu almayı teklif et."
-                                                value={callTemplate}
-                                                onChange={e => setCallTemplate(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                                ))}
+                            </div>
                         </div>
                     )}
 
                     {/* ══════════════════════════════════════════════════════════════
-                        STEP 3: ZAMANLAMA & HIZ (SCHEDULE & SPEED)
+                        STEP 3: ZAMANLAMA, HIZ & OTOMATİK YENİDEN DENEME
                     ══════════════════════════════════════════════════════════════ */}
                     {step === 3 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                            {/* Schedule Type */}
-                            <div>
-                                <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>Gönderim Zamanı</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                    <div
-                                        onClick={() => setScheduleType('IMMEDIATE')}
-                                        style={{
-                                            border: scheduleType === 'IMMEDIATE' ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                                            background: scheduleType === 'IMMEDIATE' ? '#eff6ff' : '#fff',
-                                            borderRadius: 10,
-                                            padding: 14,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 12
-                                        }}
-                                    >
-                                        <Clock size={20} color={scheduleType === 'IMMEDIATE' ? '#2563eb' : '#6b7280'} />
-                                        <div>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>Hemen Başlat</div>
-                                            <div style={{ fontSize: 12, color: '#6b7280' }}>Onay sonrası derhal gönderime başlar</div>
-                                        </div>
-                                    </div>
-
-                                    <div
-                                        onClick={() => setScheduleType('SCHEDULED')}
-                                        style={{
-                                            border: scheduleType === 'SCHEDULED' ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                                            background: scheduleType === 'SCHEDULED' ? '#eff6ff' : '#fff',
-                                            borderRadius: 10,
-                                            padding: 14,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 12
-                                        }}
-                                    >
-                                        <Calendar size={20} color={scheduleType === 'SCHEDULED' ? '#2563eb' : '#6b7280'} />
-                                        <div>
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>İleri Bir Tarihte</div>
-                                            <div style={{ fontSize: 12, color: '#6b7280' }}>Belirlediğiniz gün ve saatte başlar</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {scheduleType === 'SCHEDULED' && (
-                                <div className="grp-field" style={{ background: '#f9fafb', padding: 14, borderRadius: 10, border: '1px solid #e5e7eb' }}>
-                                    <label className="grp-label">Planlanan Tarih ve Saat *</label>
-                                    <input
-                                        type="datetime-local"
-                                        className="grp-input"
-                                        value={scheduledAt}
-                                        onChange={e => setScheduledAt(e.target.value)}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Send Rate */}
-                            <div className="grp-field">
-                                <label className="grp-label">Gönderim / Arama Hızı (Dakika Başına İşlem)</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 4 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                            {/* Gönderim Hızı */}
+                            <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                                <label className="grp-label" style={{ marginBottom: 6, display: 'block', fontWeight: 700 }}>
+                                    Gönderim Hızı (Dakikada Mesaj Sayısı)
+                                </label>
+                                <p style={{ margin: '0 0 12px', fontSize: 12, color: '#64748b' }}>
+                                    Meta veya telefon hat limitlerine takılmamak için önerilen hız 20-30 mesaj/dakikadır.
+                                </p>
+                                <div style={{ display: 'flex', gap: 10 }}>
                                     {[
-                                        { rate: 10, label: '10 / dk', desc: 'Güvenli' },
-                                        { rate: 20, label: '20 / dk', desc: 'Önerilen' },
-                                        { rate: 50, label: '50 / dk', desc: 'Hızlı' },
-                                        { rate: 100, label: '100 / dk', desc: 'Maksimum' }
+                                        { rate: 10, label: '10 / dk (Güvenli)' },
+                                        { rate: 20, label: '20 / dk (Önerilen)' },
+                                        { rate: 30, label: '30 / dk (Standart)' },
+                                        { rate: 50, label: '50 / dk (Hızlı)' }
                                     ].map(item => (
                                         <button
                                             key={item.rate}
                                             type="button"
                                             onClick={() => setSendRate(item.rate)}
                                             style={{
-                                                padding: '10px 8px',
-                                                border: sendRate === item.rate ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                                                background: sendRate === item.rate ? '#eff6ff' : '#fff',
+                                                padding: '8px 14px',
                                                 borderRadius: 8,
-                                                cursor: 'pointer',
-                                                textAlign: 'center'
+                                                fontSize: 12.5,
+                                                fontWeight: 650,
+                                                border: sendRate === item.rate ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                                                background: sendRate === item.rate ? '#eff6ff' : '#fff',
+                                                color: sendRate === item.rate ? '#1e40af' : '#475569',
+                                                cursor: 'pointer'
                                             }}
                                         >
-                                            <div style={{ fontWeight: 700, fontSize: 13, color: sendRate === item.rate ? '#1d4ed8' : '#111827' }}>
-                                                {item.label}
-                                            </div>
-                                            <div style={{ fontSize: 11, color: sendRate === item.rate ? '#2563eb' : '#9ca3af' }}>
-                                                {item.desc}
-                                            </div>
+                                            {item.label}
                                         </button>
                                     ))}
                                 </div>
-                                <span style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }}>
-                                    Hız limiti, operatör ve yapay zeka sınırlarına takılmamak ve spam korumasını sağlamak için uygulanır.
-                                </span>
+                            </div>
+
+                            {/* Zamanlama (Tek Seferlik Kampanyalar İçin) */}
+                            {campaignType === 'ONE_TIME' && (
+                                <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                                    <label className="grp-label" style={{ marginBottom: 8, display: 'block', fontWeight: 700 }}>
+                                        Başlama Zamanı
+                                    </label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setScheduleType('IMMEDIATE')}
+                                            style={{
+                                                padding: '12px',
+                                                borderRadius: 8,
+                                                border: scheduleType === 'IMMEDIATE' ? '2px solid #16a34a' : '1px solid #cbd5e1',
+                                                background: scheduleType === 'IMMEDIATE' ? '#f0fdf4' : '#fff',
+                                                color: scheduleType === 'IMMEDIATE' ? '#166534' : '#475569',
+                                                fontSize: 13,
+                                                fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            ⚡ Hemen Gönder ("Şak Diye Yolla")
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setScheduleType('SCHEDULED')}
+                                            style={{
+                                                padding: '12px',
+                                                borderRadius: 8,
+                                                border: scheduleType === 'SCHEDULED' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                                                background: scheduleType === 'SCHEDULED' ? '#eff6ff' : '#fff',
+                                                color: scheduleType === 'SCHEDULED' ? '#1e40af' : '#475569',
+                                                fontSize: 13,
+                                                fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            📅 İleri Bir Tarihe Planla
+                                        </button>
+                                    </div>
+                                    {scheduleType === 'SCHEDULED' && (
+                                        <div style={{ marginTop: 12 }}>
+                                            <label className="grp-label">Planlanan Tarih ve Saat</label>
+                                            <input
+                                                type="datetime-local"
+                                                className="grp-input"
+                                                value={scheduledAt}
+                                                onChange={e => setScheduledAt(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* OTOMATİK YENİDEN DENEME (AUTO-RETRY) KARTI */}
+                            <div style={{
+                                background: '#f0fdf4',
+                                border: '1.5px solid #86efac',
+                                borderRadius: 12,
+                                padding: 16
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                        <ShieldCheck size={20} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
+                                        <div>
+                                            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#166534' }}>
+                                                Otomatik Yeniden Deneme (Auto-Retry)
+                                            </div>
+                                            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#14532d', lineHeight: 1.4 }}>
+                                                WhatsApp veya sesli aramalarda iletilemeyen / başarısız olan kişilere sistem 15 dakika sonra arka planda otomatik olarak tekrar dener.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={autoRetry}
+                                            onChange={e => setAutoRetry(e.target.checked)}
+                                            style={{ width: 18, height: 18, accentColor: '#16a34a' }}
+                                        />
+                                    </label>
+                                </div>
+                                {autoRetry && (
+                                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #bbf7d0', display: 'flex', gap: 16, fontSize: 12, color: '#166534' }}>
+                                        <span>🔁 Maksimum Deneme: <strong>{maxRetries} kez</strong></span>
+                                        <span>⏱️ Deneme Aralığı: <strong>{retryIntervalMinutes} dakika</strong></span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
 
                     {/* ══════════════════════════════════════════════════════════════
-                        STEP 4: ÖZET & BAŞLAT (SUMMARY & LAUNCH)
+                        STEP 4: ÖZET & BAŞLAT
                     ══════════════════════════════════════════════════════════════ */}
                     {step === 4 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18 }}>
-                                <h3 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-                                    Kampanya Başlatma Özeti
+                            <div style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: 12,
+                                padding: 18
+                            }}>
+                                <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                                    {name || 'Yeni Kampanya'}
                                 </h3>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                        <span style={{ color: '#64748b' }}>Kampanya Adı:</span>
-                                        <span style={{ fontWeight: 600, color: '#0f172a' }}>{name}</span>
+                                        <span style={{ color: '#64748b' }}>Kampanya Türü:</span>
+                                        <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                                            {campaignType === 'ONE_TIME' && '⚡ Tek Seferlik (Lansman / Anlık)'}
+                                            {campaignType === 'RECURRING' && `🔄 Tekrarlı (${recurringFrequency} · Saat ${recurringTime})`}
+                                            {campaignType === 'EVENT_BASED' && `🎯 Olay Bazlı (${eventTrigger === 'UNCONTACTED_LEAD' ? `${uncontactedDays} Gündür Aranmayan Lead` : eventTrigger})`}
+                                            {campaignType === 'DAY_BASED' && `📅 Gün / Süreç Bazlı (${dayTrigger})`}
+                                        </span>
                                     </div>
-
-                                    {budget && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                            <span style={{ color: '#64748b' }}>Bütçe:</span>
-                                            <span style={{ fontWeight: 600, color: '#0f172a' }}>{budget} TL</span>
-                                        </div>
-                                    )}
 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
                                         <span style={{ color: '#64748b' }}>Hedef Kitle:</span>
-                                        <span style={{ fontWeight: 700, color: '#16a34a' }}>
-                                            {previewCount !== null ? `~${previewCount} Kişi` : 'Hesaplanıyor'}
-                                            {audienceType === 'TAGS' && ` (${selectedTags.join(', ') || 'Tüm etiketler'})`}
+                                        <span style={{ fontWeight: 700, color: '#15803d' }}>
+                                            {previewCount !== null ? `${previewCount} Kişi` : 'Seçilen Hedef Kitle'}
                                         </span>
                                     </div>
 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                        <span style={{ color: '#64748b' }}>Aktif Kanallar:</span>
-                                        <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                                            {channels.map(c => c === 'WHATSAPP' ? 'WhatsApp' : 'AI Sesli Arama').join(' + ')}
+                                        <span style={{ color: '#64748b' }}>Tanımlanan Gruplar:</span>
+                                        <span style={{ fontWeight: 650, color: '#0f172a' }}>
+                                            {groups.length} Adet Reklam Grubu
                                         </span>
                                     </div>
 
-                                    {channels.includes('WHATSAPP') && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                            <span style={{ color: '#64748b' }}>WhatsApp Şablonu:</span>
-                                            <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                                                {waMode === 'EXISTING_TEMPLATE' ? selectedTemplateName : newTemplateName}
-                                                {(mediaHandle || mediaUrl) && ' (📷 Görselli)'}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {channels.includes('AI_CALL') && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                            <span style={{ color: '#64748b' }}>AI Sesli Asistan:</span>
-                                            <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                                                {retellAgents.find(a => (a.agent_id || a.id) === selectedAgentId)?.agent_name || selectedAgentId}
-                                            </span>
-                                        </div>
-                                    )}
-
                                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                                        <span style={{ color: '#64748b' }}>Zamanlama & Hız:</span>
-                                        <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                                            {scheduleType === 'IMMEDIATE' ? 'Hemen Başlat' : `Planlandı: ${scheduledAt}`} ({sendRate} / dk)
+                                        <span style={{ color: '#64748b' }}>Otomatik Yeniden Deneme:</span>
+                                        <span style={{ fontWeight: 700, color: autoRetry ? '#16a34a' : '#64748b' }}>
+                                            {autoRetry ? `Aktif (${maxRetries} kez, 15 dk arayla)` : 'Kapalı'}
                                         </span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Dual Channel Grouping Info Note */}
-                            <div style={{
-                                background: '#eff6ff',
-                                border: '1px solid #bfdbfe',
-                                borderRadius: 10,
-                                padding: 12,
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: 10
-                            }}>
-                                <CheckCircle2 size={18} color="#2563eb" style={{ flexShrink: 0, marginTop: 2 }} />
-                                <div style={{ fontSize: 12, color: '#1e40af', lineHeight: 1.5 }}>
-                                    <strong>Otomatik Çoklu Grup Mimarisi:</strong> Onay verdiğinizde, arka planda kampanya altına {channels.length} adet bağımsız reklam grubu (
-                                    {channels.map(c => c === 'WHATSAPP' ? 'WhatsApp Grubu' : 'AI Arama Grubu').join(' ve ')}
-                                    ) oluşturulacak ve gönderimler otomatik başlatılacaktır.
+                            {/* Gruplar Önizleme Özeti */}
+                            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                                    Gruplar ve Dağıtım Adımları:
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {groups.map((g, i) => (
+                                        <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, padding: '6px 10px', background: '#f8fafc', borderRadius: 6 }}>
+                                            <span style={{ fontWeight: 600, color: '#0f172a' }}>{g.name}</span>
+                                            <span style={{ color: '#64748b' }}>{g.channel} {g.delayDays > 0 ? `· ${g.delayDays}. Gün` : '· Hemen'}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -1013,7 +1283,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 </div>
 
                 {/* Footer Navigation Buttons */}
-                <div className="grp-modal-footer" style={{ padding: '14px 24px', background: '#fafafa' }}>
+                <div className="grp-modal-footer" style={{ padding: '14px 24px', background: '#fafafa', borderTop: '1px solid #eef2f6' }}>
                     {step > 1 && (
                         <button
                             type="button"
@@ -1076,5 +1346,26 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 </div>
             </div>
         </div>
+    );
+}
+
+// Minimal Target Icon helper
+function TargetIcon(props) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width={props.size || 24}
+            height={props.size || 24}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={props.color || "currentColor"}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2"/>
+        </svg>
     );
 }

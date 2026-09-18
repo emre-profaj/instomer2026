@@ -13,8 +13,8 @@
     align-items: stretch;
     gap: 16px;
     flex: 1;
-    min-height: 0; /* flex scrolling için kritik */
-    overflow: hidden;
+    min-height: min-content;
+    overflow: visible;
 }
 
 .calendar-main {
@@ -478,8 +478,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 8px 0;
-    margin-bottom: 4px;
+    padding: 0;
+    margin-bottom: 0;
 }
 
 /* ESKİ: aşağıda kalan eski class'lar için fallback */
@@ -913,20 +913,14 @@
 }
 
 .nav-buttons button {
-    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid var(--border-color);
     background: var(--bg-primary);
     color: var(--text-primary);
     cursor: pointer;
     transition: all 0.2s;
-}
-
-.nav-buttons button:first-child {
-    border-radius: 8px 0 0 8px;
-}
-
-.nav-buttons button:last-child {
-    border-radius: 0 8px 8px 0;
 }
 
 .nav-buttons button:hover {
@@ -1000,7 +994,7 @@
 }
 
 .calendar-day {
-    min-height: 120px;
+    min-height: 88px;
     padding: 8px;
     border-right: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);

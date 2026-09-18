@@ -5,6 +5,7 @@ import Retell from 'retell-sdk';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { sendSms } from '../services/netgsm.service.js';
 import { sendEmailViaChannel } from '../services/emailSender.service.js';
+import { calculateNextRun } from '../services/marketingEngine.service.js';
 
 // ─── Kampanya triggerType → WorkspaceRule ruleType eşlemesi ──────
 const TRIGGER_TO_RULES = {
@@ -1221,16 +1222,29 @@ export const wizardLaunchCampaign = async (req, res) => {
             name,
             description,
             budget,
+            // 4 Kampanya Türü: ONE_TIME, RECURRING, EVENT_BASED, DAY_BASED
+            campaignType = 'ONE_TIME',
+            // Recurring config
+            recurringConfig = {},
+            // Event & Day triggers
+            eventTrigger = null,
+            eventConfig = null,
+            dayTrigger = null,
+            dayConfig = null,
+            // Auto-Retry
+            autoRetry = true,
+            maxRetries = 3,
+            retryIntervalMinutes = 15,
             // Audience
             audienceType = 'TAGS', // TAGS, SEGMENT, LIST, ALL
             tagNames = [],
             segmentId,
             listId,
-            // Channels: ['WHATSAPP', 'AI_CALL'] or either
+            // Multi-Group Builder (Ad Sets / Steps)
+            groups = [],
+            // Legacy / Fallback Channels: ['WHATSAPP', 'AI_CALL']
             channels = ['WHATSAPP'],
-            // WhatsApp config
             whatsappConfig = {},
-            // AI Call config
             aiCallConfig = {},
             // Schedule & Speed
             sendRate = 20,
@@ -1242,14 +1256,10 @@ export const wizardLaunchCampaign = async (req, res) => {
             return res.status(400).json({ error: 'Kampanya adı zorunludur' });
         }
 
-        if (!channels || channels.length === 0) {
-            return res.status(400).json({ error: 'En az bir kanal seçilmelidir' });
-        }
-
         // 1. Resolve Target Contact List
         let targetListId = listId;
 
-        if (!targetListId) {
+        if (!targetListId && audienceType !== 'ALL') {
             let matchedContacts = [];
 
             if (audienceType === 'SEGMENT' && segmentId) {
@@ -1283,24 +1293,38 @@ export const wizardLaunchCampaign = async (req, res) => {
                 });
             }
 
-            if (matchedContacts.length === 0) {
-                return res.status(400).json({ error: 'Hedef kitlede kişi bulunamadı' });
-            }
-
-            // Create automatic ContactGroup for this campaign
-            const autoGroupList = await prisma.contactGroup.create({
-                data: {
-                    workspaceId,
-                    name: `${name} Hedef Kitlesi`,
-                    description: `Otomatik oluşturuldu: ${name} kampanyası`,
-                    icon: audienceType === 'TAGS' ? '🏷️' : audienceType === 'SEGMENT' ? '⚡' : '👥',
-                    color: '#2563eb',
-                    members: {
-                        create: matchedContacts.map(c => ({ contactId: c.id }))
+            if (matchedContacts.length > 0) {
+                const autoGroupList = await prisma.contactGroup.create({
+                    data: {
+                        workspaceId,
+                        name: `${name} Hedef Kitlesi`,
+                        description: `Otomatik oluşturuldu: ${name} kampanyası`,
+                        icon: audienceType === 'TAGS' ? '🏷️' : audienceType === 'SEGMENT' ? '⚡' : '👥',
+                        color: '#2563eb',
+                        members: {
+                            create: matchedContacts.map(c => ({ contactId: c.id }))
+                        }
                     }
-                }
+                });
+                targetListId = autoGroupList.id;
+            }
+        }
+
+        // NextRunAt hesapla (Tekrarlı kampanyalar için)
+        let nextRunAt = null;
+        if (campaignType === 'RECURRING') {
+            nextRunAt = calculateNextRun({
+                frequency: recurringConfig.frequency || 'WEEKLY',
+                dayOfWeek: recurringConfig.dayOfWeek || 1,
+                dayOfMonth: recurringConfig.dayOfMonth || 1,
+                time: recurringConfig.time || '10:00'
             });
-            targetListId = autoGroupList.id;
+        }
+
+        // Kampanya Başlangıç Durumu
+        let campaignStatus = 'ACTIVE';
+        if (campaignType === 'ONE_TIME') {
+            campaignStatus = scheduleType === 'IMMEDIATE' ? 'ACTIVE' : 'SCHEDULED';
         }
 
         // 2. Create the Marketing Campaign
@@ -1311,94 +1335,196 @@ export const wizardLaunchCampaign = async (req, res) => {
                 description,
                 budget: budget ? parseFloat(budget) : null,
                 startDate: new Date(),
-                status: scheduleType === 'IMMEDIATE' ? 'ACTIVE' : 'SCHEDULED',
-                type: 'MULTI_TIER'
+                status: campaignStatus,
+                type: 'MULTI_TIER',
+                campaignType,
+                recurringFrequency: recurringConfig.frequency || null,
+                recurringDayOfWeek: recurringConfig.dayOfWeek ? parseInt(recurringConfig.dayOfWeek, 10) : null,
+                recurringDayOfMonth: recurringConfig.dayOfMonth ? parseInt(recurringConfig.dayOfMonth, 10) : null,
+                recurringTime: recurringConfig.time || '10:00',
+                nextRunAt,
+                eventTrigger,
+                eventConfig: eventConfig ? (typeof eventConfig === 'string' ? eventConfig : JSON.stringify(eventConfig)) : null,
+                dayTrigger,
+                dayConfig: dayConfig ? (typeof dayConfig === 'string' ? dayConfig : JSON.stringify(dayConfig)) : null,
+                autoRetry: Boolean(autoRetry),
+                maxRetries: parseInt(maxRetries) || 3,
+                retryIntervalMinutes: parseInt(retryIntervalMinutes) || 15,
+                scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? new Date(scheduledAt) : null
             }
         });
 
         const createdGroups = [];
 
-        // 3. Handle WhatsApp channel if selected
-        if (channels.includes('WHATSAPP')) {
-            const templateName = whatsappConfig.templateName || (whatsappConfig.mode === 'NEW_TEMPLATE' ? `${name.toLowerCase().replace(/[^a-z0-9_]/g, '_')}_tpl` : 'genel_sablon');
+        // 3. Multi-Group Builder Desteği (Kullanıcının tanımladığı gruplar varsa)
+        if (Array.isArray(groups) && groups.length > 0) {
+            for (let i = 0; i < groups.length; i++) {
+                const gDef = groups[i];
+                const gChannel = gDef.channel || 'WHATSAPP';
+                const gName = gDef.name || `Grup ${i + 1}: ${gChannel}`;
+                const gDelayDays = parseInt(gDef.delayDays) || 0;
+                const gSendRate = parseInt(gDef.sendRate) || sendRate || 20;
 
-            const waMessage = await prisma.marketingMessage.create({
-                data: {
-                    workspaceId,
-                    name: `${name} - WhatsApp (${templateName})`,
-                    channel: 'WHATSAPP',
-                    templateName,
-                    content: whatsappConfig.bodyText || '',
-                    mediaUrl: whatsappConfig.headerMediaUrl || null
-                }
-            });
-
-            const waGroup = await prisma.campaignGroup.create({
-                data: {
-                    campaignId: campaign.id,
-                    name: `${name} - WhatsApp`,
-                    channel: 'WHATSAPP',
-                    listId: targetListId,
-                    sendRate: parseInt(sendRate) || 20,
-                    status: scheduleType === 'IMMEDIATE' ? 'PENDING' : 'SCHEDULED',
-                    scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? new Date(scheduledAt) : null,
-                    groupMessages: {
-                        create: {
-                            messageId: waMessage.id,
-                            order: 0
+                // Create message for this group
+                let marketingMessage = null;
+                if (gChannel === 'WHATSAPP') {
+                    const tplName = gDef.templateName || (whatsappConfig?.templateName) || 'genel_sablon';
+                    marketingMessage = await prisma.marketingMessage.create({
+                        data: {
+                            workspaceId,
+                            name: `${gName} - WhatsApp (${tplName})`,
+                            channel: 'WHATSAPP',
+                            templateName: tplName,
+                            content: gDef.bodyText || whatsappConfig?.bodyText || '',
+                            mediaUrl: gDef.headerMediaUrl || whatsappConfig?.headerMediaUrl || null
                         }
-                    }
+                    });
+                } else if (gChannel === 'AI_CALL') {
+                    marketingMessage = await prisma.marketingMessage.create({
+                        data: {
+                            workspaceId,
+                            name: `${gName} - AI Arama`,
+                            channel: 'AI_CALL',
+                            retellAgentId: gDef.agentId || aiCallConfig?.agentId || null,
+                            content: gDef.callTemplate || aiCallConfig?.callTemplate || ''
+                        }
+                    });
+                } else if (gChannel === 'EMAIL') {
+                    marketingMessage = await prisma.marketingMessage.create({
+                        data: {
+                            workspaceId,
+                            name: `${gName} - E-posta`,
+                            channel: 'EMAIL',
+                            emailSubject: gDef.emailSubject || '',
+                            emailBody: gDef.emailBody || '',
+                            content: gDef.emailBody || ''
+                        }
+                    });
+                } else if (gChannel === 'SMS') {
+                    marketingMessage = await prisma.marketingMessage.create({
+                        data: {
+                            workspaceId,
+                            name: `${gName} - SMS`,
+                            channel: 'SMS',
+                            content: gDef.smsText || ''
+                        }
+                    });
                 }
-            });
 
-            createdGroups.push(waGroup);
-
-            if (scheduleType === 'IMMEDIATE') {
-                executeGroupSendCore(workspaceId, waGroup.id).catch(err => {
-                    console.error(`❌ [wizardLaunchCampaign] WA execute error:`, err);
+                // Create CampaignGroup
+                const newGroup = await prisma.campaignGroup.create({
+                    data: {
+                        campaignId: campaign.id,
+                        name: gName,
+                        channel: gChannel,
+                        listId: targetListId || null,
+                        segmentId: segmentId || null,
+                        delayDays: gDelayDays,
+                        targetMilestone: gDef.targetMilestone || (gDelayDays > 0 ? `DAY_${gDelayDays}` : null),
+                        sortOrder: i,
+                        sendRate: gSendRate,
+                        status: (campaignType === 'ONE_TIME' && scheduleType === 'IMMEDIATE') ? 'PENDING' : 'SCHEDULED',
+                        scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? new Date(scheduledAt) : null,
+                        groupMessages: marketingMessage ? {
+                            create: {
+                                messageId: marketingMessage.id,
+                                order: 0
+                            }
+                        } : undefined
+                    }
                 });
+
+                createdGroups.push(newGroup);
+
+                // Tek Seferlik ve Anında Gönderimse çalıştır
+                if (campaignType === 'ONE_TIME' && scheduleType === 'IMMEDIATE' && gDelayDays === 0) {
+                    executeGroupSendCore(workspaceId, newGroup.id).catch(err => {
+                        console.error(`❌ [wizardLaunchCampaign] Grup ${newGroup.name} çalıştırma hatası:`, err);
+                    });
+                }
             }
-        }
+        } else {
+            // 4. Legacy / Fallback Mode (channels array)
+            if (channels.includes('WHATSAPP')) {
+                const templateName = whatsappConfig.templateName || (whatsappConfig.mode === 'NEW_TEMPLATE' ? `${name.toLowerCase().replace(/[^a-z0-9_]/g, '_')}_tpl` : 'genel_sablon');
 
-        // 4. Handle AI_CALL channel if selected
-        if (channels.includes('AI_CALL')) {
-            const agentId = aiCallConfig.agentId;
-            const agentName = aiCallConfig.agentName || 'Sesli Asistan';
+                const waMessage = await prisma.marketingMessage.create({
+                    data: {
+                        workspaceId,
+                        name: `${name} - WhatsApp (${templateName})`,
+                        channel: 'WHATSAPP',
+                        templateName,
+                        content: whatsappConfig.bodyText || '',
+                        mediaUrl: whatsappConfig.headerMediaUrl || null
+                    }
+                });
 
-            const callMessage = await prisma.marketingMessage.create({
-                data: {
-                    workspaceId,
-                    name: `${name} - AI Arama (${agentName})`,
-                    channel: 'AI_CALL',
-                    retellAgentId: agentId,
-                    content: aiCallConfig.callTemplate || ''
-                }
-            });
-
-            const callGroup = await prisma.campaignGroup.create({
-                data: {
-                    campaignId: campaign.id,
-                    name: `${name} - AI Arama`,
-                    channel: 'AI_CALL',
-                    listId: targetListId,
-                    sendRate: parseInt(sendRate) || 20,
-                    status: scheduleType === 'IMMEDIATE' ? 'PENDING' : 'SCHEDULED',
-                    scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? new Date(scheduledAt) : null,
-                    groupMessages: {
-                        create: {
-                            messageId: callMessage.id,
-                            order: 0
+                const waGroup = await prisma.campaignGroup.create({
+                    data: {
+                        campaignId: campaign.id,
+                        name: `${name} - WhatsApp`,
+                        channel: 'WHATSAPP',
+                        listId: targetListId,
+                        sendRate: parseInt(sendRate) || 20,
+                        status: (campaignType === 'ONE_TIME' && scheduleType === 'IMMEDIATE') ? 'PENDING' : 'SCHEDULED',
+                        scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? new Date(scheduledAt) : null,
+                        groupMessages: {
+                            create: {
+                                messageId: waMessage.id,
+                                order: 0
+                            }
                         }
                     }
-                }
-            });
-
-            createdGroups.push(callGroup);
-
-            if (scheduleType === 'IMMEDIATE') {
-                executeGroupSendCore(workspaceId, callGroup.id).catch(err => {
-                    console.error(`❌ [wizardLaunchCampaign] AI Call execute error:`, err);
                 });
+
+                createdGroups.push(waGroup);
+
+                if (campaignType === 'ONE_TIME' && scheduleType === 'IMMEDIATE') {
+                    executeGroupSendCore(workspaceId, waGroup.id).catch(err => {
+                        console.error(`❌ [wizardLaunchCampaign] WA execute error:`, err);
+                    });
+                }
+            }
+
+            if (channels.includes('AI_CALL')) {
+                const agentId = aiCallConfig.agentId;
+                const agentName = aiCallConfig.agentName || 'Sesli Asistan';
+
+                const callMessage = await prisma.marketingMessage.create({
+                    data: {
+                        workspaceId,
+                        name: `${name} - AI Arama (${agentName})`,
+                        channel: 'AI_CALL',
+                        retellAgentId: agentId,
+                        content: aiCallConfig.callTemplate || ''
+                    }
+                });
+
+                const callGroup = await prisma.campaignGroup.create({
+                    data: {
+                        campaignId: campaign.id,
+                        name: `${name} - AI Arama`,
+                        channel: 'AI_CALL',
+                        listId: targetListId,
+                        sendRate: parseInt(sendRate) || 20,
+                        status: (campaignType === 'ONE_TIME' && scheduleType === 'IMMEDIATE') ? 'PENDING' : 'SCHEDULED',
+                        scheduledAt: scheduleType === 'SCHEDULED' && scheduledAt ? new Date(scheduledAt) : null,
+                        groupMessages: {
+                            create: {
+                                messageId: callMessage.id,
+                                order: 0
+                            }
+                        }
+                    }
+                });
+
+                createdGroups.push(callGroup);
+
+                if (campaignType === 'ONE_TIME' && scheduleType === 'IMMEDIATE') {
+                    executeGroupSendCore(workspaceId, callGroup.id).catch(err => {
+                        console.error(`❌ [wizardLaunchCampaign] AI Call execute error:`, err);
+                    });
+                }
             }
         }
 
@@ -1406,7 +1532,7 @@ export const wizardLaunchCampaign = async (req, res) => {
             success: true,
             campaign,
             groups: createdGroups,
-            message: `${channels.join(' & ')} kanallarıyla ${createdGroups.length} grup oluşturuldu ve kampanya başlatıldı.`
+            message: `"${name}" kampanyası (${campaignType}) ve ${createdGroups.length} grup başarıyla oluşturuldu.`
         });
 
     } catch (error) {
@@ -2177,6 +2303,20 @@ export const getCampaignFullDetail = async (req, res) => {
                 description: campaign.description,
                 status: campaign.status,
                 channel: campaign.channel,
+                campaignType: campaign.campaignType || 'ONE_TIME',
+                recurringFrequency: campaign.recurringFrequency,
+                recurringDayOfWeek: campaign.recurringDayOfWeek,
+                recurringDayOfMonth: campaign.recurringDayOfMonth,
+                recurringTime: campaign.recurringTime,
+                lastRunAt: campaign.lastRunAt,
+                nextRunAt: campaign.nextRunAt,
+                eventTrigger: campaign.eventTrigger,
+                eventConfig: campaign.eventConfig,
+                dayTrigger: campaign.dayTrigger,
+                dayConfig: campaign.dayConfig,
+                autoRetry: campaign.autoRetry,
+                maxRetries: campaign.maxRetries,
+                retryIntervalMinutes: campaign.retryIntervalMinutes,
                 sentCount: campaign.sentCount,
                 deliveredCount: campaign.deliveredCount,
                 readCount: campaign.readCount,
@@ -2230,7 +2370,8 @@ export const getCampaignRecipients = async (req, res) => {
                 skip: (parseInt(page) - 1) * parseInt(limit),
                 take: parseInt(limit),
                 include: {
-                    contact: { select: { id: true, name: true, phone: true, avatar: true } }
+                    contact: { select: { id: true, name: true, phone: true, avatar: true } },
+                    group: { select: { id: true, name: true, channel: true, delayDays: true, targetMilestone: true } }
                 }
             }),
             prisma.marketingRecipient.count({ where })

@@ -637,6 +637,23 @@ if (isMasterInstance) {
     }, 80000);
   });
 
+  // Pazarlama v3 Motoru Cron (Auto-retry & Tekrarlı Gönderimler her 5 dk)
+  import('./services/marketingEngine.service.js').then(({ processAutoRetryWorker, processRecurringCampaigns, processDayBasedMilestones, processUncontactedLeads }) => {
+    setTimeout(() => {
+      console.log('📢 [MarketingEngine] Starting marketing engine (auto-retry & recurring campaigns)');
+      processAutoRetryWorker().catch(() => {});
+      processRecurringCampaigns().catch(() => {});
+      setInterval(async () => {
+        try {
+          await processAutoRetryWorker();
+          await processRecurringCampaigns();
+        } catch (err) {
+          console.error('❌ [MarketingEngine] Error:', err.message);
+        }
+      }, 5 * 60 * 1000);
+    }, 85000);
+  });
+
   // Günlük otomasyon kontrolü (doğum günü, hareketsizlik vb. — her gün saat 09:00'da)
   let lastDailyRunKey = null;
   setInterval(async () => {
@@ -651,6 +668,16 @@ if (isMasterInstance) {
         await executeDailyAutomations();
       } catch (err) {
         console.error('❌ [DailyCron] Daily automations error:', err.message);
+      }
+
+      // Pazarlama v3: Gün bazlı süreçler (90-100-120 gün pasif, 60 gün müşteri) & Aranmayan leadler
+      try {
+        const { processDayBasedMilestones, processUncontactedLeads } = await import('./services/marketingEngine.service.js');
+        console.log('📢 [MarketingEngine] Running daily milestones & uncontacted leads...');
+        await processDayBasedMilestones();
+        await processUncontactedLeads();
+      } catch (err) {
+        console.error('❌ [MarketingEngine] Daily milestones error:', err.message);
       }
     }
   }, 5 * 60 * 1000);

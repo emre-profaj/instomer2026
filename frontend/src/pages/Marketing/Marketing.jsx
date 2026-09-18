@@ -64,14 +64,24 @@ const RECIPIENT_META = {
 const recipientMeta = (code) =>
     RECIPIENT_META[code] || { label: code || '—', fg: '#6b7480', dot: '#cbd2dc' };
 
+const CAMPAIGN_TYPE_META = {
+    ONE_TIME:    { label: '⚡ Tek Seferlik', bg: '#eff6ff', fg: '#1d4ed8' },
+    RECURRING:   { label: '🔄 Tekrarlı',     bg: '#f0fdf4', fg: '#15803d' },
+    EVENT_BASED: { label: '🎯 Olay Bazlı',  bg: '#fff7ed', fg: '#c2410c' },
+    DAY_BASED:   { label: '📅 Gün / Süreç', bg: '#faf5ff', fg: '#7e22ce' },
+};
+
 const TRIGGER_LABELS = {
-    NEW_CONTACT:   'Yeni kişi',
-    INACTIVE_DAYS: 'Pasif müşteri',
-    BIRTHDAY:      'Doğum günü',
-    HOT_LEAD:      'Sıcak lead',
-    POST_SALE:     'Satış sonrası',
-    ANNIVERSARY:   'Yıl dönümü',
-    SPECIAL_DAY:   'Özel gün',
+    NEW_CONTACT:      'Yeni kişi',
+    INACTIVE_DAYS:    'Pasif müşteri (90-120 gün)',
+    BIRTHDAY:         'Doğum günü',
+    HOT_LEAD:         'Sıcak lead',
+    POST_SALE:        'Satış sonrası',
+    ANNIVERSARY:      'Yıl dönümü',
+    SPECIAL_DAY:      'Özel gün',
+    UNCONTACTED_LEAD: 'Aranmayan Lead (30 Gün)',
+    STAGE_CHANGE:     'Aşama Değişimi',
+    FORM_SUBMITTED:   'Form Gönderildi',
 };
 
 /** Ad baş harfleri — avatar karesi için. Boş adda tire döner. */
@@ -528,7 +538,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         return Array.from(chs);
     };
 
-    const isAutoCampaign = (c) => c.isAutomation || c.isSystemTemplate || ['AUTO', 'DYNAMIC', 'TRIGGERED', 'AUTO_DRIP', 'AUTO_TRIGGERED', 'AUTO_RECURRING'].includes(c.type || c.campaignType);
+    const isAutoCampaign = (c) => c.isAutomation || c.isSystemTemplate || ['AUTO', 'DYNAMIC', 'TRIGGERED', 'AUTO_DRIP', 'AUTO_TRIGGERED', 'AUTO_RECURRING', 'RECURRING', 'EVENT_BASED', 'DAY_BASED'].includes(c.type || c.campaignType);
 
     const fetchCampaigns = useCallback(async () => {
         setLoading(true);
@@ -623,9 +633,13 @@ function CampaignsTab({ wsId, onGoToGroups }) {
     };
 
     const filteredCampaigns = campaigns.filter(c => {
-        // Tip Filtresi: Manuel vs Otomatik
+        // Tip Filtresi: Manuel vs Otomatik veya spesifik tipler
         if (typeFilter === 'MANUAL' && isAutoCampaign(c)) return false;
         if (typeFilter === 'AUTO' && !isAutoCampaign(c)) return false;
+        if (typeFilter === 'ONE_TIME' && c.campaignType !== 'ONE_TIME' && (c.campaignType || isAutoCampaign(c))) return false;
+        if (typeFilter === 'RECURRING' && c.campaignType !== 'RECURRING') return false;
+        if (typeFilter === 'EVENT_BASED' && c.campaignType !== 'EVENT_BASED') return false;
+        if (typeFilter === 'DAY_BASED' && c.campaignType !== 'DAY_BASED') return false;
 
         // Durum Filtresi
         if (statusFilter === 'ACTIVE' && c.status !== 'ACTIVE' && c.status !== 'SENDING') return false;
@@ -754,15 +768,29 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                             lede={[
                                 camp.description || null,
                                 getDateDisplay(camp) || null,
+                                camp.campaignType === 'RECURRING' && camp.nextRunAt ? `Sonraki Planlı Çalışma: ${trDateTime(camp.nextRunAt)}` : null,
+                                camp.campaignType === 'EVENT_BASED' && camp.eventTrigger ? `Olay Tetikleyici: ${TRIGGER_LABELS[camp.eventTrigger] || camp.eventTrigger}` : null,
+                                camp.campaignType === 'DAY_BASED' && camp.dayTrigger ? `Süreç Tetikleyici: ${TRIGGER_LABELS[camp.dayTrigger] || camp.dayTrigger}` : null,
                                 camp.triggerType ? `Tetikleyici: ${TRIGGER_LABELS[camp.triggerType] || camp.triggerType}` : null,
                             ].filter(Boolean).join(' · ')}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                                {camp.isSystemTemplate && <span className="pz-tag-auto">OTOMATİK</span>}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                                {camp.campaignType && CAMPAIGN_TYPE_META[camp.campaignType] ? (
+                                    <span className="pz-chip" style={{ background: CAMPAIGN_TYPE_META[camp.campaignType].bg, color: CAMPAIGN_TYPE_META[camp.campaignType].fg, fontWeight: 700, padding: '4px 9px', fontSize: 11.5 }}>
+                                        {CAMPAIGN_TYPE_META[camp.campaignType].label}
+                                    </span>
+                                ) : camp.isSystemTemplate ? (
+                                    <span className="pz-tag-auto">OTOMATİK</span>
+                                ) : null}
+                                {camp.autoRetry && (
+                                    <span className="pz-chip" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', fontSize: 11, padding: '3px 8px' }} title="Hatalı alıcılara 15 dk aralıkla otomatik arka plan tekrarı yapılır">
+                                        🔁 Oto-Tekrar Aktif (15 dk)
+                                    </span>
+                                )}
                                 <span className="pz-status" style={{ color: campSt.fg }}>
                                     <i style={{ background: campSt.dot }} />{campSt.label}
                                 </span>
-                                {camp.isSystemTemplate && (
+                                {(camp.isSystemTemplate || camp.campaignType === 'RECURRING' || camp.campaignType === 'EVENT_BASED' || camp.campaignType === 'DAY_BASED') && (
                                     <button
                                         className="pz-btn pz-btn-sm"
                                         type="button"
@@ -807,11 +835,11 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                             );
                         })()}
 
-                        {/* Otomasyon adımları — yalnızca otomatik kampanyalarda */}
-                        {camp.isSystemTemplate && groups.length > 1 && (
+                        {/* Otomasyon adımları */}
+                        {(camp.isSystemTemplate || camp.campaignType === 'DAY_BASED' || camp.campaignType === 'EVENT_BASED' || groups.some(g => (g.delayDays || 0) > 0 || g.targetMilestone)) && groups.length > 1 && (
                             <>
                                 <div className="pz-sechead pz-section">
-                                    <span className="pz-sechead-n">Otomasyon adımları</span>
+                                    <span className="pz-sechead-n">Kampanya akış adımları</span>
                                     <span className="pz-rule" />
                                     <span className="pz-sechead-x">{groups.length} adım</span>
                                 </div>
@@ -823,9 +851,13 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                 <div className="pz-step" key={grp.id}>
                                                     {idx < arr.length - 1 && <span className="pz-step-r" />}
                                                     <div className={`pz-step-c ${(grp.sentCount || 0) > 0 ? '' : 'idle'}`}>
-                                                        {grp.delayDays ? `+${grp.delayDays}` : '0'}
+                                                        {grp.targetMilestone ? grp.targetMilestone.replace('DAY_', '') : (grp.delayDays ? `+${grp.delayDays}` : '0')}
                                                     </div>
-                                                    <div className="pz-step-l">{grp.delayDays === 0 ? 'Hemen' : `${grp.delayDays} gün sonra`}</div>
+                                                    <div className="pz-step-l">
+                                                        {grp.targetMilestone
+                                                            ? (grp.targetMilestone === 'DAY_90' ? '90. Gün' : grp.targetMilestone === 'DAY_100' ? '100. Gün' : grp.targetMilestone === 'DAY_120' ? '120. Gün' : grp.targetMilestone)
+                                                            : grp.delayDays === 0 ? 'Hemen' : `${grp.delayDays} gün sonra`}
+                                                    </div>
                                                     <div className="pz-step-s">
                                                         {(grp.sentCount || 0) > 0 ? `${num(grp.sentCount)} gönderim` : 'henüz yok'}
                                                     </div>
@@ -988,14 +1020,29 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                         >
                                                                             <span className="pz-av sm"><Send size={14} /></span>
                                                                             <div style={{ minWidth: 0 }}>
-                                                                                <button
-                                                                                    type="button"
-                                                                                    className="pz-name"
-                                                                                    onClick={e => { e.stopPropagation(); toggleSendExpand(g.id); }}
-                                                                                    aria-expanded={acik}
-                                                                                >
-                                                                                    {g.name || `Gönderi #${idx + 1}`}
-                                                                                </button>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="pz-name"
+                                                                                        onClick={e => { e.stopPropagation(); toggleSendExpand(g.id); }}
+                                                                                        aria-expanded={acik}
+                                                                                    >
+                                                                                        {g.name || `Gönderi #${idx + 1}`}
+                                                                                    </button>
+                                                                                    {g.targetMilestone && (
+                                                                                        <span className="pz-chip" style={{ background: '#ede9fe', color: '#5b21b6', fontSize: 10, padding: '2px 6px' }}>
+                                                                                            🎯 {g.targetMilestone === 'DAY_90' ? '90. Gün' : g.targetMilestone === 'DAY_100' ? '100. Gün' : g.targetMilestone === 'DAY_120' ? '120. Gün' : g.targetMilestone}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {g.channel && (() => {
+                                                                                        const cm = channelMeta(g.channel);
+                                                                                        return (
+                                                                                            <span className="pz-chip" style={{ background: cm.bg, color: cm.fg, fontSize: 10, padding: '2px 6px' }}>
+                                                                                                {cm.label}
+                                                                                            </span>
+                                                                                        );
+                                                                                    })()}
+                                                                                </div>
                                                                                 <div className="pz-sub">
                                                                                     <span>{trDate(g.sentAt || g.scheduledAt || g.createdAt)}</span>
                                                                                     {hedef && <><span className="pz-dot-sep">·</span><span>Hedef: {hedef}</span></>}
@@ -1114,22 +1161,41 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                                                         const rm = recipientMeta(r.status);
                                                                                                         return (
                                                                                                             <div className="pz-tbl-row" key={r.id}>
-                                                                                                                <span style={{ fontWeight: 600 }}>
-                                                                                                                    {r.contact?.name || r.name || 'İsimsiz'}
-                                                                                                                </span>
+                                                                                                                <div>
+                                                                                                                    <div style={{ fontWeight: 600 }}>
+                                                                                                                        {r.contact?.name || r.name || 'İsimsiz'}
+                                                                                                                    </div>
+                                                                                                                    {r.group?.targetMilestone && (
+                                                                                                                        <span className="pz-chip" style={{ background: '#f5f3ff', color: '#6d28d9', fontSize: 9.5, padding: '1px 5px', marginTop: 2, display: 'inline-block' }}>
+                                                                                                                            🎯 {r.group.targetMilestone === 'DAY_90' ? '90. Gün Drip' : r.group.targetMilestone === 'DAY_100' ? '100. Gün Drip' : r.group.targetMilestone === 'DAY_120' ? '120. Gün Drip' : r.group.targetMilestone}
+                                                                                                                        </span>
+                                                                                                                    )}
+                                                                                                                </div>
                                                                                                                 <span style={{ color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
                                                                                                                     {r.phone || r.email || '—'}
                                                                                                                 </span>
-                                                                                                                <span>
-                                                                                                                    <span className="pz-status" style={{ color: rm.fg }}>
-                                                                                                                        <i style={{ background: rm.dot }} />{rm.label}
-                                                                                                                    </span>
+                                                                                                                <div>
+                                                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                                                                                        <span className="pz-status" style={{ color: rm.fg }}>
+                                                                                                                            <i style={{ background: rm.dot }} />{rm.label}
+                                                                                                                        </span>
+                                                                                                                        {r.retryCount > 0 && (
+                                                                                                                            <span className="pz-chip" style={{ background: '#fef3c7', color: '#92400e', fontSize: 10, padding: '1px 5px' }} title={`${r.retryCount}. otomatik yeniden deneme yapıldı`}>
+                                                                                                                                🔁 {r.retryCount}. deneme
+                                                                                                                            </span>
+                                                                                                                        )}
+                                                                                                                    </div>
                                                                                                                     {r.failReason && (
                                                                                                                         <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 2 }}>{r.failReason}</div>
                                                                                                                     )}
-                                                                                                                </span>
+                                                                                                                    {r.status === 'FAILED' && camp?.autoRetry && (r.retryCount || 0) < (camp?.maxRetries || 3) && (
+                                                                                                                        <div style={{ fontSize: 10, color: '#059669', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                                                                                            <RefreshCw size={10} /> 15 dk sonra otomatik tekrar denenecek
+                                                                                                                        </div>
+                                                                                                                    )}
+                                                                                                                </div>
                                                                                                                 <span className="pz-tnum">
-                                                                                                                    {trDateTime(r.readAt || r.deliveredAt || r.sentAt)}
+                                                                                                                    {trDateTime(r.readAt || r.deliveredAt || r.sentAt || r.createdAt)}
                                                                                                                 </span>
                                                                                                             </div>
                                                                                                         );
@@ -1225,8 +1291,10 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                 <div className="pz-pills" role="group" aria-label="Kampanya türü">
                     {[
                         { key: 'ALL', label: 'Tümü' },
-                        { key: 'MANUAL', label: 'Manuel' },
-                        { key: 'AUTO', label: 'Otomatik' },
+                        { key: 'ONE_TIME', label: '⚡ Tek Seferlik' },
+                        { key: 'RECURRING', label: '🔄 Tekrarlı' },
+                        { key: 'EVENT_BASED', label: '🎯 Olay Bazlı' },
+                        { key: 'DAY_BASED', label: '📅 Gün / Süreç' },
                     ].map(f => (
                         <button key={f.key} type="button" className={`pz-pill ${typeFilter === f.key ? 'active' : ''}`} onClick={() => setTypeFilter(f.key)}>
                             {f.label}
@@ -1348,7 +1416,18 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                             >
                                                 {c.name}
                                             </button>
-                                            {c.isSystemTemplate && <span className="pz-tag-auto">OTOMATİK</span>}
+                                            {c.campaignType && CAMPAIGN_TYPE_META[c.campaignType] ? (
+                                                <span className="pz-chip" style={{ background: CAMPAIGN_TYPE_META[c.campaignType].bg, color: CAMPAIGN_TYPE_META[c.campaignType].fg, fontWeight: 650 }}>
+                                                    {CAMPAIGN_TYPE_META[c.campaignType].label}
+                                                </span>
+                                            ) : c.isSystemTemplate ? (
+                                                <span className="pz-tag-auto">OTOMATİK</span>
+                                            ) : null}
+                                            {c.autoRetry && (
+                                                <span className="pz-chip" style={{ background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', fontSize: 10 }} title="Başarısız gönderimlerde 15 dk arayla otomatik yeniden deneme devrede">
+                                                    🔁 Oto-Tekrar
+                                                </span>
+                                            )}
                                             {channels.map(ch => {
                                                 const m = channelMeta(ch);
                                                 return (
@@ -1362,6 +1441,24 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                             <span>{c.description || (isAuto ? 'Sistem otomasyonu' : 'Açıklama yok')}</span>
                                             <span className="pz-dot-sep">·</span>
                                             <span>{getDateDisplay(c)}</span>
+                                            {c.campaignType === 'RECURRING' && c.nextRunAt && (
+                                                <>
+                                                    <span className="pz-dot-sep">·</span>
+                                                    <span style={{ color: '#16a34a', fontWeight: 600 }}>Sonraki: {trDateTime(c.nextRunAt)}</span>
+                                                </>
+                                            )}
+                                            {c.campaignType === 'EVENT_BASED' && c.eventTrigger && (
+                                                <>
+                                                    <span className="pz-dot-sep">·</span>
+                                                    <span style={{ color: '#ea580c', fontWeight: 600 }}>Olay: {TRIGGER_LABELS[c.eventTrigger] || c.eventTrigger}</span>
+                                                </>
+                                            )}
+                                            {c.campaignType === 'DAY_BASED' && c.dayTrigger && (
+                                                <>
+                                                    <span className="pz-dot-sep">·</span>
+                                                    <span style={{ color: '#7c3aed', fontWeight: 600 }}>Süreç: {TRIGGER_LABELS[c.dayTrigger] || c.dayTrigger}</span>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1376,7 +1473,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
 
                                     {/* Satırın tamamı tıklanabilir; buradaki düğmeler kampanyayı açmasın */}
                                     <div className="pz-acts" onClick={e => e.stopPropagation()}>
-                                        {c.isSystemTemplate && (
+                                        {(c.isSystemTemplate || c.campaignType === 'RECURRING' || c.campaignType === 'EVENT_BASED' || c.campaignType === 'DAY_BASED') && (
                                             <button
                                                 className="pz-btn pz-btn-sm"
                                                 type="button"

@@ -2168,6 +2168,24 @@ model MarketingCampaign {
   // Legacy — geriye uyumluluk
   templateId     String?
   type           String               @default("BULK") // BULK | AUTO_DRIP | AUTO_TRIGGERED | AUTO_RECURRING
+  // 4 Temel Kampanya Türü: ONE_TIME (Tek Seferlik), RECURRING (Tekrarlı), EVENT_BASED (Olay Bazlı), DAY_BASED (Gün/Süreç Bazlı)
+  campaignType         String               @default("ONE_TIME") // ONE_TIME | RECURRING | EVENT_BASED | DAY_BASED
+  // Tekrarlı Gönderim (Haftalık / Aylık bülten vb.)
+  recurringFrequency   String?              // WEEKLY, MONTHLY, BIWEEKLY, DAILY
+  recurringDayOfWeek   Int?                 // 1 (Pazartesi) .. 7 (Pazar)
+  recurringDayOfMonth  Int?                 // 1 .. 31
+  recurringTime        String?              // "10:00"
+  lastRunAt            DateTime?
+  nextRunAt            DateTime?
+  // Olay & Gün Bazlı Tetikleyiciler
+  eventTrigger         String?              // STAGE_CHANGE | UNCONTACTED_LEAD | TAG_ADDED | NEW_LEAD
+  eventConfig          String?              @db.Text // JSON: { funnelId, stageId, uncontactedDays: 30 }
+  dayTrigger           String?              // INACTIVE_DAYS | BIRTHDAY | CUSTOMER_AGE_DAYS
+  dayConfig            String?              @db.Text // JSON: { days: 90, followUps: [100, 120] }
+  // Otomatik Yeniden Deneme (Auto-retry)
+  autoRetry            Boolean              @default(true)
+  maxRetries           Int                  @default(3)
+  retryIntervalMinutes Int                  @default(15)
   automationId   String?
   scheduledAt    DateTime?
   // Şablon Kampanya Alanları
@@ -2214,6 +2232,7 @@ model CampaignGroup {
   // Drip / Otomatik dizi ayarları
   delayDays      Int       @default(0)  // Kişi oluşturulduktan kaç gün sonra gönderilecek
   sortOrder      Int       @default(0)  // Adım sırası
+  targetMilestone String?  // "DAY_90", "DAY_100", "DAY_120", "IMMEDIATE" vb.
   // Gönderim ayarları
   sendRate       Int       @default(20) // Dakikada mesaj sayısı
   // İstatistikler
@@ -2354,6 +2373,9 @@ model MarketingRecipient {
   failedAt    DateTime?
   failReason  String?
   sentAt      DateTime?
+  retryCount  Int               @default(0)
+  lastRetryAt DateTime?
+  autoRetried Boolean           @default(false)
   createdAt   DateTime          @default(now())
   campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   send        CampaignSend?     @relation(fields: [sendId], references: [id], onDelete: Cascade)

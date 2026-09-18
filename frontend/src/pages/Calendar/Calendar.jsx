@@ -34,12 +34,20 @@ const APPOINTMENT_STATUSES = [
 const IC = { size: 14, strokeWidth: 2 };
 
 export const MEETING_TYPES = [
-    { value: 'YUZ_YUZE', label: 'Yüz Yüze',         icon: <Handshake {...IC} />,     color: '#15803d' },
-    { value: 'ONLINE',   label: 'Online / Video',   icon: <Video {...IC} />,         color: '#4338ca' },
-    { value: 'TELEFON',  label: 'Telefon',          icon: <Phone {...IC} />,         color: '#b45309' },
-    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: <Stethoscope {...IC} />,   color: '#7e22ce' },
-    { value: 'DIGER',    label: 'Diğer',            icon: <ClipboardList {...IC} />, color: '#475569' },
+    { value: 'YUZ_YUZE', label: 'Yüz Yüze',         icon: <Handshake {...IC} />,     color: '#15803d', short: 'Yüz yüze' },
+    { value: 'ONLINE',   label: 'Online / Video',   icon: <Video {...IC} />,         color: '#4338ca', short: 'Online' },
+    { value: 'TELEFON',  label: 'Telefon',          icon: <Phone {...IC} />,         color: '#b45309', short: 'Telefon' },
+    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: <Stethoscope {...IC} />,   color: '#7e22ce', short: 'Klinik' },
+    { value: 'DIGER',    label: 'Diğer',            icon: <ClipboardList {...IC} />, color: '#475569', short: 'Diğer' },
 ];
+
+// Pencere başlığının altındaki satır: "9 Eylül 2026 Çarşamba · Metropol Hastanesi"
+const MODAL_DATE_FMT = { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' };
+const modalDateLine = (value) => {
+    if (!value) return '';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('tr-TR', MODAL_DATE_FMT);
+};
 
 export const getMeetingType = (item) => {
     if (!item) return MEETING_TYPES[0];
@@ -2968,13 +2976,17 @@ function formatDoctorDisplayName(rawName) {
                 <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setIsGoogleEventEditMode(false); }}>
                     <div className="apt-modal" onClick={e => e.stopPropagation()}>
                         {/* Header */}
-                        <div className="apt-modal-header" style={selectedAppointment?.isGoogleEvent ? { background: `linear-gradient(135deg, #0f172a 0%, ${getGoogleAccountColor(selectedAppointment.googleEmail, googleStatus.accounts).primary} 100%)` } : {}}>
-                            <h2>
-                                {selectedAppointment?.isGoogleEvent
-                                    ? (isGoogleEventEditMode ? 'Google Takvim Etkinliğini Düzenle' : 'Google Takvim Etkinliği')
-                                    : (selectedAppointment ? 'Görüşme / Randevu Düzenle' : 'Yeni Görüşme Planla')
-                                }
-                            </h2>
+                        <div className="apt-modal-header">
+                            <span className="tk-modal-ico"><CalendarIcon size={17} /></span>
+                            <div className="tk-modal-head-text">
+                                <h2>
+                                    {selectedAppointment?.isGoogleEvent
+                                        ? (isGoogleEventEditMode ? 'Google Takvim Etkinliğini Düzenle' : 'Google Takvim Etkinliği')
+                                        : (selectedAppointment ? 'Randevuyu Düzenle' : 'Yeni randevu')
+                                    }
+                                </h2>
+                                <p>{[modalDateLine(formData.startTime), currentWorkspace?.name].filter(Boolean).join(' · ')}</p>
+                            </div>
                             <button className="apt-modal-close" onClick={() => { setIsModalOpen(false); setIsGoogleEventEditMode(false); }}>
                                 <X size={18} />
                             </button>
@@ -3027,7 +3039,7 @@ function formatDoctorDisplayName(rawName) {
                                     )}
 
                                     <div className="apt-section">
-                                        <span className="apt-section-label">Açıklama / Notlar</span>
+                                        <span className="tk-fl">Açıklama / Notlar</span>
                                         <textarea
                                             className="apt-notes"
                                             value={formData.notes}
@@ -3205,9 +3217,11 @@ function formatDoctorDisplayName(rawName) {
                                     </div>
                                 )}
 
-                                {/* Title */}
+                                {/* Başlık */}
                                 <div className="apt-field">
+                                    <label className="tk-fl" htmlFor="apt-title">Başlık <span className="tk-req" aria-hidden="true">*</span></label>
                                     <input
+                                        id="apt-title"
                                         type="text"
                                         className="apt-title-input"
                                         value={formData.title}
@@ -3217,21 +3231,20 @@ function formatDoctorDisplayName(rawName) {
                                     />
                                 </div>
 
-                                {/* Görüşme Tipi */}
+                                {/* Görüşme tipi */}
                                 <div className="apt-section">
-                                    <span className="apt-section-label">Görüşme Tipi</span>
-                                    <div className="apt-select-field-wrapper">
-                                        <select
-                                            className="apt-meeting-type-select"
-                                            value={formData.meetingType || 'YUZ_YUZE'}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, meetingType: e.target.value, procedure: e.target.value }))}
-                                        >
-                                            {MEETING_TYPES.map(type => (
-                                                <option key={type.value} value={type.value}>
-                                                    {type.label}
-                                                </option>
-                                            ))}
-                                        </select>
+                                    <span className="tk-fl">Görüşme tipi</span>
+                                    <div className="tk-seg" role="group" aria-label="Görüşme tipi">
+                                        {MEETING_TYPES.map(type => (
+                                            <button
+                                                key={type.value}
+                                                type="button"
+                                                className={`tk-seg-btn ${(formData.meetingType || 'YUZ_YUZE') === type.value ? 'on' : ''}`}
+                                                onClick={() => setFormData(prev => ({ ...prev, meetingType: type.value, procedure: type.value }))}
+                                            >
+                                                {type.short}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
 
@@ -3247,7 +3260,6 @@ function formatDoctorDisplayName(rawName) {
                                                 required
                                             />
                                         </div>
-                                        <div className="apt-dt-sep">→</div>
                                         <div className="apt-dt-field">
                                             <span className="apt-dt-label">{t('calendar.end')}</span>
                                             <input
@@ -3260,116 +3272,111 @@ function formatDoctorDisplayName(rawName) {
                                     </div>
                                 </div>
 
-                                {/* Assignment Cards */}
+                                {/* Atama */}
                                 <div className="apt-section">
                                     <span className="apt-section-label">Atama</span>
-                                    <div className="apt-assign-row">
-                                        <div className={`apt-assign-card ${formData.assignedToId ? 'selected' : ''}`}>
-                                            <div className="apt-assign-icon"><User size={16} /></div>
-                                            <div className="apt-assign-content">
-                                                <span className="apt-assign-type">Temsilci</span>
-                                                <select
-                                                    value={formData.assignedToId}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, assignedToId: e.target.value }))}
-                                                >
-                                                    <option value="">{t("channels.selectOption")}</option>
-                                                    {agents.map(agent => (
-                                                        <option key={agent.id} value={agent.id}>{agent.name}</option>
-                                                    ))}
-                                                </select>
-                                                {selectedAppointment?.assignedTo?.isBot && (
-                                                    <div style={{ fontSize: 11, color: '#059669', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontWeight: 600 }}>
-                                                        {selectedAppointment.assignedTo.name} (AI Asistan tarafından verildi)
-                                                    </div>
-                                                )}
-                                            </div>
+                                    <div className="tk-two">
+                                        <div className="tk-f">
+                                            <label className="tk-fl" htmlFor="apt-agent">Temsilci</label>
+                                            <select
+                                                id="apt-agent"
+                                                className="tk-inp"
+                                                value={formData.assignedToId}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, assignedToId: e.target.value }))}
+                                            >
+                                                <option value="">{t("channels.selectOption")}</option>
+                                                {agents.map(agent => (
+                                                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                                                ))}
+                                            </select>
+                                            {selectedAppointment?.assignedTo?.isBot && (
+                                                <span className="tk-hint">{selectedAppointment.assignedTo.name} (AI Asistan tarafından verildi)</span>
+                                            )}
                                         </div>
-
-                                        <div className={`apt-assign-card ${formData.resourceId ? 'selected' : ''}`}>
-                                            <div className="apt-assign-icon resource">
-                                                {(() => {
-                                                    const currentRes = resources.find(r => r.id === formData.resourceId);
-                                                    if (currentRes?.type === 'PERSON') return <User size={16} />;
-                                                    return <Building2 size={16} />;
-                                                })()}
-                                            </div>
-                                            <div className="apt-assign-content">
-                                                <span className="apt-assign-type">
-                                                    {resources.some(r => r.type === 'PERSON') ? 'Doktor / Kaynak' : 'Kaynak'}
-                                                </span>
-                                                <select
-                                                    value={formData.resourceId}
-                                                    onChange={(e) => {
-                                                        const resId = e.target.value;
-                                                        const selectedRes = resources.find(r => r.id === resId);
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            resourceId: resId,
-                                                            doctorName: selectedRes ? (selectedRes.displayName || selectedRes.name) : '',
-                                                            branch: selectedRes?.description || prev.branch
-                                                        }));
-                                                    }}
-                                                >
-                                                    <option value="">{t("channels.selectOption")}</option>
-                                                    {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
-                                                        <optgroup key={branchName} label={branchName}>
-                                                            {branchDocs.map(resource => (
-                                                                <option key={resource.id} value={resource.id}>
-                                                                    {resource.displayName || resource.name}
-                                                                </option>
-                                                            ))}
-                                                        </optgroup>
-                                                    ))}
-                                                    {groupedResources.unassigned.length > 0 && (
-                                                        <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
-                                                            {groupedResources.unassigned.map(resource => (
-                                                                <option key={resource.id} value={resource.id}>
-                                                                    {resource.name}
-                                                                </option>
-                                                            ))}
-                                                        </optgroup>
-                                                    )}
-                                                </select>
-                                            </div>
+                                        <div className="tk-f">
+                                            <label className="tk-fl" htmlFor="apt-res">
+                                                {resources.some(r => r.type === 'PERSON') ? 'Doktor / Kaynak' : 'Kaynak'}
+                                            </label>
+                                            <select
+                                                id="apt-res"
+                                                className="tk-inp"
+                                                value={formData.resourceId}
+                                                onChange={(e) => {
+                                                    const resId = e.target.value;
+                                                    const selectedRes = resources.find(r => r.id === resId);
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        resourceId: resId,
+                                                        doctorName: selectedRes ? (selectedRes.displayName || selectedRes.name) : '',
+                                                        branch: selectedRes?.description || prev.branch
+                                                    }));
+                                                }}
+                                            >
+                                                <option value="">{t("channels.selectOption")}</option>
+                                                {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
+                                                    <optgroup key={branchName} label={branchName}>
+                                                        {branchDocs.map(resource => (
+                                                            <option key={resource.id} value={resource.id}>
+                                                                {resource.displayName || resource.name}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                ))}
+                                                {groupedResources.unassigned.length > 0 && (
+                                                    <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
+                                                        {groupedResources.unassigned.map(resource => (
+                                                            <option key={resource.id} value={resource.id}>
+                                                                {resource.name}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Customer Info - Compact */}
+                                {/* Hasta bilgileri */}
                                 <div className="apt-section">
                                     <span className="apt-section-label">{t('calendar.customerInfo')}</span>
-                                    <div className="apt-customer-row">
-                                        <div className="apt-customer-field">
-                                            <User size={14} />
+                                    <div className="tk-two">
+                                        <div className="tk-f">
+                                            <label className="tk-fl" htmlFor="apt-cname">Ad soyad</label>
                                             <input
+                                                id="apt-cname"
+                                                className="tk-inp"
                                                 type="text"
                                                 value={formData.contactName}
                                                 onChange={(e) => setFormData(prev => ({ ...prev, contactName: e.target.value }))}
                                                 placeholder="Ad Soyad"
                                             />
                                         </div>
-                                        <div className="apt-customer-field">
-                                            <Phone size={14} />
+                                        <div className="tk-f">
+                                            <label className="tk-fl" htmlFor="apt-cphone">Telefon</label>
                                             <input
+                                                id="apt-cphone"
+                                                className="tk-inp"
                                                 type="tel"
                                                 value={formData.contactPhone}
                                                 onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-                                                placeholder="Telefon"
-                                            />
-                                        </div>
-                                        <div className="apt-customer-field">
-                                            <Mail size={14} />
-                                            <input
-                                                type="email"
-                                                value={formData.contactEmail}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-                                                placeholder="E-posta"
+                                                placeholder="+90 5xx xxx xx xx"
                                             />
                                         </div>
                                     </div>
+                                    <div className="tk-f">
+                                        <label className="tk-fl" htmlFor="apt-cmail">E-posta</label>
+                                        <input
+                                            id="apt-cmail"
+                                            className="tk-inp"
+                                            type="email"
+                                            value={formData.contactEmail}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
+                                            placeholder="ornek@eposta.com"
+                                        />
+                                    </div>
                                 </div>
 
-                                {/* Status Pills */}
+                                {/* Durum */}
                                 <div className="apt-section">
                                     <span className="apt-section-label">Durum</span>
                                     <div className="apt-status-pills">
@@ -3378,24 +3385,24 @@ function formatDoctorDisplayName(rawName) {
                                                 key={status.value}
                                                 type="button"
                                                 className={`apt-status-pill ${formData.status === status.value ? 'active' : ''}`}
-                                                style={formData.status === status.value
-                                                    ? { ...softTone(status.color), borderLeft: undefined, borderColor: status.color }
-                                                    : {}}
                                                 onClick={() => setFormData(prev => ({ ...prev, status: status.value }))}
                                             >
+                                                <i className="tk-dot" style={{ background: status.color }} />
                                                 {status.label}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
 
-                                {/* Notes */}
+                                {/* Not */}
                                 <div className="apt-section">
+                                    <label className="tk-fl" htmlFor="apt-notes">Not</label>
                                     <textarea
+                                        id="apt-notes"
                                         className="apt-notes"
                                         value={formData.notes}
                                         onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                        placeholder="Not ekle..."
+                                        placeholder="Randevuyla ilgili not…"
                                         rows={2}
                                     />
                                 </div>
@@ -3409,7 +3416,7 @@ function formatDoctorDisplayName(rawName) {
                                     )}
                                     <div className="apt-footer-right">
                                         <button type="button" className="apt-btn-cancel" onClick={() => setIsModalOpen(false)}>
-                                            İptal
+                                        Vazgeç
                                         </button>
                                         <button type="submit" className="apt-btn-save" disabled={isCreating}>
                                             {isCreating ? 'Kaydediliyor...' : (selectedAppointment ? 'Güncelle' : 'Oluştur')}
@@ -3538,29 +3545,19 @@ function formatDoctorDisplayName(rawName) {
                     <div className="modal-overlay" onClick={() => { setSelectedScheduledCall(null); setSelectedContactId(null); }}>
                         <div className="apt-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
                             <div className="apt-modal-header">
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span className="tk-modal-ico"><PhoneCall size={17} /></span>
+                                <div className="tk-modal-head-text">
                                     <h2>Planlanmış Arama</h2>
-                                    {selectedContactId && (
-                                        <span style={{
-                                            fontSize: 10.5,
-                                            fontWeight: 600,
-                                            background: 'rgba(255,255,255,0.22)',
-                                            color: '#fff',
-                                            padding: '2px 8px',
-                                            borderRadius: 12,
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: 4
-                                        }}>
-                                            Kişi Kartı Açık
-                                        </span>
-                                    )}
+                                    <p>{modalDateLine(selectedScheduledCall.scheduledAt)}</p>
                                 </div>
-                                <button className="apt-modal-close" onClick={() => setSelectedScheduledCall(null)} style={{ color: '#ffffff' }}>
+                                {selectedContactId && (
+                                    <span className="tk-head-chip">Kişi Kartı Açık</span>
+                                )}
+                                <button className="apt-modal-close" onClick={() => setSelectedScheduledCall(null)}>
                                     <X size={18} />
                                 </button>
                             </div>
-                            <div className="apt-modal-body" style={{ padding: '20px' }}>
+                            <div className="apt-modal-body">
                                 {/* Contact Info + Quick Communication */}
                                 <div style={{ marginBottom: 14, padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -3800,7 +3797,7 @@ function formatDoctorDisplayName(rawName) {
                                                     setDayPopup(null);
                                                 }}
                                             >
-                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>Google</span>}
+                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ ...softTone(dpEventColor), borderLeft: undefined }}>Google</span>}
                                                 <span className="popup-badge meeting-type" style={{ ...softTone(mType.color), borderLeft: undefined }}>{mType.icon} {mType.label}</span>
                                                 {isOverdue && <span className="popup-badge overdue"><AlertCircle size={11} /></span>}
                                                 {isCompleted && <span className="popup-badge completed"><Check size={11} /></span>}
