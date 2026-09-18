@@ -683,16 +683,30 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                     <>
                         {/* Kampanya Başlığı */}
                         <div style={{
-                            background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
+                            background: camp.isSystemTemplate ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
                             borderRadius: 16, padding: '24px 28px', marginBottom: 24,
-                            border: '1px solid #e2e8f0'
+                            border: camp.isSystemTemplate ? '1px solid #fbbf24' : '1px solid #e2e8f0'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                                 <div>
-                                    <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>{camp.name}</h2>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>{camp.name}</h2>
+                                        {camp.isSystemTemplate && (
+                                            <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '3px 10px', borderRadius: 6, fontWeight: 700, letterSpacing: 0.3 }}>
+                                                OTOMATİK
+                                            </span>
+                                        )}
+                                    </div>
                                     {camp.description && <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b' }}>{camp.description}</p>}
+                                    {camp.triggerType && (
+                                        <div style={{ margin: '8px 0 0', fontSize: 12, color: '#94a3b8' }}>
+                                            Tetikleyici: <strong style={{ color: '#64748b' }}>
+                                                {{ NEW_CONTACT: 'Yeni Kişi', INACTIVE_DAYS: 'Pasif Müşteri', BIRTHDAY: 'Doğum Günü', HOT_LEAD: 'Sıcak Lead', POST_SALE: 'Satış Sonrası', ANNIVERSARY: 'Yıl Dönümü', SPECIAL_DAY: 'Özel Gün' }[camp.triggerType] || camp.triggerType}
+                                            </strong>
+                                        </div>
+                                    )}
                                 </div>
-                                <div style={{ display: 'flex', gap: 6 }}>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                     <span style={{
                                         fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8,
                                         background: camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '#dcfce7' : camp.status === 'COMPLETED' ? '#f1f5f9' : '#fefce8',
@@ -700,6 +714,29 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                     }}>
                                         {camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '🟢 Aktif' : camp.status === 'COMPLETED' ? 'Tamamlandı' : camp.status || 'Taslak'}
                                     </span>
+                                    {camp.isSystemTemplate && (
+                                        <button
+                                            style={{
+                                                background: camp.status === 'ACTIVE' ? '#fef2f2' : '#f0fdf4',
+                                                color: camp.status === 'ACTIVE' ? '#dc2626' : '#16a34a',
+                                                border: 'none', borderRadius: 8, padding: '6px 14px',
+                                                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                            }}
+                                            onClick={async () => {
+                                                const newStatus = camp.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+                                                try {
+                                                    await api.put(`/marketing-v2/${wsId}/campaigns/${camp.id}`, { status: newStatus });
+                                                    loadCampaignDetail(camp.id);
+                                                    fetchCampaigns();
+                                                } catch (err) {
+                                                    alert('Hata: ' + (err.response?.data?.error || err.message));
+                                                }
+                                            }}
+                                        >
+                                            {camp.status === 'ACTIVE' ? <><X size={13}/> Durdur</> : <><Play size={13}/> Aktifleştir</>}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -725,6 +762,53 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 ))}
                             </div>
                         </div>
+
+                        {/* Drip Timeline — Otomatik şablon kampanyalar için adım gösterimi */}
+                        {camp.isSystemTemplate && groups.length > 1 && (
+                            <div style={{
+                                background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
+                                padding: '20px 24px', marginBottom: 24,
+                            }}>
+                                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Calendar size={16} style={{ color: '#f59e0b' }} /> Otomasyon Adımları
+                                </h3>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflowX: 'auto', paddingBottom: 4 }}>
+                                    {[...groups].sort((a, b) => (a.delayDays || 0) - (b.delayDays || 0) || (a.sortOrder || 0) - (b.sortOrder || 0)).map((grp, idx, arr) => (
+                                        <React.Fragment key={grp.id}>
+                                            <div style={{
+                                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 100,
+                                            }}>
+                                                <div style={{
+                                                    width: 36, height: 36, borderRadius: '50%',
+                                                    background: (grp.sentCount || 0) > 0 ? '#16a34a' : '#f59e0b',
+                                                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontWeight: 700, fontSize: 13, boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                                                }}>
+                                                    {grp.delayDays || 0}
+                                                </div>
+                                                <div style={{ textAlign: 'center' }}>
+                                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', lineHeight: 1.3 }}>{grp.name}</div>
+                                                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                                                        {grp.delayDays === 0 ? 'Hemen' : `+${grp.delayDays} gün`}
+                                                    </div>
+                                                    {(grp.sentCount || 0) > 0 && (
+                                                        <div style={{ fontSize: 10, color: '#16a34a', fontWeight: 600, marginTop: 2 }}>
+                                                            ✓ {grp.sentCount} gönderim
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {idx < arr.length - 1 && (
+                                                <div style={{
+                                                    flex: '0 0 40px', height: 2, background: '#e5e7eb',
+                                                    position: 'relative', top: -14
+                                                }} />
+                                            )}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Reklam Grupları — 3 Katmanlı: Grup → Gönderi */}
                         {(() => {

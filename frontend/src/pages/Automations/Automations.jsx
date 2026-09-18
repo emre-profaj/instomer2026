@@ -733,7 +733,15 @@ const Automations = ({ initialTab }) => {
 
                     const approvedTpls = templates.filter(t => t.status === 'approved' || t.status === 'APPROVED');
                     const LABELS = { templateId: '📋 WhatsApp Şablonu', channel: '📡 Kanal', delayMinutes: '⏳ Gecikme (dk)', reminderHours: '🔔 Hatırlatma', maxRetries: '🔁 Maks. Deneme', teamId: '👥 Takım', message: '💬 Mesaj', keywords: '🔑 Tetikleyici Kelimeler' };
-                    const catalogGroups = [...new Set(CATALOG.map(a => a.group))];
+
+                    // Pazarlama modülüne taşınan kuralları filtrele
+                    const MARKETING_RULES_MOVED = [
+                        'DRIP_DAY_0', 'DRIP_DAY_1', 'DRIP_DAY_3', 'DRIP_DAY_7', 'DRIP_DAY_14', 'DRIP_DAY_30',
+                        'POSITIVE_LEAD_CAMPAIGN', 'BIRTHDAY_GREETING', 'CUSTOMER_1ST_YEAR',
+                        'INACTIVE_REACTIVATION', 'SATISFACTION_SURVEY', 'POST_SALE_FOLLOWUP', 'REFERRAL_REQUEST',
+                    ];
+                    const filteredCatalog = CATALOG.filter(a => !MARKETING_RULES_MOVED.includes(a.type));
+                    const catalogGroups = [...new Set(filteredCatalog.map(a => a.group))];
 
                     // System automation items for category 1
                     const SYSTEM_ITEMS = [
@@ -759,16 +767,29 @@ const Automations = ({ initialTab }) => {
                         if (cat.type === 'custom') {
                             return automations.filter(a => a.isActive).length;
                         }
-                        return CATALOG.filter(a => a.group === cat.group).filter(a => getRule(a.type).isActive).length;
+                        return filteredCatalog.filter(a => a.group === cat.group).filter(a => getRule(a.type).isActive).length;
                     };
                     const getCategoryTotalCount = (cat) => {
                         if (cat.type === 'system') return SYSTEM_ITEMS.length;
                         if (cat.type === 'custom') return automations.length;
-                        return CATALOG.filter(a => a.group === cat.group).length;
+                        return filteredCatalog.filter(a => a.group === cat.group).length;
                     };
 
                     return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {/* Pazarlama modülüne taşınan kurallar bilgi mesajı */}
+                        <div style={{
+                            background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 12,
+                            padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10,
+                            fontSize: 13, color: '#92400e',
+                        }}>
+                            <span style={{ fontSize: 18 }}>📣</span>
+                            <span>
+                                <strong>Pazarlama dizileri</strong> (drip, doğum günü, reaktivasyon vb.) artık{' '}
+                                <strong>Pazarlama → Kampanyalar</strong> modülünden yönetiliyor.
+                            </span>
+                        </div>
+
                         {ALL_CATEGORIES.map(cat => {
                             const isOpen = expandedAutoType === cat.key;
                             const activeCount = getCategoryActiveCount(cat);
@@ -949,7 +970,7 @@ const Automations = ({ initialTab }) => {
                                             {/* ── CATALOG AUTOMATIONS ── */}
                                             {cat.type === 'catalog' && (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                                    {CATALOG.filter(a => a.group === cat.group).map(auto => {
+                                                    {filteredCatalog.filter(a => a.group === cat.group).map(auto => {
                                                         const rule = getRule(auto.type);
                                                         const isItemExp = expandedAutoType === cat.key && expandedRules[auto.type];
                                                         const cfg = rule.config || {};
