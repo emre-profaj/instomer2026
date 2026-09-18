@@ -894,6 +894,7 @@ export const webhookHandler = async (req, res) => {
                 let msg_body = '';
                 let mediaUrl = null;
                 let mediaType = null;
+                let isReaction = false;
 
                 if (message.type === 'text') {
                     msg_body = message.text?.body || '';
@@ -938,6 +939,9 @@ export const webhookHandler = async (req, res) => {
                     msg_body = `👤 Kişi Kartı: ${contactCards || 'Paylaşılan Kişi'}`;
                 } else if (message.type === 'order') {
                     msg_body = `🛍️ Sipariş: ${message.order?.text || 'Sipariş Detayı'}`;
+                } else if (message.type === 'reaction') {
+                    isReaction = true;
+                    msg_body = `${message.reaction?.emoji || '👍'} (tepki)`;
                 } else {
                     // Fallback
                     if (message.referral) {
@@ -1229,7 +1233,7 @@ export const webhookHandler = async (req, res) => {
                     } else {
                         // Mevcut konuşma - güncelle
                         const updateData = {};
-                        if (conversation.status === 'RESOLVED') {
+                        if (conversation.status === 'RESOLVED' && !isReaction) {
                             updateData.status = 'OPEN';
                         }
                         if (!conversation.assignedBotId && waNumber.assignedBotId) {
@@ -1305,10 +1309,12 @@ export const webhookHandler = async (req, res) => {
                     }
 
                     // Madde 0: Pipeline post-processing (niyet→aşama, lead puanlama, auto case, takım bot)
-                    try {
-                        const { runChannelPostProcessing } = await import('./inbox.controller.js');
-                        runChannelPostProcessing(waNumber.workspaceId, conversation.id, contact.id, msg_body, 'WHATSAPP').catch(() => {});
-                    } catch (e) { /* pipeline opsiyonel */ }
+                    if (!isReaction) {
+                        try {
+                            const { runChannelPostProcessing } = await import('./inbox.controller.js');
+                            runChannelPostProcessing(waNumber.workspaceId, conversation.id, contact.id, msg_body, 'WHATSAPP').catch(() => {});
+                        } catch (e) { /* pipeline opsiyonel */ }
+                    }
 
                     // Update conversation last message time and unread count
                     const waConvUpdate = {
@@ -1370,6 +1376,13 @@ export const webhookHandler = async (req, res) => {
                         assignedToId: conversation.assignedToId || null,
                         assignedTeamId: conversation.assignedTeamId || null
                     });
+
+                    // Emoji tepkisi bir soru değildir: gelen kutusunda görünür ama bot cevap
+                    // yazmaz, sınıflandırma çalışmaz ve kapanmış vaka yeniden açılmaz.
+                    if (isReaction) {
+                        releaseMessageLock(wamid);
+                        return res.sendStatus(200);
+                    }
 
                     // If profanity was detected, send warning, save warning to DB, and skip AI auto-reply/rules
                     if (hasProfanityDetected) {
@@ -1493,7 +1506,7 @@ export const webhookHandler = async (req, res) => {
 
                         // 📦 AUTO-CASE: Conversation için case yoksa oluştur
                         const { ensureCaseForConversation } = await import('./case.controller.js');
-                        ensureCaseForConversation(waNumber.workspaceId, conversation.id).catch(e =>
+                        ensureCaseForConversation(waNumber.workspaceId, conversation.id, { reopenIfClosed: true }).catch(e =>
                             console.error('⚠️ [AutoCase] WA error:', e.message)
                         );
                     } catch (extractError) {

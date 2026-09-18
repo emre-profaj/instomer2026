@@ -316,6 +316,8 @@ ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşa
 
 3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz.
    ⚠️ KRİTİK ŞUBE KURALI: Şube bazlı akışları (örn: "Bornova Kadın", "Gaziemir Erkek") SADECE MÜŞTERİ o şubeyi açıkça belirtmişse veya sormuşsa eşleştir! Eğer müşteri henüz şube adı ("Bornova", "Gaziemir") söylememişse, botun/temsilcinin tek taraflı fiyat yazmış olması müşterinin tercihi sayılmaz → matchedFunnelId için null yaz (Genel kalsın).
+   ⚠️ HİZMET ŞUBEYİ YENER: Müşteri bir hizmet/ürün soruyorsa, o hizmetin anahtar kelimesi hangi akışta tanımlıysa O AKIŞI seç — mesajda şube adı geçiyor olması bunu değiştirmez. Örnek: "bornova pilates fiyatı" → şube akışı DEĞİL, "pilates" anahtar kelimesinin tanımlı olduğu akış.
+   ⚠️ ŞUBE AKIŞI İKİ BİLGİ İSTER: Adı hem şube hem cinsiyet içeren akışları (örn. "Bornova Kadın") ancak müşteri İKİSİNİ DE belli ettiyse seç. Sadece şube adı geçiyor ama cinsiyet belli değilse hiçbir şube akışını seçme → null yaz.
 
 4. matchedBranchId: Yukarıdaki ŞUBELER bölümünden müşterinin açıkça bahsettiği veya ilgilendiği şubenin ID'sini yaz. Müşteri şube belirtmemişse null. Tek şube varsa ve müşteri konuyla ilgileniyorsa o şubeyi yaz.
 5. topicCategoryId: Yukarıdaki KONU KATEGORİLERİ bölümünden konuşmaya en uygun kategorinin ID'sini yaz. Yoksa null.
@@ -447,30 +449,30 @@ SADECE JSON döndür, başka bir şey yazma:
 /**
  * Akış kriterleri ve isimlerine göre en uygun akış ID'sini bulur (Deterministic Matcher)
  */
+// Kelimenin sonuna ek gelebilir ("bornovadan"), ama başına gelemez:
+// düz includes() kullanılırsa "female" metni "male" kelimesini de eşleştirir.
+function containsWord(text, word) {
+    let i = text.indexOf(word);
+    while (i !== -1) {
+        const prev = i === 0 ? '' : text[i - 1];
+        if (!prev || !/[\p{L}\p{N}]/u.test(prev)) return true;
+        i = text.indexOf(word, i + 1);
+    }
+    return false;
+}
+
 export function findBestMatchingFunnel(funnels, searchText) {
     if (!funnels || funnels.length === 0 || !searchText) return null;
     const lower = searchText.toLowerCase();
-    let bestFunnelId = null;
-    let bestScore = 0;
 
+    const candidates = [];
     for (const f of funnels) {
         if (f.name === 'Genel' || f.name === 'Genel CRM') continue;
-        let score = 0;
 
-        // 1. Akış ismindeki her bir kelimeyi kontrol et (örn: "Bornova", "Erkek")
         const nameWords = f.name.toLowerCase().split(/[\s\-_/]+/).filter(w => w.length >= 2);
-        let nameMatchCount = 0;
-        for (const nw of nameWords) {
-            if (lower.includes(nw)) {
-                score += 4;
-                nameMatchCount++;
-            }
-        }
-        if (nameMatchCount === nameWords.length && nameWords.length > 1) {
-            score += 15;
-        }
+        const matchedNameWords = nameWords.filter(w => containsWord(lower, w));
 
-        // 2. classificationCriteria kontrolü
+        let keywords = [];
         if (f.classificationCriteria) {
             let critText = '';
             try {
@@ -482,25 +484,46 @@ export function findBestMatchingFunnel(funnels, searchText) {
             } catch {
                 critText = String(f.classificationCriteria);
             }
-
             if (critText) {
-                const keywords = critText.toLowerCase().replace(/[.,;:]/g, ' ').split(/\s+/).filter(w => w.length >= 2 && !['içeriyorsa', 'içeren', 'olan', 'veya', 'varsa', 'kelimelerini', 'kelimesini', 'için', 'hakkında'].includes(w));
-                let kwMatchCount = 0;
-                for (const kw of keywords) {
-                    if (lower.includes(kw)) {
-                        score += 3;
-                        kwMatchCount++;
-                    }
-                }
-                if (kwMatchCount >= 2) {
-                    score += 10;
-                }
+                keywords = critText.toLowerCase().replace(/[.,;:]/g, ' ').split(/\s+/).filter(w => w.length >= 2 && !['içeriyorsa', 'içeren', 'olan', 'veya', 'varsa', 'kelimelerini', 'kelimesini', 'için', 'hakkında'].includes(w));
             }
         }
+        const matchedKeywords = keywords.filter(kw => containsWord(lower, kw));
 
-        if (score > bestScore && score >= 4) {
+        candidates.push({
+            id: f.id,
+            fullNameMatch: nameWords.length > 1 && matchedNameWords.length === nameWords.length,
+            signals: new Set([...matchedNameWords, ...matchedKeywords])
+        });
+    }
+
+    // Birden fazla akışa uyan kelime o akışı seçtirmeye yetmez: "bornova" hem
+    // "Bornova Erkek" hem "Bornova Kadın" demektir, tek başına ayırt etmez.
+    const funnelsPerSignal = new Map();
+    for (const c of candidates) {
+        for (const s of c.signals) funnelsPerSignal.set(s, (funnelsPerSignal.get(s) || 0) + 1);
+    }
+
+    let bestFunnelId = null;
+    let bestScore = 0;
+    for (const c of candidates) {
+        // Tek bir akışa özgü kelime ("pilates") akış adından gelen eşleşmeyi yener:
+        // ad eşleşmesi sadece kimliktir, anahtar kelime kullanıcının yazdığı kuraldır.
+        let score = c.fullNameMatch ? 15 : 0;
+        let specificHits = 0;
+        for (const s of c.signals) {
+            if (funnelsPerSignal.get(s) === 1) {
+                score += 20;
+                specificHits++;
+            } else {
+                score += 1;
+            }
+        }
+        if (!specificHits && !c.fullNameMatch && c.signals.size < 2) continue;
+
+        if (score > bestScore) {
             bestScore = score;
-            bestFunnelId = f.id;
+            bestFunnelId = c.id;
         }
     }
 

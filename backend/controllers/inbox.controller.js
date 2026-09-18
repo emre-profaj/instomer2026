@@ -298,7 +298,7 @@ async function processPostSave(workspaceId, conversation, contact, messageText, 
     const caseModule = await import('./case.controller.js');
     const ensureCase = caseModule.ensureCaseForConversation || caseModule.default?.ensureCaseForConversation;
     if (ensureCase) {
-      await ensureCase(workspaceId, conversation.id);
+      await ensureCase(workspaceId, conversation.id, { reopenIfClosed: true });
     }
   } catch (e) { /* opsiyonel */ }
 
@@ -375,7 +375,7 @@ async function processPostSave(workspaceId, conversation, contact, messageText, 
   // ── 18. Auto Case Opening (Madde 2) ──────────────────────
   try {
     const { autoOpenCaseIfNeeded } = await import('../services/caseAutoOpen.service.js');
-    await autoOpenCaseIfNeeded(workspaceId, contact.id, conversation.id);
+    await autoOpenCaseIfNeeded(workspaceId, contact.id, conversation.id, { reopenIfClosed: true });
   } catch (caseErr) {
     console.error('[InboxController] Auto case error:', caseErr.message);
   }
@@ -422,7 +422,7 @@ export async function runChannelPostProcessing(workspaceId, conversationId, cont
     // ── 3. Auto Case Opening (Madde 2) ──────────────────────
     try {
       const { autoOpenCaseIfNeeded } = await import('../services/caseAutoOpen.service.js');
-      await autoOpenCaseIfNeeded(workspaceId, contactId, conversationId);
+      await autoOpenCaseIfNeeded(workspaceId, contactId, conversationId, { reopenIfClosed: true });
     } catch (e) { /* opsiyonel */ }
 
     // ── 4. Takım Bot Çözümleme (Madde 5) ────────────────────

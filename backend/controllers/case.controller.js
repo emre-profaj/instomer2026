@@ -1,6 +1,8 @@
 import prisma from '../lib/prisma.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 
+const CLOSED_CASE_STATUSES = ['CLOSED', 'WON', 'LOST'];
+
 /**
  * Increments suffix in sequence:
  * aa001 -> aa002 -> ... -> aa999 -> ab001 -> ... -> az999 -> ba001 -> ... -> zz999
@@ -143,6 +145,21 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
             if (conv.caseId) {
                 const assignedCase = await prisma.case.findUnique({ where: { id: conv.caseId } });
                 if (assignedCase) {
+                    // Müşteri kapanmış bir vakaya tekrar yazdıysa vaka yeniden açılmalı;
+                    // yoksa konuşma "Kapalı" görünmeye devam eder ve kimsenin önüne düşmez.
+                    if (options.reopenIfClosed && CLOSED_CASE_STATUSES.includes(assignedCase.status)) {
+                        await prisma.case.update({
+                            where: { id: assignedCase.id },
+                            data: { status: 'ACTIVE', closedAt: null }
+                        });
+                        await prisma.conversation.updateMany({
+                            where: { caseId: assignedCase.id, status: 'RESOLVED' },
+                            data: { status: 'OPEN', resolvedAt: null }
+                        });
+                        assignedCase.status = 'ACTIVE';
+                        console.log(`📦 [AutoCase] Case ${assignedCase.caseNumber} yeniden açıldı — müşteri tekrar yazdı`);
+                    }
+
                     const candidateTopic = options.initialTopic || (conv.aiTopic && !isGenericOrDecorative(conv.aiTopic) ? conv.aiTopic : null);
                     if (candidateTopic && isGenericOrDecorative(assignedCase.title)) {
                         await prisma.case.update({
@@ -896,8 +913,7 @@ export const updateCase = async (req, res) => {
 
         // CASCADE: status değiştiyse conversation'ları da güncelle
         if (status !== undefined) {
-            const closedStatuses = ['CLOSED', 'WON', 'LOST'];
-            if (closedStatuses.includes(status)) {
+            if (CLOSED_CASE_STATUSES.includes(status)) {
                 // Case kapatıldı → açık conversation'ları da kapat
                 await prisma.conversation.updateMany({
                     where: { caseId, status: { not: 'RESOLVED' } },

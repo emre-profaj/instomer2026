@@ -624,7 +624,7 @@ export const syncEmailsInternal = async (channelId) => {
 
                 // 📦 AUTO-CASE: Conversation için case yoksa oluştur
                 const { ensureCaseForConversation } = await import('./case.controller.js');
-                ensureCaseForConversation(channel.workspaceId, conversation.id).catch(e =>
+                ensureCaseForConversation(channel.workspaceId, conversation.id, { reopenIfClosed: true }).catch(e =>
                     console.error('⚠️ [AutoCase] Email error:', e.message)
                 );
             } catch (extractError) {

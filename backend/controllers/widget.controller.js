@@ -472,7 +472,7 @@ export const handleWidgetChat = async (req, res) => {
 
             // 📦 AUTO-CASE: Conversation için case yoksa oluştur
             const { ensureCaseForConversation } = await import('./case.controller.js');
-            ensureCaseForConversation(workspaceId, conversation.id).catch(e =>
+            ensureCaseForConversation(workspaceId, conversation.id, { reopenIfClosed: true }).catch(e =>
                 console.error('⚠️ [AutoCase] Widget error:', e.message)
             );
         } catch (extractError) {

@@ -2254,7 +2254,7 @@ async function processWebhookAsync(body) {
 
                             // 📦 AUTO-CASE: Conversation için case yoksa oluştur
                             const { ensureCaseForConversation } = await import('./case.controller.js');
-                            ensureCaseForConversation(facebookPage.workspaceId, conversation.id).catch(e =>
+                            ensureCaseForConversation(facebookPage.workspaceId, conversation.id, { reopenIfClosed: true }).catch(e =>
                                 console.error('⚠️ [AutoCase] FB/IG error:', e.message)
                             );
                         } catch (extractError) {

@@ -5,7 +5,7 @@ import { ensureCaseForConversation } from '../controllers/case.controller.js';
  * Tüm operasyonları merkezi ensureCaseForConversation üzerinden yürütür.
  * Eşzamanlı çağrılarda FIFO Mutex kilidi kullanarak mükerrer case oluşmasını kesin olarak engeller.
  */
-export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationId) {
+export async function autoOpenCaseIfNeeded(workspaceId, contactId, conversationId, options = {}) {
     if (!workspaceId || !conversationId) return null;
-    return await ensureCaseForConversation(workspaceId, conversationId);
+    return await ensureCaseForConversation(workspaceId, conversationId, options);
 }
