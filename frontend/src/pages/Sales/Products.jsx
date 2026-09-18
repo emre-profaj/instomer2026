@@ -845,11 +845,18 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                 // ve kenarlara uzanmasını sağlayan negatif kenar boşlukları
                 // `overflow: hidden` ile kırpılıyor.
                 (activeTab === 'categories' || activeTab === 'productGroups') ? {
+                    // Gri zemin sayfanın kendisinde değil BURADA duruyor.
+                    // Sebep: .base-content 24px 28px dolgulu ve sayfa bu
+                    // sarmalayıcının içinde; negatif kenar boşluğunu sayfaya
+                    // verince flex düzeninde dolgunun üzerine taşmıyor ve
+                    // altta beyaz şerit kalıyordu. Sarmalayıcı dolguyu dört
+                    // yandan iptal ediyor, min-height ikisini telafi ediyor.
                     padding: 0,
-                    background: 'transparent',
-                    // Sayfanın gri zemini kalan boşluğu doldurabilsin diye
-                    // sarmalayıcı kapsayıcı yüksekliğini alıyor.
-                    minHeight: '100%',
+                    background: '#fafafb',
+                    // ÜST dolgu bilerek iptal edilmiyor: sekme şeridi en üste
+                    // yapışıyor ve üçüncü sekmeye geçildiğinde sayfa zıplıyor.
+                    margin: '0 -28px -24px',
+                    minHeight: 'calc(100% + 24px)',
                     display: 'flex',
                     flexDirection: 'column'
                 } : {

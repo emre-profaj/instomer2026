@@ -37,19 +37,12 @@
    üstte bileşenin kendi sekme şeridi var.
 
    Tek başına (Satış > Ürünler) zemini ve dolguyu .sales-page veriyor. */
+/* Gri zemin ve kapsayıcı dolgusunun iptali sarmalayıcıda (Products.jsx);
+   burada yalnızca içeriğin kendi boşluğu var. Sayfa kalan yüksekliği
+   dolduruyor, içerik daha uzunsa büyümeye devam ediyor ve kaydırma
+   kapsayıcıda kalıyor. */
 .ct-page.embedded {
-    /* Yatay dolgunun yanında ALT dolgu da iptal ediliyor: .base-content'in
-       24px'lik alt boşluğu gri alanın dışında kalıyor ve en altta ince bir
-       beyaz şerit bırakıyordu. */
-    margin: 0 -28px -24px;
     padding: 28px 28px 64px;
-    background: #fafafb;
-
-    /* Kalan boşluğu doldurur. Olmazsa gri zemin içeriğin bittiği yerde
-       kesiliyor ve altında kapsayıcının beyazı görünüyor — az kayıtlı
-       listede sayfanın yarısı beyaz kalıyordu. `flex-basis: auto` ile
-       içerik daha uzunsa büyümeye devam ediyor; kaydırma yine
-       kapsayıcıda kalıyor. */
     flex: 1 0 auto;
 }
 
