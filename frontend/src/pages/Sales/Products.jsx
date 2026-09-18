@@ -840,9 +840,11 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
         <div
             className={`sales-page products-page ${embedded ? 'embedded' : ''}`}
             style={embedded ? (
-                // Bölümler sekmesi kendi gri zeminini kuruyor; beyaz kart
-                // çerçevesi içinde kalırsa zemin kutuya sıkışıyor.
-                activeTab === 'categories' ? {
+                // Bölümler ve Gruplar sekmeleri kendi gri zeminini kuruyor;
+                // beyaz kart çerçevesi içinde kalırsa zemin kutuya sıkışıyor
+                // ve kenarlara uzanmasını sağlayan negatif kenar boşlukları
+                // `overflow: hidden` ile kırpılıyor.
+                (activeTab === 'categories' || activeTab === 'productGroups') ? {
                     padding: 0,
                     background: 'transparent',
                     minHeight: 'auto',
@@ -1413,7 +1415,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                     <span></span>
                                     <span>{labels.groupSingle}</span>
                                     <span>{labels.categorySingle}</span>
-                                    <span>{labels.productsTab}</span>
+                                    <span>Adet</span>
                                     <span>Durum</span>
                                     <span></span>
                                 </div>
