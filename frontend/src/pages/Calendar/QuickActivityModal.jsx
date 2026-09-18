@@ -81,7 +81,7 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
             <div className="qam-modal">
                 {/* Header */}
                 <div className="qam-header" style={{ '--action-color': config.color }}>
-                    <div className="qam-header-icon" style={{ background: config.color + '20', color: config.color }}>
+                    <div className="qam-header-icon">
                         {config.icon}
                     </div>
                     <div className="qam-header-text">
@@ -206,7 +206,6 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                     <button className="qam-btn-cancel" onClick={onClose}>İptal</button>
                     <button
                         className="qam-btn-save"
-                        style={{ background: config.color }}
                         onClick={handleSave}
                         disabled={saving}
                     >

@@ -466,10 +466,11 @@ select.cal-meeting-type-select {
 }
 
 /* ── Boş ve yükleniyor ──────────────────────────────────── */
-.activities-empty {
-    padding: 60px 28px 68px;
-    text-align: center;
-    color: var(--tk-ink-3);
+/* .activities-empty sayfa boş durumu DEĞİL — tablo hücresindeki tire.
+   Önceki hâli her boş hücreye 28px yan dolgu bindirip sütunları şişiriyordu. */
+.calendar-page .activities-empty {
+    padding: 0;
+    color: #c7ccd4;
     font-size: 13px;
 }
 
@@ -714,3 +715,281 @@ select.cal-meeting-type-select {
     justify-content: center;
 }
 .calendar-page .cal-filters-main-row .cal-sync-btn span { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DENETİM DÜZELTMELERİ
+   Aşağıdakiler, tasarım katmanının Calendar.css'i yenemediği ya da
+   hiç karşılamadığı yerler. Her biri ya daha yüksek özgüllüklü bir
+   kuralı, ya bir !important'ı, ya da hiç ele alınmamış bir seçiciyi
+   karşılıyor.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Liste: yüzey içinde ikinci kutu ───────────────────────── */
+.calendar-page .activities-table-wrapper {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+.calendar-page .activities-list-page { padding: 0; }
+
+/* Tür ve temsilci rozetleri mavi aileden çıkıyor */
+.calendar-page .activities-type-badge {
+    background: #f4f5f7;
+    color: var(--tk-ink-2);
+    border: 0;
+    border-radius: 10px;
+}
+.calendar-page .activities-type-badge.type-appointment {
+    background: var(--tk-accent-soft);
+    color: var(--tk-accent-deep);
+}
+.calendar-page .activities-agent-badge {
+    background: #f4f5f7;
+    color: var(--tk-ink-2);
+    border: 1px solid #e6e9ee;
+    border-radius: 999px;
+}
+
+/* ── İş listesi ────────────────────────────────────────────── */
+/* Geciken bölümündeki satırlarda 3px kırmızı sol çerçeve (0,4,0) kalıyordu;
+   .todo-icon zaten renk şeridine döndüğü için yan yana iki şerit oluşuyordu. */
+.calendar-page .todo-section-header.overdue + .todo-section-list .todo-item {
+    border-left: 0;
+}
+.calendar-page .todo-section-list { gap: 0; }
+.calendar-page .todo-date-label {
+    padding: 12px 18px 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--tk-ink-3);
+    background: transparent;
+    border: 0;
+}
+
+/* ── Pencereler ────────────────────────────────────────────── */
+/* Atama kartı seçiliyken ikon kutusu dolu renge boyanıyordu (0,3,0) */
+.calendar-page .apt-assign-card.selected .apt-assign-icon,
+.calendar-page .apt-assign-card.selected .apt-assign-icon.resource {
+    background: var(--tk-accent-soft);
+    color: var(--tk-accent-deep);
+}
+.calendar-page .apt-assign-card.selected {
+    border-color: #fecaca;
+    background: #fffafa;
+}
+
+/* Taşıma penceresi: hızlı saat çipleri ve Google rozeti */
+.reschedule-time-pill {
+    border-radius: 11px;
+    border: 1px solid #e6e9ee;
+    background: #ffffff;
+    color: var(--tk-ink-2);
+}
+.reschedule-time-pill.active,
+.reschedule-time-pill.selected {
+    background: var(--tk-accent-soft);
+    border-color: #fecaca;
+    color: var(--tk-accent-deep);
+}
+.reschedule-google-badge {
+    color: inherit;
+    border-radius: 999px;
+}
+
+/* Google bilgi kutusu ve Meet düğmesi mavi/yeşil dolu renkten çıkıyor */
+.google-event-notice {
+    background: #fafafb;
+    border: 1px solid #e6e9ee;
+    border-radius: 12px;
+    color: var(--tk-ink-2);
+}
+.apt-google-meet-btn {
+    background: #ecfdf5 !important;
+    color: #065f46 !important;
+    border: 1px solid #a7f3d0 !important;
+    border-radius: 11px;
+}
+
+/* Çakışma uyarısı hiç biçimlendirilmemişti */
+.conflict-warning {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--tk-accent-soft);
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    color: var(--tk-accent-deep);
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+
+/* ── Popup ve tooltip ──────────────────────────────────────── */
+/* Uzun notlu aktivite penceresi 85vh'de kesiliyor, alt bilgi kayboluyordu */
+.calendar-activity-popup { overflow: auto; }
+
+.calendar-page .day-popup-item {
+    background: #ffffff;
+    border-left-color: #cbd2dc;
+    border-radius: 8px;
+    box-shadow: inset 0 1px 0 var(--tk-line);
+}
+
+/* İpucu paneli diğer pencerelerden kopmuştu: gradyan başlık, 12px köşe */
+.appointment-tooltip {
+    border-radius: 16px;
+    border: 0;
+    box-shadow: 0 18px 44px -22px rgba(15, 23, 42, .4), 0 0 0 1px rgba(15, 23, 42, .06);
+}
+.tooltip-header {
+    background: #ffffff;
+    box-shadow: inset 0 -1px 0 var(--tk-line);
+    border-radius: 16px 16px 0 0;
+    color: var(--tk-ink);
+}
+.tooltip-header * { color: var(--tk-ink); }
+
+/* ── Izgara ────────────────────────────────────────────────── */
+/* Sürükleme hedefi yeşil kesikli kutuya dönüyordu */
+.calendar-day.drop-target {
+    background-color: var(--tk-accent-soft) !important;
+    border: 0 !important;
+    box-shadow: inset 0 0 0 2px var(--tk-accent) !important;
+}
+
+/* Bugün yuvarlağı ay görünümünde 28px, diğer günler 24px — hizasızdı */
+.calendar-page .calendar-day.today .day-number {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    display: inline-flex;
+    background: var(--tk-accent);
+    color: #ffffff;
+}
+
+/* Hafta/Gün ızgarası soğuk griye kaçıyordu; bugün rengi de mavi+kehribardı */
+.week-header-row,
+.day-view-header {
+    background: #ffffff;
+    border: 0;
+    box-shadow: inset 0 -1px 0 var(--tk-line);
+}
+.week-hour-row,
+.week-hour-cell,
+.week-time-col {
+    border-color: #f5f2f2;
+}
+.week-day-header.today,
+.week-hour-cell.today-col,
+.day-view-header.today {
+    background: var(--tk-accent-soft);
+}
+.week-day-header.today .week-day-number.today-badge {
+    background: var(--tk-accent);
+    color: #ffffff;
+}
+
+/* ── Başlık ve süzgeçler ───────────────────────────────────── */
+/* Google düğmelerinin hover hâli (0,3,0) tasarım katmanını yeniyordu */
+.google-cal-connect-btn:hover:not(:disabled),
+.google-cal-add-btn:hover:not(:disabled) {
+    background: #f7f8fa;
+    border-color: #d8dde5;
+    color: var(--tk-ink);
+    transform: none;
+}
+/* Google çipi gövdesi nötr; hesabı ayıran renk yalnızca noktada kalıyor */
+.calendar-page .google-cal-pill.connected {
+    background: #ffffff !important;
+    border-color: #e6e9ee !important;
+    color: var(--tk-ink-2) !important;
+}
+.calendar-page .google-cal-pill .google-cal-email { color: var(--tk-ink-2) !important; }
+
+/* Kaynak seçici giriş kutusu grubuna katılıyor */
+.resource-filter {
+    appearance: none;
+    padding: 8px 12px;
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    background: #ffffff;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tk-ink-2);
+    box-shadow: none;
+}
+.cal-meeting-type-select:hover,
+.cal-meeting-type-select:focus,
+.resource-filter:hover,
+.resource-filter:focus,
+.agent-filter:hover {
+    border-color: #d8dde5;
+    color: var(--tk-ink);
+}
+
+/* Temsilci listesinde seçili satır ve onay kutusu (0,3,0) mavi kalıyordu */
+.agent-multi-item.selected {
+    background: var(--tk-accent-soft);
+    color: var(--tk-accent-deep);
+    font-weight: 600;
+}
+.agent-multi-item.selected .agent-multi-check {
+    background: var(--tk-accent);
+    border-color: var(--tk-accent);
+}
+
+/* ── QuickActivityModal ────────────────────────────────────── */
+/* Bu dosya Takvim.css'ten ÖNCE yükleniyor, yani buradan ezilebilir —
+   ama hiç ele alınmamıştı. İndigo/mavi kimlik tek dile bağlanıyor. */
+.qam-modal { border-radius: 20px; }
+.qam-header-icon {
+    background: var(--tk-accent-soft);
+    color: var(--tk-accent-deep);
+    border-radius: 12px;
+}
+.qam-input,
+.qam-textarea,
+.qam-select {
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    font-size: 13px;
+}
+.qam-input:focus,
+.qam-textarea:focus,
+.qam-select:focus {
+    border-color: var(--tk-accent);
+    box-shadow: 0 0 0 3px #fee2e2;
+}
+.qam-choice {
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    background: #ffffff;
+    color: var(--tk-ink-2);
+}
+.qam-choice.selected {
+    background: var(--tk-accent-soft);
+    border-color: #fecaca;
+    color: var(--tk-accent-deep);
+}
+.qam-btn-cancel {
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    background: #ffffff;
+    color: var(--tk-ink-2);
+}
+.qam-btn-save {
+    background: var(--tk-accent);
+    border: 0;
+    border-radius: 11px;
+    color: #ffffff;
+}
+.qam-btn-save:hover:not(:disabled) { background: var(--tk-accent-deep); }
+.qam-field-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--tk-ink-3);
+}

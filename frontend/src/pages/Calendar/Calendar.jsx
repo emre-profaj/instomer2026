@@ -82,6 +82,10 @@ const CALL_STATUS_LABELS = {
 };
 const callStatusLabel = (code) => CALL_STATUS_LABELS[code] || code || '—';
 
+/* Aktivite önceliği. Bilinmeyen kod ekrana ham basılıyordu. */
+const PRIORITY_LABELS = { URGENT: 'Acil', HIGH: 'Yüksek', NORMAL: 'Normal', MEDIUM: 'Orta', LOW: 'Düşük' };
+const priorityLabel = (code) => PRIORITY_LABELS[code] || 'Normal';
+
 /* Randevu blokları dolu renk + beyaz yazıyla çiziliyordu; 11 punto beyaz
    yazı o zeminde okunmuyordu. Aynı renkten yumuşak zemin, koyu yazı ve
    sol renk şeridi üretiliyor. Renk JS'ten geldiği için bu dönüşüm de
@@ -2115,7 +2119,7 @@ function formatDoctorDisplayName(rawName) {
                                 onClick={() => setShowCompleted(p => !p)}
                                 style={{
                                     width: 36, height: 20, borderRadius: 10,
-                                    background: showCompleted ? '#10b981' : '#cbd5e1',
+                                    background: showCompleted ? '#ef4444' : '#cbd5e1',
                                     position: 'relative', transition: 'background 0.2s', flexShrink: 0
                                 }}
                             >
@@ -2236,7 +2240,7 @@ function formatDoctorDisplayName(rawName) {
                                         </div>
                                         <div className="todo-content">
                                             <span className="todo-title">{act.title || (isMeetingAct ? actMType.label : cfg.label)}</span>
-                                            {isMeetingAct && <span className="todo-agent" style={{ color: actMType.color, fontWeight: 500 }}>{actMType.icon} {actMType.label}</span>}
+                                            {isMeetingAct && <span className="todo-agent">{actMType.icon} {actMType.label}</span>}
                                             {act.contact?.name && <span className="todo-contact">{act.contact.name}</span>}
                                             {act.assignee?.name && <span className="todo-agent">{act.assignee.name}</span>}
                                         </div>
@@ -2263,12 +2267,12 @@ function formatDoctorDisplayName(rawName) {
                                 const gColor = apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : null;
                                 return (
                                     <div key={apt.id} className="todo-item" onClick={() => openEditModal(apt)}>
-                                        <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? gColor : (apt.color || '#3b82f6') }}>
+                                        <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? gColor : (apt.color || '#94a3b8') }}>
                                             {apt.isGoogleEvent ? <Globe size={13} /> : mType.icon}
                                         </div>
                                         <div className="todo-content">
                                             <span className="todo-title">{apt.title}</span>
-                                            <span className="todo-agent" style={{ color: mType.color, fontWeight: 500 }}>{mType.icon} {mType.label}</span>
+                                            <span className="todo-agent">{mType.icon} {mType.label}</span>
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && (
                                                 <span className="todo-agent">
@@ -2276,8 +2280,8 @@ function formatDoctorDisplayName(rawName) {
                                                     {apt.assignedTo.name}
                                                 </span>
                                             )}
-                                            {apt.isGoogleEvent && <span className="todo-agent" style={{ color: gColor, fontWeight: 500 }}>Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
-                                            {apt.doctorName && <span className="todo-agent" style={{ color: '#15803d', fontWeight: 500 }}><Stethoscope size={12} /> {formatDoctorDisplayName(apt.doctorName)}</span>}
+                                            {apt.isGoogleEvent && <span className="todo-agent">Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
+                                            {apt.doctorName && <span className="todo-agent"><Stethoscope size={12} /> {formatDoctorDisplayName(apt.doctorName)}</span>}
                                         </div>
                                         <div className="todo-time">{formatTime(apt.startTime)}</div>
                                     </div>
@@ -2384,7 +2388,7 @@ function formatDoctorDisplayName(rawName) {
                                                         onDragStart={(e) => handleDragStart(e, apt)}
                                                         onDragEnd={handleDragEnd}
                                                         className={`week-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
-                                                        style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
+                                                        style={softTone(apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6'))}
                                                         onClick={e => {
                                                             if (isDraggingRef.current) return;
                                                             e.stopPropagation();
@@ -2398,7 +2402,7 @@ function formatDoctorDisplayName(rawName) {
                                             })}
                                             {calls.map(sc => (
                                                 <div key={sc.id} className="week-event"
-                                                    style={{ backgroundColor: '#f97316' }}
+                                                    style={softTone('#f97316')}
                                                     onClick={e => { e.stopPropagation(); openScheduledCallModal(sc); }}>
                                                     <span className="week-event-time">{formatTime(sc.scheduledAt)}</span>
                                                     <span className="week-event-title">{sc.contactName || sc.toNumber}</span>
@@ -2453,7 +2457,7 @@ function formatDoctorDisplayName(rawName) {
                                                     onDragStart={(e) => handleDragStart(e, apt)}
                                                     onDragEnd={handleDragEnd}
                                                     className={`day-event ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
-                                                    style={{ backgroundColor: apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6') }}
+                                                    style={softTone(apt.isGoogleEvent ? getGoogleAccountColor(apt.googleEmail, googleStatus.accounts).primary : (apt.color || '#3b82f6'))}
                                                     onClick={e => {
                                                         if (isDraggingRef.current) return;
                                                         e.stopPropagation();
@@ -2468,7 +2472,7 @@ function formatDoctorDisplayName(rawName) {
                                         })}
                                         {calls.map(sc => (
                                             <div key={sc.id} className="day-event"
-                                                style={{ backgroundColor: '#f97316' }}
+                                                style={softTone('#f97316')}
                                                 onClick={e => { e.stopPropagation(); openScheduledCallModal(sc); }}>
                                                 <span className="day-event-time">{formatTime(sc.scheduledAt)}</span>
                                                 <span className="day-event-title">{sc.contactName || sc.toNumber}</span>
@@ -2820,8 +2824,8 @@ function formatDoctorDisplayName(rawName) {
                                                         <span
                                                             className="activities-status-pill"
                                                             style={{
-                                                                backgroundColor: (status?.color || (isCall ? '#f97316' : '#94a3b8')) + '18',
-                                                                color: status?.color || (isCall ? '#f97316' : '#94a3b8')
+                                                                ...softTone(status?.color || (isCall ? '#f97316' : '#94a3b8')),
+                                                                borderLeft: undefined
                                                             }}
                                                         >
                                                             {isCall ? callStatusLabel(item.status) : (status?.label || '—')}
@@ -3374,7 +3378,9 @@ function formatDoctorDisplayName(rawName) {
                                                 key={status.value}
                                                 type="button"
                                                 className={`apt-status-pill ${formData.status === status.value ? 'active' : ''}`}
-                                                style={formData.status === status.value ? { background: status.color, borderColor: status.color } : {}}
+                                                style={formData.status === status.value
+                                                    ? { ...softTone(status.color), borderLeft: undefined, borderColor: status.color }
+                                                    : {}}
                                                 onClick={() => setFormData(prev => ({ ...prev, status: status.value }))}
                                             >
                                                 {status.label}
@@ -3571,9 +3577,9 @@ function formatDoctorDisplayName(rawName) {
                                                 style={{
                                                     fontSize: 11,
                                                     fontWeight: 600,
-                                                    color: '#2563eb',
-                                                    background: '#eff6ff',
-                                                    border: '1px solid #bfdbfe',
+                                                    color: '#b91c1c',
+                                                    background: '#fef2f2',
+                                                    border: '1px solid #fecaca',
                                                     borderRadius: 6,
                                                     padding: '2px 8px',
                                                     cursor: 'pointer'
@@ -3795,7 +3801,7 @@ function formatDoctorDisplayName(rawName) {
                                                 }}
                                             >
                                                 {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>Google</span>}
-                                                <span className="popup-badge meeting-type" style={{ background: mType.color, color: '#fff' }}>{mType.icon} {mType.label}</span>
+                                                <span className="popup-badge meeting-type" style={{ ...softTone(mType.color), borderLeft: undefined }}>{mType.icon} {mType.label}</span>
                                                 {isOverdue && <span className="popup-badge overdue"><AlertCircle size={11} /></span>}
                                                 {isCompleted && <span className="popup-badge completed"><Check size={11} /></span>}
                                                 <span className="popup-time">{formatTime(apt.startTime)}</span>
@@ -3834,7 +3840,7 @@ function formatDoctorDisplayName(rawName) {
                                                 style={{ borderLeftColor: isMeetingAct ? actMType.color : cfg.color }}
                                                 onClick={() => { openActivityModal(act); setDayPopup(null); }}
                                             >
-                                                {isMeetingAct && <span className="popup-badge meeting-type" style={{ background: actMType.color, color: '#fff' }}>{actMType.icon} {actMType.label}</span>}
+                                                {isMeetingAct && <span className="popup-badge meeting-type" style={{ ...softTone(actMType.color), borderLeft: undefined }}>{actMType.icon} {actMType.label}</span>}
                                                 {isOverdue && <span className="popup-badge overdue"><AlertCircle size={11} /></span>}
                                                 {isCompleted && <span className="popup-badge completed"><Check size={11} /></span>}
                                                 <span className="popup-time">{isMeetingAct ? actMType.icon : cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
@@ -3881,11 +3887,11 @@ function formatDoctorDisplayName(rawName) {
                                             <span style={{
                                                 fontSize: 10.5,
                                                 fontWeight: 600,
-                                                background: '#eff6ff',
-                                                color: '#2563eb',
+                                                background: '#fef2f2',
+                                                color: '#b91c1c',
                                                 padding: '2px 8px',
                                                 borderRadius: 12,
-                                                border: '1px solid #bfdbfe'
+                                                border: '1px solid #fecaca'
                                             }}>
                                                 Kişi Kartı Açık
                                             </span>
@@ -3905,7 +3911,7 @@ function formatDoctorDisplayName(rawName) {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     <span style={{
                                         padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                                        background: isCompleted ? '#dcfce7' : isOverdue ? '#fef2f2' : '#eff6ff',
+                                        background: isCompleted ? '#dcfce7' : isOverdue ? '#fef2f2' : '#f4f5f7',
                                         color: isCompleted ? '#16a34a' : isOverdue ? '#ef4444' : '#3b82f6'
                                     }}>
                                         {isCompleted ? 'Tamamlandı' : isOverdue ? 'Gecikmiş' : 'Planlandı'}
@@ -3915,7 +3921,7 @@ function formatDoctorDisplayName(rawName) {
                                             padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
                                             background: act.priority === 'HIGH' || act.priority === 'URGENT' ? '#fef2f2' : '#f8fafc',
                                             color: act.priority === 'HIGH' || act.priority === 'URGENT' ? '#ef4444' : '#64748b'
-                                        }}>{act.priority === 'URGENT' ? 'Acil' : act.priority === 'HIGH' ? 'Yüksek' : act.priority === 'LOW' ? 'Düşük' : act.priority}</span>
+                                        }}>{priorityLabel(act.priority)}</span>
                                     )}
                                 </div>
 
@@ -4063,8 +4069,8 @@ function formatDoctorDisplayName(rawName) {
                                 <button
                                     onClick={() => setSelectedActivity(null)}
                                     style={{
-                                        padding: '8px 16px', borderRadius: 8, border: 'none',
-                                        background: cfg.color, color: '#fff', fontSize: 13, fontWeight: 600,
+                                        padding: '8px 16px', borderRadius: 11, border: 'none',
+                                        background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 600,
                                         cursor: 'pointer'
                                     }}
                                 >Kapat</button>
