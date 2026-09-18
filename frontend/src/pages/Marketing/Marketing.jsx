@@ -2160,14 +2160,19 @@ function ListsTab({ wsId }) {
         if (!wsId) return;
         setSegmentsLoading(true);
         try {
+            // counts uç noktası { "segment_id": 12, ... } biçiminde NESNE döndürüyor.
+            // Burada dizi sanılıp .forEach çağrılıyordu: nesnede o metot yok, atılan
+            // TypeError catch'e düşüyor ve segment TANIMLARI da siliniyordu — sunucu
+            // iki isteği de başarıyla yanıtlamasına rağmen ekranda "(0)" görünüyordu.
+            // Sayı isteği ayrıca kendi hatasını yutuyor: sayılar gelmezse bile
+            // segmentlerin listelenmesi engellenmemeli.
             const [defsRes, countsRes] = await Promise.all([
                 api.get(`/smart-segments/${wsId}/segments/definitions`),
                 api.get(`/smart-segments/${wsId}/segments/counts`)
+                    .catch(err => { console.error('Segment sayıları alınamadı:', err); return { data: {} }; })
             ]);
             setSmartSegments(defsRes.data.segments || []);
-            const countsMap = {};
-            (countsRes.data.counts || []).forEach(c => { countsMap[c.id] = c.count; });
-            setSegmentCounts(countsMap);
+            setSegmentCounts(countsRes.data.counts || {});
         } catch (e) {
             console.error('Smart segments yüklenemedi:', e);
             setSmartSegments([]);
