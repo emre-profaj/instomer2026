@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { productAPI, funnelAPI, teamAPI, appointmentConfigAPI, woocommerceAPI } from '../../services/api';
-import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown, Folder, Layers, Tag, Sparkles, Check, ShoppingCart, Users } from 'lucide-react';
+import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown, Folder, Layers, Tag, Sparkles, Check, ShoppingCart, Users, AlertTriangle } from 'lucide-react';
 
 import WooCommerceModal from '../../components/Sales/WooCommerceModal';
 import { importFromExcel, getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory, bulkDeleteTopicCategories } from '../../services/topicCategory.api';
@@ -123,6 +123,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     const [selectedProductIds, setSelectedProductIds] = useState([]);
     const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
     const [expandedCategoryId, setExpandedCategoryId] = useState(null);
+    const [expandedGroupId, setExpandedGroupId] = useState(null);
     const [selectedGroupIds, setSelectedGroupIds] = useState([]);
     const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
@@ -1298,220 +1299,228 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             )}
 
             {activeTab === 'productGroups' && (
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <select
-                            value={categoryFilter}
-                            onChange={e => setCategoryFilter(e.target.value)}
-                            style={{
-                                padding: '8px 14px', borderRadius: '8px',
-                                border: '1px solid #e2e8f0', outline: 'none',
-                                background: '#fff', fontSize: '0.84rem', color: '#334155', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="">{labels.allCategories}</option>
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}{getCategoryBranchLabel(c)}</option>)}
-                        </select>
-                        <div style={{ flex: 1 }}></div>
-                        <button
-                            onClick={() => { setGroupForm({ name: '', description: '', categoryId: categoryFilter || '' }); setEditingGroup(null); setShowGroupModal(true); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '9px 18px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                color: '#fff', border: 'none', borderRadius: '10px',
-                                cursor: 'pointer', fontWeight: 600, fontSize: '0.84rem',
-                                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)'
-                            }}
-                        >
-                            <Plus size={16} /> {labels.newGroup}
-                        </button>
-                    </div>
-
-                    {/* Ürün Grubu / Daire Tipi Toplu İşlem Barı */}
-                    {selectedGroupIds.length > 0 && (
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
-                            gap: '12px', padding: '10px 24px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <span style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                    background: '#2563eb', color: '#fff', fontSize: '0.78rem', fontWeight: 600,
-                                    padding: '4px 12px', borderRadius: '20px'
-                                }}>
-                                    <Check size={14} /> {selectedGroupIds.length} {labels.groupSingle.toLowerCase()} seçildi
-                                </span>
-                                <button
-                                    onClick={() => setSelectedGroupIds([])}
-                                    style={{
-                                        background: 'transparent', border: 'none', color: '#2563eb',
-                                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'
-                                    }}
-                                >
-                                    Seçimi Temizle
-                                </button>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                {/* Kategori / Proje Ata */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: 600 }}>{labels.categorySingle} Ata:</span>
-                                    <select
-                                        defaultValue=""
-                                        onChange={(e) => {
-                                            if (e.target.value) {
-                                                handleBulkUpdateGroupCategory(e.target.value);
-                                                e.target.value = '';
-                                            }
-                                        }}
-                                        disabled={bulkActionLoading}
-                                        style={{
-                                            padding: '5px 10px', borderRadius: '6px', border: '1px solid #bfdbfe',
-                                            background: '#fff', fontSize: '0.78rem', color: '#334155', cursor: 'pointer'
-                                        }}
-                                    >
-                                        <option value="" disabled>{labels.selectCategory}</option>
-                                        <option value="NONE">— {labels.uncategorized} Yap —</option>
-                                        {categories.map(c => (
-                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Seçilenleri Sil */}
-                                <button
-                                    onClick={() => setDeleteConfirm('bulkGroups')}
-                                    disabled={bulkActionLoading}
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        padding: '6px 14px', borderRadius: '6px',
-                                        border: 'none', background: '#dc2626', color: '#fff',
-                                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                                        transition: 'background 0.15s'
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = '#b91c1c'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#dc2626'}
-                                >
-                                    <Trash2 size={13} />
-                                    Seçilenleri Sil ({selectedGroupIds.length})
-                                </button>
-                            </div>
+                <div className={`ct-page ${embedded ? 'embedded' : ''}`}>
+                    {embedded && (
+                        <div className="ct-head">
+                            <div className="ct-eyebrow">Ayarlar · Firma &amp; Bilgi Bankası</div>
+                            <h1>{labels.productGroupsTab}</h1>
+                            <p>{labels.groupPlural} bir {labels.categorySingle.toLowerCase()}e bağlanır; {labels.categorySingle.toLowerCase()} de mesajın hangi ekibe düşeceğini belirler.</p>
                         </div>
                     )}
 
-                    <div style={{ overflow: 'auto', flex: 1 }}>
+                    <div className="ct-filters">
+                        <select
+                            className="ct-select"
+                            aria-label={`${labels.categorySingle} süzgeci`}
+                            value={categoryFilter}
+                            onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
+                        >
+                            <option value="">{labels.allCategories}</option>
+                            {categories.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                        {categoryFilter && (
+                            <button type="button" className="ct-btn" onClick={() => { setCategoryFilter(''); setPage(1); }}>
+                                <X size={13} /> Temizle
+                            </button>
+                        )}
+                        <div className="ct-spacer"></div>
+                        <button
+                            type="button"
+                            className="ct-btn ct-btn-primary"
+                            onClick={() => { setGroupForm({ name: '', description: '', categoryId: categoryFilter || '' }); setEditingGroup(null); setShowGroupModal(true); }}
+                        >
+                            <Plus size={14} /> {labels.newGroup}
+                        </button>
+                    </div>
+
+                    <div className="ct-surface">
                         {loading ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', color: '#64748b' }}>
-                                <div className="loader" style={{ marginRight: '10px' }}></div> Yükleniyor...
-                            </div>
+                            <div className="ct-empty"><p>Yükleniyor…</p></div>
                         ) : products.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', borderRadius: '12px', border: '1px dashed #cbd5e1', margin: '24px' }}>
-                                <Layers size={44} style={{ color: '#94a3b8', marginBottom: '12px', opacity: 0.7 }} />
-                                <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>{labels.emptyGroupsTitle}</h4>
-                                <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: '#64748b' }}>{labels.emptyGroupsDesc}</p>
+                            <div className="ct-empty">
+                                <div className="ct-empty-ico"><Folder size={24} /></div>
+                                <h3>{labels.emptyGroupsTitle}</h3>
+                                <p>{labels.emptyGroupsDesc}</p>
                                 <button
+                                    type="button"
+                                    className="ct-btn ct-btn-primary"
                                     onClick={() => { setGroupForm({ name: '', description: '', categoryId: categoryFilter || '' }); setEditingGroup(null); setShowGroupModal(true); }}
-                                    style={{
-                                        padding: '8px 16px', background: '#6366f1', color: '#fff',
-                                        border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem'
-                                    }}
                                 >
-                                    <Plus size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> {labels.newGroup}
+                                    <Plus size={14} /> {labels.newGroup}
                                 </button>
                             </div>
                         ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                        <th style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={products.length > 0 && products.every(p => selectedGroupIds.includes(p.id))}
-                                                onChange={toggleSelectAllGroups}
-                                                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
-                                                title="Tümünü Seç / Kaldır"
-                                            />
-                                        </th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.groupSingle} Adı</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'right', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>İşlemler</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {products.map(p => {
-                                        const isRowSelected = selectedGroupIds.includes(p.id);
-                                        return (
-                                        <tr key={p.id} style={{
-                                            borderBottom: '1px solid #f1f5f9',
-                                            background: isRowSelected ? '#eff6ff' : '#fff',
-                                            transition: 'background 0.15s'
-                                        }}
-                                            onMouseEnter={(e) => {
-                                                if (!isRowSelected) e.currentTarget.style.background = '#f8fafc';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                if (!isRowSelected) e.currentTarget.style.background = '#fff';
-                                            }}
-                                        >
-                                            <td style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isRowSelected}
-                                                    onChange={() => toggleSelectGroup(p.id)}
-                                                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
-                                                />
-                                            </td>
-                                            <td style={{ padding: '10px 16px' }}>
-                                                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem' }}>{p.name}</span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.82rem' }}>
-                                                {categories.find(c => c.id === p.categoryId) ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center',
-                                                        padding: '3px 10px', borderRadius: '6px', background: '#f1f5f9',
-                                                        color: '#475569', fontWeight: 500, fontSize: '0.78rem'
-                                                    }}>
-                                                        {categories.find(c => c.id === p.categoryId)?.name}
-                                                    </span>
-                                                ) : <span style={{ color: '#cbd5e1' }}>—</span>}
-                                            </td>
-                                            <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.82rem' }}>
-                                                {p.description || <span style={{ color: '#cbd5e1' }}>—</span>}
-                                            </td>
-                                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <>
+                                {selectedGroupIds.length > 0 && (
+                                    <div className="ct-bulk">
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                            <span className="ct-bulk-count">
+                                                <i></i>
+                                                {selectedGroupIds.length} {labels.groupSingle.toLowerCase()} seçildi
+                                            </span>
+                                            <button type="button" className="ct-bulk-clear" onClick={() => setSelectedGroupIds([])}>
+                                                Seçimi temizle
+                                            </button>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <div className="ct-assign">
+                                                <label htmlFor="ct-bulk-cat">{labels.categorySingle} ata:</label>
+                                                <select
+                                                    id="ct-bulk-cat"
+                                                    className="ct-select-sm"
+                                                    defaultValue=""
+                                                    disabled={bulkActionLoading}
+                                                    onChange={e => { if (e.target.value) { handleBulkUpdateGroupCategory(e.target.value); e.target.value = ''; } }}
+                                                >
+                                                    <option value="" disabled>{labels.selectCategory}</option>
+                                                    <option value="NONE">— {labels.uncategorized} yap —</option>
+                                                    {categories.map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="ct-btn ct-btn-primary"
+                                                disabled={bulkActionLoading}
+                                                onClick={() => setDeleteConfirm('bulkGroups')}
+                                            >
+                                                <Trash2 size={13} /> Seçilenleri sil ({selectedGroupIds.length})
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="ct-list-head">
+                                    <h2>
+                                        {labels.groupPlural}
+                                        <span className="ct-count">{products.length} kayıt</span>
+                                    </h2>
+                                </div>
+
+                                <div className="ct-cols g">
+                                    <div>
+                                        <input
+                                            type="checkbox"
+                                            className="ct-check"
+                                            aria-label="Tümünü seç"
+                                            checked={products.length > 0 && products.every(p => selectedGroupIds.includes(p.id))}
+                                            onChange={toggleSelectAllGroups}
+                                        />
+                                    </div>
+                                    <span></span>
+                                    <span>{labels.groupSingle}</span>
+                                    <span>{labels.categorySingle}</span>
+                                    <span>{labels.productsTab}</span>
+                                    <span>Durum</span>
+                                    <span></span>
+                                </div>
+
+                                {products.map(p => {
+                                    const isOpen = expandedGroupId === p.id;
+                                    const isPicked = selectedGroupIds.includes(p.id);
+                                    const categoryName = p.category?.name || categories.find(c => c.id === p.categoryId)?.name || null;
+                                    const members = p.children || [];
+                                    const bIds = (p.productBranches || []).map(pb => pb.branchId);
+                                    const branchNames = bIds.length > 0
+                                        ? branches.filter(b => bIds.includes(b.id)).map(b => b.name)
+                                        : [];
+                                    const isActive = p.isActive !== false;
+
+                                    return (
+                                        <div key={p.id}>
+                                            <div className={`ct-row g ${isOpen ? 'open' : ''} ${isPicked ? 'picked' : ''}`}>
+                                                <div>
+                                                    <input
+                                                        type="checkbox"
+                                                        className="ct-check"
+                                                        aria-label={`${p.name} seç`}
+                                                        checked={isPicked}
+                                                        onChange={() => toggleSelectGroup(p.id)}
+                                                    />
+                                                </div>
+                                                <div className={`ct-av ${isActive ? '' : 'muted'}`}><Folder size={18} /></div>
+                                                <div>
                                                     <button
+                                                        type="button"
+                                                        className="ct-name"
+                                                        aria-expanded={isOpen}
+                                                        onClick={() => setExpandedGroupId(isOpen ? null : p.id)}
+                                                    >
+                                                        {p.name}
+                                                    </button>
+                                                    {p.description && <div className="ct-sub">{p.description}</div>}
+                                                </div>
+                                                <div>
+                                                    {categoryName ? (
+                                                        <span className="ct-chip-branch">{categoryName}</span>
+                                                    ) : (
+                                                        <span className="ct-chip-warn">
+                                                            <AlertTriangle size={11} /> {labels.uncategorized}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className={`ct-num ${members.length === 0 ? 'zero' : ''}`}>{members.length}</div>
+                                                <div className={`ct-status ${isActive ? 'on' : 'off'}`}>
+                                                    <i></i>{isActive ? 'Aktif' : 'Pasif'}
+                                                </div>
+                                                <div className="ct-acts">
+                                                    <button
+                                                        type="button"
+                                                        className="ct-ico"
+                                                        aria-label={`${p.name} düzenle`}
                                                         onClick={() => { setEditingGroup(p); setGroupForm({ name: p.name, description: p.description || '', categoryId: p.categoryId || '' }); setShowGroupModal(true); }}
-                                                        style={{
-                                                            width: '32px', height: '32px', borderRadius: '8px',
-                                                            border: '1px solid #e2e8f0', background: '#fff',
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                            cursor: 'pointer', color: '#64748b', transition: 'all 0.15s'
-                                                        }}
-                                                        title="Düzenle"
                                                     >
                                                         <Edit2 size={14} />
                                                     </button>
                                                     <button
+                                                        type="button"
+                                                        className="ct-ico danger"
+                                                        aria-label={`${p.name} sil`}
                                                         onClick={() => setDeleteConfirm(p.id)}
-                                                        style={{
-                                                            width: '32px', height: '32px', borderRadius: '8px',
-                                                            border: '1px solid #fecaca', background: '#fef2f2',
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                            cursor: 'pointer', color: '#dc2626', transition: 'all 0.15s'
-                                                        }}
-                                                        title="Sil"
                                                     >
                                                         <Trash2 size={14} />
                                                     </button>
                                                 </div>
-                                            </td>
-                                        </tr>
+                                            </div>
+
+                                            {isOpen && (
+                                                <div className="ct-detail">
+                                                    <div className="ct-dsec">
+                                                        <span className="ct-dsec-name">Gruptaki {labels.productsTab}</span>
+                                                        <span className="ct-dsec-rule"></span>
+                                                        <span className="ct-dsec-count">{members.length}</span>
+                                                    </div>
+                                                    {members.length > 0 ? (
+                                                        <div className="ct-dchips">
+                                                            {members.map(m => <span key={m.id} className="ct-dchip">{m.name}</span>)}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="ct-dnone">
+                                                            Bu {labels.groupSingle.toLowerCase()} boş — içine {labels.productSingle.toLowerCase()} eklenmediği için bot da bir şey sunamaz.
+                                                        </div>
+                                                    )}
+
+                                                    {branchNames.length > 0 && (
+                                                        <>
+                                                            <div className="ct-dsec">
+                                                                <span className="ct-dsec-name">Hizmet verilen {labels.branchPlural || 'şubeler'}</span>
+                                                                <span className="ct-dsec-rule"></span>
+                                                                <span className="ct-dsec-count">{branchNames.length}</span>
+                                                            </div>
+                                                            <div className="ct-dchips">
+                                                                {branchNames.map(n => <span key={n} className="ct-dchip">{n}</span>)}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     );
                                 })}
-                                </tbody>
-                            </table>
+                            </>
                         )}
                     </div>
                 </div>
