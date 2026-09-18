@@ -1,0 +1,553 @@
+/* ═══════════════════════════════════════════════════════════════
+   TAKVİM — RAPOR TASARIM DİLİ
+   ═══════════════════════════════════════════════════════════════
+
+   Bu dosya Calendar.css'ten SONRA yükleniyor ve onun görsel
+   kararlarını eziyor. Ayrı dosya olmasının sebebi: Calendar.css
+   3.700 satır ve akış mantığıyla iç içe; oraya dokunmak yerine
+   yalnızca görünümü buradan değiştiriyoruz. Sınıf adları aynı
+   kaldığı için JSX'e ve davranışa dokunulmuyor.
+
+   Değişen şeyler:
+   · mavi vurgu → kırmızı (ayarlar sayfalarıyla aynı)
+   · gradyanlar (kırmızı başlıklar, lacivert–mavi, mor avatar) → düz yüzey
+   · dolu renk + beyaz 11px yazı → soft zemin + koyu yazı + sol şerit
+   · geciken randevudaki 2px çerçeve + sonsuz animasyon → sakin işaret
+   · kutu yerine yüzey, saç teli ayraçlar
+   ═══════════════════════════════════════════════════════════════ */
+
+.calendar-page {
+    --tk-ink: #0b1220;
+    --tk-ink-2: #475569;
+    --tk-ink-3: #6b7480;
+    --tk-line: #f0eced;
+    --tk-accent: #ef4444;
+    --tk-accent-deep: #b91c1c;
+    --tk-accent-soft: #fef2f2;
+
+    background: #fafafb;
+    padding: 24px 26px;
+    color: var(--tk-ink);
+}
+
+/* ── Başlık ─────────────────────────────────────────────── */
+.calendar-header {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    margin-bottom: 14px;
+}
+.cal-header-row { gap: 9px; }
+.cal-title-row { margin-bottom: 14px; }
+
+.calendar-title { gap: 11px; }
+.calendar-title svg { color: var(--tk-accent); }
+.calendar-title h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    color: var(--tk-ink);
+    margin: 0;
+}
+
+/* ── Düğmeler: tek dil ──────────────────────────────────── */
+.cal-quick-btn,
+.google-cal-add-btn,
+.google-cal-connect-btn,
+.cal-sync-btn,
+.today-btn,
+.clear-filters-btn,
+.add-appointment-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 15px;
+    border-radius: 11px;
+    border: 1px solid #e6e9ee;
+    background: #ffffff;
+    color: var(--tk-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: none;
+    transition: background .16s, border-color .16s, transform .16s;
+}
+.cal-quick-btn:hover,
+.google-cal-add-btn:hover,
+.google-cal-connect-btn:hover,
+.cal-sync-btn:hover:not(:disabled),
+.today-btn:hover {
+    background: #f7f8fa;
+    border-color: #d8dde5;
+    transform: none;
+}
+.cal-quick-btn:active { transform: translateY(1px); }
+.cal-quick-btn svg { width: 15px; height: 15px; color: var(--tk-ink-3); }
+.cal-quick-btn span { font-size: 13px; }
+
+.add-appointment-btn {
+    background: var(--tk-accent);
+    border-color: var(--tk-accent);
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(239, 68, 68, .28);
+}
+.add-appointment-btn:hover { background: var(--tk-accent-deep); border-color: var(--tk-accent-deep); }
+
+.clear-filters-btn {
+    border-color: #fecaca;
+    background: var(--tk-accent-soft);
+    color: var(--tk-accent-deep);
+    padding: 8px 12px;
+    font-size: 12.5px;
+}
+
+.cal-quick-divider {
+    width: 1px;
+    height: 22px;
+    background: #e6e9ee;
+    margin: 0 3px;
+}
+
+/* ── Google hesap çipleri ───────────────────────────────── */
+.google-cal-pill {
+    border-radius: 999px;
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    border-width: 1px;
+    box-shadow: none;
+}
+.google-cal-email { font-size: 12px; }
+.google-cal-disconnect-btn { border-radius: 999px; }
+
+/* ── Süzgeç satırı ──────────────────────────────────────── */
+.cal-filters-main-row,
+.cal-filters-row { gap: 9px; flex-wrap: wrap; }
+
+.agent-filter,
+.cal-meeting-type-select,
+.activities-list-search,
+select.cal-meeting-type-select {
+    appearance: none;
+    padding: 8px 12px;
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    background: #ffffff;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tk-ink-2);
+    box-shadow: none;
+}
+.activities-list-search { font-weight: 400; }
+.agent-multi-dropdown {
+    border-radius: 14px;
+    border: 1px solid #e6e9ee;
+    box-shadow: 0 12px 28px -18px rgba(15, 23, 42, .35), 0 0 0 1px rgba(15, 23, 42, .04);
+}
+.agent-multi-item { font-size: 12.5px; }
+
+/* Aktivite türü süzgeçleri — çok renkli çerçeveler yerine tek dil */
+.cal-type-filters { gap: 2px; padding: 3px; background: #f1f2f5; border-radius: 12px; }
+.cal-type-btn {
+    padding: 7px 13px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tk-ink-3);
+    box-shadow: none;
+}
+.cal-type-btn:hover { color: var(--tk-ink); background: transparent; }
+.cal-type-btn.active {
+    background: #ffffff;
+    color: var(--tk-ink);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+    border: 0;
+}
+.cal-type-count {
+    margin-left: 5px;
+    background: transparent;
+    color: var(--tk-ink-3);
+    font-weight: 600;
+    padding: 0;
+    font-size: 12px;
+}
+.cal-type-btn.active .cal-type-count { color: var(--tk-ink-2); }
+
+/* ── Görünüm geçişleri ve tarih ─────────────────────────── */
+.cal-grid-topbar {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0 0 14px;
+    gap: 9px;
+}
+.view-mode-toggle { gap: 2px !important; padding: 3px !important; background: #f1f2f5 !important; border-radius: 12px !important; }
+.view-mode-toggle button { border-radius: 9px !important; font-size: 12.5px !important; font-weight: 600 !important; }
+
+.calendar-header-nav { gap: 9px; }
+.nav-buttons { gap: 6px; background: transparent; padding: 0; }
+.nav-buttons button {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid #e6e9ee;
+    background: #ffffff;
+    color: var(--tk-ink-3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.nav-buttons button:hover { background: #f7f8fa; color: var(--tk-ink); }
+.nav-buttons .today-btn { width: auto; padding: 7px 12px; font-size: 12.5px; }
+.current-month {
+    font-size: 14.5px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    color: var(--tk-ink);
+}
+
+/* ── Yüzeyler ───────────────────────────────────────────── */
+.calendar-content { gap: 16px; }
+.upcoming-sidebar,
+.calendar-main,
+.calendar-grid,
+.calendar-week-view,
+.calendar-day-view,
+.activities-list-page {
+    background: #ffffff;
+    border: 0;
+    border-radius: 20px;
+    box-shadow:
+        0 0 0 1px rgba(15, 23, 42, .04),
+        0 1px 2px rgba(15, 23, 42, .03),
+        0 12px 28px -18px rgba(15, 23, 42, .18);
+    overflow: hidden;
+}
+.calendar-main { box-shadow: none; background: transparent; border-radius: 0; overflow: visible; }
+
+/* İş listesi: kırmızı gradyan başlık kalktı */
+.upcoming-sidebar { flex: 0 0 290px; max-width: 290px; }
+.upcoming-header {
+    background: #ffffff !important;
+    color: var(--tk-ink) !important;
+    box-shadow: inset 0 -1px 0 var(--tk-line);
+    border-radius: 0;
+    padding: 15px 18px 13px;
+}
+.upcoming-header h3,
+.upcoming-header span { color: var(--tk-ink) !important; font-size: 14px; font-weight: 700; }
+.upcoming-header svg { color: var(--tk-accent) !important; }
+
+.todo-item {
+    box-shadow: inset 0 1px 0 #f4f1f1;
+    border: 0;
+    border-radius: 0;
+    padding: 10px 18px;
+    background: #ffffff;
+}
+.todo-item:hover { background: #fffafa; }
+
+/* ── Ay ızgarası ────────────────────────────────────────── */
+.calendar-weekdays { box-shadow: inset 0 -1px 0 var(--tk-line); border: 0; background: #ffffff; }
+.calendar-weekdays > * {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--tk-ink-3);
+}
+.calendar-day {
+    border: 0;
+    box-shadow: inset 0 -1px 0 #f5f2f2, inset -1px 0 0 #f5f2f2;
+    background: #ffffff;
+}
+.calendar-day.other-month { background: #fcfcfd; }
+.day-number {
+    font-size: 13px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.calendar-day.today .day-number { background: var(--tk-accent); color: #ffffff; }
+
+/* Randevu blokları: dolu renk + beyaz yazı okunmuyordu */
+.appointment-pill,
+.week-event,
+.day-event {
+    color: #3730a3;
+    background: #eef2ff;
+    border: 0;
+    border-left: 3px solid #6366f1;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    box-shadow: none;
+    text-shadow: none;
+    animation: none !important;
+}
+.appointment-pill { padding: 3px 7px; margin-bottom: 3px; }
+.week-event, .day-event { padding: 4px 7px; }
+
+/* Geciken: 2px çerçeve + sonsuz yanıp sönme yerine sakin işaret */
+.pill-overdue,
+.appointment-pill.pill-overdue {
+    border: 0 !important;
+    border-left: 3px solid #ef4444 !important;
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+    animation: none !important;
+}
+.more-appointments {
+    font-size: 10.5px;
+    font-weight: 650;
+    color: var(--tk-ink-3);
+    background: none;
+    border: 0;
+}
+.more-appointments:hover { color: var(--tk-accent-deep); }
+
+/* ── Hafta / Gün ────────────────────────────────────────── */
+.week-time-label,
+.day-time-label {
+    font-size: 10.5px;
+    color: var(--tk-ink-3);
+    font-variant-numeric: tabular-nums;
+}
+.day-hour-cell,
+.day-hour-row { box-shadow: inset 0 -1px 0 #f5f2f2, inset -1px 0 0 #f5f2f2; border: 0; }
+
+/* ── Liste ──────────────────────────────────────────────── */
+.activities-table { font-size: 13px; }
+.activities-table thead th {
+    background: #ffffff;
+    box-shadow: inset 0 -1px 0 var(--tk-line);
+    border: 0;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--tk-ink-3);
+    padding: 11px 16px;
+}
+.activities-row { box-shadow: inset 0 1px 0 var(--tk-line); border: 0; }
+.activities-row:hover { background: #fffafa; }
+.activities-row td { border: 0; padding: 12px 16px; }
+.activities-row-overdue { background: transparent; }
+.activities-status-pill {
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 3px 10px;
+    box-shadow: none;
+    border: 0;
+}
+.activities-tab {
+    padding: 7px 13px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tk-ink-3);
+}
+.activities-tab.active { background: #ffffff; color: var(--tk-ink); box-shadow: 0 1px 2px rgba(15, 23, 42, .08); }
+.activities-list-tabs { gap: 2px; padding: 3px; background: #f1f2f5; border-radius: 12px; }
+
+/* ── Pencereler: gradyan başlıklar düz yüzeye ───────────── */
+.apt-modal,
+.reschedule-modal,
+.contact-picker-modal,
+.calendar-activity-popup,
+.day-popup-panel {
+    border-radius: 20px;
+    border: 0;
+    box-shadow: 0 24px 64px -24px rgba(15, 23, 42, .45), 0 0 0 1px rgba(15, 23, 42, .06);
+    overflow: hidden;
+}
+.apt-modal-header,
+.reschedule-modal-header,
+.contact-picker-header,
+.day-popup-header {
+    background: #ffffff !important;
+    color: var(--tk-ink) !important;
+    box-shadow: inset 0 -1px 0 var(--tk-line);
+    padding: 20px 24px 14px;
+}
+.apt-modal-header *,
+.reschedule-modal-header *,
+.contact-picker-header * { color: var(--tk-ink) !important; }
+.apt-modal-header svg,
+.reschedule-modal-icon svg { color: var(--tk-accent) !important; }
+.reschedule-modal-icon {
+    background: var(--tk-accent-soft) !important;
+    border-radius: 10px;
+}
+.apt-modal-close,
+.contact-picker-close,
+.day-popup-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid #e6e9ee;
+    background: #ffffff;
+    color: var(--tk-ink-3);
+}
+.apt-modal-footer,
+.reschedule-modal-footer,
+.contact-picker-footer {
+    background: #fafafb;
+    box-shadow: inset 0 1px 0 var(--tk-line);
+    border: 0;
+    padding: 16px 24px;
+}
+.apt-btn-save { background: var(--tk-accent); border-color: var(--tk-accent); box-shadow: 0 1px 2px rgba(239, 68, 68, .28); }
+.apt-btn-save:hover:not(:disabled) { background: var(--tk-accent-deep); }
+.apt-btn-cancel { border: 1px solid #e6e9ee; background: #ffffff; color: var(--tk-ink-2); }
+.apt-btn-delete { border: 1px solid #fecaca; background: var(--tk-accent-soft); color: var(--tk-accent-deep); }
+
+.apt-title-input,
+.apt-customer-field input,
+.apt-notes,
+.apt-meeting-type-select,
+.reschedule-time-field input {
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    padding: 10px 13px;
+    font-size: 13px;
+    box-shadow: none;
+}
+.apt-section-label,
+.reschedule-label,
+.apt-dt-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--tk-ink-3);
+}
+.apt-status-pill {
+    border-radius: 999px;
+    border: 1px solid #e6e9ee;
+    background: #ffffff;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tk-ink-2);
+    padding: 7px 13px;
+}
+.apt-status-pill.active { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
+
+/* Kişi seçici: mor–menekşe gradyan avatar kalktı */
+.contact-picker-avatar {
+    background: var(--tk-accent-soft) !important;
+    color: var(--tk-accent-deep) !important;
+    border-radius: 10px;
+    font-weight: 700;
+}
+.contact-picker-item { border: 0; box-shadow: inset 0 1px 0 var(--tk-line); border-radius: 0; }
+.contact-picker-item:hover { background: #fffafa; }
+.contact-picker-search {
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    padding: 10px 13px;
+    font-size: 13px;
+}
+
+/* ── Boş ve yükleniyor ──────────────────────────────────── */
+.activities-empty {
+    padding: 60px 28px 68px;
+    text-align: center;
+    color: var(--tk-ink-3);
+    font-size: 13px;
+}
+
+/* Görünüm geçişi düğmeleri — satır içi stiller kalktığı için
+   aktif hâli buradan geliyor. */
+.view-mode-toggle button {
+    padding: 7px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--tk-ink-3);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 9px;
+    transition: background .16s, color .16s;
+}
+.view-mode-toggle button:hover { color: var(--tk-ink); }
+.view-mode-toggle button.active {
+    background: #ffffff;
+    color: var(--tk-ink);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+}
+
+/* Onay kutusu — önceden ☑ ☐ ▣ karakterleriyle çiziliyordu; yazı tipine
+   göre boyu değişiyor ve tıklanabilir görünmüyordu. */
+.agent-multi-check {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+    border: 1.5px solid #cbd2dc;
+    background: #ffffff;
+    flex-shrink: 0;
+    display: inline-block;
+    position: relative;
+}
+.agent-multi-check.on,
+.agent-multi-check.half {
+    background: var(--tk-accent);
+    border-color: var(--tk-accent);
+}
+.agent-multi-check.on::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.agent-multi-check.half::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 7px;
+    height: 2px;
+    background: #ffffff;
+    border-radius: 1px;
+}
+/* Yalnızca hizalama için duran kutu — işaretlenebilir değil, görünmez. */
+.agent-multi-check.spacer { visibility: hidden; }
+
+/* Yükleniyor yüzeyi — sayfa veri gelene kadar boş duruyordu. */
+.calendar-loading-surface {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 90px 28px;
+    background: #ffffff;
+    border-radius: 20px;
+    box-shadow:
+        0 0 0 1px rgba(15, 23, 42, .04),
+        0 1px 2px rgba(15, 23, 42, .03),
+        0 12px 28px -18px rgba(15, 23, 42, .18);
+    font-size: 13px;
+    color: var(--tk-ink-3);
+}
+.calendar-loading-surface .tk-spin {
+    color: var(--tk-accent);
+    animation: tkSpin 1s linear infinite;
+}
+@keyframes tkSpin { to { transform: rotate(360deg); } }

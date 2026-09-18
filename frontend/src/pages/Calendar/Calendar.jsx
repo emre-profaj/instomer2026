@@ -7,13 +7,17 @@ import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
     Layers, Edit2, Building2, List, Grid3X3, Search,
-    CalendarClock, Handshake, ListTodo, PhoneCall, Bell, RefreshCw, ArrowRight
+    CalendarClock, Handshake, ListTodo, PhoneCall, Bell, RefreshCw, ArrowRight,
+    Stethoscope, ClipboardList, DoorOpen, Wrench, Package,
+    CheckCircle2, StickyNote, ShoppingCart, Receipt, Banknote, Video,
+    Bot, Globe, MessageSquare
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import '../../components/ContactSidebar/ContactSidebar.css';
 import { contactAPI, conversationAPI } from '../../services/api';
 import QuickActivityModal from './QuickActivityModal';
 import './Calendar.css';
+import './Takvim.css';
 
 const APPOINTMENT_STATUSES = [
     { value: 'SCHEDULED', label: 'Planlandı', color: '#3b82f6' },
@@ -27,12 +31,14 @@ const APPOINTMENT_STATUSES = [
     { value: 'NO_SHOW', label: 'Gelmedi', color: '#f59e0b' }
 ];
 
+const IC = { size: 14, strokeWidth: 2 };
+
 export const MEETING_TYPES = [
-    { value: 'YUZ_YUZE', label: 'Yüz Yüze',        icon: '🤝', color: '#10b981' },
-    { value: 'ONLINE',   label: 'Online / Video',  icon: '💻', color: '#3b82f6' },
-    { value: 'TELEFON',  label: 'Telefon',         icon: '📞', color: '#f59e0b' },
-    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: '🏥', color: '#8b5cf6' },
-    { value: 'DIGER',    label: 'Diğer',           icon: '📋', color: '#64748b' },
+    { value: 'YUZ_YUZE', label: 'Yüz Yüze',         icon: <Handshake {...IC} />,     color: '#15803d' },
+    { value: 'ONLINE',   label: 'Online / Video',   icon: <Video {...IC} />,         color: '#4338ca' },
+    { value: 'TELEFON',  label: 'Telefon',          icon: <Phone {...IC} />,         color: '#b45309' },
+    { value: 'KLINIK',   label: 'Muayene / Klinik', icon: <Stethoscope {...IC} />,   color: '#7e22ce' },
+    { value: 'DIGER',    label: 'Diğer',            icon: <ClipboardList {...IC} />, color: '#475569' },
 ];
 
 export const getMeetingType = (item) => {
@@ -54,10 +60,10 @@ export const getMeetingType = (item) => {
 };
 
 const RESOURCE_TYPES = [
-    { value: 'ROOM', label: 'Room', icon: '🏠' },
-    { value: 'PERSON', label: 'Person', icon: '👤' },
-    { value: 'EQUIPMENT', label: 'Equipment', icon: '🔧' },
-    { value: 'OTHER', label: 'Other', icon: '📦' }
+    { value: 'ROOM',      label: 'Oda',     icon: <DoorOpen {...IC} /> },
+    { value: 'PERSON',    label: 'Kişi',    icon: <User {...IC} /> },
+    { value: 'EQUIPMENT', label: 'Ekipman', icon: <Wrench {...IC} /> },
+    { value: 'OTHER',     label: 'Diğer',   icon: <Package {...IC} /> }
 ];
 
 
@@ -66,16 +72,26 @@ const RESOURCE_COLORS = [
     '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ];
 
+/* Planlanmış arama durumları. Liste görünümü yalnızca PENDING'i
+   çeviriyor, geri kalanını koduyla basıyordu. */
+const CALL_STATUS_LABELS = {
+    PENDING:   'Bekliyor',
+    COMPLETED: 'Tamamlandı',
+    CANCELLED: 'İptal edildi',
+    FAILED:    'Ulaşılamadı',
+};
+const callStatusLabel = (code) => CALL_STATUS_LABELS[code] || code || '—';
+
 const ACTIVITY_TYPE_CONFIG = {
-    CALL: { icon: '📞', color: '#f59e0b', label: 'Arama' },
-    MEETING: { icon: '🤝', color: '#3b82f6', label: 'Görüşme' },
-    TASK: { icon: '✅', color: '#8b5cf6', label: 'Görev' },
-    REMINDER: { icon: '🔔', color: '#06b6d4', label: 'Hatırlatıcı' },
-    NOTE: { icon: '📝', color: '#6b7280', label: 'Not' },
-    PROPOSAL: { icon: '📋', color: '#10b981', label: 'Teklif' },
-    ORDER: { icon: '🛒', color: '#ec4899', label: 'Sipariş' },
-    INVOICE: { icon: '🧾', color: '#f97316', label: 'Fatura' },
-    PAYMENT: { icon: '💰', color: '#22c55e', label: 'Tahsilat' },
+    CALL:     { icon: <Phone {...IC} />,        color: '#b45309', label: 'Arama' },
+    MEETING:  { icon: <Handshake {...IC} />,    color: '#4338ca', label: 'Görüşme' },
+    TASK:     { icon: <CheckCircle2 {...IC} />, color: '#7e22ce', label: 'Görev' },
+    REMINDER: { icon: <Bell {...IC} />,         color: '#0e7490', label: 'Hatırlatıcı' },
+    NOTE:     { icon: <StickyNote {...IC} />,   color: '#475569', label: 'Not' },
+    PROPOSAL: { icon: <ClipboardList {...IC} />, color: '#15803d', label: 'Teklif' },
+    ORDER:    { icon: <ShoppingCart {...IC} />, color: '#be185d', label: 'Sipariş' },
+    INVOICE:  { icon: <Receipt {...IC} />,      color: '#c2410c', label: 'Fatura' },
+    PAYMENT:  { icon: <Banknote {...IC} />,     color: '#15803d', label: 'Tahsilat' },
 };
 
 export const GOOGLE_ACCOUNT_PALETTE = [
@@ -1672,7 +1688,7 @@ function formatDoctorDisplayName(rawName) {
                                             <span className="google-cal-email" style={{ color: acc.isExpired ? '#b45309' : theme.text }}>
                                                 {acc.email}
                                             </span>
-                                            {acc.isExpired && <span style={{ fontSize: '10px', fontWeight: 600, marginLeft: 2 }}>⚠️</span>}
+                                            {acc.isExpired && <AlertCircle size={11} style={{ marginLeft: 2 }} />}
                                             <button
                                                 type="button"
                                                 className="google-cal-disconnect-btn"
@@ -1795,7 +1811,7 @@ function formatDoctorDisplayName(rawName) {
                 {googleNotification && (
                     <div className={`google-cal-banner ${googleNotification.type}`}>
                         <span>{googleNotification.message}</span>
-                        <button type="button" onClick={() => setGoogleNotification(null)}>✕</button>
+                        <button type="button" aria-label="Kapat" onClick={() => setGoogleNotification(null)}><X size={14} /></button>
                     </div>
                 )}
 
@@ -1812,10 +1828,10 @@ function formatDoctorDisplayName(rawName) {
                             >
                                 <span style={{ flex: 1, textAlign: 'left', fontSize: 13, color: '#374151' }}>
                                     {selectedAgents.size === 0
-                                        ? 'Tümü Agents'
+                                        ? 'Tüm temsilciler'
                                         : selectedAgents.size === 1
                                             ? agents.find(a => selectedAgents.has(String(a.id)))?.name || 'Agent'
-                                            : `${selectedAgents.size} Agent seçili`}
+                                            : `${selectedAgents.size} temsilci seçili`}
                                 </span>
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
                                     <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1844,8 +1860,8 @@ function formatDoctorDisplayName(rawName) {
                                                 className={`agent-multi-item ${allChecked ? 'selected' : ''}`}
                                                 onClick={() => { setSelectedAgents(new Set()); }}
                                             >
-                                                <span className="agent-multi-check">{allChecked ? '☑' : '☐'}</span>
-                                                <strong>Tümü Agents</strong>
+                                                <span className={`agent-multi-check ${allChecked ? 'on' : ''}`} aria-hidden="true" />
+                                                <strong>Tüm temsilciler</strong>
                                             </div>
                                             <div className="agent-multi-divider" />
 
@@ -1872,11 +1888,12 @@ function formatDoctorDisplayName(rawName) {
                                                                 });
                                                             }}
                                                         >
-                                                            <span className="agent-multi-check">
-                                                                {allTeamSelected ? '☑' : someTeamSelected ? '▣' : '☐'}
-                                                            </span>
+                                                            <span
+                                                                className={`agent-multi-check ${allTeamSelected ? 'on' : someTeamSelected ? 'half' : ''}`}
+                                                                aria-hidden="true"
+                                                            />
                                                             <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                                                👥 {teamName}
+                                                                {teamName}
                                                             </span>
                                                         </div>
                                                         {/* Takım üyeleri */}
@@ -1905,7 +1922,7 @@ function formatDoctorDisplayName(rawName) {
                                                                         });
                                                                     }}
                                                                 >
-                                                                    <span className="agent-multi-check">{isChecked ? '☑' : '☐'}</span>
+                                                                    <span className={`agent-multi-check ${isChecked ? 'on' : ''}`} aria-hidden="true" />
                                                                     <span style={{ paddingLeft: 12 }}>{agent.name}</span>
                                                                 </div>
                                                             );
@@ -1919,7 +1936,7 @@ function formatDoctorDisplayName(rawName) {
                                                 <>
                                                     {Object.keys(teamGroups).length > 0 && <div className="agent-multi-divider" />}
                                                     <div className="agent-multi-item agent-team-header" style={{ opacity: 0.6 }}>
-                                                        <span className="agent-multi-check" />
+                                                        <span className="agent-multi-check spacer" aria-hidden="true" />
                                                         <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>
                                                             Takımsız
                                                         </span>
@@ -1947,7 +1964,7 @@ function formatDoctorDisplayName(rawName) {
                                                                     });
                                                                 }}
                                                             >
-                                                                <span className="agent-multi-check">{isChecked ? '☑' : '☐'}</span>
+                                                                <span className={`agent-multi-check ${isChecked ? 'on' : ''}`} aria-hidden="true" />
                                                                 <span style={{ paddingLeft: 12 }}>{agent.name}</span>
                                                             </div>
                                                         );
@@ -1968,10 +1985,10 @@ function formatDoctorDisplayName(rawName) {
                         >
                             <option value="">{t('common.all')} Kaynaklar / Doktorlar</option>
                             {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
-                                <optgroup key={branchName} label={`🏥 ${branchName}`}>
+                                <optgroup key={branchName} label={branchName}>
                                     {branchDocs.map(resource => (
                                         <option key={resource.id} value={resource.id}>
-                                            {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.displayName || resource.name}
+                                            {resource.displayName || resource.name}
                                         </option>
                                     ))}
                                 </optgroup>
@@ -1980,7 +1997,7 @@ function formatDoctorDisplayName(rawName) {
                                 <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
                                     {groupedResources.unassigned.map(resource => (
                                         <option key={resource.id} value={resource.id}>
-                                            {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
+                                            {resource.name}
                                         </option>
                                     ))}
                                 </optgroup>
@@ -2026,10 +2043,10 @@ function formatDoctorDisplayName(rawName) {
                                 onChange={(e) => setSelectedMeetingType(e.target.value)}
                                 title="Görüşme Tipi Filtresi"
                             >
-                                <option value="ALL">🎯 Tüm Görüşme Tipleri</option>
+                                <option value="ALL">Tüm görüşme tipleri</option>
                                 {MEETING_TYPES.map(t => (
                                     <option key={t.value} value={t.value}>
-                                        {t.icon} {t.label}
+                                        {t.label}
                                     </option>
                                 ))}
                             </select>
@@ -2144,7 +2161,7 @@ function formatDoctorDisplayName(rawName) {
                                 const act = item.data;
                                 const isMeetingAct = act.type === 'MEETING';
                                 const actMType = getMeetingType(act);
-                                const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                                const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: <ClipboardList {...IC} />, color: '#475569', label: 'Aktivite' };
                                 return (
                                     <div key={act.id} className="todo-item" onClick={() => openActivityModal(act)}>
                                         <div className="todo-icon" style={{ backgroundColor: isMeetingAct ? actMType.color : cfg.color }}>
@@ -2154,7 +2171,7 @@ function formatDoctorDisplayName(rawName) {
                                             <span className="todo-title">{act.title || (isMeetingAct ? actMType.label : cfg.label)}</span>
                                             {isMeetingAct && <span className="todo-agent" style={{ color: actMType.color, fontWeight: 500 }}>{actMType.icon} {actMType.label}</span>}
                                             {act.contact?.name && <span className="todo-contact">{act.contact.name}</span>}
-                                            {act.assignee?.name && <span className="todo-agent">👤 {act.assignee.name}</span>}
+                                            {act.assignee?.name && <span className="todo-agent">{act.assignee.name}</span>}
                                         </div>
                                         <div className="todo-time">
                                             {(() => {
@@ -2167,7 +2184,7 @@ function formatDoctorDisplayName(rawName) {
                                             })()}
                                             {act.completedAt && (
                                                 <span style={{ fontSize: 10, color: '#10b981', display: 'block' }}>
-                                                    ✅ Yapıldı: {new Date(act.completedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                    Yapıldı: {new Date(act.completedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             )}
                                         </div>
@@ -2180,7 +2197,7 @@ function formatDoctorDisplayName(rawName) {
                                 return (
                                     <div key={apt.id} className="todo-item" onClick={() => openEditModal(apt)}>
                                         <div className="todo-icon" style={{ backgroundColor: apt.isGoogleEvent ? gColor : (apt.color || '#3b82f6') }}>
-                                            {apt.isGoogleEvent ? '🇬' : mType.icon}
+                                            {apt.isGoogleEvent ? <Globe size={13} /> : mType.icon}
                                         </div>
                                         <div className="todo-content">
                                             <span className="todo-title">{apt.title}</span>
@@ -2188,12 +2205,12 @@ function formatDoctorDisplayName(rawName) {
                                             {apt.contactName && <span className="todo-contact">{apt.contactName}</span>}
                                             {apt.assignedTo?.name && (
                                                 <span className="todo-agent">
-                                                    {apt.assignedTo.isBot ? '🤖 ' : '👤 '}
+                                                    {apt.assignedTo.isBot ? '' : ''}
                                                     {apt.assignedTo.name}
                                                 </span>
                                             )}
                                             {apt.isGoogleEvent && <span className="todo-agent" style={{ color: gColor, fontWeight: 500 }}>Google Takvim {apt.googleEmail ? `(${apt.googleEmail})` : ''}</span>}
-                                            {apt.doctorName && <span className="todo-agent" style={{ color: '#059669', fontWeight: 500 }}>🩺 {formatDoctorDisplayName(apt.doctorName)}</span>}
+                                            {apt.doctorName && <span className="todo-agent" style={{ color: '#15803d', fontWeight: 500 }}><Stethoscope size={12} /> {formatDoctorDisplayName(apt.doctorName)}</span>}
                                         </div>
                                         <div className="todo-time">{formatTime(apt.startTime)}</div>
                                     </div>
@@ -2229,7 +2246,7 @@ function formatDoctorDisplayName(rawName) {
                                         )}
                                         {Object.entries(futureGroups).map(([dateLabel, items]) => (
                                             <div key={dateLabel} className="todo-date-group">
-                                                <div className="todo-date-label">📌 {dateLabel}</div>
+                                                <div className="todo-date-label">{dateLabel}</div>
                                                 {items.map(renderTodoItem)}
                                             </div>
                                         ))}
@@ -2244,33 +2261,26 @@ function formatDoctorDisplayName(rawName) {
                 <div className="calendar-main">
                     {/* View tabs + Date nav — grid alanının üstünde */}
                     <div className="cal-grid-topbar">
-                        <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                        {/* Görünüm geçişleri — stil Takvim.css'te (.view-mode-toggle).
+                            Önceden satır içi mavi renklerle yazılmıştı; sayfa tek
+                            başına mavi kalıyordu. */}
+                        <div className="view-mode-toggle" role="group" aria-label="Görünüm">
                             {[
-                                { key: 'month', label: 'Takvim' },
-                                { key: 'week',  label: 'Haftalık' },
-                                { key: 'day',   label: 'Günlük' },
+                                { key: 'month', label: 'Ay' },
+                                { key: 'week',  label: 'Hafta' },
+                                { key: 'day',   label: 'Gün' },
                             ].map(v => (
                                 <button
                                     key={v.key}
+                                    type="button"
+                                    className={layoutMode === 'grid' && viewMode === v.key ? 'active' : ''}
                                     onClick={() => { setViewMode(v.key); setLayoutMode('grid'); }}
-                                    style={{
-                                        padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                        background: layoutMode === 'grid' && viewMode === v.key ? 'white' : 'transparent',
-                                        color: layoutMode === 'grid' && viewMode === v.key ? '#3b82f6' : '#64748b',
-                                        boxShadow: layoutMode === 'grid' && viewMode === v.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                        cursor: 'pointer', transition: 'all 0.2s'
-                                    }}
                                 >{v.label}</button>
                             ))}
                             <button
+                                type="button"
+                                className={layoutMode === 'list' ? 'active' : ''}
                                 onClick={() => setLayoutMode('list')}
-                                style={{
-                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                    background: layoutMode === 'list' ? 'white' : 'transparent',
-                                    color: layoutMode === 'list' ? '#3b82f6' : '#64748b',
-                                    boxShadow: layoutMode === 'list' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                    cursor: 'pointer', transition: 'all 0.2s'
-                                }}
                             >Liste</button>
                         </div>
                         <div className="calendar-header-nav">
@@ -2293,7 +2303,15 @@ function formatDoctorDisplayName(rawName) {
                         </div>
                     </div>
 
-                {layoutMode === 'grid' && viewMode === 'week' ? (
+                {/* Yükleniyor durumu: `loading` değişkeni vardı ama hiç
+                    çizilmiyordu, sayfa veri gelene kadar boş duruyor sonra
+                    birden beliriyordu. */}
+                {loading ? (
+                    <div className="calendar-loading-surface">
+                        <RefreshCw size={18} className="tk-spin" />
+                        <span>Takvim yükleniyor…</span>
+                    </div>
+                ) : layoutMode === 'grid' && viewMode === 'week' ? (
                 /* ═══════ WEEKLY VIEW ═══════ */
                 <div className="calendar-week-view">
                     <div className="week-time-col week-header-row">
@@ -2348,7 +2366,7 @@ function formatDoctorDisplayName(rawName) {
                                                             openEditModal(apt);
                                                         }}
                                                     >
-                                                        <span className="week-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}<span className="cal-mt-icon">{mType.icon}</span> {formatTime(apt.startTime)}</span>
+                                                        <span className="week-event-time">{apt.isGoogleEvent ? '' : ''}<span className="cal-mt-icon">{mType.icon}</span> {formatTime(apt.startTime)}</span>
                                                         <span className="week-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
                                                     </div>
                                                 );
@@ -2357,7 +2375,7 @@ function formatDoctorDisplayName(rawName) {
                                                 <div key={sc.id} className="week-event"
                                                     style={{ backgroundColor: '#f97316' }}
                                                     onClick={e => { e.stopPropagation(); openScheduledCallModal(sc); }}>
-                                                    <span className="week-event-time">📞 {formatTime(sc.scheduledAt)}</span>
+                                                    <span className="week-event-time">{formatTime(sc.scheduledAt)}</span>
                                                     <span className="week-event-title">{sc.contactName || sc.toNumber}</span>
                                                 </div>
                                             ))}
@@ -2417,9 +2435,9 @@ function formatDoctorDisplayName(rawName) {
                                                         openEditModal(apt);
                                                     }}
                                                 >
-                                                    <span className="day-event-time">{apt.isGoogleEvent ? '🇬 ' : ''}<span className="cal-mt-icon">{mType.icon}</span> {formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
+                                                    <span className="day-event-time">{apt.isGoogleEvent ? '' : ''}<span className="cal-mt-icon">{mType.icon}</span> {formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
                                                     <span className="day-event-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
-                                                    {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
+                                                    {apt.contactName && <span className="day-event-contact">{apt.contactName}</span>}
                                                 </div>
                                             );
                                         })}
@@ -2427,7 +2445,7 @@ function formatDoctorDisplayName(rawName) {
                                             <div key={sc.id} className="day-event"
                                                 style={{ backgroundColor: '#f97316' }}
                                                 onClick={e => { e.stopPropagation(); openScheduledCallModal(sc); }}>
-                                                <span className="day-event-time">📞 {formatTime(sc.scheduledAt)}</span>
+                                                <span className="day-event-time">{formatTime(sc.scheduledAt)}</span>
                                                 <span className="day-event-title">{sc.contactName || sc.toNumber}</span>
                                             </div>
                                         ))}
@@ -2502,16 +2520,16 @@ function formatDoctorDisplayName(rawName) {
                                                                 openEditModal(apt);
                                                             }}
                                                         >
-                                                            {apt.isGoogleEvent && <span style={{ marginRight: 3, fontSize: 11 }}>🇬</span>}
+                                                            {apt.isGoogleEvent && <Globe size={11} style={{ marginRight: 3 }} />}
                                                             <span className="apt-meeting-icon" title={mType.label}>{mType.icon}</span>
-                                                            {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
-                                                            {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
+                                                            {isOverdue && <AlertCircle size={11} style={{ marginRight: 2 }} />}
+                                                            {isCompleted && <Check size={11} style={{ marginRight: 2 }} />}
                                                             <span className="apt-time">{formatTime(apt.startTime)}</span>
                                                             <span className="apt-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
                                                         </div>
                                                         <div className="appointment-tooltip">
                                                             <div className="tooltip-header" style={{ borderLeftColor: eventColor }}>
-                                                                <h4>{apt.isGoogleEvent ? `🇬 ${apt.title}${apt.googleEmail ? ` (${apt.googleEmail})` : ''}` : apt.title}</h4>
+                                                                <h4>{apt.isGoogleEvent ? `${apt.title}${apt.googleEmail ? ` (${apt.googleEmail})` : ''}` : apt.title}</h4>
                                                                 <span className="tooltip-status" style={{ backgroundColor: eventColor }}>
                                                                     {apt.isGoogleEvent ? (apt.googleEmail || 'Google Takvim') : (status?.label || 'Kayıtlı')}
                                                                 </span>
@@ -2524,7 +2542,7 @@ function formatDoctorDisplayName(rawName) {
                                                                 {apt.contactPhone && <div className="tooltip-row"><Phone size={14} /><span>{apt.contactPhone}</span></div>}
                                                                 {apt.assignedTo && (
                                                                     <div className="tooltip-row tooltip-agent">
-                                                                        {apt.assignedTo.isBot ? <span>🤖</span> : <User size={14} />}
+                                                                        {apt.assignedTo.isBot ? <Bot size={14} /> : <User size={14} />}
                                                                         <span>Temsilci: <strong>{apt.assignedTo.name}</strong> {apt.assignedTo.isBot ? '(AI Asistan)' : ''}</span>
                                                                     </div>
                                                                 )}
@@ -2534,7 +2552,7 @@ function formatDoctorDisplayName(rawName) {
                                                                         <span>Oluşturan: {apt.createdBy.name}</span>
                                                                     </div>
                                                                 )}
-                                                                {apt.doctorName && <div className="tooltip-row" style={{ color: '#059669' }}><User size={14} /><span>🩺 Dr. {formatDoctorDisplayName(apt.doctorName)}</span></div>}
+                                                                {apt.doctorName && <div className="tooltip-row" style={{ color: '#059669' }}><User size={14} /><span>Dr. {formatDoctorDisplayName(apt.doctorName)}</span></div>}
                                                                 {aptResource && <div className="tooltip-row"><Building2 size={14} /><span>{aptResource.name}</span></div>}
                                                                 {apt.notes && <div className="tooltip-notes"><FileText size={14} /><span>{apt.notes}</span></div>}
                                                             </div>
@@ -2553,7 +2571,7 @@ function formatDoctorDisplayName(rawName) {
                                                         <div key={`sc-${sc.id}`} className="appointment-pill" style={{ backgroundColor: '#f97316', cursor: 'pointer' }}
                                                             onClick={(e) => { e.stopPropagation(); openScheduledCallModal(sc); }}
                                                         >
-                                                            <span className="apt-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            <span className="apt-time">{new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
                                                             <span className="apt-title">{sc.contactName || sc.toNumber}</span>
                                                         </div>
                                                     )
@@ -2565,7 +2583,7 @@ function formatDoctorDisplayName(rawName) {
                                         getActivitiesForDay(day.date).forEach(act => {
                                             const actMType = getMeetingType(act);
                                             const isMeetingAct = act.type === 'MEETING';
-                                            const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                                            const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: <ClipboardList {...IC} />, color: '#475569', label: 'Aktivite' };
                                             const actDate = new Date(act.dueDate || act.createdAt);
                                             const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
                                             const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
@@ -2577,8 +2595,8 @@ function formatDoctorDisplayName(rawName) {
                                                         style={{ backgroundColor: isMeetingAct ? (actMType.color || cfg.color) : cfg.color, cursor: 'pointer' }}
                                                         onClick={(e) => { e.stopPropagation(); openActivityModal(act); }}
                                                     >
-                                                        {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
-                                                        {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
+                                                        {isOverdue && <AlertCircle size={10} style={{ marginRight: 2 }} />}
+                                                        {isCompleted && <Check size={10} style={{ marginRight: 2 }} />}
                                                         <span className="apt-time">{isMeetingAct ? actMType.icon : cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                                         <span className="apt-title">{act.title || act.contact?.name || (isMeetingAct ? actMType.label : cfg.label)}</span>
                                                     </div>
@@ -2713,7 +2731,7 @@ function formatDoctorDisplayName(rawName) {
                                                                 <span className={`activities-type-badge ${isCall ? 'type-call' : item.isGoogleEvent ? 'type-google' : 'type-appointment'}`}
                                                                     style={item.isGoogleEvent ? { background: gTheme.bgLight, color: gTheme.text, borderColor: gTheme.border } : {}}
                                                                 >
-                                                                    {isCall ? '📞' : item.isGoogleEvent ? '🇬' : '📅'}
+                                                                    {isCall ? <Phone size={14} /> : item.isGoogleEvent ? <Globe size={14} /> : <CalendarIcon size={14} />}
                                                                 </span>
                                                             );
                                                         })()}
@@ -2753,7 +2771,7 @@ function formatDoctorDisplayName(rawName) {
                                                     <td>
                                                         {item.assignedTo ? (
                                                             <span className={`activities-agent-badge ${item.assignedTo?.isBot ? 'badge-ai-agent' : 'badge-human-agent'}`}>
-                                                                {item.assignedTo?.isBot ? '🤖 ' : '👤 '}
+                                                                {item.assignedTo?.isBot ? '' : ''}
                                                                 {item.assignedTo?.name || (typeof item.assignedTo === 'string' ? item.assignedTo : '')}
                                                             </span>
                                                         ) : (
@@ -2763,11 +2781,11 @@ function formatDoctorDisplayName(rawName) {
                                                     <td>
                                                         {aptResource ? (
                                                             <span className="activities-resource-badge" style={{ borderLeftColor: aptResource.color }}>
-                                                                {aptResource.type === 'PERSON' ? `👨‍⚕️ ${formatDoctorDisplayName(aptResource.name)}` : aptResource.name}
+                                                                {aptResource.type === 'PERSON' ? `${formatDoctorDisplayName(aptResource.name)}` : aptResource.name}
                                                             </span>
                                                         ) : item.doctorName ? (
                                                             <span className="activities-resource-badge" style={{ borderLeftColor: '#10b981' }}>
-                                                                👨‍⚕️ {formatDoctorDisplayName(item.doctorName)}
+                                                                {formatDoctorDisplayName(item.doctorName)}
                                                             </span>
                                                         ) : (
                                                             <span className="activities-empty">—</span>
@@ -2781,7 +2799,7 @@ function formatDoctorDisplayName(rawName) {
                                                                 color: status?.color || (isCall ? '#f97316' : '#94a3b8')
                                                             }}
                                                         >
-                                                            {isCall ? (item.status === 'PENDING' ? 'Bekliyor' : item.status) : (status?.label || '—')}
+                                                            {isCall ? callStatusLabel(item.status) : (status?.label || '—')}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -2804,7 +2822,7 @@ function formatDoctorDisplayName(rawName) {
                             style={rescheduleData.appointment.isGoogleEvent ? { background: `linear-gradient(135deg, #0f172a 0%, ${getGoogleAccountColor(rescheduleData.appointment.googleEmail, googleStatus.accounts).primary} 100%)` } : {}}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div className="reschedule-modal-icon">📅</div>
+                                <div className="reschedule-modal-icon"><CalendarIcon size={18} /></div>
                                 <div>
                                     <h3>Randevuyu / Etkinliği Taşı</h3>
                                     <p>{rescheduleData.appointment.isGoogleEvent ? `Google Takvim (${rescheduleData.appointment.googleEmail || 'Bağlı Hesap'})` : 'Instomer Randevusu'}</p>
@@ -2820,7 +2838,7 @@ function formatDoctorDisplayName(rawName) {
                                 <span className="reschedule-event-title">{rescheduleData.appointment.title}</span>
                                 {rescheduleData.appointment.isGoogleEvent && (
                                     <span className="reschedule-google-badge" style={{ backgroundColor: getGoogleAccountColor(rescheduleData.appointment.googleEmail, googleStatus.accounts).primary }}>
-                                        🇬 Google
+                                        Google
                                     </span>
                                 )}
                             </div>
@@ -2924,7 +2942,7 @@ function formatDoctorDisplayName(rawName) {
                         <div className="apt-modal-header" style={selectedAppointment?.isGoogleEvent ? { background: `linear-gradient(135deg, #0f172a 0%, ${getGoogleAccountColor(selectedAppointment.googleEmail, googleStatus.accounts).primary} 100%)` } : {}}>
                             <h2>
                                 {selectedAppointment?.isGoogleEvent
-                                    ? (isGoogleEventEditMode ? '✏️ Google Takvim Etkinliğini Düzenle' : '🇬 Google Takvim Etkinliği')
+                                    ? (isGoogleEventEditMode ? 'Google Takvim Etkinliğini Düzenle' : 'Google Takvim Etkinliği')
                                     : (selectedAppointment ? 'Görüşme / Randevu Düzenle' : 'Yeni Görüşme Planla')
                                 }
                             </h2>
@@ -3022,7 +3040,7 @@ function formatDoctorDisplayName(rawName) {
 
                                             {selectedAppointment.assignedTo?.name && (
                                                 <div className="google-event-meta-item">
-                                                    {selectedAppointment.assignedTo.isBot ? <span>🤖</span> : <User size={16} />}
+                                                    {selectedAppointment.assignedTo.isBot ? <Bot size={16} /> : <User size={16} />}
                                                     <span>Temsilci: <strong>{selectedAppointment.assignedTo.name}</strong> {selectedAppointment.assignedTo.isBot ? '(AI Asistan)' : ''}</span>
                                                 </div>
                                             )}
@@ -3065,7 +3083,7 @@ function formatDoctorDisplayName(rawName) {
                                                     className="apt-google-meet-btn"
                                                     style={{ fontSize: 13, padding: '8px 14px', borderRadius: 8 }}
                                                 >
-                                                    📹 Google Meet Görüşmesine Katıl
+                                                    <Video size={14} /> Google Meet Görüşmesine Katıl
                                                 </a>
                                             </div>
                                         )}
@@ -3152,7 +3170,7 @@ function formatDoctorDisplayName(rawName) {
                                                 rel="noopener noreferrer"
                                                 className="apt-google-meet-btn"
                                             >
-                                                📹 Google Meet'e Katıl
+                                                <Video size={14} /> Google Meet'e Katıl
                                             </a>
                                         )}
                                     </div>
@@ -3181,7 +3199,7 @@ function formatDoctorDisplayName(rawName) {
                                         >
                                             {MEETING_TYPES.map(type => (
                                                 <option key={type.value} value={type.value}>
-                                                    {type.icon} {type.label}
+                                                    {type.label}
                                                 </option>
                                             ))}
                                         </select>
@@ -3232,7 +3250,7 @@ function formatDoctorDisplayName(rawName) {
                                                 </select>
                                                 {selectedAppointment?.assignedTo?.isBot && (
                                                     <div style={{ fontSize: 11, color: '#059669', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontWeight: 600 }}>
-                                                        🤖 {selectedAppointment.assignedTo.name} (AI Asistan tarafından verildi)
+                                                        {selectedAppointment.assignedTo.name} (AI Asistan tarafından verildi)
                                                     </div>
                                                 )}
                                             </div>
@@ -3265,10 +3283,10 @@ function formatDoctorDisplayName(rawName) {
                                                 >
                                                     <option value="">{t("channels.selectOption")}</option>
                                                     {Object.entries(groupedResources.groups).map(([branchName, branchDocs]) => (
-                                                        <optgroup key={branchName} label={`🏥 ${branchName}`}>
+                                                        <optgroup key={branchName} label={branchName}>
                                                             {branchDocs.map(resource => (
                                                                 <option key={resource.id} value={resource.id}>
-                                                                    {resource.type === 'PERSON' ? '👨‍⚕️' : (RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦')} {resource.displayName || resource.name}
+                                                                    {resource.displayName || resource.name}
                                                                 </option>
                                                             ))}
                                                         </optgroup>
@@ -3277,7 +3295,7 @@ function formatDoctorDisplayName(rawName) {
                                                         <optgroup label={Object.keys(groupedResources.groups).length > 0 ? "Diğer Kaynaklar" : "Kaynaklar"}>
                                                             {groupedResources.unassigned.map(resource => (
                                                                 <option key={resource.id} value={resource.id}>
-                                                                    {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
+                                                                    {resource.name}
                                                                 </option>
                                                             ))}
                                                         </optgroup>
@@ -3415,7 +3433,7 @@ function formatDoctorDisplayName(rawName) {
                                         onChange={(e) => setResourceForm(prev => ({ ...prev, type: e.target.value }))}
                                     >
                                         {RESOURCE_TYPES.map(t => (
-                                            <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
+                                            <option key={t.value} value={t.value}>{t.label}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -3490,7 +3508,7 @@ function formatDoctorDisplayName(rawName) {
                         <div className="apt-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
                             <div className="apt-modal-header">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <h2>📞 Planlanmış Arama</h2>
+                                    <h2>Planlanmış Arama</h2>
                                     {selectedContactId && (
                                         <span style={{
                                             fontSize: 10.5,
@@ -3503,7 +3521,7 @@ function formatDoctorDisplayName(rawName) {
                                             alignItems: 'center',
                                             gap: 4
                                         }}>
-                                            👉 Kişi Kartı Açık
+                                            Kişi Kartı Açık
                                         </span>
                                     )}
                                 </div>
@@ -3587,7 +3605,7 @@ function formatDoctorDisplayName(rawName) {
                                                     }}
                                                     title="WhatsApp Sohbeti Aç"
                                                 >
-                                                    💬 WA
+                                                    <MessageSquare size={12} /> WA
                                                 </a>
                                             </div>
                                         )}
@@ -3605,7 +3623,7 @@ function formatDoctorDisplayName(rawName) {
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                                             <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                <span>🎯 NEDEN ARIYORUZ?</span>
+                                                <span>NEDEN ARIYORUZ?</span>
                                             </div>
                                             {source && (
                                                 <span style={{ fontSize: 10, fontWeight: 600, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, border: '1px solid #fde68a' }}>
@@ -3751,10 +3769,10 @@ function formatDoctorDisplayName(rawName) {
                                                     setDayPopup(null);
                                                 }}
                                             >
-                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>🇬 Google</span>}
+                                                {apt.isGoogleEvent && <span className="popup-badge google" style={{ background: dpEventColor, color: '#fff' }}>Google</span>}
                                                 <span className="popup-badge meeting-type" style={{ background: mType.color, color: '#fff' }}>{mType.icon} {mType.label}</span>
-                                                {isOverdue && <span className="popup-badge overdue">⚠️</span>}
-                                                {isCompleted && <span className="popup-badge completed">✓</span>}
+                                                {isOverdue && <span className="popup-badge overdue"><AlertCircle size={11} /></span>}
+                                                {isCompleted && <span className="popup-badge completed"><Check size={11} /></span>}
                                                 <span className="popup-time">{formatTime(apt.startTime)}</span>
                                                 <span className="popup-title">{apt.title}{apt.isGoogleEvent ? ` (${apt.googleEmail || apt.assignedTo?.name || 'Google'})` : ''}</span>
                                                 {apt.contactName && <span className="popup-contact">{apt.contactName}</span>}
@@ -3770,7 +3788,7 @@ function formatDoctorDisplayName(rawName) {
                                                 <div key={`dp-sc-${sc.id}`} className="day-popup-item" style={{ borderLeftColor: '#f97316' }}
                                                     onClick={() => { openScheduledCallModal(sc); setDayPopup(null); }}
                                                 >
-                                                    <span className="popup-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <span className="popup-time">{new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
                                                     <span className="popup-title">{sc.contactName || sc.toNumber}</span>
                                                 </div>
                                             )
@@ -3780,7 +3798,7 @@ function formatDoctorDisplayName(rawName) {
                                 getActivitiesForDay(dayPopup.date).forEach(act => {
                                     const isMeetingAct = act.type === 'MEETING';
                                     const actMType = getMeetingType(act);
-                                    const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                                    const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: <ClipboardList {...IC} />, color: '#475569', label: 'Aktivite' };
                                     const actDate = new Date(act.dueDate || act.createdAt);
                                     const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
                                     const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
@@ -3792,8 +3810,8 @@ function formatDoctorDisplayName(rawName) {
                                                 onClick={() => { openActivityModal(act); setDayPopup(null); }}
                                             >
                                                 {isMeetingAct && <span className="popup-badge meeting-type" style={{ background: actMType.color, color: '#fff' }}>{actMType.icon} {actMType.label}</span>}
-                                                {isOverdue && <span className="popup-badge overdue">⚠️</span>}
-                                                {isCompleted && <span className="popup-badge completed">✓</span>}
+                                                {isOverdue && <span className="popup-badge overdue"><AlertCircle size={11} /></span>}
+                                                {isCompleted && <span className="popup-badge completed"><Check size={11} /></span>}
                                                 <span className="popup-time">{isMeetingAct ? actMType.icon : cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                                 <span className="popup-title">{act.title || act.contact?.name || (isMeetingAct ? actMType.label : cfg.label)}</span>
                                                 {act.contact?.name && <span className="popup-contact">{act.contact.name}</span>}
@@ -3812,11 +3830,11 @@ function formatDoctorDisplayName(rawName) {
             {/* ─── Aktivite Detay Popup ─── */}
             {selectedActivity && (() => {
                 const act = selectedActivity;
-                const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: <ClipboardList {...IC} />, color: '#475569', label: 'Aktivite' };
                 const actDate = new Date(act.dueDate || act.createdAt);
                 const isOverdue = actDate < new Date() && act.status !== 'COMPLETED' && act.status !== 'DONE';
                 const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
-                const sentimentMap = { Positive: { emoji: '😊', label: 'Olumlu', color: '#10b981' }, Neutral: { emoji: '😐', label: 'Nötr', color: '#f59e0b' }, Negative: { emoji: '😞', label: 'Olumsuz', color: '#ef4444' } };
+                const sentimentMap = { Positive: { label: 'Olumlu', color: '#15803d' }, Neutral: { label: 'Nötr', color: '#475569' }, Negative: { label: 'Olumsuz', color: '#b91c1c' } };
                 const sent = sentimentMap[act.callSentiment];
                 return (
                     <>
@@ -3844,7 +3862,7 @@ function formatDoctorDisplayName(rawName) {
                                                 borderRadius: 12,
                                                 border: '1px solid #bfdbfe'
                                             }}>
-                                                👉 Kişi Kartı Açık
+                                                Kişi Kartı Açık
                                             </span>
                                         )}
                                     </div>
@@ -3865,14 +3883,14 @@ function formatDoctorDisplayName(rawName) {
                                         background: isCompleted ? '#dcfce7' : isOverdue ? '#fef2f2' : '#eff6ff',
                                         color: isCompleted ? '#16a34a' : isOverdue ? '#ef4444' : '#3b82f6'
                                     }}>
-                                        {isCompleted ? '✅ Tamamlandı' : isOverdue ? '⚠️ Gecikmiş' : '🔵 Planlandı'}
+                                        {isCompleted ? 'Tamamlandı' : isOverdue ? 'Gecikmiş' : 'Planlandı'}
                                     </span>
                                     {act.priority && act.priority !== 'NORMAL' && (
                                         <span style={{
                                             padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
                                             background: act.priority === 'HIGH' || act.priority === 'URGENT' ? '#fef2f2' : '#f8fafc',
                                             color: act.priority === 'HIGH' || act.priority === 'URGENT' ? '#ef4444' : '#64748b'
-                                        }}>{act.priority === 'URGENT' ? '🔴 Acil' : act.priority === 'HIGH' ? '🟠 Yüksek' : act.priority === 'LOW' ? '🔵 Düşük' : act.priority}</span>
+                                        }}>{act.priority === 'URGENT' ? 'Acil' : act.priority === 'HIGH' ? 'Yüksek' : act.priority === 'LOW' ? 'Düşük' : act.priority}</span>
                                     )}
                                 </div>
 
@@ -3933,7 +3951,7 @@ function formatDoctorDisplayName(rawName) {
                                                     }}
                                                     title="WhatsApp Sohbeti Aç"
                                                 >
-                                                    💬 WA
+                                                    <MessageSquare size={12} /> WA
                                                 </a>
                                             </div>
                                         )}
@@ -3965,14 +3983,14 @@ function formatDoctorDisplayName(rawName) {
                                         border: '1px solid #e2e8f0'
                                     }}>
                                         <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                            📞 Arama Sonucu
+                                            Arama Sonucu
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sent ? 6 : 0 }}>
                                             <span style={{
                                                 fontSize: 13, fontWeight: 600,
                                                 color: act.callSuccessful ? '#10b981' : '#ef4444'
                                             }}>
-                                                {act.callSuccessful ? '✅ Ulaşıldı' : '❌ Ulaşılamadı'}
+                                                {act.callSuccessful ? 'Ulaşıldı' : 'Ulaşılamadı'}
                                             </span>
                                         </div>
                                         {sent && (
@@ -3991,7 +4009,7 @@ function formatDoctorDisplayName(rawName) {
                                         border: '1px solid #fef08a'
                                     }}>
                                         <div style={{ fontSize: 11, fontWeight: 600, color: '#a16207', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                            📝 Not
+                                            Not
                                         </div>
                                         <div style={{ fontSize: 13, color: '#713f12', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                                             {act.result || act.description}

@@ -57,7 +57,7 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                 type: isNote ? 'CALL' : actionType,
                 title: config.title,
                 description: isNote && callSuccess === 'FAILED'
-                    ? `📵 Ulaşılamadı: ${description}`
+                    ? `Ulaşılamadı: ${description}`
                     : description,
                 dueDate: isNote ? new Date().toISOString() : (dueDate ? new Date(dueDate).toISOString() : null),
                 assignedToId: isNote ? null : (assignedToId || null),
@@ -118,16 +118,17 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                                     <div className="qam-field-label">Görüşme Nasıl Geçti?</div>
                                     <div className="qam-choice-row">
                                         {[
-                                            { key: 'POSITIVE', emoji: '😊', label: 'Olumlu' },
-                                            { key: 'NEUTRAL',  emoji: '😐', label: 'Nötr' },
-                                            { key: 'NEGATIVE', emoji: '😞', label: 'Olumsuz' },
+                                            { key: 'POSITIVE', dot: '#16a34a', label: 'Olumlu' },
+                                            { key: 'NEUTRAL',  dot: '#94a3b8', label: 'Nötr' },
+                                            { key: 'NEGATIVE', dot: '#ef4444', label: 'Olumsuz' },
                                         ].map(s => (
                                             <button
                                                 key={s.key}
                                                 className={`qam-choice sentiment ${sentiment === s.key ? 'selected' : ''}`}
                                                 onClick={() => setSentiment(s.key)}
                                             >
-                                                {s.emoji} {s.label}
+                                                <i style={{ width: 8, height: 8, borderRadius: 999, background: s.dot, display: 'inline-block', marginRight: 7 }} />
+                                                {s.label}
                                             </button>
                                         ))}
                                     </div>
@@ -145,11 +146,11 @@ const QuickActivityModal = ({ actionType, contact, agents = [], onClose, onSaved
                                 value={meetingType}
                                 onChange={e => setMeetingType(e.target.value)}
                             >
-                                <option value="YUZ_YUZE">🤝 Yüz Yüze</option>
-                                <option value="ONLINE">💻 Online / Video</option>
-                                <option value="TELEFON">📞 Telefon</option>
-                                <option value="KLINIK">🏥 Muayene / Klinik</option>
-                                <option value="DIGER">📋 Diğer</option>
+                                <option value="YUZ_YUZE">Yüz Yüze</option>
+                                <option value="ONLINE">Online / Video</option>
+                                <option value="TELEFON">Telefon</option>
+                                <option value="KLINIK">Muayene / Klinik</option>
+                                <option value="DIGER">Diğer</option>
                             </select>
                         </div>
                     )}
