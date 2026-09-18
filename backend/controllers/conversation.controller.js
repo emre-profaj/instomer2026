@@ -17,6 +17,30 @@ import FormData from 'form-data';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
+/**
+ * Gönderim hatasından okunabilir sebep çıkarır.
+ *
+ * Başarısız mesajlarda sebep hiçbir yere yazılmıyordu: ekranda çıplak bir
+ * kırmızı ünlem kalıyor, "neden gitmedi" sorusunun cevabı yalnızca sunucu
+ * kayıtlarında duruyordu. Gerçek vaka: token o numaraya yetkili olmadığı
+ * için Meta "Object with ID ... does not exist" dönüyordu ve kullanıcı
+ * bunu göremiyordu.
+ *
+ * Meta hatayı `response.data.error.message` içinde veriyor; ağ hatasında
+ * yalnızca `error.message` oluyor. Alan sınırsız büyümesin diye kırpılıyor.
+ */
+const FAIL_REASON_MAX = 400;
+function sendFailReason(error) {
+    const meta = error?.response?.data?.error;
+    const reason =
+        meta?.error_user_msg ||
+        meta?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Bilinmeyen hata';
+    return String(reason).slice(0, FAIL_REASON_MAX);
+}
+
 // Helper to find local file on disk
 export const getLocalFilePath = (mediaUrl) => {
     if (!mediaUrl) return null;
@@ -1036,11 +1060,11 @@ export const sendMessage = async (req, res) => {
                         }
                     }
                 } catch (error) {
-                    const errMsg = error.response?.data?.error?.message || error.message;
+                    const errMsg = sendFailReason(error);
                     console.error(`❌ [Send Message] ${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} error:`, errMsg, error.response?.data || '');
                     await prisma.message.update({
                         where: { id: message.id },
-                        data: { status: 'FAILED' }
+                        data: { status: 'FAILED', failReason: errMsg }
                     }).catch(e => console.error('Failed to update message status to FAILED:', e.message));
 
                     emitToWorkspace(conversation.workspaceId, 'message_status', {
@@ -1048,6 +1072,7 @@ export const sendMessage = async (req, res) => {
                         dbMessageId: message.id,
                         conversationId: conversation.id,
                         status: 'FAILED',
+                        failReason: errMsg,
                         error: errMsg
                     });
                 }
@@ -1155,14 +1180,15 @@ export const sendMessage = async (req, res) => {
                             status: 'SENT'
                         });
                     } catch (error) {
+                        const errMsg = sendFailReason(error);
                         console.error('❌ WhatsApp Send Error Details:', {
                             data: error.response?.data,
                             status: error.response?.status,
-                            message: error.message
+                            message: errMsg
                         });
                         await prisma.message.update({
                             where: { id: message.id },
-                            data: { status: 'FAILED' }
+                            data: { status: 'FAILED', failReason: errMsg }
                         }).catch(e => console.error('Failed to update message status to FAILED:', e.message));
 
                         emitToWorkspace(conversation.workspaceId, 'message_status', {
@@ -1170,7 +1196,8 @@ export const sendMessage = async (req, res) => {
                             dbMessageId: message.id,
                             conversationId: conversation.id,
                             status: 'FAILED',
-                            error: error.message
+                            failReason: errMsg,
+                            error: errMsg
                         });
                     }
                 }
@@ -1202,10 +1229,11 @@ export const sendMessage = async (req, res) => {
                         status: 'DELIVERED'
                     });
                 } catch (error) {
-                    console.error('❌ Email Send Error:', error.message);
+                    const errMsg = sendFailReason(error);
+                    console.error('❌ Email Send Error:', errMsg);
                     await prisma.message.update({
                         where: { id: message.id },
-                        data: { status: 'FAILED' }
+                        data: { status: 'FAILED', failReason: errMsg }
                     }).catch(e => console.error('Failed to update email message status to FAILED:', e.message));
 
                     emitToWorkspace(conversation.workspaceId, 'message_status', {
@@ -1213,7 +1241,8 @@ export const sendMessage = async (req, res) => {
                         dbMessageId: message.id,
                         conversationId: conversation.id,
                         status: 'FAILED',
-                        error: error.message
+                        failReason: errMsg,
+                        error: errMsg
                     });
                 }
             }

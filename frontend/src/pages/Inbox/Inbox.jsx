@@ -1633,7 +1633,7 @@ const Inbox = () => {
         // Listen for message status updates (sent, delivered, read, failed)
         socket.on('message_status', (data) => {
             console.log('📊 Message status update:', data);
-            const { messageId, dbMessageId, conversationId, status } = data;
+            const { messageId, dbMessageId, conversationId, status, failReason } = data;
             const normalizedStatus = (status || '').toUpperCase();
 
             // 1. Update active chat messages if open (using selectedItemRef to avoid stale closure)
@@ -1643,7 +1643,13 @@ const Inbox = () => {
                     if (msg.id === dbMessageId ||
                         (messageId && (msg.whatsappMessageId === messageId || msg.facebookMessageId === messageId || msg.emailMessageId === messageId))) {
                         console.log(`✅ Updating active chat message ${msg.id} status to ${normalizedStatus}`);
-                        return { ...msg, status: normalizedStatus };
+                        // Sebep yalnızca başarısız gönderimlerde geliyor; başarılı bir
+                        // sonraki durumda eski sebep kalmasın diye temizleniyor.
+                        return {
+                            ...msg,
+                            status: normalizedStatus,
+                            failReason: normalizedStatus === 'FAILED' ? (failReason || msg.failReason || null) : null
+                        };
                     }
                     return msg;
                 }));
@@ -6503,7 +6509,11 @@ const Inbox = () => {
                                                                     ) : msg.status === 'DELIVERED' ? (
                                                                         <CheckCheck size={14} className="status-delivered" title="Karşı Tarafa İletildi" />
                                                                     ) : msg.status === 'FAILED' ? (
-                                                                        <AlertCircle size={14} className="status-failed" title="Mesaj Gönderilemedi" />
+                                                                        <AlertCircle
+                                                                            size={14}
+                                                                            className="status-failed"
+                                                                            title={msg.failReason ? `Gönderilemedi: ${msg.failReason}` : 'Mesaj Gönderilemedi'}
+                                                                        />
                                                                     ) : (
                                                                         <Check size={14} className="status-sent" title="Mesaj Gönderildi" />
                                                                     )}
@@ -6511,6 +6521,14 @@ const Inbox = () => {
                                                             </>
                                                         )}
                                                     </div>
+                                                    {/* Sebep görünür olsun: yalnızca ikonun üstünde dursa
+                                                        fareyle üzerine gelmeyen kimse neden gitmediğini bilmiyor. */}
+                                                    {msg.status === 'FAILED' && msg.failReason && (
+                                                        <div className="message-fail-reason">
+                                                            <AlertCircle size={12} />
+                                                            <span>{msg.failReason}</span>
+                                                        </div>
+                                                    )}
                                                     {msg.isInternalNote && (
                                                         <div className="note-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>

@@ -625,6 +625,11 @@ model Message {
   facebookMessageId String?      @unique
   whatsappMessageId String?      @unique
   status            String       @default("SENT") // SENT, DELIVERED, READ, FAILED
+  // Gönderim neden başarısız oldu. Status FAILED olduğunda Meta'nın
+  // döndüğü mesaj buraya yazılıyor; önceden hiçbir yere yazılmıyordu ve
+  // ekranda sebepsiz bir kırmızı ünlem kalıyordu (ör. token o numaraya
+  // yetkili değilse "Object with ID ... does not exist" burada görünür).
+  failReason        String?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   emailMessageId    String?      @unique
