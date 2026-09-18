@@ -9,6 +9,14 @@ import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
 import './CompanyInfo.css';
+import './Branches.css';
+
+const branchInitials = (name) => {
+    const words = (name || '').trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return '?';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0][0] + words[1][0]).toUpperCase();
+};
 
 const KnowledgeBase = ({ hideSidebar = false }) => {
     const { t } = useTranslation();
@@ -1501,184 +1509,219 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
 
             {/* Branches Tab */}
             {activeTab === 'branches' && (
-                <div className="card" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <MapPin size={24} style={{ color: 'var(--primary, #ef4444)' }} />
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #111827)' }}>{labels.branchesTab || 'Şubeler'}</h3>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #6b7280)' }}>{labels.branchesDesc || 'Şubelerinizi ve lokasyonlarınızı yönetin.'}</p>
-                        </div>
+                <div className="br-page">
+                    <div className="br-head">
+                        <div className="br-eyebrow">Ayarlar · Firma &amp; Bilgi Bankası</div>
+                        <h1>{labels.branchesTab || 'Şubeler'}</h1>
+                        <p>{labels.branchesDesc || 'Şubelerinizi ve lokasyonlarınızı yönetin.'}</p>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
-                        <div>
+                    <div className="br-cols">
+                        <div className="br-surface">
+                            <div className="br-list-head">
+                                <h2>
+                                    {labels.branchesTab || 'Şubeler'}
+                                    {!branchesLoading && branches.length > 0 && (
+                                        <span className="br-count">{branches.length} kayıt</span>
+                                    )}
+                                </h2>
+                            </div>
+
                             {branchesLoading ? (
-                                <div className="loading">Yükleniyor...</div>
+                                <div className="br-empty"><p>Yükleniyor…</p></div>
                             ) : branches.length === 0 ? (
-                                <div className="empty-state">Henüz {labels.branchSingle?.toLowerCase() || 'şube'} eklenmemiş.</div>
+                                <div className="br-empty">
+                                    <div className="br-empty-ico"><MapPin size={24} /></div>
+                                    <h3>Henüz {labels.branchSingle?.toLowerCase() || 'şube'} eklenmemiş</h3>
+                                    <p>Yandaki formdan ilk {labels.branchSingle?.toLowerCase() || 'şube'} kaydını oluşturabilirsiniz.</p>
+                                </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {branches.map(branch => (
-                                        <div key={branch.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div 
-                                                style={{ 
-                                                    padding: '16px', 
-                                                    background: selectedBranch?.id === branch.id ? 'var(--primary-light, #fef2f2)' : '#fff', 
-                                                    borderRadius: '8px', 
-                                                    border: selectedBranch?.id === branch.id ? '1px solid var(--primary, #ef4444)' : '1px solid var(--border-color, #e5e7eb)', 
-                                                    display: 'flex', 
-                                                    justifyContent: 'space-between', 
-                                                    alignItems: 'flex-start', 
-                                                    cursor: 'pointer', 
-                                                    transition: 'all 0.15s ease'
-                                                }}
-                                                onClick={() => setSelectedBranch(selectedBranch?.id === branch.id ? null : branch)}
-                                            >
+                                branches.map(branch => {
+                                    const isOpen = selectedBranch?.id === branch.id;
+                                    const branchProducts = products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id)));
+                                    const branchResources = resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id)));
+                                    return (
+                                        <div key={branch.id}>
+                                            <div className={`br-row ${isOpen ? 'open' : ''}`}>
+                                                <div className="br-av">{branchInitials(branch.name)}</div>
                                                 <div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                                        <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary, #111827)' }}>{branch.name}</h4>
-                                                        {branch.integrationType === 'PROBEL' ? (
-                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', fontWeight: 600 }}>
-                                                                ⚡ Probel (Şube: {branch.externalBranchCode || '1'})
-                                                            </span>
-                                                        ) : branch.integrationType === 'GOOGLE_CALENDAR' ? (
-                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', fontWeight: 600 }}>
-                                                                📅 {branch.googleEmail || 'Google Takvim'}
-                                                            </span>
-                                                        ) : branch.integrationType === 'MANUAL' ? (
-                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 500 }}>
-                                                                ✋ Manuel
-                                                            </span>
-                                                        ) : (
-                                                            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', fontWeight: 500 }}>
-                                                                🏢 Sistem Varsayılanı {hasHealthSystem ? '(Probel)' : ''}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {branch.address && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📍 {branch.address}</div>}
-                                                    {branch.phone && <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '4px' }}>📞 {branch.phone}</div>}
+                                                    <button
+                                                        type="button"
+                                                        className="br-name"
+                                                        aria-expanded={isOpen}
+                                                        onClick={() => setSelectedBranch(isOpen ? null : branch)}
+                                                    >
+                                                        {branch.name}
+                                                    </button>
+                                                    {branch.address && <div className="br-sub">{branch.address}</div>}
                                                 </div>
-                                                <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
-                                                    <button className="btn-icon" onClick={() => {
-                                                        setEditingBranch(branch.id);
-                                                        setEditBranchName(branch.name);
-                                                        setEditBranchAddress(branch.address || '');
-                                                        setEditBranchPhone(branch.phone || '');
-                                                        setEditBranchIntegrationType(branch.integrationType || 'WORKSPACE_DEFAULT');
-                                                        setEditBranchExternalCode(branch.externalBranchCode || '');
-                                                        setEditBranchGoogleEmail(branch.googleEmail || '');
-                                                    }}><Pencil size={16} /></button>
-                                                    <button className="btn-icon btn-danger" onClick={() => handleDeleteBranch(branch.id, branch.name)}><Trash2 size={16} /></button>
+                                                <div className="br-phone">
+                                                    {branch.phone || <span className="br-dash">—</span>}
+                                                </div>
+                                                <div className="br-acts">
+                                                    <button
+                                                        type="button"
+                                                        className="br-ico"
+                                                        aria-label={`${branch.name} düzenle`}
+                                                        onClick={() => {
+                                                            setEditingBranch(branch.id);
+                                                            setEditBranchName(branch.name);
+                                                            setEditBranchAddress(branch.address || '');
+                                                            setEditBranchPhone(branch.phone || '');
+                                                            setEditBranchIntegrationType(branch.integrationType || 'WORKSPACE_DEFAULT');
+                                                            setEditBranchExternalCode(branch.externalBranchCode || '');
+                                                            setEditBranchGoogleEmail(branch.googleEmail || '');
+                                                        }}
+                                                    >
+                                                        <Pencil size={14} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="br-ico danger"
+                                                        aria-label={`${branch.name} sil`}
+                                                        onClick={() => handleDeleteBranch(branch.id, branch.name)}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
                                                 </div>
                                             </div>
-                                            
-                                             {selectedBranch?.id === branch.id && (
-                                                <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', marginLeft: '16px' }}>
-                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu {labels.branchSingle || 'Şube'}'deki {labels.productsTab || 'Ürünler'}</h5>
-                                                    <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
-                                                        {products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).length > 0 ? (
-                                                            products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id))).map(p => (
-                                                                <li key={p.id}>{p.name}</li>
-                                                            ))
-                                                        ) : (
-                                                            <li>{labels.productSingle || 'Ürün'} bulunamadı.</li>
-                                                        )}
-                                                    </ul>
 
-                                                    <h5 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Bu {labels.branchSingle || 'Şube'}'deki Kaynaklar</h5>
-                                                    <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
-                                                        {resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id))).length > 0 ? (
-                                                            resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id))).map(r => (
-                                                                <li key={r.id}>{r.name}</li>
-                                                            ))
-                                                        ) : (
-                                                            <li>Kaynak bulunamadı.</li>
-                                                        )}
-                                                    </ul>
+                                            {isOpen && (
+                                                <div className="br-detail">
+                                                    <div className="br-dsec">
+                                                        <span className="br-dsec-name">{labels.productsTab || 'Ürünler'}</span>
+                                                        <span className="br-dsec-rule"></span>
+                                                        <span className="br-dsec-count">{branchProducts.length}</span>
+                                                    </div>
+                                                    {branchProducts.length > 0 ? (
+                                                        <div className="br-chips">
+                                                            {branchProducts.map(p => <span key={p.id} className="br-chip">{p.name}</span>)}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="br-chip-none">Bu {labels.branchSingle?.toLowerCase() || 'şube'} için {labels.productSingle?.toLowerCase() || 'ürün'} tanımlı değil.</div>
+                                                    )}
+
+                                                    <div className="br-dsec">
+                                                        <span className="br-dsec-name">Kaynaklar</span>
+                                                        <span className="br-dsec-rule"></span>
+                                                        <span className="br-dsec-count">{branchResources.length}</span>
+                                                    </div>
+                                                    {branchResources.length > 0 ? (
+                                                        <div className="br-chips">
+                                                            {branchResources.map(r => <span key={r.id} className="br-chip">{r.name}</span>)}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="br-chip-none">Bu {labels.branchSingle?.toLowerCase() || 'şube'} için kaynak tanımlı değil.</div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })
                             )}
                         </div>
 
-                        <div>
-                            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0', position: 'sticky', top: '24px' }}>
-                                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>{editingBranch ? `${labels.branchSingle || 'Şube'} Düzenle` : (labels.newBranch || 'Yeni Şube Ekle')}</h4>
-                                
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>{labels.branchSingle || 'Şube'} Adı *</label>
-                                    <input type="text" className="input" value={editingBranch ? editBranchName : newBranchName} onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)} placeholder={labels.branchPlaceholder || 'Örn: Merkez Şube'} />
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Adres</label>
-                                    <textarea className="input" rows="2" value={editingBranch ? editBranchAddress : newBranchAddress} onChange={e => editingBranch ? setEditBranchAddress(e.target.value) : setNewBranchAddress(e.target.value)} placeholder="Açık adres..." />
-                                </div>
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Telefon</label>
-                                    <input type="text" className="input" value={editingBranch ? editBranchPhone : newBranchPhone} onChange={e => editingBranch ? setEditBranchPhone(e.target.value) : setNewBranchPhone(e.target.value)} placeholder="+90..." />
-                                </div>
+                        <div className="br-surface br-form">
+                            <h2>{editingBranch ? `${labels.branchSingle || 'Şube'} düzenle` : (labels.newBranch || 'Yeni şube ekle')}</h2>
+                            <p className="br-form-hint">Bu bilgiler bot yanıtlarında ve randevu yönlendirmesinde kullanılır.</p>
 
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                    <label>Rezervasyon Entegrasyonu</label>
-                                    <select 
-                                        className="input" 
-                                        value={editingBranch ? editBranchIntegrationType : newBranchIntegrationType} 
-                                        onChange={e => editingBranch ? setEditBranchIntegrationType(e.target.value) : setNewBranchIntegrationType(e.target.value)}
-                                    >
-                                        <option value="WORKSPACE_DEFAULT">🏢 Çalışma Alanı Varsayılanı {hasHealthSystem ? '(Probel HBYS)' : ''}</option>
-                                        <option value="PROBEL">⚡ Probel HBYS (Şube Kodu ile)</option>
-                                        <option value="GOOGLE_CALENDAR">📅 Google Takvim</option>
-                                        <option value="MANUAL">✋ Manuel (Sadece Dahili Takvim)</option>
-                                    </select>
+                            <div className="br-f">
+                                <label htmlFor="br-in-name">{labels.branchSingle || 'Şube'} adı *</label>
+                                <input
+                                    id="br-in-name"
+                                    type="text"
+                                    className="br-in"
+                                    value={editingBranch ? editBranchName : newBranchName}
+                                    onChange={e => editingBranch ? setEditBranchName(e.target.value) : setNewBranchName(e.target.value)}
+                                    placeholder={labels.branchPlaceholder || 'Örn: Merkez Şube'}
+                                />
+                            </div>
+
+                            <div className="br-f">
+                                <label htmlFor="br-in-address">Adres</label>
+                                <textarea
+                                    id="br-in-address"
+                                    className="br-in"
+                                    rows="2"
+                                    value={editingBranch ? editBranchAddress : newBranchAddress}
+                                    onChange={e => editingBranch ? setEditBranchAddress(e.target.value) : setNewBranchAddress(e.target.value)}
+                                    placeholder="Açık adres…"
+                                />
+                            </div>
+
+                            <div className="br-f">
+                                <label htmlFor="br-in-phone">Telefon</label>
+                                <input
+                                    id="br-in-phone"
+                                    type="text"
+                                    className="br-in"
+                                    value={editingBranch ? editBranchPhone : newBranchPhone}
+                                    onChange={e => editingBranch ? setEditBranchPhone(e.target.value) : setNewBranchPhone(e.target.value)}
+                                    placeholder="+90…"
+                                />
+                            </div>
+
+                            <div className="br-f">
+                                <label htmlFor="br-in-integration">Rezervasyon entegrasyonu</label>
+                                <select
+                                    id="br-in-integration"
+                                    className="br-in"
+                                    value={editingBranch ? editBranchIntegrationType : newBranchIntegrationType}
+                                    onChange={e => editingBranch ? setEditBranchIntegrationType(e.target.value) : setNewBranchIntegrationType(e.target.value)}
+                                >
+                                    <option value="WORKSPACE_DEFAULT">Çalışma alanı varsayılanı{hasHealthSystem ? ' (Probel HBYS)' : ''}</option>
+                                    <option value="PROBEL">Probel HBYS (şube kodu ile)</option>
+                                    <option value="GOOGLE_CALENDAR">Google Takvim</option>
+                                    <option value="MANUAL">Manuel (sadece dahili takvim)</option>
+                                </select>
+                            </div>
+
+                            {(editingBranch ? editBranchIntegrationType : newBranchIntegrationType) === 'PROBEL' && (
+                                <div className="br-f">
+                                    <label htmlFor="br-in-code">Probel şube kodu</label>
+                                    <input
+                                        id="br-in-code"
+                                        type="text"
+                                        className="br-in"
+                                        value={editingBranch ? editBranchExternalCode : newBranchExternalCode}
+                                        onChange={e => editingBranch ? setEditBranchExternalCode(e.target.value) : setNewBranchExternalCode(e.target.value)}
+                                        placeholder="Örn: 1 veya 2"
+                                    />
                                 </div>
+                            )}
 
-                                {(editingBranch ? editBranchIntegrationType : newBranchIntegrationType) === 'PROBEL' && (
-                                    <div className="form-group" style={{ marginBottom: '12px' }}>
-                                        <label>Probel Şube Kodu</label>
-                                        <input 
-                                            type="text" 
-                                            className="input" 
-                                            value={editingBranch ? editBranchExternalCode : newBranchExternalCode} 
-                                            onChange={e => editingBranch ? setEditBranchExternalCode(e.target.value) : setNewBranchExternalCode(e.target.value)} 
-                                            placeholder="Örn: 1 veya 2" 
-                                        />
-                                    </div>
-                                )}
+                            {(editingBranch ? editBranchIntegrationType : newBranchIntegrationType) === 'GOOGLE_CALENDAR' && (
+                                <div className="br-f">
+                                    <label htmlFor="br-in-google">Google Takvim hesabı</label>
+                                    {googleCalendars.length > 0 ? (
+                                        <select
+                                            id="br-in-google"
+                                            className="br-in"
+                                            value={editingBranch ? editBranchGoogleEmail : newBranchGoogleEmail}
+                                            onChange={e => editingBranch ? setEditBranchGoogleEmail(e.target.value) : setNewBranchGoogleEmail(e.target.value)}
+                                        >
+                                            <option value="">Google hesabı seçin…</option>
+                                            {googleCalendars.map(c => (
+                                                <option key={c.id} value={c.googleEmail}>{c.googleEmail}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <div className="br-note">Bağlı Google Takvim hesabı bulunamadı.</div>
+                                    )}
+                                </div>
+                            )}
 
-                                {(editingBranch ? editBranchIntegrationType : newBranchIntegrationType) === 'GOOGLE_CALENDAR' && (
-                                    <div className="form-group" style={{ marginBottom: '12px' }}>
-                                        <label>Google Takvim Hesabı</label>
-                                        {googleCalendars.length > 0 ? (
-                                            <select 
-                                                className="input" 
-                                                value={editingBranch ? editBranchGoogleEmail : newBranchGoogleEmail} 
-                                                onChange={e => editingBranch ? setEditBranchGoogleEmail(e.target.value) : setNewBranchGoogleEmail(e.target.value)}
-                                            >
-                                                <option value="">-- Google Hesabı Seçin --</option>
-                                                {googleCalendars.map(c => (
-                                                    <option key={c.id} value={c.googleEmail}>
-                                                        📅 {c.googleEmail}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <div style={{ fontSize: '0.8rem', color: '#64748b', padding: '8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                                                ℹ️ Bağlı Google Takvim hesabı bulunamadı.
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                
-
+                            <div className="br-form-actions">
                                 {editingBranch ? (
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleUpdateBranch(editingBranch)}>Kaydet</button>
-                                        <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setEditingBranch(null)}>İptal</button>
-                                    </div>
+                                    <>
+                                        <button type="button" className="br-btn br-btn-primary" onClick={() => handleUpdateBranch(editingBranch)}>Kaydet</button>
+                                        <button type="button" className="br-btn" onClick={() => setEditingBranch(null)}>İptal</button>
+                                    </>
                                 ) : (
-                                    <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCreateBranch} disabled={!newBranchName.trim()}>Şube Ekle</button>
+                                    <button type="button" className="br-btn br-btn-primary" onClick={handleCreateBranch} disabled={!newBranchName.trim()}>
+                                        <Plus size={14} />
+                                        {labels.branchSingle || 'Şube'} ekle
+                                    </button>
                                 )}
                             </div>
                         </div>

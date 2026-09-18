@@ -2,12 +2,43 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { productAPI, funnelAPI, teamAPI, appointmentConfigAPI, woocommerceAPI } from '../../services/api';
-import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown, Folder, Layers, Tag, Sparkles, Check, ShoppingCart } from 'lucide-react';
+import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown, Folder, Layers, Tag, Sparkles, Check, ShoppingCart, Users } from 'lucide-react';
 
 import WooCommerceModal from '../../components/Sales/WooCommerceModal';
 import { importFromExcel, getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory, bulkDeleteTopicCategories } from '../../services/topicCategory.api';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './Sales.css';
+import './Categories.css';
+
+const catInitials = (name) => {
+    const words = (name || '').trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return '?';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0][0] + words[1][0]).toUpperCase();
+};
+
+// branchIds ve keywords hem dizi hem JSON metni olarak gelebiliyor;
+// keywords ayrıca virgüllü düz metin de olabiliyor (form onu öyle yazıyor).
+const parseJsonList = (raw) => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw !== 'string' || !raw.trim()) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const parseKeywordList = (raw) => {
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (typeof raw !== 'string' || !raw.trim()) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch { /* virgüllü metin olabilir */ }
+    return raw.split(',').map(k => k.trim()).filter(Boolean);
+};
 
 const TAX_OPTIONS = [
     { value: '', label: 'Vergi Yok', rate: 0 },
@@ -91,6 +122,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [selectedProductIds, setSelectedProductIds] = useState([]);
     const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
+    const [expandedCategoryId, setExpandedCategoryId] = useState(null);
     const [selectedGroupIds, setSelectedGroupIds] = useState([]);
     const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
@@ -806,17 +838,27 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     return (
         <div
             className={`sales-page products-page ${embedded ? 'embedded' : ''}`}
-            style={embedded ? {
-                padding: 0,
-                background: '#ffffff',
-                minHeight: 'auto',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
-            } : undefined}
+            style={embedded ? (
+                // Bölümler sekmesi kendi gri zeminini kuruyor; beyaz kart
+                // çerçevesi içinde kalırsa zemin kutuya sıkışıyor.
+                activeTab === 'categories' ? {
+                    padding: 0,
+                    background: 'transparent',
+                    minHeight: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column'
+                } : {
+                    padding: 0,
+                    background: '#ffffff',
+                    minHeight: 'auto',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                }
+            ) : undefined}
         >
             {/* Toast */}
             {toast && (
@@ -994,135 +1036,57 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             </div>
 
             {activeTab === 'categories' && (
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                    {/* Filters Bar */}
-                    <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
-                        padding: '12px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <select
-                                value={branchFilter}
-                                onChange={e => setBranchFilter(e.target.value)}
-                                style={{
-                                    padding: '8px 14px', borderRadius: '8px',
-                                    border: '1px solid #e2e8f0', outline: 'none',
-                                    background: '#fff', fontSize: '0.84rem', color: '#334155', cursor: 'pointer'
-                                }}
-                            >
-                                <option value="">{labels.allBranches || 'Tüm Şubeler'}</option>
-                                {branches.map(b => (
-                                    <option key={b.id} value={b.id}>{b.name}</option>
-                                ))}
-                            </select>
-                            {branchFilter && (
-                                <button
-                                    onClick={() => setBranchFilter('')}
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                        padding: '6px 10px', borderRadius: '6px',
-                                        border: '1px solid #fecaca', background: '#fef2f2',
-                                        fontSize: '0.75rem', fontWeight: 600, color: '#dc2626',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <X size={12} /> Temizle
-                                </button>
-                            )}
-                        </div>
-                        <button
-                            onClick={openAddCategory}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '9px 18px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                color: '#fff', border: 'none', borderRadius: '10px',
-                                cursor: 'pointer', fontWeight: 600, fontSize: '0.84rem',
-                                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)', transition: 'all 0.15s'
-                            }}
-                        >
-                            <Plus size={16} /> {labels.newCategory}
-                        </button>
-                    </div>
-
-                    {/* Kategori / Proje Toplu İşlem Barı */}
-                    {selectedCategoryIds.length > 0 && (
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
-                            gap: '12px', padding: '10px 24px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <span style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                    background: '#2563eb', color: '#fff', fontSize: '0.78rem', fontWeight: 600,
-                                    padding: '4px 12px', borderRadius: '20px'
-                                }}>
-                                    <Check size={14} /> {selectedCategoryIds.length} {labels.categorySingle.toLowerCase()} seçildi
-                                </span>
-                                <button
-                                    onClick={() => setSelectedCategoryIds([])}
-                                    style={{
-                                        background: 'transparent', border: 'none', color: '#2563eb',
-                                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'
-                                    }}
-                                >
-                                    Seçimi Temizle
-                                </button>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <button
-                                    onClick={() => setDeleteConfirm('bulkCategories')}
-                                    disabled={bulkActionLoading}
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                        padding: '6px 14px', borderRadius: '6px',
-                                        border: 'none', background: '#dc2626', color: '#fff',
-                                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                                        transition: 'background 0.15s'
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.background = '#b91c1c'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#dc2626'}
-                                >
-                                    <Trash2 size={13} />
-                                    Seçilenleri Sil ({selectedCategoryIds.length})
-                                </button>
-                            </div>
+                <div className={`ct-page ${embedded ? 'embedded' : ''}`}>
+                    {embedded && (
+                        <div className="ct-head">
+                            <div className="ct-eyebrow">Ayarlar · Firma &amp; Bilgi Bankası</div>
+                            <h1>{labels.categoriesTab}</h1>
+                            <p>{labels.categoriesDesc}</p>
                         </div>
                     )}
 
-                    {/* Table Container */}
-                    <div style={{ overflow: 'auto', flex: 1 }}>
+                    <div className="ct-filters">
+                        <select
+                            className="ct-select"
+                            aria-label={`${labels.branchSingle || 'Şube'} süzgeci`}
+                            value={branchFilter}
+                            onChange={e => setBranchFilter(e.target.value)}
+                        >
+                            <option value="">{labels.allBranches || 'Tüm Şubeler'}</option>
+                            {branches.map(b => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                        </select>
+                        {branchFilter && (
+                            <button type="button" className="ct-btn" onClick={() => setBranchFilter('')}>
+                                <X size={13} /> Temizle
+                            </button>
+                        )}
+                        <div className="ct-spacer"></div>
+                        <button type="button" className="ct-btn ct-btn-primary" onClick={openAddCategory}>
+                            <Plus size={14} /> {labels.newCategory}
+                        </button>
+                    </div>
+
+                    <div className="ct-surface">
                         {categoriesLoading ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', color: '#64748b' }}>
-                                <div className="loader" style={{ marginRight: '10px' }}></div> Yükleniyor...
-                            </div>
+                            <div className="ct-empty"><p>Yükleniyor…</p></div>
                         ) : (() => {
                             const displayedCategories = categories.filter(c => {
                                 if (!branchFilter) return true;
-                                let bIds = [];
-                                if (c.branchIds) {
-                                    try {
-                                        bIds = typeof c.branchIds === 'string' ? JSON.parse(c.branchIds) : c.branchIds;
-                                    } catch { bIds = []; }
-                                }
-                                if (!Array.isArray(bIds) || bIds.length === 0) return true;
+                                const bIds = parseJsonList(c.branchIds);
+                                if (bIds.length === 0) return true;
                                 return bIds.includes(branchFilter);
                             });
 
                             if (categories.length === 0) {
                                 return (
-                                    <div style={{ textAlign: 'center', padding: '60px 24px', background: '#fff', borderRadius: '12px', border: '1px dashed #cbd5e1', margin: '24px' }}>
-                                        <Folder size={44} style={{ color: '#94a3b8', marginBottom: '12px', opacity: 0.7 }} />
-                                        <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>Henüz {labels.categorySingle.toLowerCase()} eklenmemiş</h4>
-                                        <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: '#64748b' }}>{labels.productPlural}ı gruplamak için yeni bir {labels.categorySingle.toLowerCase()} oluşturun.</p>
-                                        <button
-                                            onClick={openAddCategory}
-                                            style={{
-                                                padding: '8px 16px', background: '#6366f1', color: '#fff',
-                                                border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem'
-                                            }}
-                                        >
-                                            <Plus size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> {labels.newCategory}
+                                    <div className="ct-empty">
+                                        <div className="ct-empty-ico"><Layers size={24} /></div>
+                                        <h3>Henüz {labels.categorySingle.toLowerCase()} eklenmemiş</h3>
+                                        <p>{labels.categoriesDesc} Her {labels.categorySingle.toLowerCase()} için anahtar kelime tanımlayınca gelen mesajlar doğru ekibe düşer.</p>
+                                        <button type="button" className="ct-btn ct-btn-primary" onClick={openAddCategory}>
+                                            <Plus size={14} /> {labels.newCategory}
                                         </button>
                                     </div>
                                 );
@@ -1130,135 +1094,203 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
 
                             if (displayedCategories.length === 0) {
                                 return (
-                                    <div style={{ textAlign: 'center', padding: '50px 24px', background: '#fff', borderRadius: '12px', border: '1px dashed #cbd5e1', margin: '24px' }}>
-                                        <h4 style={{ margin: '0 0 4px', fontSize: '1rem', color: '#1e293b', fontWeight: 600 }}>Bu {labels.branchSingle?.toLowerCase() || 'şube'}ye bağlı {labels.categorySingle.toLowerCase()} bulunamadı</h4>
-                                        <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: '#64748b' }}>Seçili {labels.branchSingle?.toLowerCase() || 'şube'} filtresine uygun {labels.categorySingle.toLowerCase()} bulunmuyor.</p>
-                                        <button
-                                            onClick={() => setBranchFilter('')}
-                                            style={{
-                                                padding: '7px 16px', background: '#f1f5f9', color: '#475569',
-                                                border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem'
-                                            }}
-                                        >
-                                            Tüm {labels.categoryPlural}ı Göster
+                                    <div className="ct-empty">
+                                        <div className="ct-empty-ico"><Layers size={24} /></div>
+                                        <h3>Bu {(labels.branchSingle || 'şube').toLowerCase()} için kayıt yok</h3>
+                                        <p>Süzgeci temizleyerek tüm kayıtları görebilirsiniz.</p>
+                                        <button type="button" className="ct-btn" onClick={() => setBranchFilter('')}>
+                                            <X size={13} /> Süzgeci temizle
                                         </button>
                                     </div>
                                 );
                             }
 
-                            return (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                            <th style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={displayedCategories.length > 0 && displayedCategories.every(c => selectedCategoryIds.includes(c.id))}
-                                                    onChange={() => toggleSelectAllCategories(displayedCategories)}
-                                                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
-                                                    title="Tümünü Seç / Kaldır"
-                                                />
-                                            </th>
-                                            <th style={{ padding: '10px 16px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.branchSingle || 'Şube'}</th>
-                                            <th style={{ padding: '10px 12px', textAlign: 'left', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
-                                            <th style={{ padding: '10px 16px', textAlign: 'right', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>İşlemler</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {displayedCategories.map(c => {
-                                            const isRowSelected = selectedCategoryIds.includes(c.id);
-                                            let bIds = [];
-                                            if (c.branchIds) {
-                                                try {
-                                                    bIds = typeof c.branchIds === 'string' ? JSON.parse(c.branchIds) : c.branchIds;
-                                                } catch { bIds = []; }
-                                            }
-                                            const matchedBranches = Array.isArray(bIds) && bIds.length > 0
-                                                ? branches.filter(b => bIds.includes(b.id))
-                                                : [];
+                            const allSelected = displayedCategories.every(c => selectedCategoryIds.includes(c.id));
 
-                                            return (
-                                                <tr key={c.id} style={{
-                                                    borderBottom: '1px solid #f1f5f9',
-                                                    background: isRowSelected ? '#eff6ff' : '#fff',
-                                                    transition: 'background 0.15s'
-                                                }}
-                                                    onMouseEnter={(e) => {
-                                                        if (!isRowSelected) e.currentTarget.style.background = '#f8fafc';
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        if (!isRowSelected) e.currentTarget.style.background = '#fff';
-                                                    }}
-                                                >
-                                                    <td style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+                            return (
+                                <>
+                                    {selectedCategoryIds.length > 0 && (
+                                        <div className="ct-bulk">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                                <span className="ct-bulk-count">
+                                                    <i></i>
+                                                    {selectedCategoryIds.length} {labels.categorySingle.toLowerCase()} seçildi
+                                                </span>
+                                                <button type="button" className="ct-bulk-clear" onClick={() => setSelectedCategoryIds([])}>
+                                                    Seçimi temizle
+                                                </button>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="ct-btn ct-btn-primary"
+                                                disabled={bulkActionLoading}
+                                                onClick={() => setDeleteConfirm('bulkCategories')}
+                                            >
+                                                <Trash2 size={13} /> Seçilenleri sil ({selectedCategoryIds.length})
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="ct-list-head">
+                                        <h2>
+                                            {labels.categoriesTab}
+                                            <span className="ct-count">{displayedCategories.length} kayıt</span>
+                                        </h2>
+                                    </div>
+
+                                    <div className="ct-cols">
+                                        <div>
+                                            <input
+                                                type="checkbox"
+                                                className="ct-check"
+                                                aria-label="Tümünü seç"
+                                                checked={allSelected}
+                                                onChange={() => toggleSelectAllCategories(displayedCategories)}
+                                            />
+                                        </div>
+                                        <span></span>
+                                        <span>{labels.categorySingle}</span>
+                                        <span>{labels.branchSingle || 'Şube'}</span>
+                                        <span>Anahtar kelimeler</span>
+                                        <span>Durum</span>
+                                        <span></span>
+                                    </div>
+
+                                    {displayedCategories.map(c => {
+                                        const isOpen = expandedCategoryId === c.id;
+                                        const isPicked = selectedCategoryIds.includes(c.id);
+                                        const keywords = parseKeywordList(c.keywords);
+                                        const bIds = parseJsonList(c.branchIds);
+                                        const branchNames = bIds.length > 0
+                                            ? branches.filter(b => bIds.includes(b.id)).map(b => b.name)
+                                            : [];
+                                        const linkedProducts = c.products || [];
+                                        const teamName = c.defaultTeamId ? (teams.find(t => t.id === c.defaultTeamId)?.name || null) : null;
+                                        const funnelName = c.defaultFunnelId ? (funnels.find(f => f.id === c.defaultFunnelId)?.name || null) : null;
+                                        const isActive = c.isActive !== false;
+
+                                        return (
+                                            <div key={c.id}>
+                                                <div className={`ct-row ${isOpen ? 'open' : ''} ${isPicked ? 'picked' : ''}`}>
+                                                    <div>
                                                         <input
                                                             type="checkbox"
-                                                            checked={isRowSelected}
+                                                            className="ct-check"
+                                                            aria-label={`${c.name} seç`}
+                                                            checked={isPicked}
                                                             onChange={() => toggleSelectCategory(c.id)}
-                                                            style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
                                                         />
-                                                    </td>
-                                                    <td style={{ padding: '10px 16px' }}>
-                                                        <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.84rem' }}>{c.name}</span>
-                                                    </td>
-                                                    <td style={{ padding: '10px 12px' }}>
-                                                        {matchedBranches.length === 0 ? (
-                                                            <span style={{
-                                                                display: 'inline-block', padding: '3px 8px', borderRadius: '6px',
-                                                                background: '#f1f5f9', color: '#64748b', fontSize: '0.76rem', fontWeight: 500
-                                                            }}>
-                                                                {labels.allBranches || 'Tüm Şubeler'}
-                                                            </span>
+                                                    </div>
+                                                    <div className={`ct-av ${isActive ? '' : 'muted'}`}>{catInitials(c.name)}</div>
+                                                    <div>
+                                                        <button
+                                                            type="button"
+                                                            className="ct-name"
+                                                            aria-expanded={isOpen}
+                                                            onClick={() => setExpandedCategoryId(isOpen ? null : c.id)}
+                                                        >
+                                                            {c.name}
+                                                        </button>
+                                                        {c.description && <div className="ct-sub">{c.description}</div>}
+                                                    </div>
+                                                    <div className="ct-chips">
+                                                        {branchNames.length > 0
+                                                            ? branchNames.map(n => <span key={n} className="ct-chip-branch">{n}</span>)
+                                                            : <span className="ct-none">{labels.allBranches || 'Tümü'}</span>}
+                                                    </div>
+                                                    <div className="ct-chips">
+                                                        {keywords.length > 0 ? (
+                                                            <>
+                                                                {keywords.slice(0, 3).map(k => <span key={k} className="ct-chip-kw">{k}</span>)}
+                                                                {keywords.length > 3 && <span className="ct-more">+{keywords.length - 3}</span>}
+                                                            </>
                                                         ) : (
-                                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                                {matchedBranches.map(b => (
-                                                                    <span key={b.id} style={{
-                                                                        display: 'inline-block', padding: '3px 8px', borderRadius: '6px',
-                                                                        background: '#eef2ff', color: '#6366f1', fontSize: '0.76rem', fontWeight: 600
-                                                                    }}>
-                                                                        {b.name}
-                                                                    </span>
-                                                                ))}
+                                                            <span className="ct-none">Kelime tanımlı değil</span>
+                                                        )}
+                                                    </div>
+                                                    <div className={`ct-status ${isActive ? 'on' : 'off'}`}>
+                                                        <i></i>{isActive ? 'Aktif' : 'Pasif'}
+                                                    </div>
+                                                    <div className="ct-acts">
+                                                        <button
+                                                            type="button"
+                                                            className="ct-ico"
+                                                            aria-label={`${c.name} düzenle`}
+                                                            onClick={() => openEditCategory(c)}
+                                                        >
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="ct-ico danger"
+                                                            aria-label={`${c.name} sil`}
+                                                            onClick={() => handleDeleteCategory(c.id)}
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {isOpen && (
+                                                    <div className="ct-detail">
+                                                        <div className="ct-dsec">
+                                                            <span className="ct-dsec-name">Anahtar kelimeler</span>
+                                                            <span className="ct-dsec-rule"></span>
+                                                            <span className="ct-dsec-count">{keywords.length}</span>
+                                                        </div>
+                                                        {keywords.length > 0 ? (
+                                                            <div className="ct-dchips">
+                                                                {keywords.map(k => <span key={k} className="ct-dchip">{k}</span>)}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="ct-dnone">
+                                                                Kelime tanımlı değil — bu {labels.categorySingle.toLowerCase()} yalnızca adıyla eşleşir.
                                                             </div>
                                                         )}
-                                                    </td>
-                                                    <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.82rem' }}>
-                                                        {c.description || <span style={{ color: '#cbd5e1' }}>—</span>}
-                                                    </td>
-                                                    <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                                                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                                                            <button
-                                                                onClick={() => openEditCategory(c)}
-                                                                style={{
-                                                                    width: '32px', height: '32px', borderRadius: '8px',
-                                                                    border: '1px solid #e2e8f0', background: '#fff',
-                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                    cursor: 'pointer', color: '#64748b', transition: 'all 0.15s'
-                                                                }}
-                                                                title="Düzenle"
-                                                            >
-                                                                <Edit2 size={14} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDeleteCategory(c.id)}
-                                                                style={{
-                                                                    width: '32px', height: '32px', borderRadius: '8px',
-                                                                    border: '1px solid #fecaca', background: '#fef2f2',
-                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                    cursor: 'pointer', color: '#dc2626', transition: 'all 0.15s'
-                                                                }}
-                                                                title="Sil"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
+
+                                                        <div className="ct-dsec">
+                                                            <span className="ct-dsec-name">Bağlı {labels.productsTab}</span>
+                                                            <span className="ct-dsec-rule"></span>
+                                                            <span className="ct-dsec-count">{linkedProducts.length}</span>
                                                         </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                        {linkedProducts.length > 0 ? (
+                                                            <div className="ct-dchips">
+                                                                {linkedProducts.map(p => <span key={p.id} className="ct-dchip">{p.name}</span>)}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="ct-dnone">Bağlı kayıt yok.</div>
+                                                        )}
+
+                                                        {(teamName || funnelName) && (
+                                                            <>
+                                                                <div className="ct-dsec">
+                                                                    <span className="ct-dsec-name">Varsayılan yönlendirme</span>
+                                                                    <span className="ct-dsec-rule"></span>
+                                                                </div>
+                                                                <div className="ct-routing">
+                                                                    {teamName && (
+                                                                        <div>
+                                                                            <Users size={14} />
+                                                                            <span className="k">Takım</span>
+                                                                            <span className="v">{teamName}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {funnelName && (
+                                                                        <div>
+                                                                            <Layers size={14} />
+                                                                            <span className="k">Akış</span>
+                                                                            <span className="v">{funnelName}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </>
                             );
                         })()}
                     </div>

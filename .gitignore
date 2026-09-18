@@ -49,4 +49,10 @@ backend/prisma/*.db-journal
 .last-deployed-sha
 _backups/
 
+# Müşteri yüklemeleri sunucuda oluşur ve depoda YER ALMAZ.
+# Bu satır olmadan sunucudaki `git clean -fd` bütün yüklemeleri siler:
+# dizin `logs/` gibi bir kalıpla kapsanmıyordu, rsync'in --exclude'u
+# koruyordu ve git tabanlı dağıtıma geçişte o koruma ortadan kalkıyor.
+backend/uploads/
+
 scripts/.deploy-target

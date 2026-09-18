@@ -37,37 +37,30 @@ Bilinen sabitler (gizli değil, koda zaten gömülü):
 
 ---
 
-## 1. İKİ SSH ANAHTARI — ve neden üç değil
+## 1. ÜÇ SSH ANAHTARI, ÜÇ AYRI YÖN
 
-> **Şablondan sapma.** Şablon üç anahtar anlatıyor; (A) sunucunun GitHub'dan
-> çekmesi için kullanılan **deploy key**. Profajai organizasyonu deploy key'leri
-> **politika ile kapatmış** ("Disabled by Profajai"). Bu yüzden (A) yok — ve
-> olmasına gerek de yok: kodu sunucuya **GitHub Actions gönderiyor**.
->
-> Sonuç politikayla çelişmiyor, aksine onun amacına hizmet ediyor:
-> **sunucuda kalıcı bir GitHub kimliği bulunmuyor.** Sunucu GitHub'ı tanımıyor.
+"SSH giriş bilgileri" tek bir şey değil. Üç farklı anahtar var ve her biri
+**farklı yöne** bakıyor. Birini diğerinin yerine koymak, hata mesajı vermeyen
+ama çalışmayan bir kurulum üretiyor.
 
 ```
-                            ┌──────────┐
-                            │  GitHub  │
-                            │  Actions │
-                            └────┬─────┘
-                                 │ (B) rsync + ssh ile kodu GÖNDERİR
-                                 │     VPS_SSH_KEY secret
-                                 ▼
-                          ┌──────────────┐
-                          │   SUNUCU     │   ← GitHub'a erişimi YOK
-                          │   <VPS_IP>   │
-                          └──────┬───────┘
-                                 ▲
-                                 │ (C) sen sunucuya bağlanırsın — teşhis / elle dağıtım
-                          ┌──────┴───────┐
-                          │  senin Mac   │
-                          └──────────────┘
+        ┌──────────────┐   (A) sunucu GitHub'dan ÇEKER       ┌──────────┐
+        │              │ ─────────────────────────────────► │          │
+        │   SUNUCU     │        deploy key (read-only)      │  GitHub  │
+        │   <VPS_IP>   │                                    │          │
+        │              │ ◄───────────────────────────────── │  Actions │
+        └──────┬───────┘   (B) Actions sunucuya bağlanır    └──────────┘
+               ▲                 VPS_SSH_KEY secret
+               │                 ve "git pull + deploy.sh" tetikler
+               │ (C) sen sunucuya bağlanırsın — elle dağıtım / teşhis
+        ┌──────┴───────┐
+        │  senin Mac   │
+        └──────────────┘
 ```
 
 | | Nerede ÜRETİLİR | ÖZEL yarısı nerede durur | AÇIK yarısı nereye yapıştırılır |
 |---|---|---|---|
+| **A · Sunucu → GitHub** | Sunucuda, `instomer-chatcrm` olarak | `~/.ssh/id_ed25519` (sunucu) · mod 600 | GitHub → depo → Settings → **Deploy keys**. **"Allow write access" İŞARETLEME** |
 | **B · Actions → Sunucu** | Senin Mac'inde | GitHub → Settings → Secrets → `VPS_SSH_KEY` | Sunucuda `~/.ssh/authorized_keys` |
 | **C · Sen → Sunucu** | Senin Mac'inde | `~/.ssh/instomer_deploy` | Sunucuda `~/.ssh/authorized_keys` |
 
@@ -75,14 +68,25 @@ Bilinen sabitler (gizli değil, koda zaten gömülü):
 sızan bir secret'ın senin kişisel erişimini de vermesi demek; ayrıca B'yi iptal
 etmek istediğinde kendi erişimini de kesiyorsun.
 
-**Sunucu depoya asla yazmaz.** `scripts/deploy.sh` içinde `git push` **yok ve
-olmamalı** — zaten sunucuda git bile yok.
+**A yazma izni almamalı.** Sunucunun deposu tek yönlü: çeker, yazmaz.
+`scripts/deploy.sh` içinde `git push` **yok ve olmamalı** — sunucuda oluşan bir
+commit (örneğin `.env` değişikliği) depoya sızarsa sırlar da sızar.
 
-### Deploy key politikası açılırsa ne olur?
+### Deploy key politikası — önkoşul
 
-Hiçbir şey. Bu kurgu çalışmaya devam eder. Org sahibiysen politikayı açıp
-şablonun (A) yoluna dönmek istersen mümkün ama **gerek yok**; mevcut kurgu daha
-az kimlik bilgisi kullanıyor.
+Profajai organizasyonu bir dönem deploy key'leri **politika ile kapatmıştı**
+("Disabled by Profajai") ve kod sunucuya Actions'ın rsync'i ile gidiyordu.
+Bu kurgu artık (A) yoluna döndü; **politikanın açık olması önkoşul.**
+
+Org sahibi olarak: GitHub → organizasyon → Settings → Actions / Security →
+deploy key kısıtlamasını kaldır. Kapalıyken sunucudaki `git fetch`
+`Permission denied (publickey)` verir ve dağıtım o adımda durur — sessiz
+başarısızlık değil, net hata.
+
+**Neden token yerine deploy key:** token (PAT) sunucuda **hesabın tamamına**
+erişen kalıcı bir kimlik bırakıyor; deploy key tek depoya bağlı ve read-only.
+Bu depoda bir kez plaintext token sızması yaşandı (eski `origin` adresinin
+içine gömülmüştü); aynı yüzeyi tekrar açmıyoruz.
 
 ## 2. NEYİ NEREYE KOYACAKSIN
 
@@ -91,11 +95,15 @@ az kimlik bilgisi kullanıyor.
 ```
 /home/instomer-chatcrm/
 ├── .ssh/
+│   ├── id_ed25519            ← (A) özel · mod 600 · GitHub'a erişim
+│   ├── id_ed25519.pub        ← (A) açık · GitHub Deploy keys'e yapıştırılan
 │   └── authorized_keys       ← (B) ve (C) açık anahtarları · mod 600
-└── htdocs/app.instomer.com/  ← UYGULAMA DİZİNİ (git deposu DEĞİL).
-                              ← Actions buraya rsync ediyor.
+└── htdocs/app.instomer.com/  ← UYGULAMA DİZİNİ = REPO KLONU. Dağıtım burada çalışır.
+    ├── .git/                 ← origin: git@github.com:Profajai/instomerchat.git
     ├── backend/
     │   ├── .env              ← TEK .env · mod 600 · git'te YOK
+    │   ├── logs/             ← git'te YOK
+    │   ├── uploads/          ← MÜŞTERİ YÜKLEMELERİ · git'te YOK
     │   └── ecosystem.config.cjs
     ├── frontend/
     ├── scripts/deploy.sh     ← dağıtımın kendisi (depoda)
@@ -103,6 +111,15 @@ az kimlik bilgisi kullanıyor.
     ├── .last-deployed-sha    ← geri alma noktası, deploy.sh yazıyor
     └── _backups/             ← her dağıtımda alınan yedekler
 ```
+
+> **Dağıtımın silmemesi gereken dizinler.** Sunucudaki dağıtım
+> `git reset --hard` + `git clean -fd` çalıştırıyor. `backend/.env`,
+> `backend/logs/`, `backend/uploads/`, `_backups/` ve `.last-deployed-sha`
+> **`.gitignore`'da** olduğu için `clean` onlara dokunmuyor (`-x` bilinçli
+> olarak KULLANILMIYOR) — üstüne workflow bir de `-e` istisnası veriyor.
+> `backend/uploads/` bu listeye sonradan eklendi: rsync döneminde onu
+> `--exclude` koruyordu, git'e geçişte hiçbir kalıp kapsamıyordu ve ilk
+> otomatik dağıtım bütün müşteri yüklemelerini silecekti.
 
 > **`.env` konumu Instomer'da `backend/.env`** — şablondaki "depo kökünde tek
 > `.env`" kuralından bilinçli sapma. Sebep: Instomer monorepo değil, tek Node
@@ -123,8 +140,8 @@ az kimlik bilgisi kullanıyor.
 | `VPS_SSH_KEY` | (B) anahtarının **özel** yarısının tamamı — `-----BEGIN` / `-----END` satırları ve **sondaki boş satır dâhil** |
 | `VPS_APP_PATH` | `/home/instomer-chatcrm/htdocs/app.instomer.com` |
 
-**Settings → Deploy keys:** Kullanılmıyor (organizasyon politikası kapatmış).
-Bu kurguda gerekmiyor.
+**Settings → Deploy keys:** (A) anahtarının **açık** yarısı, **"Allow write
+access" KAPALI**. Sunucu yalnızca çeker.
 
 **Settings → Environments → `production`:** Required reviewers ekle. Müşteri
 verisine dokunan bir sistemde bu, `main`'e yanlışlıkla push etmenin maliyetini
@@ -143,10 +160,12 @@ bir onay tıklamasına indiriyor.
 
 | # | Kim | Ne |
 |---|---|---|
-| 1 | senin Mac | (B) ve (C) anahtarlarını üret, `ssh-copy-id` ile sunucuya kur |
-| 2 | `instomer-chatcrm` | Uygulama dizinini hazırla, `backend/.env` yerinde ve mod `600` mü kontrol et |
-| 3 | GitHub | 5 secret'ı gir, `production` environment'ına onaylayıcı ekle |
-| 4 | senin Mac | Push ile ilk otomatik dağıtımı tetikle |
+| 1 | GitHub org sahibi | Deploy key politikasını **aç** (§1) |
+| 2 | senin Mac | (B) ve (C) anahtarlarını üret, `ssh-copy-id` ile sunucuya kur |
+| 3 | `instomer-chatcrm` | (A) anahtarını üret, açık yarısını GitHub Deploy keys'e ekle |
+| 4 | `instomer-chatcrm` | Uygulama dizinini yerinde depoya dönüştür (aşağıda) |
+| 5 | GitHub | 5 secret'ı gir, `production` environment'ına onaylayıcı ekle |
+| 6 | `instomer-chatcrm` | `git pull && ./scripts/deploy.sh` ile ilk elle dağıtımı yap |
 
 **(B) ve (C) — senin Mac'inde:**
 
@@ -173,20 +192,61 @@ satırları ve sondaki boş satır dâhil**):
 cat ~/.ssh/instomer_actions
 ```
 
-**Sunucuda — dizin ve .env kontrolü:**
+**(A) — sunucuda, `instomer-chatcrm` olarak:**
 
 ```bash
-ssh instomer-chatcrm@<VPS_IP> 'ls -la ~/htdocs/app.instomer.com/backend/.env'
+ssh-keygen -t ed25519 -C "instomer-vps" -f ~/.ssh/id_ed25519 -N "" && cat ~/.ssh/id_ed25519.pub
+```
+
+Çıkan açık anahtarı GitHub → depo → Settings → **Deploy keys** → Add key
+(**"Allow write access" İŞARETLEME**). Sonra doğrula:
+
+```bash
+ssh -T git@github.com
+```
+
+`Hi Profajai/instomerchat! You've successfully authenticated` beklenir.
+`Permission denied (publickey)` görüyorsan ya anahtar eklenmedi ya org
+politikası hâlâ kapalı (§1).
+
+**Uygulama dizinini yerinde depoya dönüştür.**
+
+Dizin **boş değil** — içinde rsync ile gelmiş dosyalar, `backend/.env`,
+loglar ve müşteri yüklemeleri var. Bu yüzden `git clone` kullanılamaz
+(boş olmayan dizine klonlamayı reddeder); dizin yerinde depoya çevrilir.
+
+Önce geri dönülebilir bir nokta — bu adım `deploy.sh`'tan ÖNCE çalıştığı için
+onun kendi yedeği henüz yok:
+
+```bash
+cd ~/htdocs/app.instomer.com && tar -czf ~/pre-git-$(date +%F-%H%M).tar.gz --exclude=node_modules --exclude=_backups .
+```
+
+```bash
+git init -b main && git remote add origin git@github.com:Profajai/instomerchat.git && git fetch origin main
+```
+
+```bash
+git reset --hard origin/main && git branch --set-upstream-to=origin/main main
+```
+
+> `git reset --hard` **takipli dosyalardaki elle yapılmış değişiklikleri
+> geri alır.** Sunucudaki dosyalar aynı deponun rsync kopyası olduğu için
+> normalde fark çıkmaz; yine de elle düzenlenmiş bir dosya varsa kaybolur —
+> yukarıdaki tar onun için. Takip dışı dosyalara (`.env`, loglar, yüklemeler)
+> dokunmaz.
+
+`.env` mod kontrolü:
+
+```bash
+ls -la backend/.env
 ```
 
 Mod `600` değilse:
 
 ```bash
-chmod 600 ~/htdocs/app.instomer.com/backend/.env
+chmod 600 backend/.env
 ```
-
-> Sunucuda hâlihazırda bir git klonu varsa sorun değil — Actions `.git`
-> dizinine dokunmuyor (rsync'te hariç tutuluyor). Sadece artık kullanılmıyor.
 
 ## 4. GÜNLÜK DÖNGÜ
 
@@ -260,19 +320,37 @@ onay bekler. Bu özellik özel depolarda GitHub Pro/Team gerektirir; yoksa
 kesilen bir dağıtım, şeması güncellenmiş ama kodu derlenmemiş bir sunucu
 bırakabiliyor.
 
-### 4.4 Elle dağıtım
+### 4.4 Elle dağıtım — ASIL YOL
+
+Günlük kullanımda dağıtımı **sen** başlatıyorsun. Push'tan sonra sunucuya
+bağlan ve iki komut:
 
 ```bash
 ssh instomer-chatcrm@<VPS_IP>
 ```
 
 ```bash
-cd ~/htdocs/app.instomer.com && ./scripts/deploy.sh
+cd ~/htdocs/app.instomer.com && git pull && ./scripts/deploy.sh
 ```
 
-> `git pull` **yok** — sunucu GitHub'ı tanımıyor. Bu komut sunucuda o an
-> duran dosyalarla yeniden kurulum yapıyor (bağımlılık, derleme, pm2).
-> Yeni kod göndermek için GitHub'a push et; dağıtımı Actions yapar.
+Şema değiştiyse (`backend/prisma/schema.prisma`):
+
+```bash
+cd ~/htdocs/app.instomer.com && git pull && ALLOW_DB_PUSH=true ./scripts/deploy.sh
+```
+
+> **`root` ile çalıştırma.** `deploy.sh` ilk adımda reddediyor; sebebi §7'de.
+> Root ile `git pull` de yapma — çekilen dosyalar root'a ait kalır ve bir
+> sonraki dağıtım "Permission denied" verir.
+
+`git pull` çakışma verirse (sunucuda takipli bir dosya elle düzenlenmiş):
+
+```bash
+git fetch origin main && git reset --hard origin/main
+```
+
+Actions üzerinden tetikleme (§4.3.1) aynı script'i çalıştırıyor; ikisi
+birbirinin yerine kullanılabilir, iki ayrı dağıtım mantığı **yok**.
 
 ---
 
@@ -352,6 +430,23 @@ Makinede başka canlı siteler var.
   Eksik bir bileşen varsa **bildir ve dur**, kendi başına kurma.
 - **pm2**: yalnızca `instomer-chatcrm` olarak, yalnızca `instomer` süreci. Root
   altında **asla** `pm2 save`, `pm2 kill`, `pm2 delete all`.
+
+  > **AÇIK SORUN — 2026-09-18 itibarıyla bu kural ihlal edilmiş durumda.**
+  > Canlı süreç `root`'un kendi pm2 daemon'u (`/root/.pm2`) altında koşuyor;
+  > site kullanıcısının pm2'sinde ise `htdocs/chatcrm.instomer.com` dizinine
+  > bakan, sürekli çöken eski bir `chatcrm` kaydı duruyor. Yani kurgunun
+  > varsaydığı sahiplik ile gerçek sahiplik ayrışmış.
+  >
+  > **Etkisi:** `instomer-chatcrm` olarak `./scripts/deploy.sh` çalıştırmak,
+  > root'un hâlen 5008 portunu dinleyen süreciyle yarışan **ikinci bir
+  > instance** başlatır. Dağıtım "başarılı" görünüp canlıya yansımayabilir.
+  >
+  > **Çözüm** (kesinti gerektirir, bu yüzden bekletiliyor): root'un pm2'sindeki
+  > süreç durdurulur, site kullanıcısı olarak
+  > `pm2 startOrReload backend/ecosystem.config.cjs --update-env` ile yeniden
+  > başlatılır, `pm2 save` **site kullanıcısı olarak** çalıştırılır ve
+  > `pm2 startup` birimi o kullanıcı için kurulur. Ayrıca site kullanıcısının
+  > pm2'sindeki ölü `chatcrm` kaydı `pm2 delete chatcrm` ile temizlenir.
 - **Dağıtım asla root ile yapılmaz** — `git pull` dâhil. Root ile çekilen
   dosyalar root'a ait kalıyor ve sonraki dağıtım "Permission denied" veriyor.
 - **Redis paylaşılıyor.** Socket.IO adapter'ı `redis://localhost:6379`
@@ -396,13 +491,21 @@ Hiçbiri hata mesajıyla kendini anlatmıyor; hepsinin belirtisi "çalışmıyor
 - [ ] `dig +short app.instomer.com` → `<VPS_IP>` dönüyor
 - [ ] Eski `ghp_` token'ı GitHub'dan **iptal edildi** ve remote URL'den temizlendi
 - [ ] Sunucu şifresi değiştirildi (sohbette düz metin paylaşılmıştı)
+- [ ] Organizasyonda **deploy key politikası açık** (§1)
+- [ ] (A) anahtarı sunucuda üretildi, açık yarısı Deploy keys'te, **yazma izni kapalı**
+- [ ] `ssh -T git@github.com` sunucuda başarılı
+- [ ] Uygulama dizini depoya dönüştürüldü; `git status` temiz, `git log -1` doğru commit'i gösteriyor
+- [ ] Dönüştürmeden önce `~/pre-git-*.tar.gz` yedeği alındı
 - [ ] `backend/.env` mod `600`, tek kopya
+- [ ] `backend/uploads/` ve `backend/logs/` `git status`'ta **görünmüyor** (ignore ediliyor)
 - [ ] SSL sertifikası geçerli
 - [ ] (B) ve (C) anahtarları üretildi, `ssh-copy-id` yapıldı, şifresiz bağlanılıyor
 - [ ] 5 GitHub secret girildi (`VPS_APP_PATH` sunucudaki gerçek yol)
 - [ ] `production` environment'ına onaylayıcı eklendi
-- [ ] İlk push yapıldı ve **üç iş de yeşil** (verify → deploy → smoke)
+- [ ] İlk **elle** dağıtım yapıldı: `git pull && ./scripts/deploy.sh` yeşil
+- [ ] İlk **Actions** dağıtımı `dagit` ile tetiklendi ve üç iş de yeşil
 - [ ] `https://app.instomer.com/login` açılıyor, giriş yapılabiliyor
 - [ ] `./scripts/rollback.sh --list` yedeği gösteriyor
 - [ ] Yedekler **sunucu dışına** kopyalanıyor
 - [ ] `pm2-logrotate` kuruldu
+- [ ] pm2 sahipliği çözüldü: canlı süreç `instomer-chatcrm` kullanıcısının pm2'sinde (bkz. §7)

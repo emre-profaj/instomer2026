@@ -1,0 +1,365 @@
+/* ═══════════════════════════════════════════════════════════════
+   MERKEZ VE ŞUBELER — RAPOR TASARIM DİLİ
+   ═══════════════════════════════════════════════════════════════
+
+   Sekme daha önce çerçeveli kartlardan ve satır içi stillerden
+   oluşuyordu; her şubenin kendi kutusu vardı ve göz nereye bakacağını
+   bilemiyordu. Burada rapor sayfalarının kararı uygulandı: kutu yerine
+   YÜZEY — az sayıda geniş beyaz yüzey, aralarında saç teli ayraçlar.
+
+   Renk ve ölçüler reportDesign.css ile aynı dili konuşur.
+   Sınıf öneki: br- (branches)
+
+   NOT: reportDesign.css küçük gri metinler için #94a3b8 kullanıyor;
+   beyaz üzerinde ~2.8:1 kontrast veriyor ve okunabilirlik eşiğinin
+   altında. Burada --ink-3 olarak #6b7480 alındı (aynı dosyanın hap
+   butonlarında zaten kullandığı ton) — karakter aynı, kontrast geçer.
+   ═══════════════════════════════════════════════════════════════ */
+
+.br-page {
+    --ink: #0b1220;
+    --ink-2: #475569;
+    --ink-3: #6b7480;
+    --line: #f0eced;
+    --accent: #ef4444;
+    --accent-deep: #dc2626;
+    --accent-soft: #fef2f2;
+
+    color: var(--ink);
+    font-size: 14px;
+
+    /* .base-content zemini beyaz ve 24px 28px dolgulu; beyaz yüzeylerin
+       ayrışması için sayfa kendi gri zeminini kuruyor, negatif kenar
+       boşlukları da dolguyu iptal ederek zemini kenarlara taşıyor. */
+    background: #fafafb;
+    margin: -24px -28px 0;
+    padding: 28px 28px 64px;
+    min-height: calc(100% + 24px);
+}
+
+/* Yüzey: çerçeve yok, yalnızca çok yumuşak bir yükselti */
+.br-surface {
+    background: #ffffff;
+    border-radius: 20px;
+    box-shadow:
+        0 0 0 1px rgba(15, 23, 42, .04),
+        0 1px 2px rgba(15, 23, 42, .03),
+        0 12px 28px -18px rgba(15, 23, 42, .18);
+    /* Son şube açıkken dökümün zeminini yuvarlatılmış alt köşelerin
+       içinde tutar; yoksa köşelerden taşıp kutuyu köşeli gösteriyor. */
+    overflow: hidden;
+}
+
+/* ── Başlık ─────────────────────────────────────────────── */
+.br-head {
+    margin-bottom: 22px;
+}
+.br-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    margin-bottom: 7px;
+}
+.br-head h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    color: var(--ink);
+    line-height: 1.1;
+}
+.br-head p {
+    margin: 7px 0 0;
+    font-size: 13px;
+    color: var(--ink-3);
+}
+
+/* ── İki sütun: liste + sabit form ──────────────────────── */
+.br-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 20px;
+    align-items: start;
+}
+@media (max-width: 1080px) {
+    .br-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Liste ──────────────────────────────────────────────── */
+.br-list-head {
+    padding: 20px 24px 16px;
+}
+.br-list-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+.br-count {
+    margin-left: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-3);
+}
+
+.br-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1.7fr) 150px 76px;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 24px;
+    box-shadow: inset 0 1px 0 var(--line);
+    transition: background .14s;
+}
+.br-row:hover { background: #fffafa; }
+.br-row.open { background: #fffafa; }
+
+.br-av {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* Satırı açan öğe gerçek bir buton: div üzerine onClick konulduğunda
+   Tab ile erişilemiyordu. */
+.br-name {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+}
+.br-name:hover { color: var(--accent-deep); }
+.br-sub {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.br-phone {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+}
+.br-dash { color: #cbd2dc; }
+
+.br-acts {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+.br-ico {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e6e9ee;
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--ink-3);
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+.br-ico:hover { background: #f7f8fa; border-color: #d8dde5; color: var(--ink-2); }
+.br-ico.danger:hover { background: var(--accent-soft); border-color: #fca5a5; color: var(--accent-deep); }
+
+/* ── Açılan döküm: şubeye bağlı ürün ve kaynaklar ───────── */
+.br-detail {
+    padding: 4px 24px 22px 80px;
+    box-shadow: inset 0 1px 0 var(--line);
+    background: #fffafa;
+}
+/* Editoryal alt başlık: etiket + sağa uzayan saç teli çizgi */
+.br-dsec {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 0 10px;
+}
+.br-dsec-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    white-space: nowrap;
+}
+.br-dsec-rule {
+    flex: 1;
+    height: 1px;
+    background: #f0e3e3;
+}
+.br-dsec-count {
+    font-size: 11px;
+    color: var(--ink-3);
+    white-space: nowrap;
+}
+.br-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.br-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #ffffff;
+    box-shadow: inset 0 0 0 1px #f2dede;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+}
+.br-chip-none {
+    font-size: 12px;
+    color: var(--ink-3);
+}
+
+/* ── Boş / yükleniyor ───────────────────────────────────── */
+.br-empty {
+    padding: 56px 24px 64px;
+    text-align: center;
+}
+.br-empty-ico {
+    width: 52px;
+    height: 52px;
+    border-radius: 17px;
+    background: #f7f8fa;
+    color: #98a2b0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+}
+.br-empty h3 {
+    margin: 0 0 7px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink-2);
+    letter-spacing: -0.015em;
+}
+.br-empty p {
+    margin: 0 auto;
+    font-size: 13px;
+    color: var(--ink-3);
+    line-height: 1.6;
+    max-width: 340px;
+}
+
+/* ── Form yüzeyi ────────────────────────────────────────── */
+.br-form {
+    position: sticky;
+    top: 4px;
+    padding: 20px 22px 22px;
+}
+.br-form h2 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+.br-form-hint {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin: 0 0 18px;
+}
+
+.br-f {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+.br-f label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-3);
+    margin: 0;
+}
+.br-in {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: #ffffff;
+    border: 1px solid #e6e9ee;
+    border-radius: 11px;
+    padding: 10px 13px;
+    transition: border-color .15s, box-shadow .15s;
+}
+.br-in:hover { border-color: #d8dde5; }
+.br-in:focus {
+    outline: none;
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, .12);
+}
+textarea.br-in { resize: vertical; min-height: 58px; }
+select.br-in {
+    appearance: none;
+    padding-right: 32px;
+    cursor: pointer;
+    background: #ffffff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7480' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+}
+
+.br-note {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    line-height: 1.5;
+    padding: 9px 11px;
+    background: #f7f8fa;
+    border-radius: 9px;
+}
+
+.br-form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+}
+.br-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 10px 16px;
+    border-radius: 11px;
+    border: 1px solid #e6e9ee;
+    background: #ffffff;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .16s, border-color .16s, transform .16s;
+}
+.br-btn:hover:not(:disabled) { background: #f7f8fa; border-color: #d8dde5; }
+.br-btn:active:not(:disabled) { transform: translateY(1px); }
+.br-btn:disabled { opacity: .55; cursor: default; }
+.br-btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(239, 68, 68, .28);
+}
+.br-btn-primary:hover:not(:disabled) { background: var(--accent-deep); border-color: var(--accent-deep); }

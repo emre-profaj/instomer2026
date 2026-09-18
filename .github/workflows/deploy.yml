@@ -105,41 +105,34 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "${{ secrets.VPS_SSH_PORT }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - uses: actions/checkout@v4
-
-      - name: Dosyaları sunucuya gönder (rsync)
+      - name: Sunucuda güncelle ve dağıt
         env:
           HOST: ${{ secrets.VPS_HOST }}
           USER: ${{ secrets.VPS_USER }}
           PORT: ${{ secrets.VPS_SSH_PORT }}
           APP:  ${{ secrets.VPS_APP_PATH }}
-        # Sunucunun GitHub'a erişimi YOK ve olmasına gerek de yok.
-        # Kodu bu runner zaten checkout etti; oradan doğrudan gönderiyoruz.
-        # --delete ile silinen dosyalar sunucuda da siliniyor; aşağıdaki
-        # istisnalar sunucuya ait olan ve depoda bulunmayan şeyleri koruyor.
-        run: |
-          rsync -az --delete --info=stats1 \
-            -e "ssh -i ~/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=yes" \
-            --exclude '.git' \
-            --exclude 'node_modules' \
-            --exclude '.env' \
-            --exclude 'logs/' \
-            --exclude 'uploads/' \
-            --exclude 'htdocs/' \
-            --exclude '_backups/' \
-            --exclude '.last-deployed-sha' \
-            ./ "$USER@$HOST:$APP/"
-
-      - name: Sunucuda dağıt
-        env:
-          HOST: ${{ secrets.VPS_HOST }}
-          USER: ${{ secrets.VPS_USER }}
-          PORT: ${{ secrets.VPS_SSH_PORT }}
-          APP:  ${{ secrets.VPS_APP_PATH }}
+        # Kodu artık sunucunun kendisi çekiyor (deploy key, read-only).
+        # Runner checkout ETMİYOR ve rsync YOK: tek bir doğruluk kaynağı var,
+        # sunucudaki klonun origin/main'i. Aynı dizine iki farklı yerden
+        # (rsync + git) yazmak, hangisinin kazandığı belirsiz bir durum üretir.
+        #
+        # `git clean` istisnaları kritik: aşağıdaki dizinler sunucuda oluşuyor
+        # ve depoda yok. .env, logs/, _backups/, .last-deployed-sha ve
+        # backend/uploads/ .gitignore ile korunuyor (clean -x KULLANILMIYOR),
+        # ama -e ile ikinci kez yazılıyorlar: .gitignore'dan biri düşerse
+        # ilk otomatik dağıtım müşteri yüklemelerini silerdi.
         run: |
           ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" bash -lc "'
             set -Eeuo pipefail
             cd \"$APP\"
+            git fetch --prune origin main
+            git reset --hard origin/main
+            git clean -fd \
+              -e backend/.env \
+              -e backend/logs \
+              -e backend/uploads \
+              -e _backups \
+              -e .last-deployed-sha
             chmod +x scripts/deploy.sh scripts/rollback.sh
             DEPLOY_SHA=\"${{ github.sha }}\" \
             DEPLOY_SUBJECT=\"${{ inputs.not }}\" \

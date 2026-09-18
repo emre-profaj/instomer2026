@@ -32,8 +32,8 @@ info() { echo "ℹ️  $*"; }
 warn() { echo "⚠️  $*"; }
 die()  { echo "❌ $*" >&2; exit 1; }
 
-# Sürüm bilgisi: Actions DEPLOY_SHA ile gönderiyor. Sunucuda .git YOK
-# (dosyalar rsync ile geliyor), bu yüzden git'e bağımlı olamayız.
+# Sürüm bilgisi: Actions DEPLOY_SHA ile gönderiyor; elle çalıştırıldığında
+# sunucudaki klonun HEAD'i okunuyor. İkisi de yoksa 'n/a' — script yine çalışır.
 CUR_SHA="${DEPLOY_SHA:-$(git rev-parse HEAD 2>/dev/null || echo 'n/a')}"
 CUR_SUBJECT="${DEPLOY_SUBJECT:-$(git log -1 --format=%s 2>/dev/null || echo '')}"
 PREV_SHA="$(cat "$SHA_FILE" 2>/dev/null || echo '')"
