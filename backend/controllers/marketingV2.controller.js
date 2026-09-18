@@ -1419,6 +1419,24 @@ export const wizardLaunchCampaign = async (req, res) => {
 // 8. SYNC PAST DATA (DATE-BY-DATE AUTOMATIC CAMPAIGN ORGANIZATION)
 // ══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Şablon mesajının başındaki etiketten şablon adını çözer.
+ *
+ *   "[Şablon: temmuz26] Merhaba..."           → "temmuz26"
+ *   "[Otomatik Şablon: karsilama2] Merhaba…"  → "karsilama2"
+ *
+ * Önceki kalıp yalnızca "[Şablon:" arıyordu. Otomatik gönderimlerin
+ * tamamı (17.487 mesaj) isimsiz sayılıp "WhatsApp Şablonu" yedek adına
+ * düşüyordu; grup başlıklarında şablon adı bu yüzden görünmüyordu.
+ */
+const TEMPLATE_TAG_RE = /^\[\s*(?:Otomatik\s+)?Şablon:\s*([^\]]+)\]/i;
+
+function parseTemplateName(content) {
+    const m = String(content || '').match(TEMPLATE_TAG_RE);
+    const name = m ? m[1].trim() : '';
+    return name || null;
+}
+
 export async function syncPastDataCore(workspaceId) {
     // 0. Ensure legacy campaigns without groups get their default groups and messages
     const legacyUpdatedCount = await ensureDefaultGroupsForLegacyCampaigns(workspaceId);
@@ -1460,11 +1478,7 @@ export async function syncPastDataCore(workspaceId) {
         if (existingMessageIdSet.has(msg.id)) continue;
 
         const dateKey = msg.createdAt.toISOString().split('T')[0];
-        let tplName = 'WhatsApp Şablonu';
-        const match = msg.content?.match(/^\[Şablon:\s*([^\]]+)\]/);
-        if (match && match[1]) {
-            tplName = match[1].trim();
-        }
+        const tplName = parseTemplateName(msg.content) || 'WhatsApp Şablonu';
 
         if (!messagesByDate.has(dateKey)) {
             messagesByDate.set(dateKey, {
@@ -1480,6 +1494,21 @@ export async function syncPastDataCore(workspaceId) {
         }
         dayGroup.templates.get(tplName).push(msg);
     }
+
+    /*
+     * Mevcut eşitleme alıcıları. Bir alıcı satırı messageId üzerinden
+     * benzersiz olduğu için yeni gruba "ekleme" yapılamaz; yanlış adlı
+     * eski gruplarda duran satırların doğru gruba TAŞINMASI gerekiyor.
+     * Aksi halde createMany sessizce atlar ve yeni gruplar boş kalır.
+     */
+    const legacyRecs = await prisma.marketingRecipient.findMany({
+        where: {
+            campaign: { workspaceId, type: 'LEGACY_DATE_SYNC' },
+            messageId: { not: null }
+        },
+        select: { id: true, messageId: true, groupId: true, campaignId: true }
+    });
+    const legacyRecByMsg = new Map(legacyRecs.map(r => [r.messageId, r]));
 
     let syncedWaCampaigns = 0;
     let totalSyncedWaMessages = 0;
@@ -1538,15 +1567,16 @@ export async function syncPastDataCore(workspaceId) {
                 });
             }
 
-            const groupRecs = await prisma.marketingRecipient.findMany({
-                where: { groupId: group.id },
-                select: { messageId: true }
-            });
-            const groupRecMsgSet = new Set(groupRecs.map(r => r.messageId));
-
             const toCreate = [];
+            const toMove = [];
             for (const msg of msgs) {
-                if (groupRecMsgSet.has(msg.id)) continue;
+                const existing = legacyRecByMsg.get(msg.id);
+                if (existing) {
+                    if (existing.groupId !== group.id || existing.campaignId !== campaign.id) {
+                        toMove.push(existing.id);
+                    }
+                    continue;
+                }
                 const status = msg.status || 'SENT';
                 toCreate.push({
                     campaignId: campaign.id,
@@ -1568,6 +1598,15 @@ export async function syncPastDataCore(workspaceId) {
                     await prisma.marketingRecipient.createMany({
                         data: toCreate.slice(i, i + 100),
                         skipDuplicates: true
+                    });
+                }
+            }
+
+            if (toMove.length > 0) {
+                for (let i = 0; i < toMove.length; i += 200) {
+                    await prisma.marketingRecipient.updateMany({
+                        where: { id: { in: toMove.slice(i, i + 200) } },
+                        data: { groupId: group.id, campaignId: campaign.id }
                     });
                 }
             }
@@ -1600,6 +1639,42 @@ export async function syncPastDataCore(workspaceId) {
             }
         });
         syncedWaCampaigns++;
+    }
+
+    /*
+     * Alıcılar doğru adlı gruplara taşındıktan sonra eski yanlış adlı
+     * gruplar boş kalıyor. Bunlar arayüzde içi boş kart olarak
+     * görüneceği ve eski sayaçlarıyla kampanya toplamını şişireceği
+     * için siliniyor. AI arama grupları bu taramaya girmez.
+     */
+    const stranded = await prisma.campaignGroup.findMany({
+        where: {
+            channel: 'WHATSAPP',
+            campaign: { workspaceId, type: 'LEGACY_DATE_SYNC' },
+            recipients: { none: {} }
+        },
+        select: { id: true, campaignId: true }
+    });
+
+    if (stranded.length > 0) {
+        await prisma.campaignGroup.deleteMany({
+            where: { id: { in: stranded.map(g => g.id) } }
+        });
+
+        // Silinen grupların sayaçları kampanya toplamında kalmasın
+        for (const campaignId of new Set(stranded.map(g => g.campaignId))) {
+            const groups = await prisma.campaignGroup.findMany({ where: { campaignId } });
+            await prisma.marketingCampaign.update({
+                where: { id: campaignId },
+                data: {
+                    sentCount: groups.reduce((s, g) => s + g.sentCount, 0),
+                    deliveredCount: groups.reduce((s, g) => s + g.deliveredCount, 0),
+                    readCount: groups.reduce((s, g) => s + g.readCount, 0),
+                    failedCount: groups.reduce((s, g) => s + g.failedCount, 0),
+                    totalCount: groups.reduce((s, g) => s + g.sentCount, 0)
+                }
+            }).catch(() => {});
+        }
     }
 
     // 2. Gather past Retell AI calls
