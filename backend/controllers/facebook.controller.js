@@ -6,6 +6,7 @@ import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
 import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
 import { hasProfanity, censorProfanity } from '../utils/profanityFilter.js';
+import { trDateParts, trTimeToDate } from '../utils/trTime.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -3712,16 +3713,25 @@ async function handleLeadgenEvent(leadValue, entryId) {
 
                 if (!recentTask && contact?.id) {
                     // Mesai saati kontrolü — gece gelen lead'ler sabah aranacak
-                    const nowTRLead = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-                    const leadHour = nowTRLead.getHours();
+                    // Saat ve takvim günü AYNI kaynaktan (Türkiye) okunuyor.
+                    // Eskiden saat TR'den, gün ise setUTCHours ile UTC'den
+                    // geliyordu; gece 00:00–02:59 arasında bu iki takvim bir
+                    // gün farklı olduğu için "bugün 10:15" hesabı DÜNE
+                    // düşüyordu (01:52 TR = önceki gün 22:52 UTC). Geçmişe
+                    // planlanan görev "bugünün aramaları" listesinde hiç
+                    // görünmüyor, yani o lead hiç aranmıyordu.
+                    const { year: trY, month: trM, day: trD, hour: leadHour } = trDateParts();
                     let leadDueDate;
                     if (leadHour >= 10 && leadHour < 21) {
                         leadDueDate = new Date(); // Mesai içinde → şimdi
+                    } else if (leadHour >= 21) {
+                        // Akşam geldi → yarın sabah
+                        leadDueDate = trTimeToDate(trY, trM, trD + 1, 10, 15);
+                        console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → yarın sabaha ertelendi`);
                     } else {
-                        leadDueDate = new Date();
-                        if (leadHour >= 21) leadDueDate.setDate(leadDueDate.getDate() + 1);
-                        leadDueDate.setUTCHours(7, 15, 0, 0);
-                        console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → arama ertelendi`);
+                        // Gece/sabah erken geldi → BUGÜN sabah (gün eklenmez)
+                        leadDueDate = trTimeToDate(trY, trM, trD, 10, 15);
+                        console.log(`⏸️ [LEADGEN] Mesai dışı (saat ${leadHour}) → bugün sabaha ertelendi`);
                     }
 
                     // ─── MÜŞTERİ SAAT TERCİHİ → dueDate OVERRIDE ──────────────
@@ -3745,16 +3755,11 @@ async function handleLeadgenEvent(leadValue, entryId) {
                         }
                         if (prefH !== null) {
                             if (prefH >= 6 && prefH <= 23) {
-                                const todayTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-                                leadDueDate = new Date(Date.UTC(
-                                    todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate(),
-                                    prefH - 3, prefM, 0
-                                ));
+                                // Aynı gerekçe: TR takvim günü + TR duvar saati.
+                                // Ofset de elle çıkarılmıyor, dönüşüm tek yerde.
+                                leadDueDate = trTimeToDate(trY, trM, trD, prefH, prefM);
                                 if (leadDueDate <= new Date()) {
-                                    leadDueDate = new Date(Date.UTC(
-                                        todayTR.getFullYear(), todayTR.getMonth(), todayTR.getDate() + 1,
-                                        prefH - 3, prefM, 0
-                                    ));
+                                    leadDueDate = trTimeToDate(trY, trM, trD + 1, prefH, prefM);
                                 }
                                 console.log(`📞 [LEADGEN] Müşteri saat tercihi: "${preferredTimeStr}" → dueDate: ${leadDueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
                             }

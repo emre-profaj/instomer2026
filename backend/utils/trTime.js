@@ -27,15 +27,32 @@ export const TR_OFFSET_HOURS = 3;
 const TR_TZ = 'Europe/Istanbul';
 
 /**
- * Bir Date'in Türkiye takvimindeki gün/ay/yılını verir.
- * @returns {{year:number, month:number, day:number}} month 1-12
+ * Bir Date'in Türkiye takvimindeki gün/ay/yılı ve saatini verir.
+ *
+ * Saat de buradan alınmalı: `new Date(d.toLocaleString('en-US', {timeZone}))`
+ * gidiş-dönüşü yerel ayrıştırmaya bağlı ve tam ICU olmayan kurulumda
+ * saat dilimini sessizce yok sayıyor.
+ *
+ * @returns {{year:number, month:number, day:number, hour:number, minute:number}} month 1-12
  */
 export function trDateParts(date = new Date()) {
-    // en-CA → "YYYY-MM-DD", ayrıştırması kolay ve yerelden bağımsız
-    const [y, m, d] = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TR_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(date).split('-').map(Number);
-    return { year: y, month: m, day: d };
+    // en-CA → "YYYY-MM-DD, HH:MM", ayrıştırması kolay ve yerelden bağımsız
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TR_TZ,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(date).reduce((acc, p) => {
+        if (p.type !== 'literal') acc[p.type] = Number(p.value);
+        return acc;
+    }, {});
+    return {
+        year: parts.year,
+        month: parts.month,
+        day: parts.day,
+        // saat 24 gelebilir (bazı ortamlarda gece yarısı böyle biçimlenir)
+        hour: parts.hour === 24 ? 0 : parts.hour,
+        minute: parts.minute,
+    };
 }
 
 /**
