@@ -1329,7 +1329,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 style={{
                                     background: '#fff',
                                     borderRadius: 12,
-                                    border: '1px solid #e5e7eb',
+                                    border: c.isSystemTemplate ? '1px solid #fbbf24' : '1px solid #e5e7eb',
                                     padding: '16px 20px',
                                     cursor: 'pointer',
                                     transition: 'all 0.15s',
@@ -1338,14 +1338,19 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                     gap: 10,
                                 }}
                                 onClick={() => loadCampaignDetail(c.id)}
-                                onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
-                                onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                                onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = c.isSystemTemplate ? '#f59e0b' : '#cbd5e1'; }}
+                                onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = c.isSystemTemplate ? '#fbbf24' : '#e5e7eb'; }}
                             >
                                 {/* Üst Satır: İsim + Kanallar + Durum */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                                         <div style={{ width: 7, height: 7, borderRadius: '50%', background: isAuto ? '#f59e0b' : '#94a3b8', flexShrink: 0 }} title={isAuto ? 'Otomatik' : 'Manuel'} />
                                         <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
+                                        {c.isSystemTemplate && (
+                                            <span style={{ fontSize: 9, background: '#fef3c7', color: '#92400e', padding: '2px 7px', borderRadius: 5, fontWeight: 700, whiteSpace: 'nowrap', letterSpacing: 0.3 }}>
+                                                OTOMATİK
+                                            </span>
+                                        )}
                                         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                                             {channels.map(ch => {
                                                 const badge = CHANNEL_BADGE[ch];
@@ -1362,7 +1367,38 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                         <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: statusBadge.bg, color: statusBadge.color }}>
                                             {statusBadge.label}
                                         </span>
-                                        {!c.isLegacy && !c.isArchive && (
+                                        {c.isSystemTemplate && (
+                                            <button
+                                                className="grp-icon-action"
+                                                style={{
+                                                    background: c.status === 'ACTIVE' ? '#fef2f2' : '#f0fdf4',
+                                                    color: c.status === 'ACTIVE' ? '#dc2626' : '#16a34a',
+                                                    border: 'none',
+                                                    borderRadius: 6,
+                                                    padding: '4px 10px',
+                                                    fontSize: 11,
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 4,
+                                                }}
+                                                title={c.status === 'ACTIVE' ? 'Durdur' : 'Aktifleştir'}
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    const newStatus = c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+                                                    try {
+                                                        await api.put(`/marketing-v2/${wsId}/campaigns/${c.id}`, { status: newStatus });
+                                                        fetchCampaigns();
+                                                    } catch (err) {
+                                                        alert('Hata: ' + (err.response?.data?.error || err.message));
+                                                    }
+                                                }}
+                                            >
+                                                {c.status === 'ACTIVE' ? <><X size={12}/> Durdur</> : <><Play size={12}/> Aktifleştir</>}
+                                            </button>
+                                        )}
+                                        {!c.isLegacy && !c.isArchive && !c.isSystemTemplate && (
                                             <div style={{ display: 'flex', gap: 3 }} onClick={e => e.stopPropagation()}>
                                                 <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }} title="Düzenle"><Edit2 size={13}/></button>
                                                 <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)} title="Sil"><Trash2 size={13}/></button>
@@ -1375,7 +1411,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                 {/* Alt Satır: Açıklama + Tarih + İstatistikler */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, fontSize: 12, color: '#64748b' }}>
                                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#94a3b8' }}>
-                                        {c.description || (c.isAutomation ? 'Sistem otomasyonu' : 'Açıklama yok')}
+                                        {c.description || (isAuto ? 'Sistem otomasyonu' : 'Açıklama yok')}
                                     </div>
                                     <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0, color: '#64748b' }}>
                                         <span style={{ color: '#94a3b8', fontSize: 11 }}>{getDateDisplay(c)}</span>
