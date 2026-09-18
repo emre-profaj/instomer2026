@@ -551,3 +551,30 @@ select.cal-meeting-type-select {
     animation: tkSpin 1s linear infinite;
 }
 @keyframes tkSpin { to { transform: rotate(360deg); } }
+
+/* ── Düzen düzeltmesi ───────────────────────────────────────
+   Süzgeç satırları ortalanmıştı (.cal-header-row.cal-filters-main-row
+   justify-content: center) ve görünüm geçişi yan panelin hizasında,
+   ızgaranın içinde duruyordu. İkisi de sola hizalı ve başlığın altında.
+   Seçici .calendar-page ile başlıyor ki mevcut kuralı yensin. */
+.calendar-page .cal-header-row.cal-filters-main-row,
+.calendar-page .cal-header-row.cal-nav-row,
+.calendar-page .cal-filters-row {
+    justify-content: flex-start;
+}
+.calendar-page .cal-activity-filters-group { flex-wrap: wrap; gap: 9px; }
+
+/* Kaynak seçici ekranın yarısını kaplıyordu */
+.calendar-page .cal-selects-group select,
+.calendar-page select.cal-meeting-type-select {
+    max-width: 260px;
+    text-overflow: ellipsis;
+}
+
+/* Başlığa taşınan görünüm/tarih satırı */
+.calendar-page .cal-grid-topbar {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin: 0 0 14px;
+}
+.calendar-page .cal-grid-topbar .calendar-header-nav { margin-left: auto; }

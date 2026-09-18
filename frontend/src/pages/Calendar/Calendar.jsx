@@ -1816,6 +1816,49 @@ function formatDoctorDisplayName(rawName) {
                 )}
 
                 {/* SATIR 2: Agent+Kaynak seçimleri | Aktivite tip filtreleri | Status filtreleri */}
+                    <div className="cal-grid-topbar">
+                        {/* Görünüm geçişleri — stil Takvim.css'te (.view-mode-toggle).
+                            Önceden satır içi mavi renklerle yazılmıştı; sayfa tek
+                            başına mavi kalıyordu. */}
+                        <div className="view-mode-toggle" role="group" aria-label="Görünüm">
+                            {[
+                                { key: 'month', label: 'Ay' },
+                                { key: 'week',  label: 'Hafta' },
+                                { key: 'day',   label: 'Gün' },
+                            ].map(v => (
+                                <button
+                                    key={v.key}
+                                    type="button"
+                                    className={layoutMode === 'grid' && viewMode === v.key ? 'active' : ''}
+                                    onClick={() => { setViewMode(v.key); setLayoutMode('grid'); }}
+                                >{v.label}</button>
+                            ))}
+                            <button
+                                type="button"
+                                className={layoutMode === 'list' ? 'active' : ''}
+                                onClick={() => setLayoutMode('list')}
+                            >Liste</button>
+                        </div>
+                        <div className="calendar-header-nav">
+                            <div className="nav-buttons">
+                                <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
+                                <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
+                                <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
+                            </div>
+                            <span className="current-month">{getHeaderLabel()}</span>
+                            <button
+                                type="button"
+                                className={`cal-sync-btn ${isSyncing ? 'spinning' : ''}`}
+                                onClick={handleManualSync}
+                                disabled={isSyncing}
+                                title="Takvimi ve Google Takvim etkinliklerini hemen senkronize et"
+                            >
+                                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                                <span>{isSyncing ? 'Yenileniyor...' : 'Yenile'}</span>
+                            </button>
+                        </div>
+                    </div>
+
                 <div className="cal-header-row cal-filters-main-row">
                     {/* Sol: Agent + Kaynak */}
                     <div className="cal-selects-group">
@@ -2260,48 +2303,6 @@ function formatDoctorDisplayName(rawName) {
                 {/* Main Calendar */}
                 <div className="calendar-main">
                     {/* View tabs + Date nav — grid alanının üstünde */}
-                    <div className="cal-grid-topbar">
-                        {/* Görünüm geçişleri — stil Takvim.css'te (.view-mode-toggle).
-                            Önceden satır içi mavi renklerle yazılmıştı; sayfa tek
-                            başına mavi kalıyordu. */}
-                        <div className="view-mode-toggle" role="group" aria-label="Görünüm">
-                            {[
-                                { key: 'month', label: 'Ay' },
-                                { key: 'week',  label: 'Hafta' },
-                                { key: 'day',   label: 'Gün' },
-                            ].map(v => (
-                                <button
-                                    key={v.key}
-                                    type="button"
-                                    className={layoutMode === 'grid' && viewMode === v.key ? 'active' : ''}
-                                    onClick={() => { setViewMode(v.key); setLayoutMode('grid'); }}
-                                >{v.label}</button>
-                            ))}
-                            <button
-                                type="button"
-                                className={layoutMode === 'list' ? 'active' : ''}
-                                onClick={() => setLayoutMode('list')}
-                            >Liste</button>
-                        </div>
-                        <div className="calendar-header-nav">
-                            <div className="nav-buttons">
-                                <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
-                                <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
-                                <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
-                            </div>
-                            <span className="current-month">{getHeaderLabel()}</span>
-                            <button
-                                type="button"
-                                className={`cal-sync-btn ${isSyncing ? 'spinning' : ''}`}
-                                onClick={handleManualSync}
-                                disabled={isSyncing}
-                                title="Takvimi ve Google Takvim etkinliklerini hemen senkronize et"
-                            >
-                                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                                <span>{isSyncing ? 'Yenileniyor...' : 'Yenile'}</span>
-                            </button>
-                        </div>
-                    </div>
 
                 {/* Yükleniyor durumu: `loading` değişkeni vardı ama hiç
                     çizilmiyordu, sayfa veri gelene kadar boş duruyor sonra
