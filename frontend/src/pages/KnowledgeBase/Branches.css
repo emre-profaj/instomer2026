@@ -30,11 +30,13 @@
 
     /* .base-content zemini beyaz ve 24px 28px dolgulu; beyaz yüzeylerin
        ayrışması için sayfa kendi gri zeminini kuruyor, negatif kenar
-       boşlukları da dolguyu iptal ederek zemini kenarlara taşıyor. */
+       boşlukları da dolguyu DÖRT YANDAN iptal ederek zemini kenarlara
+       taşıyor. Alt dolgu iptal edilmediğinde en altta ince bir beyaz
+       şerit kalıyordu; min-height iki dolguyu birden telafi ediyor. */
     background: #fafafb;
-    margin: -24px -28px 0;
+    margin: -24px -28px;
     padding: 28px 28px 64px;
-    min-height: calc(100% + 24px);
+    min-height: calc(100% + 48px);
 }
 
 /* Yüzey: çerçeve yok, yalnızca çok yumuşak bir yükselti */

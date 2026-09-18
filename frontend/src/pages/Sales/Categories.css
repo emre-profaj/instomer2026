@@ -38,7 +38,10 @@
 
    Tek başına (Satış > Ürünler) zemini ve dolguyu .sales-page veriyor. */
 .ct-page.embedded {
-    margin: 0 -28px;
+    /* Yatay dolgunun yanında ALT dolgu da iptal ediliyor: .base-content'in
+       24px'lik alt boşluğu gri alanın dışında kalıyor ve en altta ince bir
+       beyaz şerit bırakıyordu. */
+    margin: 0 -28px -24px;
     padding: 28px 28px 64px;
     background: #fafafb;
 
