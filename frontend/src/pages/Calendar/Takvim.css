@@ -684,3 +684,33 @@ select.cal-meeting-type-select {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+
+/* ── Üst satırların hizası ──────────────────────────────────
+   Tarih gezinmesi margin-left:auto ile sağa yapışıyordu; araya kocaman
+   boşluk giriyor ve hızlı işlemler alt satıra düşüyordu. Artık gezinme
+   görünüm geçişinin hemen yanında, sağa yaslanan hızlı işlemler. */
+.calendar-page .cal-grid-topbar .calendar-header-nav { margin-left: 0; }
+.calendar-page .cal-grid-topbar .cal-quick-actions { margin-left: auto; }
+
+/* Süzgeç sırası: önce aktivite türü, sonra temsilci/kaynak, sonra
+   görüşme tipi ve tamamlananlar anahtarı. Gruplar display:contents ile
+   şeffaflaştırılıp tek sırada diziliyor. */
+.calendar-page .cal-activity-filters-group { display: contents; }
+.calendar-page .cal-filters-main-row .cal-type-filters { order: 1; }
+.calendar-page .cal-filters-main-row .cal-selects-group { order: 2; }
+.calendar-page .cal-filters-main-row .cal-meeting-type-filter { order: 3; }
+.calendar-page .cal-filters-main-row .show-completed-toggle { order: 4; }
+.calendar-page .cal-filters-main-row .clear-filters-btn { order: 5; }
+
+/* Yenile: süzgeç satırının en sağında, yalnızca simge (hedef düzendeki
+   gibi). Metin ekran okuyucuya title ile kalıyor. */
+.calendar-page .cal-filters-main-row .cal-sync-btn {
+    order: 6;
+    margin-left: auto;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 999px;
+    justify-content: center;
+}
+.calendar-page .cal-filters-main-row .cal-sync-btn span { display: none; }

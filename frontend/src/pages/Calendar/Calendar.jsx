@@ -1849,16 +1849,6 @@ function formatDoctorDisplayName(rawName) {
                                 <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
                             </div>
                             <span className="current-month">{getHeaderLabel()}</span>
-                            <button
-                                type="button"
-                                className={`cal-sync-btn ${isSyncing ? 'spinning' : ''}`}
-                                onClick={handleManualSync}
-                                disabled={isSyncing}
-                                title="Takvimi ve Google Takvim etkinliklerini hemen senkronize et"
-                            >
-                                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                                <span>{isSyncing ? 'Yenileniyor...' : 'Yenile'}</span>
-                            </button>
                         </div>
                         <div className="cal-quick-actions">
                         <div className="cal-quick-divider" />
@@ -2139,6 +2129,17 @@ function formatDoctorDisplayName(rawName) {
                             <span>Tamamlananları göster</span>
                         </label>
                     </div>
+
+                            <button
+                                type="button"
+                                className={`cal-sync-btn ${isSyncing ? 'spinning' : ''}`}
+                                onClick={handleManualSync}
+                                disabled={isSyncing}
+                                title="Takvimi ve Google Takvim etkinliklerini hemen senkronize et"
+                            >
+                                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                                <span>{isSyncing ? 'Yenileniyor...' : 'Yenile'}</span>
+                            </button>
                 </div>
 
             </div>{/* /calendar-header */}
