@@ -439,7 +439,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         return Array.from(chs);
     };
 
-    const isAutoCampaign = (c) => c.isAutomation || c.campaignType === 'AUTO' || c.campaignType === 'DYNAMIC' || c.campaignType === 'TRIGGERED';
+    const isAutoCampaign = (c) => c.isAutomation || c.isSystemTemplate || ['AUTO', 'DYNAMIC', 'TRIGGERED', 'AUTO_DRIP', 'AUTO_TRIGGERED', 'AUTO_RECURRING'].includes(c.type || c.campaignType);
 
     const fetchCampaigns = useCallback(async () => {
         setLoading(true);

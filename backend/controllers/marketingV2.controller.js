@@ -6,6 +6,16 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { sendSms } from '../services/netgsm.service.js';
 import { sendEmailViaChannel } from '../services/emailSender.service.js';
 
+// ─── Kampanya triggerType → WorkspaceRule ruleType eşlemesi ──────
+const TRIGGER_TO_RULES = {
+    'NEW_CONTACT':   ['DRIP_DAY_0', 'DRIP_DAY_1', 'DRIP_DAY_3', 'DRIP_DAY_7', 'DRIP_DAY_14', 'DRIP_DAY_30'],
+    'INACTIVE_DAYS': ['INACTIVE_REACTIVATION'],
+    'BIRTHDAY':      ['BIRTHDAY_GREETING'],
+    'HOT_LEAD':      ['POSITIVE_LEAD_CAMPAIGN'],
+    'POST_SALE':     ['SATISFACTION_SURVEY', 'POST_SALE_FOLLOWUP', 'REFERRAL_REQUEST'],
+    'ANNIVERSARY':   ['CUSTOMER_1ST_YEAR'],
+};
+
 // ══════════════════════════════════════════════════════════════════════════
 // 1. CAMPAIGNS CRUD
 // ══════════════════════════════════════════════════════════════════════════
@@ -250,6 +260,19 @@ export const updateCampaign = async (req, res) => {
                 endDate: endDate ? new Date(endDate) : undefined
             }
         });
+
+        // Şablon kampanya aktif/durdur → WorkspaceRule senkronize et
+        if (campaign.isSystemTemplate && campaign.triggerType && status) {
+            const isActive = status === 'ACTIVE';
+            const ruleTypes = TRIGGER_TO_RULES[campaign.triggerType] || [];
+            for (const ruleType of ruleTypes) {
+                await prisma.workspaceRule.updateMany({
+                    where: { workspaceId, ruleType },
+                    data: { isActive }
+                });
+            }
+            console.log(`🔄 [updateCampaign] Şablon kampanya ${status} → ${ruleTypes.length} kural güncellendi`);
+        }
 
         res.json({ success: true, campaign });
     } catch (error) {

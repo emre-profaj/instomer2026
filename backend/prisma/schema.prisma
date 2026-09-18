@@ -2058,9 +2058,10 @@ model Case {
   activities    ContactActivity[]
   deals         Deal[]
 
-  // Kampanya takibi
+  // Kampanya & Kaynak takibi
   campaignId String?
   campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  source     String? // GOOGLE_ADS | META_ADS | WHATSAPP_AD | FORM | CAMPAIGN | COLD_CALL | REFERRAL | ORGANIC | MANUAL
 
   // Ürün / Kategori
   categoryId      String?
@@ -2161,9 +2162,13 @@ model MarketingCampaign {
   endDate        DateTime?
   // Legacy — geriye uyumluluk
   templateId     String?
-  type           String               @default("BULK")
+  type           String               @default("BULK") // BULK | AUTO_DRIP | AUTO_TRIGGERED | AUTO_RECURRING
   automationId   String?
   scheduledAt    DateTime?
+  // Şablon Kampanya Alanları
+  triggerType      String?              // NEW_CONTACT | INACTIVE_DAYS | BIRTHDAY | HOT_LEAD | POST_SALE | ANNIVERSARY | SPECIAL_DAY
+  triggerConfig    String?              // JSON: { inactiveDays: 30, daysAfterClose: 1, ... }
+  isSystemTemplate Boolean             @default(false) // Workspace oluşturulunca otomatik oluşturulan
   sentAt         DateTime?
   totalCount     Int                  @default(0)
   sentCount      Int                  @default(0)
@@ -2201,6 +2206,9 @@ model CampaignGroup {
   // Bütçe ve zamanlama (reklam kanalları için)
   budget         Float? // Günlük bütçe
   scheduledAt    DateTime? // Planlı başlangıç
+  // Drip / Otomatik dizi ayarları
+  delayDays      Int       @default(0)  // Kişi oluşturulduktan kaç gün sonra gönderilecek
+  sortOrder      Int       @default(0)  // Adım sırası
   // Gönderim ayarları
   sendRate       Int       @default(20) // Dakikada mesaj sayısı
   // İstatistikler

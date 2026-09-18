@@ -10,7 +10,8 @@ import {
     DEFAULT_FUNNELS,
     DEFAULT_CATEGORIES,
     DEFAULT_BOT_PROMPT,
-    DEFAULT_AUTOMATION_RULES
+    DEFAULT_AUTOMATION_RULES,
+    DEFAULT_CAMPAIGN_TEMPLATES
 } from '../utils/universalDefaults.js';
 import { ensureDefaultQuickReplies } from './defaultQuickReplies.service.js';
 
@@ -116,6 +117,50 @@ export async function applyUniversalDefaults(workspaceId) {
             console.log(`🌱 [Onboarding] ${result.quickReplies} default hazır mesaj şablonu oluşturuldu`);
         } catch (qrErr) {
             console.warn(`⚠️ [Onboarding] Hazır mesaj seeding hatası:`, qrErr.message);
+        }
+
+        // ── 4. Şablon Kampanyalar (Pazarlama Dizileri) ──
+        try {
+            const existingTemplateCampaigns = await prisma.marketingCampaign.count({
+                where: { workspaceId, isSystemTemplate: true }
+            });
+
+            if (existingTemplateCampaigns === 0) {
+                result.campaignTemplates = 0;
+                for (const tpl of DEFAULT_CAMPAIGN_TEMPLATES) {
+                    const campaign = await prisma.marketingCampaign.create({
+                        data: {
+                            workspaceId,
+                            name: tpl.name,
+                            type: tpl.type,
+                            triggerType: tpl.triggerType,
+                            triggerConfig: tpl.triggerConfig ? JSON.stringify(tpl.triggerConfig) : null,
+                            description: tpl.description,
+                            status: 'DRAFT',
+                            isSystemTemplate: true,
+                        }
+                    });
+
+                    for (const grp of tpl.groups) {
+                        await prisma.campaignGroup.create({
+                            data: {
+                                campaignId: campaign.id,
+                                name: grp.name,
+                                delayDays: grp.delayDays,
+                                sortOrder: grp.sortOrder,
+                                channel: 'WHATSAPP',
+                                status: 'DRAFT',
+                            }
+                        });
+                    }
+                    result.campaignTemplates++;
+                }
+                console.log(`🌱 [Onboarding] ${result.campaignTemplates} şablon kampanya oluşturuldu`);
+            } else {
+                console.log(`⏭️ [Onboarding] Workspace ${workspaceId} zaten ${existingTemplateCampaigns} şablon kampanyaya sahip, atlanıyor`);
+            }
+        } catch (ctErr) {
+            console.warn(`⚠️ [Onboarding] Şablon kampanya seeding hatası:`, ctErr.message);
         }
 
         console.log(`✅ [Onboarding] Evrensel taban kurulumu tamamlandı:`, result);

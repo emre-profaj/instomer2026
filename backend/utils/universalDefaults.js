@@ -276,3 +276,90 @@ export const DEFAULT_AUTOMATION_RULES = [
     },
 ];
 
+
+// ─── Şablon Kampanyalar ────────────────────────────────────────
+// Workspace oluşturulunca otomatik oluşturulan pazarlama kampanyaları
+// Kullanıcı aktifleştirene kadar DRAFT durumunda kalır
+export const DEFAULT_CAMPAIGN_TEMPLATES = [
+    {
+        name: 'Hoş Geldin Dizisi',
+        type: 'AUTO_DRIP',
+        triggerType: 'NEW_CONTACT',
+        description: 'Yeni kişi oluşturulduğunda otomatik başlayan karşılama dizisi',
+        groups: [
+            { name: 'Başvuru Günü Mesajı', delayDays: 0, sortOrder: 0 },
+            { name: '1 Gün Sonra Takip', delayDays: 1, sortOrder: 1 },
+            { name: '3 Gün Sonra İlgi Ölçme', delayDays: 3, sortOrder: 2 },
+            { name: '7 Gün Sonra Hatırlatma', delayDays: 7, sortOrder: 3 },
+            { name: '14 Gün Sonra Kampanya', delayDays: 14, sortOrder: 4 },
+            { name: '30 Gün Sonra Son Şans', delayDays: 30, sortOrder: 5 },
+        ]
+    },
+    {
+        name: 'Reaktivasyon — 30 Gün Sessiz',
+        type: 'AUTO_TRIGGERED',
+        triggerType: 'INACTIVE_DAYS',
+        triggerConfig: { inactiveDays: 30 },
+        description: '30 gündür iletişim kurmayan kişilere otomatik geri kazanım mesajı',
+        groups: [
+            { name: 'Reaktivasyon Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+    {
+        name: 'Doğum Günü Kutlaması',
+        type: 'AUTO_RECURRING',
+        triggerType: 'BIRTHDAY',
+        description: 'Doğum günü olan kişilere otomatik tebrik mesajı',
+        groups: [
+            { name: 'Doğum Günü Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+    {
+        name: 'Sıcak Lead Kampanyası',
+        type: 'AUTO_TRIGGERED',
+        triggerType: 'HOT_LEAD',
+        description: 'HOT/FIRE sıcaklıktaki leadlere özel kampanya mesajı',
+        groups: [
+            { name: 'Sıcak Lead Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+    {
+        name: 'Satış Sonrası Takip',
+        type: 'AUTO_TRIGGERED',
+        triggerType: 'POST_SALE',
+        triggerConfig: { daysAfterClose: 1 },
+        description: 'Kazanılan satış sonrası müşteri memnuniyeti takibi',
+        groups: [
+            { name: 'Takip Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+    {
+        name: 'Memnuniyet Anketi',
+        type: 'AUTO_TRIGGERED',
+        triggerType: 'POST_SALE',
+        triggerConfig: { daysAfterClose: 3 },
+        description: 'Satış sonrası memnuniyet anketi gönderimi',
+        groups: [
+            { name: 'Anket Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+    {
+        name: 'Referans İsteği',
+        type: 'AUTO_TRIGGERED',
+        triggerType: 'POST_SALE',
+        triggerConfig: { daysAfterClose: 7 },
+        description: 'Memnun müşterilerden referans talebi',
+        groups: [
+            { name: 'Referans Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+    {
+        name: 'Müşteri 1. Yıl Kutlama',
+        type: 'AUTO_RECURRING',
+        triggerType: 'ANNIVERSARY',
+        description: 'Müşteri olmanın 1. yıl dönümünde özel kutlama',
+        groups: [
+            { name: 'Yıl Dönümü Mesajı', delayDays: 0, sortOrder: 0 },
+        ]
+    },
+];

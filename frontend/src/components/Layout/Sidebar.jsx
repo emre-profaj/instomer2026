@@ -193,7 +193,22 @@ const Sidebar = () => {
     };
 
     const getInitials = (name) => {
-        return name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || 'WB';
+        if (!name) return 'WB';
+        const clean = name.includes('@') ? name.split('@')[0] : name;
+        const parts = clean.trim().split(/\s+/);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return clean.slice(0, 2).toUpperCase() || 'WB';
+    };
+
+    const getUserRoleLabel = () => {
+        if (user?.role === 'SUPER_ADMIN') return 'Süper Admin';
+        if (workspaceRole === 'OWNER') return 'Firma Sahibi';
+        if (workspaceRole === 'ADMIN') return 'Yönetici';
+        if (workspaceRole === 'AGENT') return 'Temsilci';
+        if (user?.role === 'ADMIN') return 'Yönetici';
+        return 'Kullanıcı';
     };
 
     const handleLogout = () => {
@@ -530,18 +545,69 @@ const Sidebar = () => {
                     <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 0, borderTop: 'none' }}>
                         <NotificationPanel isCollapsed={isCollapsed} />
                     </div>
-                    {/* Logout */}
-                    <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 8, borderTop: 'none' }}>
-                        <button
-                            className="notification-trigger"
-                            onClick={handleLogout}
-                            title="Çıkış Yap"
-                            style={{ color: '#ef4444' }}
+
+                    {/* Divider */}
+                    <div className="sidebar-footer-divider" />
+
+                    {/* Logged in User Profile & Inline Logout */}
+                    <div className={`sidebar-profile-card ${isCollapsed ? 'collapsed' : ''}`}>
+                        <Link
+                            to="/profile"
+                            className={`profile-card-user-link ${location.pathname === '/profile' ? 'active' : ''}`}
+                            title={`${user?.name || user?.email || 'Kullanıcı'} (${getUserRoleLabel()}) — Profil Ayarları`}
                         >
-                            <LogOut size={20} className="nav-icon" style={{ color: '#ef4444' }} />
-                            {!isCollapsed && <span style={{ color: '#ef4444' }}>Çıkış Yap</span>}
-                        </button>
+                            <div className="profile-card-avatar-wrap">
+                                <div className="profile-card-avatar">
+                                    {user?.avatar ? (
+                                        <img
+                                            src={user.avatar}
+                                            alt={user?.name || 'User'}
+                                            className="profile-avatar-img"
+                                            onError={(e) => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }}
+                                        />
+                                    ) : null}
+                                    <span className="profile-avatar-initial" style={user?.avatar ? { display: 'none' } : {}}>
+                                        {getInitials(user?.name || user?.email || 'User')}
+                                    </span>
+                                </div>
+                                <span className="profile-card-online-dot" />
+                            </div>
+                            {!isCollapsed && (
+                                <div className="profile-card-info">
+                                    <span className="profile-card-name" title={user?.name || user?.email}>
+                                        {user?.name || user?.email || 'Kullanıcı'}
+                                    </span>
+                                    <span className="profile-card-role" title={user?.email || ''}>
+                                        {getUserRoleLabel()}
+                                    </span>
+                                </div>
+                            )}
+                        </Link>
+                        {!isCollapsed && (
+                            <button
+                                type="button"
+                                className="sidebar-profile-logout-btn"
+                                onClick={handleLogout}
+                                title="Çıkış Yap"
+                                aria-label="Çıkış Yap"
+                            >
+                                <LogOut size={16} />
+                            </button>
+                        )}
                     </div>
+                    {isCollapsed && (
+                        <div className="sidebar-collapsed-logout">
+                            <button
+                                type="button"
+                                className="sidebar-profile-logout-btn"
+                                onClick={handleLogout}
+                                title="Çıkış Yap"
+                                aria-label="Çıkış Yap"
+                            >
+                                <LogOut size={16} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 

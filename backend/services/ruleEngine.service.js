@@ -363,6 +363,13 @@ export async function executeRule(workspaceId, ruleType, ctx = {}, opts = {}) {
             context: { conversationId: ctx.conversationId || null }
         });
 
+        // 4b. Pazarlama kampanyasına da kaydet (drip/triggered/recurring kurallar)
+        try {
+            await writeToMarketingRecipient(workspaceId, ruleType, contactId, result, ctx);
+        } catch (mrErr) {
+            console.warn(`${TAG} writeToMarketingRecipient error:`, mrErr.message);
+        }
+
         if (result.success) {
             console.log(`✅ ${TAG} ${ruleType} başarıyla çalıştı → contact ${contactId}`);
         }
@@ -407,6 +414,99 @@ export async function getActiveRules(workspaceId, ruleTypes = []) {
     } catch (e) {
         console.error(`${TAG} getActiveRules error:`, e.message);
         return {};
+    }
+}
+// ─── WorkspaceRule → MarketingCampaign Triggertype Eşleme ────────
+const RULE_TO_TRIGGER = {
+    'DRIP_DAY_0':             { triggerType: 'NEW_CONTACT', delayDays: 0 },
+    'DRIP_DAY_1':             { triggerType: 'NEW_CONTACT', delayDays: 1 },
+    'DRIP_DAY_3':             { triggerType: 'NEW_CONTACT', delayDays: 3 },
+    'DRIP_DAY_7':             { triggerType: 'NEW_CONTACT', delayDays: 7 },
+    'DRIP_DAY_14':            { triggerType: 'NEW_CONTACT', delayDays: 14 },
+    'DRIP_DAY_30':            { triggerType: 'NEW_CONTACT', delayDays: 30 },
+    'INACTIVE_REACTIVATION':  { triggerType: 'INACTIVE_DAYS', delayDays: 0 },
+    'BIRTHDAY_GREETING':      { triggerType: 'BIRTHDAY', delayDays: 0 },
+    'POSITIVE_LEAD_CAMPAIGN': { triggerType: 'HOT_LEAD', delayDays: 0 },
+    'SATISFACTION_SURVEY':    { triggerType: 'POST_SALE', delayDays: 3 },
+    'POST_SALE_FOLLOWUP':     { triggerType: 'POST_SALE', delayDays: 1 },
+    'REFERRAL_REQUEST':       { triggerType: 'POST_SALE', delayDays: 7 },
+};
+
+/**
+ * Otomasyon kuralı çalıştığında sonucu pazarlama kampanyasına da yazar.
+ * Bu sayede Marketing modülünde otomasyon gönderimlerini de görebiliriz.
+ * Ayrıca conversation.campaignId ve conversation.source'u set eder (attribution).
+ */
+async function writeToMarketingRecipient(workspaceId, ruleType, contactId, result, ctx) {
+    const mapping = RULE_TO_TRIGGER[ruleType];
+    if (!mapping || !result?.success) return; // Pazarlama kuralı değil veya başarısız
+
+    // İlgili şablon kampanyayı bul
+    const campaign = await prisma.marketingCampaign.findFirst({
+        where: {
+            workspaceId,
+            isSystemTemplate: true,
+            triggerType: mapping.triggerType,
+            status: 'ACTIVE', // Sadece aktifleştirilmiş kampanyalar
+        },
+        include: {
+            groups: {
+                where: { delayDays: mapping.delayDays },
+                take: 1
+            }
+        }
+    });
+
+    if (!campaign || campaign.groups.length === 0) return;
+
+    const group = campaign.groups[0];
+
+    // MarketingRecipient oluştur (duplikasyon kontrolü)
+    const existingRecipient = await prisma.marketingRecipient.findFirst({
+        where: {
+            campaignId: campaign.id,
+            groupId: group.id,
+            contactId: contactId,
+        }
+    });
+
+    if (!existingRecipient) {
+        await prisma.marketingRecipient.create({
+            data: {
+                campaignId: campaign.id,
+                groupId: group.id,
+                contactId: contactId,
+                status: 'SENT',
+                sentAt: new Date(),
+            }
+        });
+
+        // İstatistikleri güncelle
+        await prisma.campaignGroup.update({
+            where: { id: group.id },
+            data: {
+                totalCount: { increment: 1 },
+                sentCount: { increment: 1 },
+            }
+        });
+        await prisma.marketingCampaign.update({
+            where: { id: campaign.id },
+            data: {
+                totalCount: { increment: 1 },
+                sentCount: { increment: 1 },
+            }
+        });
+    }
+
+    // Attribution: Conversation'a campaignId ve source ata
+    if (ctx.conversationId) {
+        await prisma.conversation.update({
+            where: { id: ctx.conversationId },
+            data: {
+                campaignId: campaign.id,
+                source: 'MARKETING',
+            }
+        }).catch(() => {}); // Conversation bulunamazsa sessizce geç
     }
 }
 
