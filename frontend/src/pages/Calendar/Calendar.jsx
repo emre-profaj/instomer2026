@@ -82,6 +82,23 @@ const CALL_STATUS_LABELS = {
 };
 const callStatusLabel = (code) => CALL_STATUS_LABELS[code] || code || '—';
 
+/* Randevu blokları dolu renk + beyaz yazıyla çiziliyordu; 11 punto beyaz
+   yazı o zeminde okunmuyordu. Aynı renkten yumuşak zemin, koyu yazı ve
+   sol renk şeridi üretiliyor. Renk JS'ten geldiği için bu dönüşüm de
+   burada yapılmak zorunda — CSS satır içi stili ezemiyor.
+
+   %55 oranı ölçülerek seçildi: %72'de yeşil, amber, turuncu ve camgöbeği
+   4.5:1'in altında kalıyordu (en düşük 3.44). %60 sınırda geçiyor (4.53),
+   %55'te en düşük 5.10. 11 punto yazı için kenar payı gerekiyor. */
+const softTone = (hex) => {
+    const c = hex || '#6366f1';
+    return {
+        background: `color-mix(in srgb, ${c} 12%, #ffffff)`,
+        color: `color-mix(in srgb, ${c} 55%, #0b1220)`,
+        borderLeft: `3px solid ${c}`,
+    };
+};
+
 const ACTIVITY_TYPE_CONFIG = {
     CALL:     { icon: <Phone {...IC} />,        color: '#b45309', label: 'Arama' },
     MEETING:  { icon: <Handshake {...IC} />,    color: '#4338ca', label: 'Görüşme' },
@@ -2513,8 +2530,8 @@ function formatDoctorDisplayName(rawName) {
                                                             draggable="true"
                                                             onDragStart={(e) => handleDragStart(e, apt)}
                                                             onDragEnd={handleDragEnd}
-                                                            className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''} ${apt.isGoogleEvent ? 'pill-google' : ''} ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
-                                                            style={{ backgroundColor: eventColor }}
+                                                            className={`appointment-pill ${isCompleted ? 'pill-completed' : ''} ${apt.isGoogleEvent ? 'pill-google' : ''} ${draggedItem?.id === apt.id ? 'is-dragging' : ''}`}
+                                                            style={softTone(eventColor)}
                                                             onClick={(e) => {
                                                                 if (isDraggingRef.current) return;
                                                                 e.stopPropagation();
@@ -2531,7 +2548,7 @@ function formatDoctorDisplayName(rawName) {
                                                         <div className="appointment-tooltip">
                                                             <div className="tooltip-header" style={{ borderLeftColor: eventColor }}>
                                                                 <h4>{apt.isGoogleEvent ? `${apt.title}${apt.googleEmail ? ` (${apt.googleEmail})` : ''}` : apt.title}</h4>
-                                                                <span className="tooltip-status" style={{ backgroundColor: eventColor }}>
+                                                                <span className="tooltip-status" style={softTone(eventColor)}>
                                                                     {apt.isGoogleEvent ? (apt.googleEmail || 'Google Takvim') : (status?.label || 'Kayıtlı')}
                                                                 </span>
                                                             </div>
@@ -2569,7 +2586,7 @@ function formatDoctorDisplayName(rawName) {
                                                 allItems.push({
                                                     id: `sc-${sc.id}`, sortTime: new Date(sc.scheduledAt),
                                                     render: (
-                                                        <div key={`sc-${sc.id}`} className="appointment-pill" style={{ backgroundColor: '#f97316', cursor: 'pointer' }}
+                                                        <div key={`sc-${sc.id}`} className="appointment-pill" style={{ ...softTone('#f97316'), cursor: 'pointer' }}
                                                             onClick={(e) => { e.stopPropagation(); openScheduledCallModal(sc); }}
                                                         >
                                                             <span className="apt-time">{new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -2592,8 +2609,8 @@ function formatDoctorDisplayName(rawName) {
                                                 id: `act-${act.id}`, sortTime: actDate,
                                                 render: (
                                                     <div key={`act-${act.id}`}
-                                                        className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
-                                                        style={{ backgroundColor: isMeetingAct ? (actMType.color || cfg.color) : cfg.color, cursor: 'pointer' }}
+                                                        className={`appointment-pill activity-pill ${isCompleted ? 'pill-completed' : ''}`}
+                                                        style={{ ...softTone(isMeetingAct ? (actMType.color || cfg.color) : cfg.color), cursor: 'pointer' }}
                                                         onClick={(e) => { e.stopPropagation(); openActivityModal(act); }}
                                                     >
                                                         {isOverdue && <AlertCircle size={10} style={{ marginRight: 2 }} />}

@@ -297,13 +297,17 @@ select.cal-meeting-type-select {
 .appointment-pill { padding: 3px 7px; margin-bottom: 3px; }
 .week-event, .day-event { padding: 4px 7px; }
 
-/* Geciken: 2px çerçeve + sonsuz yanıp sönme yerine sakin işaret */
+/* Geciken randevu.
+   Koşul "bitiş saati geçmiş + hâlâ SCHEDULED" olduğu için geçmişteki
+   neredeyse her randevu geciken sayılıyor — hastanede 1.315 kayıt.
+   Hepsini kırmızıya boyamak ayı tek renge çeviriyordu. Blok kendi
+   rengini koruyor; gecikme yalnızca satır başındaki uyarı işaretiyle
+   ve iş listesindeki sayıyla anlatılıyor.
+   2px çerçeve ve sonsuz yanıp sönen animasyon kalktı. */
 .pill-overdue,
-.appointment-pill.pill-overdue {
+.appointment-pill.pill-overdue,
+.activity-pill.pill-overdue {
     border: 0 !important;
-    border-left: 3px solid #ef4444 !important;
-    background: #fef2f2 !important;
-    color: #991b1b !important;
     animation: none !important;
 }
 .more-appointments {
