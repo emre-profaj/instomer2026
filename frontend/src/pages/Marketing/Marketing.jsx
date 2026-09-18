@@ -5,12 +5,13 @@ import { useAuth } from '../../context/AuthContext';
 import api, { marketingV2API } from '../../services/api';
 import {
     Megaphone, Folder, MessageSquare, Users, Plus, Edit2, Trash2, Send,
-    BarChart2, Phone, Mail, Smartphone, Play, CheckCircle, XCircle, Search, Settings, ArrowRight, ChevronRight, ChevronDown,
-    Loader2, Sparkles, RefreshCw, Calendar, Filter, X, Eye, RotateCcw
+    Phone, Mail, Smartphone, Play, CheckCircle, ChevronRight, ChevronDown,
+    Loader2, RefreshCw, X, Eye, RotateCcw
 } from 'lucide-react';
 import CampaignWizardModal from './CampaignWizardModal';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 import './Marketing.css';
+import './Pazarlama.css';
 import '../KnowledgeBase/KnowledgeBase.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -22,14 +23,95 @@ const GROUP_COLORS = [
     '#0891b2','#db2777','#ea580c','#65a30d','#475569'
 ];
 
-function StatBig({ icon, label, value, color, sub }) {
+/* ─────────────────────────────────────────────────────────────
+   EKRAN DİLİ
+
+   Kanal ve durum veritabanında kod olarak duruyor (WHATSAPP,
+   SENDING…). Bunlar ekrana olduğu gibi düşüyordu; artık tek yerden
+   Türkçeye çevriliyor. Tanımsız bir kod gelirse kodun kendisi
+   gösteriliyor — sessizce boş bırakmak neyin geldiğini gizliyor.
+   ───────────────────────────────────────────────────────────── */
+
+const CHANNEL_META = {
+    WHATSAPP: { label: 'WhatsApp',  bg: '#ecfdf5', fg: '#15803d', Icon: MessageSquare },
+    AI_CALL:  { label: 'AI Arama',  bg: '#eef2ff', fg: '#4338ca', Icon: Phone },
+    EMAIL:    { label: 'E-posta',   bg: '#fffbeb', fg: '#b45309', Icon: Mail },
+    SMS:      { label: 'SMS',       bg: '#faf5ff', fg: '#7e22ce', Icon: Smartphone },
+};
+const channelMeta = (code) =>
+    CHANNEL_META[code] || { label: code || '—', bg: '#f1f2f5', fg: '#475569', Icon: MessageSquare };
+
+const STATUS_META = {
+    DRAFT:     { label: 'Taslak',       fg: '#6b7480', dot: '#cbd2dc' },
+    SCHEDULED: { label: 'Planlandı',    fg: '#4338ca', dot: '#6366f1' },
+    SENDING:   { label: 'Gönderiliyor', fg: '#15803d', dot: '#16a34a' },
+    ACTIVE:    { label: 'Aktif',        fg: '#15803d', dot: '#16a34a' },
+    COMPLETED: { label: 'Tamamlandı',   fg: '#475569', dot: '#94a3b8' },
+    PAUSED:    { label: 'Duraklatıldı', fg: '#b45309', dot: '#f59e0b' },
+    INACTIVE:  { label: 'Pasif',        fg: '#6b7480', dot: '#cbd2dc' },
+    FAILED:    { label: 'Başarısız',    fg: '#b91c1c', dot: '#ef4444' },
+};
+const statusMeta = (code) =>
+    STATUS_META[code] || { label: code || '—', fg: '#6b7480', dot: '#cbd2dc' };
+
+const RECIPIENT_META = {
+    PENDING:   { label: 'Bekliyor',   fg: '#6b7480', dot: '#cbd2dc' },
+    SENT:      { label: 'Gönderildi', fg: '#475569', dot: '#94a3b8' },
+    DELIVERED: { label: 'Teslim',     fg: '#15803d', dot: '#16a34a' },
+    READ:      { label: 'Okundu',     fg: '#4338ca', dot: '#6366f1' },
+    FAILED:    { label: 'Başarısız',  fg: '#b91c1c', dot: '#ef4444' },
+};
+const recipientMeta = (code) =>
+    RECIPIENT_META[code] || { label: code || '—', fg: '#6b7480', dot: '#cbd2dc' };
+
+const TRIGGER_LABELS = {
+    NEW_CONTACT:   'Yeni kişi',
+    INACTIVE_DAYS: 'Pasif müşteri',
+    BIRTHDAY:      'Doğum günü',
+    HOT_LEAD:      'Sıcak lead',
+    POST_SALE:     'Satış sonrası',
+    ANNIVERSARY:   'Yıl dönümü',
+    SPECIAL_DAY:   'Özel gün',
+};
+
+/** Ad baş harfleri — avatar karesi için. Boş adda tire döner. */
+function initials(name) {
+    const words = String(name || '').trim().split(/[\s_-]+/).filter(Boolean);
+    if (!words.length) return '—';
+    if (words.length === 1) return words[0].slice(0, 2).toLocaleUpperCase('tr');
+    return (words[0][0] + words[1][0]).toLocaleUpperCase('tr');
+}
+
+/** Binlik ayraçlı sayı; yoksa tire (sıfırla "hiç" aynı şey değil). */
+const num = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('tr-TR'));
+
+const trDate = (d) =>
+    d ? new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+const trDateTime = (d) =>
+    d ? new Date(d).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+/** Sayfa başlığı — dört sekme ve kampanya detayı aynı bloğu kullanıyor. */
+function PageHead({ title, lede, children }) {
     return (
-        <div className="mkt-stat-card">
-            <div className="mkt-stat-icon" style={{ background: color + '1a', color }}>{icon}</div>
-            <div>
-                <div className="mkt-stat-value" style={{ color }}>{value} {sub && <small style={{ fontSize: 13, color: '#9ca3af' }}>{sub}</small>}</div>
-                <div className="mkt-stat-label">{label}</div>
+        <header className="pz-head">
+            <div className="pz-head-row">
+                <div style={{ minWidth: 0 }}>
+                    <p className="pz-eyebrow">Pazarlama</p>
+                    <h1>{title}</h1>
+                    {lede && <p>{lede}</p>}
+                </div>
+                {children}
             </div>
+        </header>
+    );
+}
+
+function EmptyState({ Icon, title, note }) {
+    return (
+        <div className="pz-empty">
+            <div className="pz-empty-ico"><Icon size={21} /></div>
+            <h3>{title}</h3>
+            {note && <p>{note}</p>}
         </div>
     );
 }
@@ -54,40 +136,47 @@ function CampaignFormModal({ initial, onSave, onClose }) {
     };
 
     return (
-        <div className="mkt-modal-overlay" onClick={onClose}>
-            <div className="grp-form-modal" onClick={e => e.stopPropagation()}>
-                <div className="grp-modal-header">
-                    <h2 className="grp-modal-title">{initial ? 'Kampanyayı Düzenle' : 'Yeni Kampanya'}</h2>
-                    <button className="grp-modal-close" onClick={onClose}>✕</button>
+        <div className="pz-overlay" onClick={onClose}>
+            <div className="pz-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pz-kamp-b">
+                <div className="pz-modal-h">
+                    <span className="pz-modal-ico"><Megaphone size={17} /></span>
+                    <div style={{ flexGrow: 1, minWidth: 0 }}>
+                        <h2 id="pz-kamp-b">{initial ? 'Kampanyayı Düzenle' : 'Yeni Kampanya'}</h2>
+                        <p>Kampanya bir çatı. Gönderimler altındaki gruplara eklenir.</p>
+                    </div>
+                    <button className="pz-modal-x" type="button" aria-label="Kapat" onClick={onClose}><X size={15} /></button>
                 </div>
-                <div className="grp-modal-body">
-                    <div className="grp-field">
-                        <label className="grp-label">Kampanya Adı</label>
-                        <input className="grp-input" value={name} onChange={e => setName(e.target.value)} placeholder="örn. Kış İndirimi" />
+
+                <div className="pz-modal-b">
+                    <div className="pz-field">
+                        <label htmlFor="pz-k-ad">Kampanya adı <span className="pz-req" aria-hidden="true">*</span></label>
+                        <input id="pz-k-ad" className="pz-input" value={name} onChange={e => setName(e.target.value)} placeholder="Örn. Eylül kapanış duyurusu" required />
                     </div>
-                    <div className="grp-field">
-                        <label className="grp-label">Açıklama</label>
-                        <input className="grp-input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Açıklama" />
+                    <div className="pz-field">
+                        <label htmlFor="pz-k-ac">Açıklama</label>
+                        <textarea id="pz-k-ac" className="pz-input" value={description} onChange={e => setDescription(e.target.value)} placeholder="Bu kampanyanın amacı ne?" />
                     </div>
-                    <div className="grp-field">
-                        <label className="grp-label">Bütçe (TL)</label>
-                        <input className="grp-input" type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="0.00" />
+                    <div className="pz-field">
+                        <label htmlFor="pz-k-bu">Bütçe (TL)</label>
+                        <input id="pz-k-bu" className="pz-input" type="number" min="0" step="0.01" value={budget} onChange={e => setBudget(e.target.value)} placeholder="0,00" />
+                        <span className="pz-hint">Boş bırakılabilir. Maliyet gönderim başına ayrıca hesaplanır.</span>
                     </div>
-                    <div className="grp-field" style={{ display: 'flex', gap: 10 }}>
-                        <div style={{ flex: 1 }}>
-                            <label className="grp-label">Başlangıç</label>
-                            <input className="grp-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                    <div className="pz-two">
+                        <div className="pz-field">
+                            <label htmlFor="pz-k-b1">Başlangıç tarihi</label>
+                            <input id="pz-k-b1" className="pz-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
                         </div>
-                        <div style={{ flex: 1 }}>
-                            <label className="grp-label">Bitiş</label>
-                            <input className="grp-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                        <div className="pz-field">
+                            <label htmlFor="pz-k-b2">Bitiş tarihi</label>
+                            <input id="pz-k-b2" className="pz-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                         </div>
                     </div>
                 </div>
-                <div className="grp-modal-footer">
-                    <button className="grp-btn-cancel" onClick={onClose}>İptal</button>
-                    <button className="grp-btn-save" style={{ background: '#2563eb' }} onClick={handleSave} disabled={saving || !name}>
-                        {saving ? 'Kaydediliyor...' : 'Kaydet'}
+
+                <div className="pz-modal-f">
+                    <button className="pz-btn" type="button" onClick={onClose}>Vazgeç</button>
+                    <button className="pz-btn pz-btn-primary" type="button" onClick={handleSave} disabled={saving || !name}>
+                        {saving ? 'Kaydediliyor…' : 'Kaydet'}
                     </button>
                 </div>
             </div>
@@ -576,15 +665,6 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         return dateB - dateA;
     });
 
-    const getStatusBadge = (c) => {
-        const s = c.status;
-        if (s === 'ACTIVE' || s === 'SENDING') return { label: '🟢 Aktif', bg: '#dcfce7', color: '#15803d' };
-        if (s === 'COMPLETED') return { label: 'Tamamlandı', bg: '#f1f5f9', color: '#64748b' };
-        if (s === 'PAUSED' || s === 'INACTIVE') return { label: 'Pasif', bg: '#f3f4f6', color: '#6b7280' };
-        if (s === 'DRAFT') return { label: 'Taslak', bg: '#fefce8', color: '#a16207' };
-        return { label: s || 'Taslak', bg: '#fefce8', color: '#a16207' };
-    };
-
     const getDateDisplay = (c) => {
         if (isAutoCampaign(c)) {
             const lastSent = c.lastSentAt || c.updatedAt;
@@ -647,167 +727,113 @@ function CampaignsTab({ wsId, onGoToGroups }) {
         return total;
     };
 
-    const CHANNEL_BADGE = {
-        WHATSAPP: { icon: <MessageSquare size={11} />, label: 'WhatsApp', bg: '#dcfce7', color: '#15803d' },
-        AI_CALL: { icon: <Phone size={11} />, label: 'AI Arama', bg: '#e0e7ff', color: '#3730a3' },
-        SMS: { icon: <Smartphone size={11} />, label: 'SMS', bg: '#f3e8ff', color: '#7e22ce' },
-        EMAIL: { icon: <Mail size={11} />, label: 'E-posta', bg: '#fef3c7', color: '#b45309' },
-    };
-
     // Eğer detay seçilmişse inline drill-down göster
     if (detailCampaignId) {
         const camp = campaigns.find(c => c.id === detailCampaignId) || detailView?.campaign;
         const groups = detailView?.groups || [];
         const detail = detailView;
 
+        const campSt = statusMeta(camp?.status);
+
         return (
-            <div style={{ padding: '24px 28px' }}>
-                {/* Geri Butonu */}
-                <button onClick={backToList} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 14, color: '#6b7280', fontWeight: 500, marginBottom: 16, padding: 0,
-                }} onMouseOver={e => e.currentTarget.style.color = '#2563eb'}
-                   onMouseOut={e => e.currentTarget.style.color = '#6b7280'}>
-                    <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} /> Kampanyalara Dön
+            <>
+                <button className="pz-back" type="button" onClick={backToList}>
+                    <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Kampanyalar
                 </button>
 
                 {detailLoading ? (
-                    <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-                        <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
-                        <div style={{ marginTop: 10 }}>Yükleniyor...</div>
-                    </div>
+                    <div className="pz-surface"><div className="pz-loading">Yükleniyor…</div></div>
                 ) : !camp ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Kampanya bulunamadı</div>
+                    <div className="pz-surface">
+                        <EmptyState Icon={Megaphone} title="Kampanya bulunamadı" note="Silinmiş ya da başka bir çalışma alanına ait olabilir." />
+                    </div>
                 ) : (
                     <>
-                        {/* Kampanya Başlığı */}
-                        <div style={{
-                            background: camp.isSystemTemplate ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)',
-                            borderRadius: 16, padding: '24px 28px', marginBottom: 24,
-                            border: camp.isSystemTemplate ? '1px solid #fbbf24' : '1px solid #e2e8f0'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: '#0f172a' }}>{camp.name}</h2>
-                                        {camp.isSystemTemplate && (
-                                            <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '3px 10px', borderRadius: 6, fontWeight: 700, letterSpacing: 0.3 }}>
-                                                OTOMATİK
-                                            </span>
-                                        )}
-                                    </div>
-                                    {camp.description && <p style={{ margin: '6px 0 0', fontSize: 14, color: '#64748b' }}>{camp.description}</p>}
-                                    {camp.triggerType && (
-                                        <div style={{ margin: '8px 0 0', fontSize: 12, color: '#94a3b8' }}>
-                                            Tetikleyici: <strong style={{ color: '#64748b' }}>
-                                                {{ NEW_CONTACT: 'Yeni Kişi', INACTIVE_DAYS: 'Pasif Müşteri', BIRTHDAY: 'Doğum Günü', HOT_LEAD: 'Sıcak Lead', POST_SALE: 'Satış Sonrası', ANNIVERSARY: 'Yıl Dönümü', SPECIAL_DAY: 'Özel Gün' }[camp.triggerType] || camp.triggerType}
-                                            </strong>
-                                        </div>
-                                    )}
-                                </div>
-                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                    <span style={{
-                                        fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8,
-                                        background: camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '#dcfce7' : camp.status === 'COMPLETED' ? '#f1f5f9' : '#fefce8',
-                                        color: camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '#15803d' : camp.status === 'COMPLETED' ? '#64748b' : '#a16207'
-                                    }}>
-                                        {camp.status === 'ACTIVE' || camp.status === 'SENDING' ? '🟢 Aktif' : camp.status === 'COMPLETED' ? 'Tamamlandı' : camp.status || 'Taslak'}
-                                    </span>
-                                    {camp.isSystemTemplate && (
-                                        <button
-                                            style={{
-                                                background: camp.status === 'ACTIVE' ? '#fef2f2' : '#f0fdf4',
-                                                color: camp.status === 'ACTIVE' ? '#dc2626' : '#16a34a',
-                                                border: 'none', borderRadius: 8, padding: '6px 14px',
-                                                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                                                display: 'inline-flex', alignItems: 'center', gap: 5,
-                                            }}
-                                            onClick={async () => {
-                                                const newStatus = camp.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
-                                                try {
-                                                    await api.put(`/marketing-v2/${wsId}/campaigns/${camp.id}`, { status: newStatus });
-                                                    loadCampaignDetail(camp.id);
-                                                    fetchCampaigns();
-                                                } catch (err) {
-                                                    alert('Hata: ' + (err.response?.data?.error || err.message));
-                                                }
-                                            }}
-                                        >
-                                            {camp.status === 'ACTIVE' ? <><X size={13}/> Durdur</> : <><Play size={13}/> Aktifleştir</>}
-                                        </button>
-                                    )}
-                                </div>
+                        <PageHead
+                            title={camp.name}
+                            lede={[
+                                camp.description || null,
+                                getDateDisplay(camp) || null,
+                                camp.triggerType ? `Tetikleyici: ${TRIGGER_LABELS[camp.triggerType] || camp.triggerType}` : null,
+                            ].filter(Boolean).join(' · ')}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                                {camp.isSystemTemplate && <span className="pz-tag-auto">OTOMATİK</span>}
+                                <span className="pz-status" style={{ color: campSt.fg }}>
+                                    <i style={{ background: campSt.dot }} />{campSt.label}
+                                </span>
+                                {camp.isSystemTemplate && (
+                                    <button
+                                        className="pz-btn pz-btn-sm"
+                                        type="button"
+                                        onClick={async () => {
+                                            const newStatus = camp.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+                                            try {
+                                                await api.put(`/marketing-v2/${wsId}/campaigns/${camp.id}`, { status: newStatus });
+                                                loadCampaignDetail(camp.id);
+                                                fetchCampaigns();
+                                            } catch (err) {
+                                                alert('Hata: ' + (err.response?.data?.error || err.message));
+                                            }
+                                        }}
+                                    >
+                                        {camp.status === 'ACTIVE' ? <><X size={13} /> Durdur</> : <><Play size={13} /> Aktifleştir</>}
+                                    </button>
+                                )}
                             </div>
+                        </PageHead>
 
-                            {/* İstatistik Kartları */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginTop: 20 }}>
-                                {[
-                                    { label: 'Gönderildi', value: detail?.sentCount || camp.sentCount || 0, color: '#2563eb', icon: <Send size={16}/> },
-                                    { label: 'Teslim', value: detail?.deliveredCount || camp.deliveredCount || 0, color: '#16a34a', icon: <CheckCircle size={16}/> },
-                                    { label: 'Okundu', value: detail?.readCount || camp.readCount || 0, color: '#7c3aed', icon: <Eye size={16}/> },
-                                    { label: 'Başarısız', value: detail?.failedCount || camp.failedCount || 0, color: '#dc2626', icon: <XCircle size={16}/> },
-                                    { label: 'Yanıtlayan', value: detail?.repliedCount || camp.repliedCount || 0, color: '#0891b2', icon: <MessageSquare size={16}/> }
-                                ].map(s => (
-                                    <div key={s.label} style={{
-                                        background: '#fff', border: `1px solid ${s.color}22`, borderRadius: 12,
-                                        padding: '14px 16px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: s.color }}>
-                                            {s.icon}
-                                            <span style={{ fontSize: 24, fontWeight: 700 }}>{s.value}</span>
+                        {/* İstatistikler — kutu yerine tek yüzeyde beş alan */}
+                        {(() => {
+                            const sent = detail?.sentCount || camp.sentCount || 0;
+                            const oran = (v) => (sent > 0 ? `%${((v / sent) * 100).toFixed(1).replace('.', ',')}` : '—');
+                            const kpis = [
+                                { label: 'Gönderildi', value: sent, sub: null, color: null },
+                                { label: 'Teslim', value: detail?.deliveredCount || camp.deliveredCount || 0, color: null },
+                                { label: 'Okundu', value: detail?.readCount || camp.readCount || 0, color: '#15803d' },
+                                { label: 'Başarısız', value: detail?.failedCount || camp.failedCount || 0, color: '#b91c1c' },
+                                { label: 'Yanıtlayan', value: detail?.repliedCount || camp.repliedCount || 0, color: null },
+                            ];
+                            return (
+                                <div className="pz-surface pz-kpis">
+                                    {kpis.map((k, i) => (
+                                        <div className="pz-kpi" key={k.label}>
+                                            <div className="pz-kpi-l">{k.label}</div>
+                                            <div className="pz-kpi-v" style={k.color ? { color: k.color } : undefined}>{num(k.value)}</div>
+                                            <div className="pz-kpi-s">{i === 0 ? 'toplam alıcı' : oran(k.value)}</div>
                                         </div>
-                                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 500 }}>{s.label}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Drip Timeline — Otomatik şablon kampanyalar için adım gösterimi */}
-                        {camp.isSystemTemplate && groups.length > 1 && (
-                            <div style={{
-                                background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
-                                padding: '20px 24px', marginBottom: 24,
-                            }}>
-                                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <Calendar size={16} style={{ color: '#f59e0b' }} /> Otomasyon Adımları
-                                </h3>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 0, overflowX: 'auto', paddingBottom: 4 }}>
-                                    {[...groups].sort((a, b) => (a.delayDays || 0) - (b.delayDays || 0) || (a.sortOrder || 0) - (b.sortOrder || 0)).map((grp, idx, arr) => (
-                                        <React.Fragment key={grp.id}>
-                                            <div style={{
-                                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 100,
-                                            }}>
-                                                <div style={{
-                                                    width: 36, height: 36, borderRadius: '50%',
-                                                    background: (grp.sentCount || 0) > 0 ? '#16a34a' : '#f59e0b',
-                                                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    fontWeight: 700, fontSize: 13, boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                                                }}>
-                                                    {grp.delayDays || 0}
-                                                </div>
-                                                <div style={{ textAlign: 'center' }}>
-                                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', lineHeight: 1.3 }}>{grp.name}</div>
-                                                    <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
-                                                        {grp.delayDays === 0 ? 'Hemen' : `+${grp.delayDays} gün`}
-                                                    </div>
-                                                    {(grp.sentCount || 0) > 0 && (
-                                                        <div style={{ fontSize: 10, color: '#16a34a', fontWeight: 600, marginTop: 2 }}>
-                                                            ✓ {grp.sentCount} gönderim
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            {idx < arr.length - 1 && (
-                                                <div style={{
-                                                    flex: '0 0 40px', height: 2, background: '#e5e7eb',
-                                                    position: 'relative', top: -14
-                                                }} />
-                                            )}
-                                        </React.Fragment>
                                     ))}
                                 </div>
-                            </div>
+                            );
+                        })()}
+
+                        {/* Otomasyon adımları — yalnızca otomatik kampanyalarda */}
+                        {camp.isSystemTemplate && groups.length > 1 && (
+                            <>
+                                <div className="pz-sechead pz-section">
+                                    <span className="pz-sechead-n">Otomasyon adımları</span>
+                                    <span className="pz-rule" />
+                                    <span className="pz-sechead-x">{groups.length} adım</span>
+                                </div>
+                                <div className="pz-surface" style={{ padding: '22px 26px' }}>
+                                    <div className="pz-steps">
+                                        {[...groups]
+                                            .sort((a, b) => (a.delayDays || 0) - (b.delayDays || 0) || (a.sortOrder || 0) - (b.sortOrder || 0))
+                                            .map((grp, idx, arr) => (
+                                                <div className="pz-step" key={grp.id}>
+                                                    {idx < arr.length - 1 && <span className="pz-step-r" />}
+                                                    <div className={`pz-step-c ${(grp.sentCount || 0) > 0 ? '' : 'idle'}`}>
+                                                        {grp.delayDays ? `+${grp.delayDays}` : '0'}
+                                                    </div>
+                                                    <div className="pz-step-l">{grp.delayDays === 0 ? 'Hemen' : `${grp.delayDays} gün sonra`}</div>
+                                                    <div className="pz-step-s">
+                                                        {(grp.sentCount || 0) > 0 ? `${num(grp.sentCount)} gönderim` : 'henüz yok'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            </>
                         )}
 
                         {/* Reklam Grupları — 3 Katmanlı: Grup → Gönderi */}
@@ -826,97 +852,121 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                             const groupedTags = Object.values(tagMap);
 
                             return (
-                                <div style={{ marginBottom: 20 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <Folder size={18} style={{ color: '#2563eb' }} /> Reklam Grupları ({groupedTags.length}) — {groups.length} Gönderi
-                                        </h3>
+                                <>
+                                    <div className="pz-sechead pz-section">
+                                        <span className="pz-sechead-n">Reklam grupları</span>
+                                        <span className="pz-rule" />
+                                        <span className="pz-sechead-x">
+                                            {groupedTags.length} grup · {groups.length} gönderi
+                                        </span>
                                     </div>
 
                                     {groups.length === 0 ? (
-                                        <div style={{
-                                            textAlign: 'center', padding: '40px 20px', background: '#f8fafc',
-                                            borderRadius: 12, border: '1px dashed #e2e8f0', color: '#94a3b8'
-                                        }}>
-                                            <Folder size={28} style={{ marginBottom: 8, opacity: 0.4 }} />
-                                            <div style={{ fontSize: 14, fontWeight: 500 }}>Bu kampanyada henüz reklam grubu yok</div>
-                                            <div style={{ fontSize: 12, marginTop: 4 }}>Reklam Grupları sekmesinden bu kampanyaya grup ekleyebilirsiniz</div>
+                                        <div className="pz-surface">
+                                            <EmptyState
+                                                Icon={Folder}
+                                                title="Bu kampanyada grup yok"
+                                                note="Gruplar sekmesinden bu kampanyaya grup ekleyebilirsin."
+                                            />
                                         </div>
                                     ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                        <section className="pz-surface">
                                             {groupedTags.map(grp => {
-                                                const tagSuccessRate = grp.totalSent > 0 ? Math.round((grp.totalDelivered / grp.totalSent) * 100) : 0;
+                                                const oran = grp.totalSent > 0 ? Math.round((grp.totalDelivered / grp.totalSent) * 100) : 0;
                                                 const channels = [...new Set(grp.sends.map(s => s.channel))];
-                                                return (
-                                                    <details key={grp.tag} open style={{
-                                                        background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
-                                                        overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                                                    }}>
-                                                        {/* Grup Başlığı (Tıklanabilir) */}
-                                                        <summary style={{
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                            padding: '14px 20px', cursor: 'pointer', userSelect: 'none',
-                                                            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-                                                            borderBottom: '1px solid #e2e8f0', listStyle: 'none'
-                                                        }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                                <ChevronDown size={16} style={{ color: '#64748b', transition: 'transform 0.2s' }} />
-                                                                <div style={{
-                                                                    width: 32, height: 32, borderRadius: 8,
-                                                                    background: '#2563eb15', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                                                }}>
-                                                                    <Folder size={16} style={{ color: '#2563eb' }} />
-                                                                </div>
-                                                                <div>
-                                                                    <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{grp.tag}</div>
-                                                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
-                                                                        <span style={{ fontSize: 11, color: '#94a3b8' }}>{grp.sends.length} gönderi</span>
-                                                                        {channels.map(ch => {
-                                                                            const b = CHANNEL_BADGE[ch];
-                                                                            return b ? <span key={ch} style={{ fontSize: 9, background: b.bg, color: b.color, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>{b.label}</span> : null;
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                                                                <div style={{ textAlign: 'right' }}>
-                                                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{grp.totalSent.toLocaleString()}</div>
-                                                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>toplam gönderim</div>
-                                                                </div>
-                                                                {grp.totalSent > 0 && (
-                                                                    <div style={{
-                                                                        width: 42, height: 42, borderRadius: '50%',
-                                                                        background: `conic-gradient(${tagSuccessRate >= 80 ? '#16a34a' : tagSuccessRate >= 50 ? '#f59e0b' : '#dc2626'} ${tagSuccessRate * 3.6}deg, #f1f5f9 0deg)`,
-                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                                                    }}>
-                                                                        <div style={{
-                                                                            width: 34, height: 34, borderRadius: '50%', background: '#fff',
-                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                            fontSize: 10, fontWeight: 700, color: '#374151'
-                                                                        }}>%{tagSuccessRate}</div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </summary>
+                                                const halkaRengi = oran >= 80 ? '#16a34a' : oran >= 50 ? '#f59e0b' : '#dc2626';
 
-                                                        {/* ═══ Bölüm 1: GÖNDERİMLER ═══ */}
-                                                        <div style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                            <div style={{
-                                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                                                padding: '10px 16px', background: '#f8fafc'
-                                                            }}>
-                                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                    <Send size={13} style={{ color: '#2563eb' }} /> Gönderimler ({grp.sends.length})
-                                                                </span>
+                                                /* Gruba bağlı mesajlar — gönderimlerden önce gösteriliyor:
+                                                   "hangi mesaj gitti" sorusu "kime gitti"den önce geliyor. */
+                                                const allMessages = grp.sends.flatMap(s => (s.groupMessages || []).map(gm => gm.message).filter(Boolean));
+                                                const uniqueMessages = allMessages.filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
+
+                                                return (
+                                                    <div key={grp.tag}>
+                                                        <div className="pz-row grp open" style={{ gridTemplateColumns: '34px minmax(0,1fr) 150px 110px' }}>
+                                                            <span className="pz-av"><Folder size={16} /></span>
+                                                            <div style={{ minWidth: 0 }}>
+                                                                <div className="pz-name" style={{ cursor: 'default' }}>{grp.tag}</div>
+                                                                <div className="pz-sub">
+                                                                    <span>{grp.sends.length} gönderi</span>
+                                                                    {channels.map(ch => {
+                                                                        const m = channelMeta(ch);
+                                                                        return (
+                                                                            <span key={ch} className="pz-chip" style={{ background: m.bg, color: m.fg }}>
+                                                                                {m.label}
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div className="pz-num">{num(grp.totalSent)}</div>
+                                                                <div className="pz-sub" style={{ marginTop: 2 }}>toplam gönderim</div>
+                                                            </div>
+                                                            {grp.totalSent > 0 && (
+                                                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                                    <span
+                                                                        style={{
+                                                                            width: 42, height: 42, borderRadius: '50%',
+                                                                            background: `conic-gradient(${halkaRengi} ${oran * 3.6}deg, #f1f2f5 0deg)`,
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                                        }}
+                                                                        title={`Teslim oranı %${oran}`}
+                                                                    >
+                                                                        <span style={{
+                                                                            width: 32, height: 32, borderRadius: '50%', background: '#fff',
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                            fontSize: 10.5, fontWeight: 700, color: '#0b1220'
+                                                                        }}>%{oran}</span>
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="pz-detail">
+                                                            {/* Kullanılan mesaj */}
+                                                            {uniqueMessages.length > 0 && (
+                                                                <>
+                                                                    <div className="pz-sechead" style={{ marginTop: 14 }}>
+                                                                        <span className="pz-sechead-n">Kullanılan mesaj</span>
+                                                                        <span className="pz-rule" />
+                                                                    </div>
+                                                                    {uniqueMessages.map(msg => {
+                                                                        const m = channelMeta(msg.channel);
+                                                                        const preview = msg.content || msg.emailBody || msg.bodyText || '';
+                                                                        return (
+                                                                            <div className="pz-card" key={msg.id}>
+                                                                                <div className="pz-card-row" style={{ flexWrap: 'wrap', gap: 9 }}>
+                                                                                    <span className="pz-chip" style={{ background: m.bg, color: m.fg }}>{m.label}</span>
+                                                                                    <span style={{ fontSize: 13, fontWeight: 650 }}>{msg.name || 'Mesaj'}</span>
+                                                                                    {msg.templateName && msg.templateName !== msg.name && (
+                                                                                        <span className="pz-chip" style={{ background: '#fef2f2', color: '#b91c1c' }}>
+                                                                                            {msg.templateName}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                {preview && (
+                                                                                    <p className="pz-preview" style={{ marginTop: 9 }}>
+                                                                                        {preview.length > 300 ? preview.slice(0, 300) + '…' : preview}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </>
+                                                            )}
+
+                                                            {/* Gönderimler */}
+                                                            <div className="pz-sechead">
+                                                                <span className="pz-sechead-n">Gönderimler</span>
+                                                                <span className="pz-rule" />
+                                                                <span className="pz-sechead-x">{grp.sends.length}</span>
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); /* TODO: Yeni gönderim modal */ }}
-                                                                    style={{
-                                                                        padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-                                                                        background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer',
-                                                                        display: 'flex', alignItems: 'center', gap: 4
-                                                                    }}
+                                                                    className="pz-btn pz-btn-sm"
+                                                                    type="button"
+                                                                    onClick={() => alert('Yeni gönderim ekranı henüz bağlanmadı.')}
                                                                 >
-                                                                    <Plus size={12} /> Yeni Gönderim
+                                                                    <Plus size={13} /> Yeni Gönderim
                                                                 </button>
                                                             </div>
 
@@ -926,124 +976,93 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                 const read = g.readCount || 0;
                                                                 const failed = g.failedCount || 0;
                                                                 const total = g.totalCount || sent;
-                                                                const dateStr = g.sentAt ? new Date(g.sentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
-                                                                    : g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
-                                                                    : new Date(g.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+                                                                const acik = expandedSendId === g.id;
+                                                                const hedef = g.list?.name || g.segmentName || null;
 
                                                                 return (
-                                                                    <div key={g.id}>
-                                                                        {/* Gönderi Satırı */}
+                                                                    <div key={g.id} style={{ marginBottom: 8 }}>
                                                                         <div
-                                                                            onClick={() => toggleSendExpand(g.id)}
-                                                                            style={{
-                                                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                                                padding: '10px 16px', cursor: 'pointer', userSelect: 'none',
-                                                                                borderBottom: '1px solid #f1f5f9',
-                                                                                background: expandedSendId === g.id ? '#f0f7ff' : 'transparent',
-                                                                                transition: 'background 0.15s'
-                                                                            }}
+                                                                            className="pz-card"
+                                                                            style={{ display: 'grid', gridTemplateColumns: '28px minmax(0,1fr) 90px auto 30px', alignItems: 'center', gap: 12 }}
                                                                         >
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                                                {expandedSendId === g.id
-                                                                                    ? <ChevronDown size={13} style={{ color: '#2563eb' }} />
-                                                                                    : <ChevronRight size={13} style={{ color: '#94a3b8' }} />}
-                                                                                <div>
-                                                                                    <div style={{ fontWeight: 600, fontSize: 12, color: '#0f172a' }}>
-                                                                                        {g.name || `Gönderi #${idx + 1}`}
-                                                                                    </div>
-                                                                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>📅 {dateStr}</div>
+                                                                            <span className="pz-av sm"><Send size={14} /></span>
+                                                                            <div style={{ minWidth: 0 }}>
+                                                                                <button type="button" className="pz-name" onClick={() => toggleSendExpand(g.id)} aria-expanded={acik}>
+                                                                                    {g.name || `Gönderi #${idx + 1}`}
+                                                                                </button>
+                                                                                <div className="pz-sub">
+                                                                                    <span>{trDate(g.sentAt || g.scheduledAt || g.createdAt)}</span>
+                                                                                    {hedef && <><span className="pz-dot-sep">·</span><span>Hedef: {hedef}</span></>}
                                                                                 </div>
                                                                             </div>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                                {g.list && <span style={{ fontSize: 10, background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>🎯 {g.list.name}</span>}
-                                                                                {g.segmentName && <span style={{ fontSize: 10, background: '#faf5ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>📊 {g.segmentName}</span>}
-                                                                                <span style={{ fontSize: 11, fontWeight: 600, color: '#0f172a' }}>{total} kişi</span>
-                                                                                {delivered > 0 && <span style={{ fontSize: 10, fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 5 }}>✅ {delivered}</span>}
-                                                                                {read > 0 && <span style={{ fontSize: 10, fontWeight: 600, background: '#f3e8ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 5 }}>👁 {read}</span>}
-                                                                                {failed > 0 && <span style={{ fontSize: 10, fontWeight: 600, background: '#fef2f2', color: '#dc2626', padding: '2px 7px', borderRadius: 5 }}>❌ {failed}</span>}
+                                                                            <span style={{ fontSize: 12.5, fontWeight: 650 }}>{num(total)} kişi</span>
+                                                                            <div style={{ display: 'flex', gap: 10, fontSize: 12, fontWeight: 650 }}>
+                                                                                {delivered > 0 && <span style={{ color: '#15803d' }}>{num(delivered)} teslim</span>}
+                                                                                {read > 0 && <span style={{ color: '#4338ca' }}>{num(read)} okundu</span>}
+                                                                                {failed > 0 && <span style={{ color: '#b91c1c' }}>{num(failed)} hata</span>}
                                                                             </div>
+                                                                            <button className="pz-ico" type="button" aria-label={acik ? 'Kapat' : 'Aç'} onClick={() => toggleSendExpand(g.id)}>
+                                                                                {acik ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                                            </button>
                                                                         </div>
 
-                                                                        {/* ── EXPANDED: Alıcı Listesi + Aksiyon Çubuğu ── */}
-                                                                        {expandedSendId === g.id && (
-                                                                            <div style={{
-                                                                                borderTop: '1px solid #e2e8f0', padding: '14px 16px',
-                                                                                background: '#f8fafc'
-                                                                            }}>
+                                                                        {acik && (
+                                                                            <div style={{ padding: '12px 2px 0' }}>
                                                                                 {recipientsLoading ? (
-                                                                                    <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>
-                                                                                        <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-                                                                                        <div style={{ marginTop: 6, fontSize: 13 }}>Alıcılar yükleniyor...</div>
-                                                                                    </div>
+                                                                                    <div className="pz-loading" style={{ padding: 28 }}>Alıcılar yükleniyor…</div>
                                                                                 ) : sendRecipients.length === 0 ? (
-                                                                                    <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>
+                                                                                    <p style={{ margin: 0, padding: '8px 2px', fontSize: 12.5, color: '#6b7480' }}>
                                                                                         Bu gönderi için alıcı kaydı bulunamadı.
-                                                                                    </div>
+                                                                                    </p>
                                                                                 ) : (
                                                                                     <>
-                                                                                        {/* Durum Filtreleri */}
-                                                                                        <div style={{ display: 'flex', gap: 5, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                                                                                        <div className="pz-tagrow">
                                                                                             {[
-                                                                                                { key: 'ALL', label: 'Tümü', color: '#475569' },
-                                                                                                { key: 'SENT', label: '📤 Gönderildi', color: '#2563eb' },
-                                                                                                { key: 'DELIVERED', label: '✅ Teslim', color: '#16a34a' },
-                                                                                                { key: 'READ', label: '👁️ Okundu', color: '#7c3aed' },
-                                                                                                { key: 'FAILED', label: '❌ Başarısız', color: '#dc2626' },
-                                                                                                { key: 'PENDING', label: '⏳ Bekleyen', color: '#f59e0b' }
+                                                                                                { key: 'ALL', label: 'Tümü' },
+                                                                                                { key: 'SENT', label: 'Gönderildi' },
+                                                                                                { key: 'DELIVERED', label: 'Teslim' },
+                                                                                                { key: 'READ', label: 'Okundu' },
+                                                                                                { key: 'FAILED', label: 'Başarısız' },
+                                                                                                { key: 'PENDING', label: 'Bekleyen' }
                                                                                             ].map(f => {
-                                                                                                const cnt = f.key === 'ALL' ? sendRecipients.length : sendRecipients.filter(r => r.status === f.key).length;
+                                                                                                const cnt = f.key === 'ALL'
+                                                                                                    ? sendRecipients.length
+                                                                                                    : sendRecipients.filter(r => r.status === f.key).length;
                                                                                                 if (f.key !== 'ALL' && cnt === 0) return null;
-                                                                                                const isActive = recipientFilter === f.key;
                                                                                                 return (
-                                                                                                    <button key={f.key}
-                                                                                                        onClick={(e) => { e.stopPropagation(); setRecipientFilter(f.key); }}
-                                                                                                        style={{
-                                                                                                            padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-                                                                                                            border: isActive && f.key !== 'ALL' ? 'none' : '1px solid #e2e8f0',
-                                                                                                            background: isActive && f.key !== 'ALL' ? '#2563eb' : isActive ? '#f8fafc' : '#fff',
-                                                                                                            color: isActive && f.key !== 'ALL' ? '#fff' : isActive ? '#0f172a' : '#64748b',
-                                                                                                            cursor: 'pointer',
-                                                                                                            boxShadow: isActive && f.key !== 'ALL' ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
-                                                                                                            transition: 'all 0.15s'
-                                                                                                        }}
-                                                                                                    >{f.label} ({cnt})</button>
+                                                                                                    <button
+                                                                                                        key={f.key}
+                                                                                                        type="button"
+                                                                                                        className={`pz-tag ${recipientFilter === f.key ? 'active' : ''}`}
+                                                                                                        onClick={() => setRecipientFilter(f.key)}
+                                                                                                    >
+                                                                                                        {f.label} <i>{cnt}</i>
+                                                                                                    </button>
                                                                                                 );
                                                                                             })}
-                                                                                            <div style={{ marginLeft: 'auto', position: 'relative' }}>
-                                                                                                <input
-                                                                                                    placeholder="Kişi ara..."
-                                                                                                    value={recipientSearch}
-                                                                                                    onChange={e => setRecipientSearch(e.target.value)}
-                                                                                                    onClick={e => e.stopPropagation()}
-                                                                                                    style={{
-                                                                                                        padding: '5px 10px 5px 28px', borderRadius: 7, border: '1px solid #e2e8f0',
-                                                                                                        fontSize: 11, width: 140, outline: 'none'
-                                                                                                    }}
-                                                                                                />
-                                                                                                <Search size={13} style={{ position: 'absolute', left: 8, top: 7, color: '#94a3b8' }} />
-                                                                                            </div>
+                                                                                            <span className="pz-spacer" />
+                                                                                            <label className="pz-sr" htmlFor={`kisi-ara-${g.id}`}>Kişi ara</label>
+                                                                                            <input
+                                                                                                id={`kisi-ara-${g.id}`}
+                                                                                                className="pz-select"
+                                                                                                type="search"
+                                                                                                placeholder="Kişi ara…"
+                                                                                                style={{ width: 170, fontWeight: 400, cursor: 'text' }}
+                                                                                                value={recipientSearch}
+                                                                                                onChange={e => setRecipientSearch(e.target.value)}
+                                                                                            />
                                                                                         </div>
 
-                                                                                        {/* ★ AKSİYON ÇUBUĞU — Filtre seçilince belirir */}
                                                                                         {recipientFilter !== 'ALL' && (() => {
                                                                                             const filteredCount = sendRecipients.filter(r => r.status === recipientFilter).length;
-                                                                                            const statusLabels = { SENT: 'Gönderilen', DELIVERED: 'Teslim edilen', READ: 'Okuyan', FAILED: 'Başarısız', PENDING: 'Bekleyen' };
                                                                                             return (
-                                                                                                <div style={{
-                                                                                                    display: 'flex', alignItems: 'center', gap: 10,
-                                                                                                    background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-                                                                                                    borderRadius: 10, padding: '10px 16px', marginTop: 8, marginBottom: 8,
-                                                                                                    animation: 'fadeSlideUp 0.25s ease'
-                                                                                                }}>
-                                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 'auto' }}>
-                                                                                                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', animation: 'pulse 1.5s infinite' }} />
-                                                                                                        <span style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 600 }}>
-                                                                                                            {statusLabels[recipientFilter] || recipientFilter} {filteredCount} kişi seçili
-                                                                                                        </span>
-                                                                                                    </div>
+                                                                                                <div className="pz-bulk">
+                                                                                                    <CheckCircle size={15} />
+                                                                                                    <span>{recipientMeta(recipientFilter).label} · {num(filteredCount)} kişi seçili</span>
+                                                                                                    <span className="pz-spacer" />
                                                                                                     <button
-                                                                                                        onClick={(e) => {
-                                                                                                            e.stopPropagation();
+                                                                                                        type="button"
+                                                                                                        onClick={() => {
                                                                                                             if (window.confirm(`${filteredCount} kişiye aynı mesajı tekrar göndermek istediğinize emin misiniz?`)) {
                                                                                                                 api.post(`/marketing-v2/${wsId}/campaigns/${detailCampaignId}/retry`, {
                                                                                                                     groupId: g.id, status: recipientFilter
@@ -1054,87 +1073,62 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                                                                 }).catch(err => alert('Hata: ' + (err.response?.data?.error || err.message)));
                                                                                                             }
                                                                                                         }}
-                                                                                                        style={{
-                                                                                                            padding: '6px 14px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-                                                                                                            background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer',
-                                                                                                            display: 'flex', alignItems: 'center', gap: 4
-                                                                                                        }}
                                                                                                     >
-                                                                                                        <RotateCcw size={12} /> Bu {filteredCount} Kişiye Tekrar Gönder
+                                                                                                        <RotateCcw size={12} /> Tekrar gönder
                                                                                                     </button>
                                                                                                     <button
-                                                                                                        onClick={(e) => {
-                                                                                                            e.stopPropagation();
-                                                                                                            /* TODO: Yeni mesaj seçim modal'ı */
-                                                                                                            alert(`${filteredCount} kişiye yeni gönderim başlatılacak.\nMesaj seçim ekranı açılacak.`);
-                                                                                                        }}
-                                                                                                        style={{
-                                                                                                            padding: '6px 14px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-                                                                                                            background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer',
-                                                                                                            display: 'flex', alignItems: 'center', gap: 4
-                                                                                                        }}
+                                                                                                        type="button"
+                                                                                                        onClick={() => alert(`${filteredCount} kişiye yeni gönderim başlatılacak.\nMesaj seçim ekranı açılacak.`)}
                                                                                                     >
-                                                                                                        <Send size={12} /> Bu {filteredCount} Kişiye Yeni Gönderim Başlat
+                                                                                                        <Send size={12} /> Yeni gönderim başlat
                                                                                                     </button>
                                                                                                 </div>
                                                                                             );
                                                                                         })()}
-                                                                                        <style>{`@keyframes fadeSlideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }`}</style>
 
-                                                                                        {/* Alıcı Tablosu */}
-                                                                                        <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #e2e8f0', marginTop: 4 }}>
-                                                                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                                                                                                <thead>
-                                                                                                    <tr style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
-                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Kişi</th>
-                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>Telefon / E-posta</th>
-                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, color: '#374151' }}>Durum</th>
-                                                                                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: '#374151' }}>Zaman</th>
-                                                                                                    </tr>
-                                                                                                </thead>
-                                                                                                <tbody>
-                                                                                                    {sendRecipients
-                                                                                                        .filter(r => recipientFilter === 'ALL' || r.status === recipientFilter)
-                                                                                                        .filter(r => {
-                                                                                                            if (!recipientSearch.trim()) return true;
-                                                                                                            const q = recipientSearch.toLowerCase();
-                                                                                                            return (r.name || '').toLowerCase().includes(q) ||
-                                                                                                                (r.phone || '').includes(q) ||
-                                                                                                                (r.email || '').toLowerCase().includes(q) ||
-                                                                                                                (r.contact?.name || '').toLowerCase().includes(q);
-                                                                                                        })
-                                                                                                        .map(r => {
-                                                                                                            const displayName = r.contact?.name || r.name || 'İsimsiz';
-                                                                                                            const contact_info = r.phone || r.email || '-';
-                                                                                                            const statusMap = {
-                                                                                                                PENDING: { label: '⏳ Bekliyor', bg: '#fef3c7', color: '#92400e' },
-                                                                                                                SENT: { label: '📤 Gönderildi', bg: '#dbeafe', color: '#1e40af' },
-                                                                                                                DELIVERED: { label: '✅ Teslim', bg: '#dcfce7', color: '#166534' },
-                                                                                                                READ: { label: '👁️ Okundu', bg: '#ede9fe', color: '#5b21b6' },
-                                                                                                                FAILED: { label: '❌ Başarısız', bg: '#fee2e2', color: '#991b1b' }
-                                                                                                            };
-                                                                                                            const st = statusMap[r.status] || { label: r.status, bg: '#f3f4f6', color: '#6b7280' };
-                                                                                                            const timeStr = r.readAt ? new Date(r.readAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-                                                                                                                : r.deliveredAt ? new Date(r.deliveredAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-                                                                                                                : r.sentAt ? new Date(r.sentAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-                                                                                                                : '-';
-                                                                                                            return (
-                                                                                                                <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                                                                                                                    <td style={{ padding: '8px 12px', fontWeight: 500, color: '#1e293b' }}>{displayName}</td>
-                                                                                                                    <td style={{ padding: '8px 12px', color: '#64748b' }}>{contact_info}</td>
-                                                                                                                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                                                                                                                        <span style={{
-                                                                                                                            padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
-                                                                                                                            background: st.bg, color: st.color
-                                                                                                                        }}>{st.label}</span>
-                                                                                                                        {r.failReason && <div style={{ fontSize: 10, color: '#dc2626', marginTop: 2 }}>{r.failReason}</div>}
-                                                                                                                    </td>
-                                                                                                                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#94a3b8', fontSize: 11 }}>{timeStr}</td>
-                                                                                                                </tr>
-                                                                                                            );
-                                                                                                        })}
-                                                                                                </tbody>
-                                                                                            </table>
+                                                                                        <div className="pz-tbl">
+                                                                                            <div className="pz-tbl-cols">
+                                                                                                <span>Kişi</span>
+                                                                                                <span>Telefon / E-posta</span>
+                                                                                                <span>Durum</span>
+                                                                                                <span style={{ textAlign: 'right' }}>Zaman</span>
+                                                                                            </div>
+                                                                                            <div className="pz-tbl-scroll">
+                                                                                                {sendRecipients
+                                                                                                    .filter(r => recipientFilter === 'ALL' || r.status === recipientFilter)
+                                                                                                    .filter(r => {
+                                                                                                        if (!recipientSearch.trim()) return true;
+                                                                                                        const q = recipientSearch.toLowerCase();
+                                                                                                        return (r.name || '').toLowerCase().includes(q) ||
+                                                                                                            (r.phone || '').includes(q) ||
+                                                                                                            (r.email || '').toLowerCase().includes(q) ||
+                                                                                                            (r.contact?.name || '').toLowerCase().includes(q);
+                                                                                                    })
+                                                                                                    .map(r => {
+                                                                                                        const rm = recipientMeta(r.status);
+                                                                                                        return (
+                                                                                                            <div className="pz-tbl-row" key={r.id}>
+                                                                                                                <span style={{ fontWeight: 600 }}>
+                                                                                                                    {r.contact?.name || r.name || 'İsimsiz'}
+                                                                                                                </span>
+                                                                                                                <span style={{ color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                                                                                                                    {r.phone || r.email || '—'}
+                                                                                                                </span>
+                                                                                                                <span>
+                                                                                                                    <span className="pz-status" style={{ color: rm.fg }}>
+                                                                                                                        <i style={{ background: rm.dot }} />{rm.label}
+                                                                                                                    </span>
+                                                                                                                    {r.failReason && (
+                                                                                                                        <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 2 }}>{r.failReason}</div>
+                                                                                                                    )}
+                                                                                                                </span>
+                                                                                                                <span className="pz-tnum">
+                                                                                                                    {trDateTime(r.readAt || r.deliveredAt || r.sentAt)}
+                                                                                                                </span>
+                                                                                                            </div>
+                                                                                                        );
+                                                                                                    })}
+                                                                                            </div>
                                                                                         </div>
                                                                                     </>
                                                                                 )}
@@ -1144,332 +1138,234 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                                 );
                                                             })}
                                                         </div>
-
-                                                        {/* ═══ Bölüm 2: MESAJ İÇERİĞİ (grup seviyesinde 1 kez) ═══ */}
-                                                        {(() => {
-                                                            const allMessages = grp.sends.flatMap(s => (s.groupMessages || []).map(gm => gm.message).filter(Boolean));
-                                                            const uniqueMessages = allMessages.filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
-                                                            if (uniqueMessages.length === 0) return null;
-                                                            return (
-                                                                <div style={{ padding: '14px 16px' }}>
-                                                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                                                                        <MessageSquare size={14} style={{ color: '#2563eb' }} /> Mesaj İçeriği
-                                                                    </span>
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                                                        {uniqueMessages.map(msg => {
-                                                                            const chB = CHANNEL_BADGE[msg.channel] || {};
-                                                                            const preview = msg.content || msg.emailBody || msg.bodyText || '';
-                                                                            return (
-                                                                                <div key={msg.id} style={{
-                                                                                    background: '#fff', border: '1px solid #e2e8f0',
-                                                                                    borderRadius: 10, padding: '10px 14px'
-                                                                                }}>
-                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: preview ? 8 : 0 }}>
-                                                                                        <MessageSquare size={13} style={{ color: chB.color || '#64748b' }} />
-                                                                                        <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{msg.name || 'Mesaj'}</span>
-                                                                                        {msg.templateName && (
-                                                                                            <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 4 }}>
-                                                                                                📋 {msg.templateName}
-                                                                                            </span>
-                                                                                        )}
-                                                                                        <span style={{ fontSize: 10, background: chB.bg || '#f3f4f6', color: chB.color || '#64748b', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
-                                                                                            {chB.label || msg.channel}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    {preview && (
-                                                                                        <div style={{
-                                                                                            fontSize: 12, color: '#475569', lineHeight: 1.6,
-                                                                                            background: '#f8fafc', padding: '8px 12px', borderRadius: 8,
-                                                                                            whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'hidden',
-                                                                                            borderLeft: `3px solid ${chB.color || '#e2e8f0'}`
-                                                                                        }}>
-                                                                                            {preview.length > 300 ? preview.substring(0, 300) + '...' : preview}
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </details>
+                                                    </div>
                                                 );
                                             })}
-                                        </div>
+                                        </section>
                                     )}
-                                </div>
+                                </>
                             );
                         })()}
 
-                        {/* Mesaj Önizlemesi (eski kampanyalar için) */}
+                        {/* Gönderilen mesajlar (eski kampanyalar için) */}
                         {detail?.messagePreviews?.length > 0 && (
-                            <div style={{ marginBottom: 20 }}>
-                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <MessageSquare size={15} style={{ color: '#2563eb' }} /> Gönderilen Mesajlar
-                                </h3>
-                                {detail.messagePreviews.map((msg, i) => (
-                                    <div key={i} style={{
-                                        background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10,
-                                        padding: '12px 16px', marginBottom: 8
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{msg.name || msg.templateName || 'Mesaj'}</span>
-                                            <span style={{
-                                                fontSize: 10, background: '#e2e8f0', color: '#475569',
-                                                padding: '2px 8px', borderRadius: 6, fontWeight: 500
-                                            }}>{msg.channel}</span>
-                                        </div>
-                                        {msg.content && typeof msg.content === 'string' && (
-                                            <div style={{
-                                                fontSize: 13, color: '#374151', lineHeight: 1.5,
-                                                background: '#fff', padding: '8px 12px', borderRadius: 8,
-                                                border: '1px solid #e5e7eb', whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto'
-                                            }}>
-                                                {msg.content.substring(0, 500)}
+                            <>
+                                <div className="pz-sechead pz-section">
+                                    <span className="pz-sechead-n">Gönderilen mesajlar</span>
+                                    <span className="pz-rule" />
+                                </div>
+                                <div className="pz-surface" style={{ padding: 16 }}>
+                                    {detail.messagePreviews.map((msg, i) => {
+                                        const m = channelMeta(msg.channel);
+                                        return (
+                                            <div className="pz-card" key={i}>
+                                                <div className="pz-card-row">
+                                                    <span className="pz-chip" style={{ background: m.bg, color: m.fg }}>{m.label}</span>
+                                                    <span style={{ fontSize: 13, fontWeight: 650 }}>
+                                                        {msg.name || msg.templateName || 'Mesaj'}
+                                                    </span>
+                                                </div>
+                                                {msg.content && typeof msg.content === 'string' && (
+                                                    <p className="pz-preview" style={{ marginTop: 9 }}>
+                                                        {msg.content.slice(0, 500)}
+                                                    </p>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         )}
 
                         {/* Hedef Listeler */}
                         {detail?.targetLists?.length > 0 && (
-                            <div style={{ marginBottom: 20 }}>
-                                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 8 }}>🎯 Hedef Listeler</h3>
+                            <>
+                                <div className="pz-sechead pz-section">
+                                    <span className="pz-sechead-n">Hedef listeler</span>
+                                    <span className="pz-rule" />
+                                    <span className="pz-sechead-x">{detail.targetLists.length} liste</span>
+                                </div>
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                     {detail.targetLists.map((l, i) => (
-                                        <span key={i} style={{
-                                            background: (l.color || '#2563eb') + '15', color: l.color || '#2563eb',
-                                            border: `1px solid ${(l.color || '#2563eb')}33`,
-                                            padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500
-                                        }}>{l.icon || '👥'} {l.name}</span>
+                                        <span
+                                            key={i}
+                                            className="pz-chip"
+                                            style={{ background: '#fff', color: '#475569', padding: '6px 13px', fontSize: 12.5, boxShadow: '0 0 0 1px rgba(15,23,42,.06)' }}
+                                        >
+                                            {l.name}
+                                        </span>
                                     ))}
                                 </div>
-                            </div>
+                            </>
                         )}
                     </>
                 )}
-            </div>
+            </>
         );
     }
 
-    return (
-        <div style={{ padding: '24px 28px' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>Kampanyalar</h2>
-                <button
-                    className="mkt-btn-primary"
-                    onClick={() => setShowWizard(true)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                    <Plus size={15} />
-                    <span>Yeni Kampanya</span>
-                </button>
-            </div>
+    const toplamGonderim = filteredCampaigns.reduce((s, c) => s + getSentCount(c), 0);
+    const toplamMaliyet = filteredCampaigns.reduce((s, c) => s + getCampaignCost(c), 0);
+    const suzgecAcik = statusFilter !== 'ALL' || typeFilter !== 'ALL' || dateFilter || searchQuery;
 
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
+    return (
+        <>
+            <PageHead
+                title="Kampanyalar"
+                lede="Gönderilen, teslim edilen ve okunan mesaj sayıları listede — satıra girmene gerek yok."
+            />
+
+            <div className="pz-filters">
+                <div className="pz-pills" role="group" aria-label="Kampanya türü">
                     {[
                         { key: 'ALL', label: 'Tümü' },
                         { key: 'MANUAL', label: 'Manuel' },
                         { key: 'AUTO', label: 'Otomatik' },
                     ].map(f => (
-                        <button
-                            key={f.key}
-                            onClick={() => setTypeFilter(f.key)}
-                            style={{
-                                padding: '6px 14px',
-                                border: 'none',
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                background: typeFilter === f.key ? '#fff' : 'transparent',
-                                color: typeFilter === f.key ? '#1e293b' : '#64748b',
-                                boxShadow: typeFilter === f.key ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                            }}
-                        >
+                        <button key={f.key} type="button" className={`pz-pill ${typeFilter === f.key ? 'active' : ''}`} onClick={() => setTypeFilter(f.key)}>
                             {f.label}
                         </button>
                     ))}
                 </div>
 
-                {/* Durum Filtresi */}
-                <div style={{ display: 'flex', background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
+                <div className="pz-pills" role="group" aria-label="Durum">
                     {[
                         { key: 'ALL', label: 'Tümü' },
-                        { key: 'ACTIVE', label: '🟢 Aktifler' },
+                        { key: 'ACTIVE', label: 'Aktifler' },
                         { key: 'COMPLETED', label: 'Tamamlanan' },
                         { key: 'DRAFT', label: 'Taslak' },
                     ].map(f => (
-                        <button
-                            key={f.key}
-                            onClick={() => setStatusFilter(f.key)}
-                            style={{
-                                padding: '6px 12px',
-                                border: 'none',
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                background: statusFilter === f.key ? '#fff' : 'transparent',
-                                color: statusFilter === f.key ? '#1e293b' : '#64748b',
-                                boxShadow: statusFilter === f.key ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
+                        <button key={f.key} type="button" className={`pz-pill ${statusFilter === f.key ? 'active' : ''}`} onClick={() => setStatusFilter(f.key)}>
                             {f.label}
                         </button>
                     ))}
                 </div>
 
-                {/* Tarih Filtresi */}
+                <label className="pz-sr" htmlFor="pz-tarih">Tarih aralığı</label>
                 <select
+                    id="pz-tarih"
+                    className="pz-select"
                     value={dateFilter}
                     onChange={e => { setDateFilter(e.target.value); if (e.target.value !== 'custom') { setDateFrom(''); setDateTo(''); } }}
-                    style={{
-                        height: 33, borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 12,
-                        padding: '0 28px 0 10px', outline: 'none', background: '#fff', color: dateFilter ? '#1e293b' : '#94a3b8',
-                        fontWeight: dateFilter ? 600 : 400, cursor: 'pointer',
-                        appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2394a3b8\' stroke-width=\'2\'%3E%3Cpath d=\'M6 9l6 6 6-6\'/%3E%3C/svg%3E")',
-                        backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
-                    }}
                 >
-                    <option value="">📅 Tüm Tarihler</option>
-                    <option value="thisWeek">Bu Hafta</option>
-                    <option value="thisMonth">Bu Ay</option>
-                    <option value="last30">Son 30 Gün</option>
-                    <option value="last90">Son 90 Gün</option>
-                    <option value="custom">Özel Aralık</option>
+                    <option value="">Tüm tarihler</option>
+                    <option value="thisWeek">Bu hafta</option>
+                    <option value="thisMonth">Bu ay</option>
+                    <option value="last30">Son 30 gün</option>
+                    <option value="last90">Son 90 gün</option>
+                    <option value="custom">Özel aralık</option>
                 </select>
 
                 {dateFilter === 'custom' && (
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                            style={{ height: 33, borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 11, padding: '0 8px', outline: 'none' }} />
-                        <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>
-                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                            style={{ height: 33, borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 11, padding: '0 8px', outline: 'none' }} />
-                    </div>
+                    <>
+                        <label className="pz-sr" htmlFor="pz-tarih-bas">Başlangıç</label>
+                        <input id="pz-tarih-bas" className="pz-date" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                        <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
+                        <label className="pz-sr" htmlFor="pz-tarih-bit">Bitiş</label>
+                        <input id="pz-tarih-bit" className="pz-date" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+                    </>
                 )}
 
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Search size={14} style={{ position: 'absolute', left: 10, color: '#94a3b8' }} />
-                    <input
-                        type="text"
-                        placeholder="Ara..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        style={{
-                            paddingLeft: 30,
-                            paddingRight: 12,
-                            height: 33,
-                            borderRadius: 7,
-                            border: '1px solid #e2e8f0',
-                            fontSize: 12,
-                            outline: 'none',
-                            width: 160,
-                            background: '#fff'
-                        }}
-                    />
-                </div>
+                <label className="pz-sr" htmlFor="pz-ara">Kampanya ara</label>
+                <input
+                    id="pz-ara"
+                    className="pz-search"
+                    type="search"
+                    placeholder="Ara…"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                />
 
-                {/* Aktif filtre sayısı */}
-                {(statusFilter !== 'ALL' || dateFilter || searchQuery) && (
+                {suzgecAcik && (
                     <button
+                        className="pz-clear"
+                        type="button"
                         onClick={() => { setStatusFilter('ALL'); setDateFilter(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setTypeFilter('ALL'); }}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 4,
-                            padding: '5px 10px', border: '1px solid #fca5a5', borderRadius: 6,
-                            background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                        }}
                     >
                         <X size={12} /> Temizle
                     </button>
                 )}
+
+                <span className="pz-spacer" />
+                <button className="pz-btn pz-btn-primary" type="button" onClick={() => setShowWizard(true)}>
+                    <Plus size={15} /> Yeni Kampanya
+                </button>
             </div>
 
-            {/* Campaign List */}
-            {loading ? (
-                <div className="mkt-loading">Yükleniyor...</div>
-            ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {filteredCampaigns.map(c => {
-                        const statusBadge = getStatusBadge(c);
-                        const channels = getCampaignChannels(c);
-                        const sent = getSentCount(c);
-                        const delivered = getDeliveredCount(c);
-                        const read = getReadCount(c);
-                        const isAuto = isAutoCampaign(c);
-                        const cost = getCampaignCost(c);
+            <section className="pz-surface">
+                {loading ? (
+                    <div className="pz-loading">Yükleniyor…</div>
+                ) : filteredCampaigns.length === 0 ? (
+                    <EmptyState
+                        Icon={Megaphone}
+                        title="Kampanya yok"
+                        note={suzgecAcik ? 'Süzgeçlere uyan kampanya bulunamadı.' : 'İlk kampanyanı oluşturarak başla.'}
+                    />
+                ) : (
+                    <>
+                        <div className="pz-cols camp">
+                            <span />
+                            <span>Kampanya</span>
+                            <span>Durum</span>
+                            <span className="pz-r">Gönderilen</span>
+                            <span className="pz-r">Teslim</span>
+                            <span className="pz-r">Okunan</span>
+                            <span className="pz-r">Maliyet</span>
+                            <span />
+                        </div>
 
-                        return (
-                            <div
-                                key={c.id}
-                                style={{
-                                    background: '#fff',
-                                    borderRadius: 12,
-                                    border: c.isSystemTemplate ? '1px solid #fbbf24' : '1px solid #e5e7eb',
-                                    padding: '16px 20px',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: 10,
-                                }}
-                                onClick={() => loadCampaignDetail(c.id)}
-                                onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = c.isSystemTemplate ? '#f59e0b' : '#cbd5e1'; }}
-                                onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = c.isSystemTemplate ? '#fbbf24' : '#e5e7eb'; }}
-                            >
-                                {/* Üst Satır: İsim + Kanallar + Durum */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: isAuto ? '#f59e0b' : '#94a3b8', flexShrink: 0 }} title={isAuto ? 'Otomatik' : 'Manuel'} />
-                                        <span style={{ fontWeight: 600, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
-                                        {c.isSystemTemplate && (
-                                            <span style={{ fontSize: 9, background: '#fef3c7', color: '#92400e', padding: '2px 7px', borderRadius: 5, fontWeight: 700, whiteSpace: 'nowrap', letterSpacing: 0.3 }}>
-                                                OTOMATİK
-                                            </span>
-                                        )}
-                                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        {filteredCampaigns.map(c => {
+                            const st = statusMeta(c.status);
+                            const channels = getCampaignChannels(c);
+                            const sent = getSentCount(c);
+                            const delivered = getDeliveredCount(c);
+                            const read = getReadCount(c);
+                            const isAuto = isAutoCampaign(c);
+                            const cost = getCampaignCost(c);
+                            const hicGonderim = sent === 0;
+                            const duzenlenebilir = !c.isLegacy && !c.isArchive && !c.isSystemTemplate;
+
+                            return (
+                                <div className="pz-row camp" key={c.id}>
+                                    <span className={`pz-av ${isAuto ? 'auto' : ''}`}>{initials(c.name)}</span>
+
+                                    <div style={{ minWidth: 0 }}>
+                                        <div className="pz-name-wrap">
+                                            <button type="button" className="pz-name" onClick={() => loadCampaignDetail(c.id)}>
+                                                {c.name}
+                                            </button>
+                                            {c.isSystemTemplate && <span className="pz-tag-auto">OTOMATİK</span>}
                                             {channels.map(ch => {
-                                                const badge = CHANNEL_BADGE[ch];
-                                                if (!badge) return null;
+                                                const m = channelMeta(ch);
                                                 return (
-                                                    <span key={ch} style={{ fontSize: 10, background: badge.bg, color: badge.color, padding: '2px 8px', borderRadius: 5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
-                                                        {badge.icon} {badge.label}
+                                                    <span key={ch} className="pz-chip" style={{ background: m.bg, color: m.fg }}>
+                                                        {m.label}
                                                     </span>
                                                 );
                                             })}
                                         </div>
+                                        <div className="pz-sub">
+                                            <span>{c.description || (isAuto ? 'Sistem otomasyonu' : 'Açıklama yok')}</span>
+                                            <span className="pz-dot-sep">·</span>
+                                            <span>{getDateDisplay(c)}</span>
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: statusBadge.bg, color: statusBadge.color }}>
-                                            {statusBadge.label}
-                                        </span>
+
+                                    <span className="pz-status" style={{ color: st.fg }}>
+                                        <i style={{ background: st.dot }} />{st.label}
+                                    </span>
+
+                                    <span className={`pz-num pz-r ${hicGonderim ? 'zero' : ''}`}>{hicGonderim ? '—' : num(sent)}</span>
+                                    <span className={`pz-num pz-r ${hicGonderim ? 'zero' : ''}`}>{hicGonderim ? '—' : num(delivered)}</span>
+                                    <span className={`pz-num pz-r ${hicGonderim ? 'zero' : 'good'}`}>{hicGonderim ? '—' : num(read)}</span>
+                                    <span className={`pz-num pz-r ${cost > 0 ? '' : 'zero'}`}>{cost > 0 ? `$${cost.toFixed(2)}` : '—'}</span>
+
+                                    <div className="pz-acts">
                                         {c.isSystemTemplate && (
                                             <button
-                                                className="grp-icon-action"
-                                                style={{
-                                                    background: c.status === 'ACTIVE' ? '#fef2f2' : '#f0fdf4',
-                                                    color: c.status === 'ACTIVE' ? '#dc2626' : '#16a34a',
-                                                    border: 'none',
-                                                    borderRadius: 6,
-                                                    padding: '4px 10px',
-                                                    fontSize: 11,
-                                                    fontWeight: 600,
-                                                    cursor: 'pointer',
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: 4,
-                                                }}
-                                                title={c.status === 'ACTIVE' ? 'Durdur' : 'Aktifleştir'}
-                                                onClick={async (e) => {
-                                                    e.stopPropagation();
+                                                className="pz-btn pz-btn-sm"
+                                                type="button"
+                                                onClick={async () => {
                                                     const newStatus = c.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
                                                     try {
                                                         await api.put(`/marketing-v2/${wsId}/campaigns/${c.id}`, { status: newStatus });
@@ -1479,50 +1375,35 @@ function CampaignsTab({ wsId, onGoToGroups }) {
                                                     }
                                                 }}
                                             >
-                                                {c.status === 'ACTIVE' ? <><X size={12}/> Durdur</> : <><Play size={12}/> Aktifleştir</>}
+                                                {c.status === 'ACTIVE' ? <><X size={12} /> Durdur</> : <><Play size={12} /> Aktifleştir</>}
                                             </button>
                                         )}
-                                        {!c.isLegacy && !c.isArchive && !c.isSystemTemplate && (
-                                            <div style={{ display: 'flex', gap: 3 }} onClick={e => e.stopPropagation()}>
-                                                <button className="grp-icon-action" onClick={() => { setEditItem(c); setShowForm(true); }} title="Düzenle"><Edit2 size={13}/></button>
-                                                <button className="grp-icon-action danger" onClick={() => handleDelete(c.id)} title="Sil"><Trash2 size={13}/></button>
-                                            </div>
-                                        )}
-                                        <ChevronRight size={16} style={{ color: '#cbd5e1' }} />
-                                    </div>
-                                </div>
-
-                                {/* Alt Satır: Açıklama + Tarih + İstatistikler */}
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, fontSize: 12, color: '#64748b' }}>
-                                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#94a3b8' }}>
-                                        {c.description || (isAuto ? 'Sistem otomasyonu' : 'Açıklama yok')}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0, color: '#64748b' }}>
-                                        <span style={{ color: '#94a3b8', fontSize: 11 }}>{getDateDisplay(c)}</span>
-                                        {sent > 0 && (
+                                        {duzenlenebilir && (
                                             <>
-                                                <span style={{ width: 1, height: 14, background: '#e5e7eb' }} />
-                                                <span>Gönderilen <strong style={{ color: '#334155' }}>{sent}</strong></span>
-                                                <span>Teslim <strong style={{ color: '#334155' }}>{delivered}</strong></span>
-                                                <span>Okunan <strong style={{ color: '#16a34a' }}>{read}</strong></span>
-                                                {cost > 0 && (
-                                                    <>
-                                                        <span style={{ width: 1, height: 14, background: '#e5e7eb' }} />
-                                                        <span style={{ fontWeight: 700, color: '#ec4899' }}>💰 ${cost.toFixed(2)}</span>
-                                                    </>
-                                                )}
+                                                <button className="pz-ico" type="button" aria-label="Düzenle" onClick={() => { setEditItem(c); setShowForm(true); }}>
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button className="pz-ico danger" type="button" aria-label="Sil" onClick={() => handleDelete(c.id)}>
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </>
                                         )}
-                                        {sent === 0 && <span style={{ color: '#cbd5e1' }}>—</span>}
+                                        <button className="pz-ico" type="button" aria-label="Kampanyayı aç" onClick={() => loadCampaignDetail(c.id)}>
+                                            <ChevronRight size={14} />
+                                        </button>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })}
-                    {filteredCampaigns.length === 0 && (
-                        <div className="mkt-empty"><p>Kampanya bulunamadı.</p></div>
-                    )}
-                </div>
+                            );
+                        })}
+                    </>
+                )}
+            </section>
+
+            {!loading && filteredCampaigns.length > 0 && (
+                <p className="pz-foot">
+                    {num(filteredCampaigns.length)} kampanya · {num(toplamGonderim)} gönderim
+                    {toplamMaliyet > 0 && ` · toplam $${toplamMaliyet.toFixed(2)}`}
+                </p>
             )}
 
             {/* Campaign Wizard Modal */}
@@ -1542,8 +1423,7 @@ function CampaignsTab({ wsId, onGoToGroups }) {
             {showForm && (
                 <CampaignFormModal initial={editItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />
             )}
-
-        </div>
+        </>
     );
 }
 
@@ -1588,87 +1468,105 @@ function AdSetFormModal({ wsId, initial, campaigns, contactGroups, onSave, onClo
     };
 
     return (
-        <div className="mkt-modal-overlay" onClick={onClose}>
-            <div className="grp-form-modal" onClick={e => e.stopPropagation()}>
-                <div className="grp-modal-header">
-                    <h2 className="grp-modal-title">{initial ? 'Grubu Düzenle' : 'Yeni Reklam Grubu'}</h2>
-                    <button className="grp-modal-close" onClick={onClose}>✕</button>
+        <div className="pz-overlay" onClick={onClose}>
+            <div className="pz-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pz-grup-b">
+                <div className="pz-modal-h">
+                    <span className="pz-modal-ico"><Folder size={17} /></span>
+                    <div style={{ flexGrow: 1, minWidth: 0 }}>
+                        <h2 id="pz-grup-b">{initial ? 'Grubu Düzenle' : 'Yeni Grup'}</h2>
+                        <p>Bir gönderim partisi: kime, hangi kanaldan, ne hızda.</p>
+                    </div>
+                    <button className="pz-modal-x" type="button" aria-label="Kapat" onClick={onClose}><X size={15} /></button>
                 </div>
-                <div className="grp-modal-body">
-                    <div className="grp-field">
-                        <label className="grp-label">Gönderi Adı</label>
-                        <input className="grp-input" value={name} onChange={e => setName(e.target.value)} placeholder="ör: VIP Liste - 15 Eylül" />
+
+                <div className="pz-modal-b">
+                    <div className="pz-field">
+                        <label htmlFor="pz-g-ad">Grup adı <span className="pz-req" aria-hidden="true">*</span></label>
+                        <input id="pz-g-ad" className="pz-input" value={name} onChange={e => setName(e.target.value)} placeholder="Örn. Gaziemir duyurusu — 1. parti" required />
                     </div>
-                    <div className="grp-field">
-                        <label className="grp-label">Grup Etiketi <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(Aynı etiketli gönderiler gruplanır)</span></label>
-                        <input className="grp-input" value={groupTag} onChange={e => setGroupTag(e.target.value)} placeholder="ör: Arama Başarılı" />
-                        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Boş bırakılırsa gönderi adı kullanılır</div>
+
+                    <div className="pz-field">
+                        <label htmlFor="pz-g-etiket">Grup etiketi</label>
+                        <input id="pz-g-etiket" className="pz-input" value={groupTag} onChange={e => setGroupTag(e.target.value)} placeholder="Boş bırakılırsa grup adı kullanılır" />
+                        <span className="pz-hint">Aynı etiketi taşıyan gönderimler tek reklam grubunda toplanır.</span>
                     </div>
-                    <div className="grp-field">
-                        <label className="grp-label">Kampanya</label>
-                        <select className="grp-input" value={campaignId} onChange={e => setCampaignId(e.target.value)}>
-                            <option value="">Seçiniz...</option>
+
+                    <div className="pz-field">
+                        <label htmlFor="pz-g-kamp">Kampanya <span className="pz-req" aria-hidden="true">*</span></label>
+                        <select id="pz-g-kamp" className="pz-input" value={campaignId} onChange={e => setCampaignId(e.target.value)} required>
+                            <option value="">Kampanya seçin…</option>
                             {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                     </div>
-                    <div className="grp-field">
-                        <label className="grp-label">Kanal</label>
-                        <select className="grp-input" value={channel} onChange={e => setChannel(e.target.value)}>
-                            <option value="WHATSAPP">WhatsApp</option>
-                            <option value="AI_CALL">AI Arama</option>
-                            <option value="EMAIL">E-posta</option>
-                            <option value="SMS">SMS (NetGSM)</option>
-                        </select>
+
+                    <div className="pz-field">
+                        <span className="pz-field-l" id="pz-g-kanal-l">Kanal</span>
+                        <div className="pz-pills pz-pills-wide" role="group" aria-labelledby="pz-g-kanal-l">
+                            {['WHATSAPP', 'AI_CALL', 'EMAIL', 'SMS'].map(code => (
+                                <button
+                                    key={code}
+                                    type="button"
+                                    className={`pz-pill ${channel === code ? 'active' : ''}`}
+                                    onClick={() => setChannel(code)}
+                                >
+                                    {channelMeta(code).label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
-                    {/* Hedef Kitle Seçimi */}
-                    <div className="grp-field">
-                        <label className="grp-label">Hedef Kitle</label>
-                        <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 2, borderRadius: 7, marginBottom: 8 }}>
-                            <button type="button" onClick={() => setAudienceType('list')} style={{
-                                flex: 1, padding: '6px 0', border: 'none', borderRadius: 6, fontSize: 12,
-                                fontWeight: 600, cursor: 'pointer',
-                                background: audienceType === 'list' ? '#fff' : 'transparent',
-                                color: audienceType === 'list' ? '#1e293b' : '#64748b',
-                                boxShadow: audienceType === 'list' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
-                            }}>📋 Manuel Liste</button>
-                            <button type="button" onClick={() => setAudienceType('segment')} style={{
-                                flex: 1, padding: '6px 0', border: 'none', borderRadius: 6, fontSize: 12,
-                                fontWeight: 600, cursor: 'pointer',
-                                background: audienceType === 'segment' ? '#fff' : 'transparent',
-                                color: audienceType === 'segment' ? '#1e293b' : '#64748b',
-                                boxShadow: audienceType === 'segment' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
-                            }}>🤖 Otomatik Segment</button>
-                        </div>
+                    <div className="pz-modal-rule" />
 
-                        {audienceType === 'list' ? (
-                            <select className="grp-input" value={listId} onChange={e => setListId(e.target.value)}>
-                                <option value="">Liste seçiniz...</option>
+                    <div className="pz-field">
+                        <span className="pz-field-l" id="pz-g-hk-l">Hedef kitle</span>
+                        <div className="pz-pills pz-pills-wide" role="group" aria-labelledby="pz-g-hk-l">
+                            <button type="button" className={`pz-pill ${audienceType === 'list' ? 'active' : ''}`} onClick={() => setAudienceType('list')}>
+                                Hazır liste
+                            </button>
+                            <button type="button" className={`pz-pill ${audienceType === 'segment' ? 'active' : ''}`} onClick={() => setAudienceType('segment')}>
+                                Otomatik segment
+                            </button>
+                        </div>
+                    </div>
+
+                    {audienceType === 'list' ? (
+                        <div className="pz-field">
+                            <label htmlFor="pz-g-liste">Liste <span className="pz-req" aria-hidden="true">*</span></label>
+                            <select id="pz-g-liste" className="pz-input" value={listId} onChange={e => setListId(e.target.value)} required>
+                                <option value="">Liste seçin…</option>
                                 {contactGroups.map(cg => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
                             </select>
-                        ) : (
-                            <select className="grp-input" value={segmentId} onChange={e => setSegmentId(e.target.value)}>
-                                <option value="">Segment seçiniz...</option>
-                                {smartSegments.map(s => <option key={s.id} value={s.id}>{s.icon || '📊'} {s.name}</option>)}
+                        </div>
+                    ) : (
+                        <div className="pz-field">
+                            <label htmlFor="pz-g-segment">Segment <span className="pz-req" aria-hidden="true">*</span></label>
+                            <select id="pz-g-segment" className="pz-input" value={segmentId} onChange={e => setSegmentId(e.target.value)} required>
+                                <option value="">Segment seçin…</option>
+                                {smartSegments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
-                    <div className="grp-field" style={{ display: 'flex', gap: 10 }}>
-                        <div style={{ flex: 1 }}>
-                            <label className="grp-label">Gönderim Hızı (dakika/adet)</label>
-                            <input className="grp-input" type="number" value={sendRate} onChange={e => setSendRate(e.target.value)} />
+                    <div className="pz-two">
+                        <div className="pz-field">
+                            <label htmlFor="pz-g-hiz">Gönderim hızı</label>
+                            <div className="pz-suffix">
+                                <input id="pz-g-hiz" className="pz-input" type="number" min="1" value={sendRate} onChange={e => setSendRate(e.target.value)} />
+                                <span>mesaj / dk</span>
+                            </div>
                         </div>
-                        <div style={{ flex: 1 }}>
-                            <label className="grp-label">Zamanlama</label>
-                            <input className="grp-input" type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
+                        <div className="pz-field">
+                            <label htmlFor="pz-g-zaman">Planlanan zaman</label>
+                            <input id="pz-g-zaman" className="pz-input" type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
                         </div>
                     </div>
+                    <span className="pz-hint">Zaman boş bırakılırsa grup taslak kalır, göndermek için “Gönder” demen gerekir.</span>
                 </div>
-                <div className="grp-modal-footer">
-                    <button className="grp-btn-cancel" onClick={onClose}>İptal</button>
-                    <button className="grp-btn-save" style={{ background: '#2563eb' }} onClick={handleSave} disabled={saving || !name}>
-                        {saving ? 'Kaydediliyor...' : 'Kaydet'}
+
+                <div className="pz-modal-f">
+                    <button className="pz-btn" type="button" onClick={onClose}>Vazgeç</button>
+                    <button className="pz-btn pz-btn-primary" type="button" onClick={handleSave} disabled={saving || !name}>
+                        {saving ? 'Kaydediliyor…' : 'Kaydet'}
                     </button>
                 </div>
             </div>
@@ -1764,131 +1662,190 @@ function AdSetsTab({ wsId, initialCampaignFilter }) {
 
     const filteredSets = filterCampaignId ? adSets.filter(a => a.campaignId === filterCampaignId) : adSets;
 
-    const getChannelIcon = (ch) => {
-        if (ch === 'WHATSAPP') return <MessageSquare size={16} color="#10b981"/>;
-        if (ch === 'AI_CALL') return <Phone size={16} color="#3b82f6"/>;
-        if (ch === 'EMAIL') return <Mail size={16} color="#f59e0b"/>;
-        if (ch === 'SMS') return <Smartphone size={16} color="#8b5cf6"/>;
-        return null;
-    };
-
     return (
-        <div className="mkt-analytics-wrap">
-            <div className="mkt-analytics-bar">
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>Kampanya Filtresi:</span>
-                    <select className="mkt-filter-select" value={filterCampaignId} onChange={e => setFilterCampaignId(e.target.value)}>
-                        <option value="">Tümü</option>
-                        {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                </div>
-                <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Grup</button>
+        <>
+            <PageHead
+                title="Gruplar"
+                lede="Bir kampanyanın gönderim partileri. Satırı açınca gruba bağlı mesajları yönetirsin."
+            />
+
+            <div className="pz-filters">
+                <label htmlFor="pz-kampanya-suzgec" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7480' }}>Kampanya</label>
+                <select
+                    id="pz-kampanya-suzgec"
+                    className="pz-select"
+                    value={filterCampaignId}
+                    onChange={e => setFilterCampaignId(e.target.value)}
+                >
+                    <option value="">Tümü</option>
+                    {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <span className="pz-spacer" />
+                <button className="pz-btn pz-btn-primary" type="button" onClick={() => setShowForm(true)}>
+                    <Plus size={15} /> Yeni Grup
+                </button>
             </div>
 
-            <div className="mkt-table-wrap">
-                {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
-                    <table className="mkt-table">
-                        <thead>
-                            <tr>
-                                <th>Grup Adı</th>
-                                <th>Kampanya</th>
-                                <th>Kanal</th>
-                                <th>Hedef Liste</th>
-                                <th>Performans</th>
-                                <th>Durum</th>
-                                <th style={{ textAlign: 'right' }}>İşlemler</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredSets.length === 0 && <tr><td colSpan={7} style={{ textAlign:'center', padding:20 }}>Grup bulunamadı.</td></tr>}
-                            {filteredSets.map(s => (
+            <section className="pz-surface">
+                {loading ? (
+                    <div className="pz-loading">Yükleniyor…</div>
+                ) : filteredSets.length === 0 ? (
+                    <EmptyState
+                        Icon={Folder}
+                        title="Grup yok"
+                        note={filterCampaignId ? 'Bu kampanyaya bağlı grup bulunmuyor.' : 'Gönderim yapmak için önce bir grup oluştur.'}
+                    />
+                ) : (
+                    <>
+                        <div className="pz-cols grp">
+                            <span />
+                            <span>Grup</span>
+                            <span>Kampanya</span>
+                            <span>Performans</span>
+                            <span>Durum</span>
+                            <span />
+                        </div>
+                        {filteredSets.map(s => {
+                            const ch = channelMeta(s.channel);
+                            const st = statusMeta(s.status || 'DRAFT');
+                            const isOpen = expandedSet === s.id;
+                            const isCall = s.channel === 'AI_CALL';
+                            const list = contactGroups.find(c => c.id === s.listId);
+                            const hedef = list?.name || s.segmentName || null;
+                            const linked = s.groupMessages || [];
+                            const secilebilir = messages.filter(
+                                m => m.channel === s.channel && !linked.some(sm => sm.messageId === m.id)
+                            );
+
+                            return (
                                 <React.Fragment key={s.id}>
-                                    <tr onClick={() => toggleExpand(s.id)}>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                {expandedSet === s.id ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
-                                                <strong style={{ color: '#111827' }}>{s.name}</strong>
+                                    <div className={`pz-row grp ${isOpen ? 'open' : ''}`}>
+                                        <span className="pz-av"><Folder size={16} /></span>
+                                        <div style={{ minWidth: 0 }}>
+                                            <button
+                                                type="button"
+                                                className="pz-name"
+                                                onClick={() => toggleExpand(s.id)}
+                                                aria-expanded={isOpen}
+                                            >
+                                                {s.name}
+                                            </button>
+                                            <div className="pz-sub">
+                                                <span className="pz-chip" style={{ background: ch.bg, color: ch.fg }}>{ch.label}</span>
+                                                <span>{hedef ? `Hedef: ${hedef}` : 'Hedef kitle seçilmemiş'}</span>
                                             </div>
-                                        </td>
-                                        <td>{campaigns.find(c => c.id === s.campaignId)?.name || '-'}</td>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                {getChannelIcon(s.channel)}
-                                                <span style={{ fontSize: 12 }}>{s.channel}</span>
+                                        </div>
+                                        <span style={{ fontSize: 12.5, color: '#475569' }}>
+                                            {campaigns.find(c => c.id === s.campaignId)?.name || '—'}
+                                        </span>
+                                        <div>
+                                            <div className="pz-num">
+                                                {num(s.sentCount || 0)} {isCall ? 'arama' : 'gönderildi'}
                                             </div>
-                                        </td>
-                                        <td>{contactGroups.find(c => c.id === s.listId)?.name || '-'}</td>
-                                        <td>
-                                            <div style={{ fontSize: 12 }}>
-                                                <span style={{ fontWeight: 600, color: '#111827' }}>
-                                                    {s.channel === 'AI_CALL' ? `Arama: ${s.sentCount || 0}` : `Gönderilen: ${s.sentCount || 0}`}
-                                                </span>
-                                                <div style={{ color: '#6b7280', fontSize: 11 }}>
-                                                    {s.channel === 'AI_CALL' 
-                                                        ? `Başarılı: ${s.deliveredCount || s.readCount || 0}`
-                                                        : `Teslim/Okunan: ${s.deliveredCount || 0} / ${s.readCount || 0}`}
-                                                </div>
+                                            <div className="pz-sub" style={{ marginTop: 2 }}>
+                                                {isCall
+                                                    ? `${num(s.deliveredCount || s.readCount || 0)} başarılı`
+                                                    : `${num(s.deliveredCount || 0)} teslim · ${num(s.readCount || 0)} okundu`}
                                             </div>
-                                        </td>
-                                        <td>
-                                            <span style={{ padding: '4px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: s.status === 'COMPLETED' ? '#dcfce7' : s.status === 'SENDING' ? '#dbeafe' : '#f3f4f6', color: s.status === 'COMPLETED' ? '#166534' : s.status === 'SENDING' ? '#1e40af' : '#4b5563' }}>
-                                                {s.status || 'DRAFT'}
-                                            </span>
-                                        </td>
-                                        <td style={{ textAlign: 'right' }}>
-                                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                                                {s.status !== 'COMPLETED' && (
-                                                    <button className="mkt-btn-send-bulk" onClick={() => handleExecute(s.id)} disabled={s.status === 'SENDING'} style={{ padding: '4px 10px', fontSize: 12 }}>Gönder</button>
-                                                )}
-                                                <button className="grp-icon-action" onClick={() => { setEditItem(s); setShowForm(true); }}><Edit2 size={14}/></button>
-                                                <button className="grp-icon-action danger" onClick={() => handleDelete(s.id)}><Trash2 size={14}/></button>
+                                        </div>
+                                        <span className="pz-status" style={{ color: st.fg }}>
+                                            <i style={{ background: st.dot }} />{st.label}
+                                        </span>
+                                        <div className="pz-acts">
+                                            {s.status !== 'COMPLETED' && (
+                                                <button
+                                                    className="pz-btn pz-btn-sm"
+                                                    type="button"
+                                                    onClick={() => handleExecute(s.id)}
+                                                    disabled={s.status === 'SENDING'}
+                                                >
+                                                    <Send size={13} /> Gönder
+                                                </button>
+                                            )}
+                                            <button className="pz-ico" type="button" aria-label="Düzenle" onClick={() => { setEditItem(s); setShowForm(true); }}>
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button className="pz-ico danger" type="button" aria-label="Sil" onClick={() => handleDelete(s.id)}>
+                                                <Trash2 size={14} />
+                                            </button>
+                                            <button className="pz-ico" type="button" aria-label={isOpen ? 'Kapat' : 'Aç'} onClick={() => toggleExpand(s.id)}>
+                                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {isOpen && (
+                                        <div className="pz-detail">
+                                            <div className="pz-sechead">
+                                                <span className="pz-sechead-n">Bağlı mesajlar</span>
+                                                <span className="pz-rule" />
+                                                <span className="pz-sechead-x">{linked.length ? `${linked.length} mesaj` : 'yok'}</span>
                                             </div>
-                                        </td>
-                                    </tr>
-                                    {expandedSet === s.id && (
-                                        <tr style={{ background: '#fafafa' }}>
-                                            <td colSpan={7} style={{ padding: '20px 40px' }}>
-                                                <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 13, color: '#374151' }}>Bağlı Mesajlar</div>
-                                                {s.groupMessages && s.groupMessages.length > 0 ? (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                                                        {s.groupMessages.map(m => {
-                                                            const msgObj = messages.find(x => x.id === m.messageId);
-                                                            return (
-                                                                <div key={m.messageId} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6 }}>
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                                        {getChannelIcon(msgObj?.channel)}
-                                                                        <span style={{ fontSize: 13, fontWeight: 500 }}>{msgObj?.name || 'Bilinmeyen Mesaj'}</span>
+
+                                            {linked.length > 0 ? (
+                                                linked.map(m => {
+                                                    const msgObj = messages.find(x => x.id === m.messageId);
+                                                    const mch = channelMeta(msgObj?.channel);
+                                                    return (
+                                                        <div className="pz-card" key={m.messageId}>
+                                                            <div className="pz-card-row">
+                                                                <span className="pz-av sm" style={{ background: mch.bg, color: mch.fg }}>
+                                                                    <mch.Icon size={14} />
+                                                                </span>
+                                                                <div style={{ minWidth: 0, flexGrow: 1 }}>
+                                                                    <div style={{ fontSize: 13, fontWeight: 650 }}>
+                                                                        {msgObj?.name || 'Kaydı bulunamayan mesaj'}
                                                                     </div>
-                                                                    <button style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }} onClick={() => unlinkMessage(s.id, m.messageId)}>Çıkar</button>
+                                                                    <div className="pz-sub" style={{ marginTop: 3 }}>
+                                                                        {mch.label}
+                                                                        {msgObj?.templateName ? ` · ${msgObj.templateName}` : ''}
+                                                                    </div>
                                                                 </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                ) : <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Henüz mesaj eklenmemiş.</div>}
-                                                
-                                                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                                                    <select className="mkt-filter-select" style={{ width: 250 }} id={`msg-select-${s.id}`}>
-                                                        <option value="">Mesaj Seçin...</option>
-                                                        {messages.filter(m => m.channel === s.channel && !s.groupMessages?.some(sm => sm.messageId === m.id)).map(m => (
-                                                            <option key={m.id} value={m.id}>{m.name}</option>
-                                                        ))}
-                                                    </select>
-                                                    <button className="mkt-btn-secondary" style={{ padding: '7px 12px' }} onClick={() => {
+                                                                <button
+                                                                    className="pz-btn pz-btn-sm pz-btn-danger"
+                                                                    type="button"
+                                                                    onClick={() => unlinkMessage(s.id, m.messageId)}
+                                                                >
+                                                                    Çıkar
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <p style={{ margin: 0, fontSize: 12.5, color: '#6b7480' }}>
+                                                    Bu gruba henüz mesaj bağlanmamış — gönderim yapabilmek için en az bir tane gerekiyor.
+                                                </p>
+                                            )}
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 12 }}>
+                                                <label className="pz-sr" htmlFor={`msg-select-${s.id}`}>Eklenecek mesaj</label>
+                                                <select className="pz-select" style={{ minWidth: 260 }} id={`msg-select-${s.id}`} defaultValue="">
+                                                    <option value="">Mesaj seçin…</option>
+                                                    {secilebilir.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                                </select>
+                                                <button
+                                                    className="pz-btn pz-btn-sm"
+                                                    type="button"
+                                                    onClick={() => {
                                                         const sel = document.getElementById(`msg-select-${s.id}`);
-                                                        if (sel.value) linkMessage(s.id, sel.value);
-                                                    }}>+ Mesaj Ekle</button>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                                        if (sel?.value) linkMessage(s.id, sel.value);
+                                                    }}
+                                                >
+                                                    <Plus size={13} /> Mesaj Ekle
+                                                </button>
+                                            </div>
+                                        </div>
                                     )}
                                 </React.Fragment>
-                            ))}
-                        </tbody>
-                    </table>
+                            );
+                        })}
+                    </>
                 )}
-            </div>
+            </section>
+
             {showForm && <AdSetFormModal wsId={wsId} initial={editItem} campaigns={campaigns} contactGroups={contactGroups} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />}
-        </div>
+        </>
     );
 }
 
@@ -1939,82 +1896,120 @@ function MessageFormModal({ wsId, initial, onClose, onSave }) {
         setSaving(false);
     };
 
+    /* Seçili WhatsApp şablonunun metni — onaylı şablon değiştirilemez,
+       ne gönderileceğini görebilmek için salt okunur gösteriliyor. */
+    const seciliSablon = waTemplates.find(t => t.id === externalId);
+
     return (
-        <div className="mkt-modal-overlay" onClick={onClose}>
-            <div className="grp-form-modal" onClick={e => e.stopPropagation()}>
-                <div className="grp-modal-header">
-                    <h2 className="grp-modal-title">{initial ? 'Mesajı Düzenle' : 'Yeni Mesaj'}</h2>
-                    <button className="grp-modal-close" onClick={onClose}>✕</button>
+        <div className="pz-overlay" onClick={onClose}>
+            <div className="pz-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pz-mesaj-b">
+                <div className="pz-modal-h">
+                    <span className="pz-modal-ico"><MessageSquare size={17} /></span>
+                    <div style={{ flexGrow: 1, minWidth: 0 }}>
+                        <h2 id="pz-mesaj-b">{initial ? 'Mesajı Düzenle' : 'Yeni Mesaj'}</h2>
+                        <p>Gruplara bağlanacak içerik. Kanala göre alanlar değişir.</p>
+                    </div>
+                    <button className="pz-modal-x" type="button" aria-label="Kapat" onClick={onClose}><X size={15} /></button>
                 </div>
-                <div className="grp-modal-body">
-                    <div className="grp-field">
-                        <label className="grp-label">Mesaj Adı</label>
-                        <input className="grp-input" value={name} onChange={e => setName(e.target.value)} />
+
+                <div className="pz-modal-b">
+                    <div className="pz-field">
+                        <label htmlFor="pz-m-ad">Mesaj adı <span className="pz-req" aria-hidden="true">*</span></label>
+                        <input id="pz-m-ad" className="pz-input" value={name} onChange={e => setName(e.target.value)} placeholder="Örn. Eylül kapanış duyurusu" required />
                     </div>
-                    <div className="grp-field">
-                        <label className="grp-label">Kanal</label>
-                        <select className="grp-input" value={channel} onChange={e => { setChannel(e.target.value); setExternalId(''); }}>
-                            <option value="WHATSAPP">WhatsApp</option>
-                            <option value="AI_CALL">AI Arama</option>
-                            <option value="EMAIL">E-posta</option>
-                            <option value="SMS">SMS (NetGSM)</option>
-                        </select>
+
+                    <div className="pz-field">
+                        <span className="pz-field-l" id="pz-m-kanal-l">Kanal</span>
+                        <div className="pz-pills pz-pills-wide" role="group" aria-labelledby="pz-m-kanal-l">
+                            {['WHATSAPP', 'AI_CALL', 'EMAIL', 'SMS'].map(code => (
+                                <button
+                                    key={code}
+                                    type="button"
+                                    className={`pz-pill ${channel === code ? 'active' : ''}`}
+                                    onClick={() => { setChannel(code); setExternalId(''); }}
+                                >
+                                    {channelMeta(code).label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                    
+
+                    <div className="pz-modal-rule" />
+
                     {channel === 'WHATSAPP' && (
-                        <div className="grp-field">
-                            <label className="grp-label">WhatsApp Şablonu</label>
-                            <select className="grp-input" value={externalId} onChange={e => setExternalId(e.target.value)}>
-                                <option value="">Seçiniz...</option>
-                                {waTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                        </div>
+                        <>
+                            <div className="pz-field">
+                                <label htmlFor="pz-m-sablon">Onaylı şablon</label>
+                                <select id="pz-m-sablon" className="pz-input" value={externalId} onChange={e => setExternalId(e.target.value)}>
+                                    <option value="">Şablon seçin…</option>
+                                    {waTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                </select>
+                            </div>
+                            {seciliSablon?.bodyText && (
+                                <div className="pz-field">
+                                    <span className="pz-field-l">Şablon metni</span>
+                                    <p className="pz-preview">{seciliSablon.bodyText}</p>
+                                    <span className="pz-hint">Onaylı şablonun metni değiştirilemez — WhatsApp tarafında sabittir.</span>
+                                </div>
+                            )}
+                            <div className="pz-field">
+                                <label htmlFor="pz-m-serbest">Serbest metin</label>
+                                <textarea id="pz-m-serbest" className="pz-input" value={bodyText} onChange={e => setBodyText(e.target.value)} placeholder="Şablon kullanmayan gönderimler için" />
+                            </div>
+                        </>
                     )}
-                    
+
                     {channel === 'AI_CALL' && (
-                        <div className="grp-field">
-                            <label className="grp-label">AI Sesli Asistanı</label>
-                            <select className="grp-input" value={externalId} onChange={e => setExternalId(e.target.value)}>
-                                <option value="">Seçiniz...</option>
-                                {retellAgents.map(a => <option key={a.agent_id || a.id} value={a.agent_id || a.id}>{a.agent_name || a.name || a.agent_id}</option>)}
+                        <div className="pz-field">
+                            <label htmlFor="pz-m-ajan">AI sesli asistanı</label>
+                            <select id="pz-m-ajan" className="pz-input" value={externalId} onChange={e => setExternalId(e.target.value)}>
+                                <option value="">Asistan seçin…</option>
+                                {retellAgents.map(a => (
+                                    <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
+                                        {a.agent_name || a.name || a.agent_id}
+                                    </option>
+                                ))}
                             </select>
+                            <span className="pz-hint">Seçilmezse çalışma alanının varsayılan asistanı kullanılır.</span>
                         </div>
                     )}
-                    
+
                     {channel === 'EMAIL' && (
                         <>
-                            <div className="grp-field">
-                                <label className="grp-label">Konu</label>
-                                <input className="grp-input" value={subject} onChange={e => setSubject(e.target.value)} />
+                            <div className="pz-field">
+                                <label htmlFor="pz-m-konu">Konu</label>
+                                <input id="pz-m-konu" className="pz-input" value={subject} onChange={e => setSubject(e.target.value)} placeholder="E-postanın konu satırı" />
                             </div>
-                            <div className="grp-field">
-                                <label className="grp-label">İçerik</label>
-                                <textarea className="grp-input" rows={4} value={bodyText} onChange={e => setBodyText(e.target.value)} />
+                            <div className="pz-field">
+                                <label htmlFor="pz-m-icerik">İçerik</label>
+                                <textarea id="pz-m-icerik" className="pz-input" rows={5} value={bodyText} onChange={e => setBodyText(e.target.value)} />
                             </div>
                         </>
                     )}
 
                     {channel === 'SMS' && (
-                        <div className="grp-field">
-                            <label className="grp-label">SMS Metni (NetGSM)</label>
+                        <div className="pz-field">
+                            <label htmlFor="pz-m-sms">SMS metni</label>
                             <textarea
-                                className="grp-input"
-                                rows={4}
-                                placeholder="SMS içeriğinizi yazın..."
+                                id="pz-m-sms"
+                                className="pz-input"
+                                rows={5}
+                                placeholder="SMS içeriğini yaz…"
                                 value={bodyText}
                                 onChange={e => setBodyText(e.target.value)}
                             />
-                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
-                                <span>NetGSM SMS başlığı ile gönderilir.</span>
-                                <span>{bodyText.length} karakter ({Math.ceil(bodyText.length / 160) || 1} SMS)</span>
+                            <div className="pz-hint" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>NetGSM başlığıyla gönderilir.</span>
+                                <span>{bodyText.length} karakter · {Math.ceil(bodyText.length / 160) || 1} SMS</span>
                             </div>
                         </div>
                     )}
                 </div>
-                <div className="grp-modal-footer">
-                    <button className="grp-btn-cancel" onClick={onClose}>İptal</button>
-                    <button className="grp-btn-save" style={{ background: '#2563eb' }} onClick={handleSave} disabled={saving || !name}>
-                        {saving ? 'Kaydediliyor...' : 'Kaydet'}
+
+                <div className="pz-modal-f">
+                    <button className="pz-btn" type="button" onClick={onClose}>Vazgeç</button>
+                    <button className="pz-btn pz-btn-primary" type="button" onClick={handleSave} disabled={saving || !name}>
+                        {saving ? 'Kaydediliyor…' : 'Kaydet'}
                     </button>
                 </div>
             </div>
@@ -2060,59 +2055,101 @@ function MessagesTab({ wsId }) {
 
     const filtered = channelFilter ? messages.filter(m => m.channel === channelFilter) : messages;
 
+    const CHANNELS = [
+        { value: '',         label: 'Tümü' },
+        { value: 'WHATSAPP', label: 'WhatsApp' },
+        { value: 'AI_CALL',  label: 'AI Arama' },
+        { value: 'EMAIL',    label: 'E-posta' },
+        { value: 'SMS',      label: 'SMS' },
+    ];
+
+    /** Mesajın neye dayandığı: şablon adı, ajan kimliği, konu ya da metnin başı. */
+    const reference = (m) =>
+        m.templateName || m.externalId || m.emailSubject || m.subject ||
+        (m.content ? m.content.slice(0, 80) : '—');
+
     return (
-        <div className="mkt-analytics-wrap">
-            <div className="mkt-analytics-bar">
-                <div className="mkt-filter-tabs">
-                    {[{value: '', label: 'Tümü'}, {value: 'WHATSAPP', label: 'WhatsApp'}, {value: 'AI_CALL', label: 'AI Arama'}, {value: 'EMAIL', label: 'E-posta'}, {value: 'SMS', label: 'SMS'}].map(o => (
-                        <button key={o.value} className={`mkt-filter-tab ${channelFilter === o.value ? 'active' : ''}`} onClick={() => setChannelFilter(o.value)}>{o.label}</button>
+        <>
+            <PageHead
+                title="Mesajlar"
+                lede="Gruplara bağlanan hazır içerikler: WhatsApp şablonları, arama senaryoları, e-posta ve SMS metinleri."
+            />
+
+            <div className="pz-filters">
+                <div className="pz-pills" role="group" aria-label="Kanal">
+                    {CHANNELS.map(o => (
+                        <button
+                            key={o.value}
+                            type="button"
+                            className={`pz-pill ${channelFilter === o.value ? 'active' : ''}`}
+                            onClick={() => setChannelFilter(o.value)}
+                        >
+                            {o.label}
+                        </button>
                     ))}
                 </div>
-                <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Mesaj</button>
+                <span className="pz-spacer" />
+                <button className="pz-btn pz-btn-primary" type="button" onClick={() => setShowForm(true)}>
+                    <Plus size={15} /> Yeni Mesaj
+                </button>
             </div>
-            
-            <div className="mkt-table-wrap">
-                {loading ? <div className="mkt-loading">Yükleniyor...</div> : (
-                    <table className="mkt-table">
-                        <thead>
-                            <tr>
-                                <th>Mesaj Adı</th>
-                                <th>Kanal</th>
-                                <th>Referans (Şablon/Agent)</th>
-                                <th>Kullanım</th>
-                                <th style={{ textAlign: 'right' }}>İşlemler</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filtered.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', padding:20}}>Mesaj bulunamadı.</td></tr>}
-                            {filtered.map(m => (
-                                <tr key={m.id}>
-                                    <td style={{ fontWeight: 600 }}>{m.name}</td>
-                                    <td>
-                                        <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 12, background: '#f3f4f6', fontWeight: 600 }}>
-                                            {m.channel}
-                                        </span>
-                                    </td>
-                                    <td style={{ fontSize: 12, color: '#4b5563', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {m.templateName || m.externalId || m.emailSubject || m.subject || (m.content ? m.content.substring(0, 30) + '...' : '-')}
-                                    </td>
-                                    <td>
-                                        <span style={{ fontSize: 12, color: '#6b7280' }}>{m.usageCount || 0} grupta kullanılıyor</span>
-                                    </td>
-                                    <td style={{ textAlign: 'right' }}>
-                                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                                            <button className="grp-icon-action" onClick={() => { setEditItem(m); setShowForm(true); }}><Edit2 size={14}/></button>
-                                            <button className="grp-icon-action danger" onClick={() => handleDelete(m.id)}><Trash2 size={14}/></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+
+            <section className="pz-surface">
+                {loading ? (
+                    <div className="pz-loading">Yükleniyor…</div>
+                ) : filtered.length === 0 ? (
+                    <EmptyState
+                        Icon={MessageSquare}
+                        title="Mesaj yok"
+                        note={channelFilter ? 'Bu kanalda kayıtlı mesaj bulunmuyor.' : 'Gruplara bağlamak için önce bir mesaj oluştur.'}
+                    />
+                ) : (
+                    <>
+                        <div className="pz-cols msg">
+                            <span />
+                            <span>Mesaj</span>
+                            <span>Kanal</span>
+                            <span>İçerik</span>
+                            <span>Kullanım</span>
+                            <span />
+                        </div>
+                        {filtered.map(m => {
+                            const ch = channelMeta(m.channel);
+                            return (
+                                <div className="pz-row msg" key={m.id}>
+                                    <span className="pz-av" style={{ background: ch.bg, color: ch.fg }}>
+                                        <ch.Icon size={16} />
+                                    </span>
+                                    <div style={{ minWidth: 0 }}>
+                                        <div className="pz-name" style={{ cursor: 'default' }}>{m.name}</div>
+                                    </div>
+                                    <span className="pz-chip" style={{ background: ch.bg, color: ch.fg }}>{ch.label}</span>
+                                    <span
+                                        style={{ fontSize: 12.5, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                        title={reference(m)}
+                                    >
+                                        {reference(m)}
+                                    </span>
+                                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#475569' }}>
+                                        {m.usageCount ? `${m.usageCount} grupta` : 'Kullanılmıyor'}
+                                    </span>
+                                    <div className="pz-acts">
+                                        <button className="pz-ico" type="button" aria-label="Düzenle" onClick={() => { setEditItem(m); setShowForm(true); }}>
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button className="pz-ico danger" type="button" aria-label="Sil" onClick={() => handleDelete(m.id)}>
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </>
                 )}
-            </div>
+            </section>
+
             {showForm && <MessageFormModal wsId={wsId} initial={editItem} onSave={handleSave} onClose={() => { setShowForm(false); setEditItem(null); }} />}
-        </div>
+        </>
     );
 }
 
@@ -2273,377 +2310,312 @@ function ListsTab({ wsId }) {
         setAddingId(null);
     };
 
+    /* Segment renkleri kimliğe bağlı; tanımsız gelen segment nötr moru alır. */
+    const SEGMENT_COLORS = {
+        cold_leads: '#475569', warm_leads: '#b45309', hot_leads: '#b91c1c',
+        silent_30_days: '#475569', has_phone: '#1d4ed8', has_email: '#7e22ce',
+        whatsapp_active: '#15803d', recent_contacts: '#0e7490'
+    };
+
     return (
-        <div className="mkt-analytics-wrap">
-            <div className="mkt-analytics-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 2, borderRadius: 7 }}>
+        <>
+            <PageHead
+                title="Listeler"
+                lede="Gönderimlerin hedef kitlesi. Elle kurduğun listeler ve sistemin kendi ürettiği segmentler."
+            />
+
+            <div className="pz-filters">
+                <div className="pz-pills" role="group" aria-label="Liste türü">
                     {[
-                        { key: 'manual', label: `📋 Manuel Listeler (${groups.length})` },
-                        { key: 'smart', label: `🤖 Otomatik Segmentler (${smartSegments.length})` }
+                        { key: 'manual', label: 'Manuel listeler', n: groups.length },
+                        { key: 'smart',  label: 'Otomatik segmentler', n: smartSegments.length }
                     ].map(t => (
-                        <button key={t.key} onClick={() => setListType(t.key)} style={{
-                            padding: '6px 14px', border: 'none', borderRadius: 6, fontSize: 12,
-                            fontWeight: 600, cursor: 'pointer',
-                            background: listType === t.key ? '#fff' : 'transparent',
-                            color: listType === t.key ? '#1e293b' : '#64748b',
-                            boxShadow: listType === t.key ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
-                        }}>{t.label}</button>
+                        <button
+                            key={t.key}
+                            type="button"
+                            className={`pz-pill ${listType === t.key ? 'active' : ''}`}
+                            onClick={() => setListType(t.key)}
+                        >
+                            {t.label}<i>{t.n}</i>
+                        </button>
                     ))}
                 </div>
+                <span className="pz-spacer" />
                 {listType === 'manual' && (
-                    <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Liste</button>
+                    <button className="pz-btn pz-btn-primary" type="button" onClick={() => setShowForm(true)}>
+                        <Plus size={15} /> Yeni Liste
+                    </button>
                 )}
             </div>
 
             {/* Otomatik Segmentler Görünümü */}
             {listType === 'smart' && (
-                <div style={{ padding: '16px 0' }}>
-                    {segmentsLoading ? <div className="mkt-loading">Yükleniyor...</div> : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                            {smartSegments.map(seg => {
-                                const count = segmentCounts[seg.id] || 0;
-                                const SEGMENT_COLORS = {
-                                    cold_leads: '#64748b', warm_leads: '#f59e0b', hot_leads: '#ef4444',
-                                    silent_30_days: '#94a3b8', has_phone: '#2563eb', has_email: '#7c3aed',
-                                    whatsapp_active: '#16a34a', recent_contacts: '#0891b2'
-                                };
-                                const color = SEGMENT_COLORS[seg.id] || '#6366f1';
-
-                                return (
-                                    <div key={seg.id} style={{
-                                        background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb',
-                                        padding: '16px 20px', transition: 'all 0.15s', cursor: 'default'
-                                    }}
-                                        onMouseOver={e => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.05)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
-                                        onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                <div style={{
-                                                    width: 36, height: 36, borderRadius: 10,
-                                                    background: color + '15', color: color,
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    fontSize: 16
-                                                }}>
-                                                    {seg.icon || '📊'}
-                                                </div>
-                                                <div>
-                                                    <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{seg.name}</div>
-                                                    {seg.description && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{seg.description}</div>}
-                                                </div>
-                                            </div>
-                                            <div style={{
-                                                background: color + '12', color: color,
-                                                padding: '4px 12px', borderRadius: 8,
-                                                fontSize: 14, fontWeight: 700
-                                            }}>
-                                                {count.toLocaleString()}
-                                            </div>
-                                        </div>
-                                        {seg.group && (
-                                            <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
-                                                Grup: <strong style={{ color: '#64748b' }}>{seg.group}</strong>
-                                            </div>
-                                        )}
+                segmentsLoading ? (
+                    <div className="pz-surface"><div className="pz-loading">Yükleniyor…</div></div>
+                ) : smartSegments.length === 0 ? (
+                    <div className="pz-surface">
+                        <EmptyState
+                            Icon={Users}
+                            title="Otomatik segment yok"
+                            note="Segmentler kişi hareketlerine göre kendiliğinden oluşur."
+                        />
+                    </div>
+                ) : (
+                    <div className="pz-seg">
+                        {smartSegments.map(seg => {
+                            const count = segmentCounts[seg.id] || 0;
+                            const color = SEGMENT_COLORS[seg.id] || '#7e22ce';
+                            return (
+                                <div className="pz-seg-card" key={seg.id}>
+                                    <div className="pz-seg-top">
+                                        <span className="pz-av" style={{ background: color + '14', color }}>
+                                            <Users size={15} />
+                                        </span>
+                                        <span className="pz-badge" style={{ background: color + '14', color }}>
+                                            {count.toLocaleString('tr-TR')}
+                                        </span>
                                     </div>
-                                );
-                            })}
-                            {smartSegments.length === 0 && (
-                                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-                                    Otomatik segment tanımlanmamış
+                                    <div style={{ fontSize: 13.5, fontWeight: 650, marginBottom: 4 }}>{seg.name}</div>
+                                    {seg.description && (
+                                        <div style={{ fontSize: 12, lineHeight: 1.45, color: '#6b7480' }}>{seg.description}</div>
+                                    )}
+                                    {seg.group && (
+                                        <div style={{ marginTop: 8, fontSize: 11.5, color: '#6b7480' }}>
+                                            Grup: <strong style={{ color: '#475569' }}>{seg.group}</strong>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+                            );
+                        })}
+                    </div>
+                )
             )}
 
             {/* Manuel Listeler Görünümü */}
-            {listType === 'manual' && (loading ? <div className="mkt-loading">Yükleniyor...</div> : (
-                <div className="mkt-table-wrap">
-                    <table className="mkt-table">
-                        <thead>
-                            <tr>
-                                <th>İkon</th>
-                                <th>Liste Adı</th>
-                                <th>Açıklama</th>
-                                <th>Kişi Sayısı</th>
-                                <th style={{ textAlign: 'right' }}>İşlemler</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+            {listType === 'manual' && (
+                <section className="pz-surface">
+                    {loading ? (
+                        <div className="pz-loading">Yükleniyor…</div>
+                    ) : groups.length === 0 ? (
+                        <EmptyState
+                            Icon={Users}
+                            title="Liste yok"
+                            note="Gönderim yapmak için önce bir hedef kitle listesi oluştur."
+                        />
+                    ) : (
+                        <>
+                            <div className="pz-cols list">
+                                <span />
+                                <span>Liste</span>
+                                <span>Açıklama</span>
+                                <span>Kişi</span>
+                                <span />
+                            </div>
                             {groups.map(g => (
-                                <tr key={g.id}>
-                                    <td onClick={() => { setViewGroup(g); setMemberSearch(''); }} style={{ cursor: 'pointer' }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: g.color || '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                                            {g.name.charAt(0).toUpperCase()}
-                                        </div>
-                                    </td>
-                                    <td onClick={() => { setViewGroup(g); setMemberSearch(''); }} style={{ fontWeight: 600, cursor: 'pointer' }}>
-                                        <span style={{ color: '#1d4ed8' }}>{g.name}</span>
-                                    </td>
-                                    <td style={{ fontSize: 12, color: '#6b7280' }}>{g.description || '-'}</td>
-                                    <td>
-                                        <span className="mkt-badge" style={{ background: '#eff6ff', color: '#1d4ed8', fontWeight: 600 }}>
-                                            {(g._count?.members || 0).toLocaleString()} kişi
-                                        </span>
-                                    </td>
-                                    <td style={{ textAlign: 'right' }}>
-                                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                                            <button className="grp-icon-action" title="Kişileri Görüntüle" onClick={() => { setViewGroup(g); setMemberSearch(''); }}><Eye size={14}/></button>
-                                            <button className="grp-icon-action" title="Düzenle" onClick={() => { setEditGroup(g); setShowForm(true); }}><Edit2 size={14}/></button>
-                                            <button className="grp-icon-action danger" title="Sil" onClick={() => handleDelete(g)}><Trash2 size={14}/></button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                <div className="pz-row list" key={g.id}>
+                                    <span className="pz-av">{initials(g.name)}</span>
+                                    <button
+                                        type="button"
+                                        className="pz-name"
+                                        onClick={() => { setViewGroup(g); setMemberSearch(''); }}
+                                    >
+                                        {g.name}
+                                    </button>
+                                    <span style={{ fontSize: 12.5, color: '#6b7480' }}>{g.description || '—'}</span>
+                                    <span className="pz-num">{num(g._count?.members || 0)}</span>
+                                    <div className="pz-acts">
+                                        <button className="pz-ico" type="button" aria-label="Kişileri görüntüle" onClick={() => { setViewGroup(g); setMemberSearch(''); }}>
+                                            <Eye size={14} />
+                                        </button>
+                                        <button className="pz-ico" type="button" aria-label="Düzenle" onClick={() => { setEditGroup(g); setShowForm(true); }}>
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button className="pz-ico danger" type="button" aria-label="Sil" onClick={() => handleDelete(g)}>
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </div>
                             ))}
-                        </tbody>
-                    </table>
-                </div>
-            ))}
-            
+                        </>
+                    )}
+                </section>
+            )}
+
             {showForm && (
-                <div className="mkt-modal-overlay" onClick={() => { setShowForm(false); setEditGroup(null); }}>
-                    <div className="grp-form-modal" onClick={e => e.stopPropagation()}>
-                        <div className="grp-modal-header">
-                            <h2 className="grp-modal-title">{editGroup ? 'Listeyi Düzenle' : 'Yeni Liste'}</h2>
-                            <button className="grp-modal-close" onClick={() => { setShowForm(false); setEditGroup(null); }}>✕</button>
-                        </div>
-                        <div className="grp-modal-body">
-                            {/* Reusing GroupFormModal logic inline for simplicity in rewrite, though could componentize further */}
-                            <form onSubmit={e => {
-                                e.preventDefault();
-                                const fd = new FormData(e.target);
-                                const data = { name: fd.get('name'), description: fd.get('desc'), color: fd.get('color'), icon: '👥' };
-                                editGroup ? handleUpdate(data) : handleCreate(data);
-                            }}>
-                                <div className="grp-field">
-                                    <label className="grp-label">Liste Adı</label>
-                                    <input name="name" className="grp-input" defaultValue={editGroup?.name || ''} required />
+                <div className="pz-overlay" onClick={() => { setShowForm(false); setEditGroup(null); }}>
+                    <div className="pz-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pz-liste-b">
+                        <form onSubmit={e => {
+                            e.preventDefault();
+                            const fd = new FormData(e.target);
+                            const data = { name: fd.get('name'), description: fd.get('desc'), color: fd.get('color'), icon: '👥' };
+                            editGroup ? handleUpdate(data) : handleCreate(data);
+                        }}>
+                            <div className="pz-modal-h">
+                                <span className="pz-modal-ico"><Users size={17} /></span>
+                                <div style={{ flexGrow: 1, minWidth: 0 }}>
+                                    <h2 id="pz-liste-b">{editGroup ? 'Listeyi Düzenle' : 'Yeni Liste'}</h2>
+                                    <p>Gönderimlerde hedef kitle olarak seçebileceğin kişi listesi.</p>
                                 </div>
-                                <div className="grp-field">
-                                    <label className="grp-label">Açıklama</label>
-                                    <input name="desc" className="grp-input" defaultValue={editGroup?.description || ''} />
+                                <button className="pz-modal-x" type="button" aria-label="Kapat" onClick={() => { setShowForm(false); setEditGroup(null); }}>
+                                    <X size={15} />
+                                </button>
+                            </div>
+
+                            <div className="pz-modal-b">
+                                <div className="pz-field">
+                                    <label htmlFor="pz-l-ad">Liste adı <span className="pz-req" aria-hidden="true">*</span></label>
+                                    <input id="pz-l-ad" name="name" className="pz-input" defaultValue={editGroup?.name || ''} placeholder="Örn. Gaziemir üyeleri" required />
                                 </div>
-                                <div className="grp-field">
-                                    <label className="grp-label">Renk Hex</label>
-                                    <input name="color" type="color" className="grp-input" style={{ padding: 4, height: 40 }} defaultValue={editGroup?.color || '#2563eb'} />
+                                <div className="pz-field">
+                                    <label htmlFor="pz-l-ac">Açıklama</label>
+                                    <input id="pz-l-ac" name="desc" className="pz-input" defaultValue={editGroup?.description || ''} placeholder="Bu listede kimler var?" />
                                 </div>
-                                <div className="grp-modal-footer" style={{ marginTop: 20 }}>
-                                    <button type="submit" className="grp-btn-save" style={{ background: '#2563eb' }}>Kaydet</button>
+                                <div className="pz-field">
+                                    <label htmlFor="pz-l-renk">Renk</label>
+                                    <input id="pz-l-renk" name="color" type="color" className="pz-input" style={{ padding: 4, height: 42, width: 84, cursor: 'pointer' }} defaultValue={editGroup?.color || '#ef4444'} />
+                                    <span className="pz-hint">Listeyi listede ve gönderim ekranlarında ayırt etmek için.</span>
                                 </div>
-                            </form>
-                        </div>
+                            </div>
+
+                            <div className="pz-modal-f">
+                                <button className="pz-btn" type="button" onClick={() => { setShowForm(false); setEditGroup(null); }}>Vazgeç</button>
+                                <button type="submit" className="pz-btn pz-btn-primary">Kaydet</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
 
             {/* Listeye Kayıtlı Kişiler / Üye Görüntüleme Modalı */}
             {viewGroup && (
-                <div className="mkt-modal-overlay" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>
-                    <div className="grp-form-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-                        <div className="grp-modal-header">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{
-                                    width: 34, height: 34, borderRadius: 8,
-                                    background: viewGroup.color || '#2563eb', color: '#fff',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 14
-                                }}>
-                                    {viewGroup.name?.charAt(0).toUpperCase() || '👥'}
-                                </div>
-                                <div>
-                                    <h2 className="grp-modal-title" style={{ margin: 0, fontSize: 16 }}>{viewGroup.name}</h2>
-                                    <div style={{ fontSize: 12, color: '#6b7280' }}>
-                                        {viewGroup.description || 'Hedef Kitle Listesi'} • <strong style={{ color: '#2563eb' }}>{memberTotal || members.length} Kişi</strong>
-                                    </div>
-                                </div>
+                <div className="pz-overlay" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>
+                    <div className="pz-modal wide" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pz-uye-b">
+                        <div className="pz-modal-h" style={{ alignItems: 'center' }}>
+                            <span className="pz-av" style={{ width: 40, height: 40, borderRadius: 12, fontSize: 13 }}>
+                                {initials(viewGroup.name)}
+                            </span>
+                            <div style={{ flexGrow: 1, minWidth: 0 }}>
+                                <h2 id="pz-uye-b">{viewGroup.name}</h2>
+                                <p>{viewGroup.description || 'Hedef kitle listesi'} · {num(memberTotal || members.length)} kişi</p>
                             </div>
-                            <button className="grp-modal-close" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>✕</button>
+                            <button className="pz-modal-x" type="button" aria-label="Kapat" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>
+                                <X size={15} />
+                            </button>
                         </div>
 
-                        <div style={{ padding: '12px 24px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <div style={{ position: 'relative', flex: 1 }}>
-                                    <Search size={16} style={{ position: 'absolute', left: 12, top: 11, color: '#9ca3af' }} />
-                                    <input
-                                        type="text"
-                                        className="grp-input"
-                                        placeholder="Bu listede ara (Ad, telefon, e-posta)..."
-                                        value={memberSearch}
-                                        onChange={e => setMemberSearch(e.target.value)}
-                                        style={{ paddingLeft: 36, fontSize: 13, height: 38 }}
-                                    />
-                                    {memberSearch && (
-                                        <button
-                                            onClick={() => setMemberSearch('')}
-                                            style={{ position: 'absolute', right: 10, top: 9, background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={() => { setShowAddMember(!showAddMember); setAddSearch(''); setAddResults([]); }}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: 8, border: 'none',
-                                        background: showAddMember ? '#dbeafe' : '#2563eb', color: showAddMember ? '#1e40af' : '#fff',
-                                        fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                                        display: 'flex', alignItems: 'center', gap: 4
-                                    }}
-                                >
-                                    <Plus size={14} /> Kişi Ekle
-                                </button>
-                            </div>
+                        <div style={{ padding: '0 24px 14px', display: 'flex', gap: 9, alignItems: 'center' }}>
+                            <label className="pz-sr" htmlFor="pz-uye-ara">Bu listede ara</label>
+                            <input
+                                id="pz-uye-ara"
+                                className="pz-input"
+                                type="search"
+                                placeholder="Bu listede ara — ad, telefon, e-posta"
+                                value={memberSearch}
+                                onChange={e => setMemberSearch(e.target.value)}
+                                style={{ flexGrow: 1 }}
+                            />
+                            <button
+                                className={`pz-btn ${showAddMember ? '' : 'pz-btn-primary'}`}
+                                type="button"
+                                onClick={() => { setShowAddMember(!showAddMember); setAddSearch(''); setAddResults([]); }}
+                            >
+                                <Plus size={14} /> Kişi Ekle
+                            </button>
+                        </div>
 
-                            {/* Kişi ekleme paneli */}
-                            {showAddMember && (
-                                <div style={{
-                                    marginTop: 10, background: '#fff', border: '1px solid #e2e8f0',
-                                    borderRadius: 10, padding: '10px 12px'
-                                }}>
-                                    <div style={{ position: 'relative' }}>
-                                        <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
-                                        <input
-                                            type="text"
-                                            placeholder="Kişi adı veya telefon ile ara..."
-                                            value={addSearch}
-                                            onChange={e => setAddSearch(e.target.value)}
-                                            style={{
-                                                width: '100%', padding: '8px 12px 8px 32px', borderRadius: 8,
-                                                border: '1px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box'
-                                            }}
-                                            autoFocus
-                                        />
-                                    </div>
-                                    {addLoading && (
-                                        <div style={{ padding: '10px 0', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>Aranıyor...</div>
-                                    )}
-                                    {addResults.length > 0 && (
-                                        <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
-                                            {addResults.map(c => (
-                                                <div key={c.id} style={{
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                    padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
-                                                    transition: 'background 0.1s'
-                                                }}
-                                                    onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
-                                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                                                >
-                                                    <div>
-                                                        <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{c.name || 'İsimsiz'}</div>
-                                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.phone || c.email || '-'}</div>
+                        {showAddMember && (
+                            <div style={{ margin: '0 24px 14px', padding: '14px 16px', borderRadius: 14, background: '#fafafb', boxShadow: 'inset 0 0 0 1px #f0eced' }}>
+                                <div className="pz-field">
+                                    <label className="pz-sr" htmlFor="pz-uye-ekle">Kişi adı veya telefon</label>
+                                    <input
+                                        id="pz-uye-ekle"
+                                        className="pz-input"
+                                        type="search"
+                                        placeholder="Kişi adı veya telefon ile ara…"
+                                        value={addSearch}
+                                        onChange={e => setAddSearch(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                {addLoading && <p className="pz-hint" style={{ textAlign: 'center', margin: '10px 0 0' }}>Aranıyor…</p>}
+                                {addResults.length > 0 && (
+                                    <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
+                                        {addResults.map(c => (
+                                            <div className="pz-card" key={c.id} style={{ padding: '9px 12px' }}>
+                                                <div className="pz-card-row">
+                                                    <span className="pz-av sm">{initials(c.name)}</span>
+                                                    <div style={{ flexGrow: 1, minWidth: 0 }}>
+                                                        <div style={{ fontSize: 12.5, fontWeight: 650 }}>{c.name || 'İsimsiz'}</div>
+                                                        <div className="pz-hint">{c.phone || c.email || '—'}</div>
                                                     </div>
                                                     <button
+                                                        className="pz-btn pz-btn-sm"
+                                                        type="button"
                                                         onClick={() => handleAddMember(c.id)}
                                                         disabled={addingId === c.id}
-                                                        style={{
-                                                            padding: '4px 12px', borderRadius: 6, border: 'none',
-                                                            background: addingId === c.id ? '#d1fae5' : '#16a34a', color: '#fff',
-                                                            fontSize: 12, fontWeight: 600, cursor: addingId === c.id ? 'default' : 'pointer'
-                                                        }}
                                                     >
-                                                        {addingId === c.id ? '✓' : '+ Ekle'}
+                                                        {addingId === c.id ? 'Eklendi' : 'Ekle'}
                                                     </button>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {addSearch.length >= 2 && !addLoading && addResults.length === 0 && (
-                                        <div style={{ padding: '10px 0', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                                            Sonuç bulunamadı
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                            {membersLoading ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 0', gap: 10, color: '#6b7280' }}>
-                                    <Loader2 className="spinning" size={24} style={{ color: '#2563eb' }} />
-                                    <span style={{ fontSize: 13 }}>Kişiler yükleniyor...</span>
-                                </div>
-                            ) : members.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6b7280' }}>
-                                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', color: '#9ca3af' }}>
-                                        <Users size={24} />
-                                    </div>
-                                    <p style={{ margin: 0, fontWeight: 500, color: '#374151' }}>
-                                        {memberSearch ? 'Aramanıza uygun kişi bulunamadı.' : 'Bu listede henüz kayıtlı kişi bulunmuyor.'}
-                                    </p>
-                                    <p style={{ margin: '6px 0 0', fontSize: 12 }}>
-                                        Kişiler menüsünden müşteri seçip bu listeye ekleyebilir veya doğrudan toplu kampanya başlatabilirsiniz.
-                                    </p>
-                                </div>
-                            ) : (
-                                <table className="mkt-table" style={{ width: '100%', fontSize: 13 }}>
-                                    <thead>
-                                        <tr>
-                                            <th>Kişi</th>
-                                            <th>Telefon</th>
-                                            <th>E-posta</th>
-                                            <th>Eklenme Tarihi</th>
-                                            <th style={{ textAlign: 'right' }}>İşlem</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {members.map(m => (
-                                            <tr key={m.id}>
-                                                <td style={{ fontWeight: 600, color: '#111827' }}>
-                                                    {m.name || 'İsimsiz Müşteri'}
-                                                </td>
-                                                <td style={{ color: '#4b5563' }}>
-                                                    {m.phone ? (
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                            <Phone size={12} style={{ color: '#9ca3af' }} />
-                                                            {m.phone}
-                                                        </span>
-                                                    ) : '-'}
-                                                </td>
-                                                <td style={{ color: '#4b5563' }}>
-                                                    {m.email ? (
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                                            <Mail size={12} style={{ color: '#9ca3af' }} />
-                                                            {m.email}
-                                                        </span>
-                                                    ) : '-'}
-                                                </td>
-                                                <td style={{ fontSize: 12, color: '#9ca3af' }}>
-                                                    {m.addedAt ? new Date(m.addedAt).toLocaleDateString('tr-TR') : '-'}
-                                                </td>
-                                                <td style={{ textAlign: 'right' }}>
-                                                    <button
-                                                        className="grp-icon-action danger"
-                                                        title="Listeden Çıkar"
-                                                        onClick={() => handleRemoveMember(m.id)}
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </td>
-                                            </tr>
+                                            </div>
                                         ))}
-                                    </tbody>
-                                </table>
+                                    </div>
+                                )}
+                                {addSearch.length >= 2 && !addLoading && addResults.length === 0 && (
+                                    <p className="pz-hint" style={{ textAlign: 'center', margin: '10px 0 0' }}>Sonuç bulunamadı.</p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="pz-modal-b" style={{ paddingTop: 0 }}>
+                            {membersLoading ? (
+                                <div className="pz-loading" style={{ padding: 36 }}>Kişiler yükleniyor…</div>
+                            ) : members.length === 0 ? (
+                                <EmptyState
+                                    Icon={Users}
+                                    title={memberSearch ? 'Aramaya uyan kişi yok' : 'Bu listede kişi yok'}
+                                    note="Kişiler menüsünden müşteri seçip bu listeye ekleyebilirsin."
+                                />
+                            ) : (
+                                <div className="pz-tbl">
+                                    <div className="pz-tbl-cols" style={{ gridTemplateColumns: 'minmax(0,1.2fr) 150px minmax(0,1.3fr) 104px 40px' }}>
+                                        <span>Kişi</span>
+                                        <span>Telefon</span>
+                                        <span>E-posta</span>
+                                        <span>Eklenme</span>
+                                        <span />
+                                    </div>
+                                    {members.map(m => (
+                                        <div className="pz-tbl-row" key={m.id} style={{ gridTemplateColumns: 'minmax(0,1.2fr) 150px minmax(0,1.3fr) 104px 40px' }}>
+                                            <span style={{ fontWeight: 650 }}>{m.name || 'İsimsiz müşteri'}</span>
+                                            <span style={{ color: '#475569', fontVariantNumeric: 'tabular-nums' }}>{m.phone || '—'}</span>
+                                            <span style={{ color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {m.email || '—'}
+                                            </span>
+                                            <span className="pz-tnum" style={{ textAlign: 'left' }}>
+                                                {m.addedAt ? new Date(m.addedAt).toLocaleDateString('tr-TR') : '—'}
+                                            </span>
+                                            <button className="pz-ico danger" type="button" aria-label="Listeden çıkar" onClick={() => handleRemoveMember(m.id)}>
+                                                <Trash2 size={13} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
 
-                        <div className="grp-modal-footer" style={{ padding: '12px 24px', borderTop: '1px solid #f3f4f6', background: '#fafafa', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 12, color: '#6b7280' }}>
-                                💡 Bu kitleyi <strong>Gruplar (Ad Sets)</strong> sekmesinde hedef kitle olarak seçebilirsiniz.
+                        <div className="pz-modal-f" style={{ justifyContent: 'space-between' }}>
+                            <span className="pz-hint">
+                                Bu listeyi <strong style={{ color: '#0b1220' }}>Gruplar</strong> sekmesinde hedef kitle olarak seçebilirsin.
                             </span>
-                            <button
-                                type="button"
-                                className="grp-btn-save"
-                                style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', padding: '6px 16px', fontSize: 13 }}
-                                onClick={() => { setViewGroup(null); setMemberSearch(''); }}
-                            >
+                            <button className="pz-btn" type="button" onClick={() => { setViewGroup(null); setMemberSearch(''); }}>
                                 Kapat
                             </button>
                         </div>
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }
 
@@ -2675,20 +2647,22 @@ export default function Marketing() {
             {/* Sol Sidebar */}
             <div className="base-sidebar">
                 <div className="base-sidebar-header">
-                    <div className="base-sidebar-header-icon" style={{ background: '#eff6ff', color: '#2563eb', borderColor: '#dbeafe' }}>
+                    <div className="base-sidebar-header-icon">
                         <Megaphone size={16} />
                     </div>
                     <span>Pazarlama</span>
                 </div>
+                {/* Vurgu rengi .base-nav-item'ın kendi kuralından geliyor (kırmızı).
+                    Buradaki satır içi mavi zorlamalar kaldırıldı: Pazarlama tek
+                    başına mavi kalıyor, ayarlar sayfalarının hiçbiri öyle değil. */}
                 <nav className="base-nav">
                     {TABS.map(({ key, label, Icon }) => (
                         <button
                             key={key}
                             className={`base-nav-item ${activeTab === key ? 'active' : ''}`}
                             onClick={() => { setActiveTab(key); if (key !== 'adsets') setFilterCampaignId(''); }}
-                            style={activeTab === key ? { color: '#2563eb', borderColor: 'rgba(59,130,246,0.3)', boxShadow: '0 1px 4px rgba(37,99,235,0.08), 0 1px 2px rgba(0,0,0,0.03)' } : {}}
                         >
-                            <Icon size={16} style={activeTab === key ? { color: '#2563eb' } : {}} />
+                            <Icon size={16} />
                             {label}
                         </button>
                     ))}
@@ -2697,10 +2671,12 @@ export default function Marketing() {
 
             {/* Sağ İçerik */}
             <div className="base-content">
-                {activeTab === 'campaigns' && <CampaignsTab wsId={wsId} onGoToGroups={goToGroups} />}
-                {activeTab === 'adsets'    && <AdSetsTab wsId={wsId} initialCampaignFilter={filterCampaignId} />}
-                {activeTab === 'messages'  && <MessagesTab wsId={wsId} />}
-                {activeTab === 'lists'     && <ListsTab wsId={wsId} />}
+                <div className="pz">
+                    {activeTab === 'campaigns' && <CampaignsTab wsId={wsId} onGoToGroups={goToGroups} />}
+                    {activeTab === 'adsets'    && <AdSetsTab wsId={wsId} initialCampaignFilter={filterCampaignId} />}
+                    {activeTab === 'messages'  && <MessagesTab wsId={wsId} />}
+                    {activeTab === 'lists'     && <ListsTab wsId={wsId} />}
+                </div>
             </div>
         </div>
     );
