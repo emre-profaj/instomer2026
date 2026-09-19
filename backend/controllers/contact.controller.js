@@ -1384,8 +1384,9 @@ export const getContacts = async (req, res) => {
                         activities: {
                             where: { workspaceId: workspaceId },
                             orderBy: { createdAt: 'desc' },
-                            take: 5,
+                            take: 25,
                             select: {
+                                id: true,
                                 type: true,
                                 title: true,
                                 description: true,
@@ -1393,9 +1394,13 @@ export const getContacts = async (req, res) => {
                                 status: true,
                                 dueDate: true,
                                 createdAt: true,
+                                completedAt: true,
                                 assignedByType: true,
                                 source: true,
                                 caseId: true,
+                                callSuccessful: true,
+                                callSentiment: true,
+                                callTopic: true,
                                 assignee: { select: { name: true } },
                                 creator: { select: { name: true } }
                             }
@@ -1511,8 +1516,9 @@ export const getContacts = async (req, res) => {
                         activities: {
                             where: { workspaceId: workspaceId },
                             orderBy: { createdAt: 'desc' },
-                            take: 5,
+                            take: 25,
                             select: {
+                                id: true,
                                 type: true,
                                 title: true,
                                 description: true,
@@ -1520,8 +1526,13 @@ export const getContacts = async (req, res) => {
                                 status: true,
                                 dueDate: true,
                                 createdAt: true,
+                                completedAt: true,
                                 assignedByType: true,
                                 source: true,
+                                caseId: true,
+                                callSuccessful: true,
+                                callSentiment: true,
+                                callTopic: true,
                                 assignee: { select: { name: true } },
                                 creator: { select: { name: true } }
                             }

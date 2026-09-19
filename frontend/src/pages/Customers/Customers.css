@@ -3691,3 +3691,462 @@
     background: #eef2ff;
     opacity: 1;
 }
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* SALES & CASE-BASED ACTIVITIES REDESIGN STYLES */
+/* ═══════════════════════════════════════════════════════════════════ */
+.cust-card--open {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.12), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Heat & Priority Badges */
+.cust-badge-hot {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    font-weight: 700;
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.cust-badge-warm {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fde68a;
+    font-weight: 700;
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.cust-badge-cold {
+    background: #f8fafc;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    font-weight: 600;
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* Activity Stat Pills in Collapsed Card */
+.cust-card__stat-pills-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #f1f5f9;
+    flex-wrap: wrap;
+}
+.cust-card__stat-pills {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+.cust-card__stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.cust-card__stat-pill--call {
+    color: #047857;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+.cust-card__stat-pill--ai {
+    color: #6d28d9;
+    background: #faf5ff;
+    border-color: #e9d5ff;
+}
+.cust-card__stat-pill--meeting {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+.cust-card__stat-pill--note {
+    color: #b45309;
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+.cust-card__stat-pill-fail {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+/* Stage Select Dropdown */
+.cust-card__stage-select {
+    height: 26px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0 8px;
+    cursor: pointer;
+    background-color: #ffffff;
+    color: #1e293b;
+    outline: none;
+    transition: all 0.15s;
+}
+.cust-card__stage-select:hover, .cust-card__stage-select:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+}
+
+/* Prominent Toggle Button (Aç / Kapa) */
+.cust-card__toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 13px;
+    border-radius: 9px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid #c7d2fe;
+    background: #eef2ff;
+    color: #4f46e5;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    user-select: none;
+}
+.cust-card__toggle-btn:hover {
+    background: #e0e7ff;
+    border-color: #a5b4fc;
+    color: #3730a3;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(99, 102, 241, 0.15);
+}
+.cust-card__toggle-btn--open {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+.cust-card__toggle-btn--open:hover {
+    background: #e2e8f0;
+    border-color: #94a3b8;
+    color: #0f172a;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+
+/* Case Block in Expanded Card */
+.cust-card__case-box {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    transition: all 0.2s;
+}
+.cust-card__case-box--active {
+    border-color: #86efac;
+}
+.cust-card__case-box--active .cust-card__case-header {
+    background: #f0fdf4;
+    border-bottom-color: #dcfce7;
+}
+.cust-card__case-header {
+    padding: 10px 14px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.cust-card__case-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.cust-card__case-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.cust-card__case-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.cust-card__case-code {
+    font-size: 0.68rem;
+    font-family: monospace;
+    font-weight: 600;
+    padding: 1px 5px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    color: #64748b;
+}
+.cust-card__case-meta {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.cust-card__case-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.cust-card__case-value {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+/* Case Body & Activities */
+.cust-card__case-body {
+    padding: 12px 14px;
+}
+.cust-card__case-stats-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.72rem;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.cust-card__case-acts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.cust-card__act-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.74rem;
+    border: 1px solid transparent;
+}
+.cust-card__act-item--call-reached {
+    background: #f0fdf4;
+    border-color: #dcfce7;
+}
+.cust-card__act-item--call-failed {
+    background: #fef2f2;
+    border-color: #fee2e2;
+}
+.cust-card__act-item--ai {
+    background: #faf5ff;
+    border-color: #f3e8ff;
+}
+.cust-card__act-item--meeting {
+    background: #eff6ff;
+    border-color: #dbeafe;
+}
+.cust-card__act-item--note {
+    background: #fffbeb;
+    border-color: #fef3c7;
+}
+.cust-card__act-item--other {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+.cust-card__act-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.cust-card__act-content {
+    flex: 1;
+    min-width: 0;
+}
+.cust-card__act-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.cust-card__act-title {
+    font-weight: 700;
+    color: #1e293b;
+}
+.cust-card__act-time {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+.cust-card__act-desc {
+    color: #475569;
+    margin-top: 2px;
+    line-height: 1.4;
+    font-size: 0.72rem;
+}
+.cust-card__act-tag-reached {
+    font-weight: 700;
+    color: #15803d;
+}
+.cust-card__act-tag-failed {
+    font-weight: 700;
+    color: #dc2626;
+}
+.cust-card__act-tag-ai {
+    font-weight: 700;
+    color: #7c3aed;
+}
+
+/* Quick Note input under case */
+.cust-card__case-quick-note {
+    display: flex;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px dashed #e2e8f0;
+}
+.cust-card__case-quick-input {
+    flex: 1;
+    height: 28px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    outline: none;
+    font-family: inherit;
+}
+.cust-card__case-quick-input:focus {
+    background: #ffffff;
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+}
+.cust-card__case-quick-btn {
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: none;
+    background: #10b981;
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: inherit;
+    transition: background 0.15s;
+}
+.cust-card__case-quick-btn:hover {
+    background: #059669;
+}
+
+/* Grid for Details */
+.cust-card__info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    margin-top: 10px;
+    font-size: 0.72rem;
+}
+.cust-card__ig-item {
+    display: flex;
+    flex-direction: column;
+}
+.cust-card__ig-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+}
+.cust-card__ig-val {
+    font-weight: 600;
+    color: #1e293b;
+    margin-top: 1px;
+}
+
+/* Bottom Bar */
+.cust-card__exp-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #ffffff;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.cust-card__exp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+}
+.cust-card__exp-btn--wa {
+    background: #10b981;
+    color: white;
+}
+.cust-card__exp-btn--wa:hover {
+    background: #059669;
+}
+.cust-card__exp-btn--call {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+.cust-card__exp-btn--call:hover {
+    background: #dbeafe;
+}
+.cust-card__exp-btn--gray {
+    background: #f1f5f9;
+    color: #334155;
+}
+.cust-card__exp-btn--gray:hover {
+    background: #e2e8f0;
+}
+.cust-card__exp-btn--dark {
+    background: #0f172a;
+    color: white;
+}
+.cust-card__exp-btn--dark:hover {
+    background: #1e293b;
+}
