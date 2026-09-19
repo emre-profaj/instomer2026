@@ -22,6 +22,44 @@ import { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } from './dom
 
 // ─── APPOINTMENT DATE/TIME PARSER ──────────────────────────────────────────
 /**
+ * Tarihi DD.MM.YYYY'ye sabitler. Probel "19.09.2026" döndürüyor, model
+ * "19.9.2026" gönderebiliyor; karşılaştırmadan önce ikisini de buradan geçir.
+ */
+function normalizeTarih(value) {
+    const m = String(value || '').match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+    if (!m) return String(value || '').trim();
+    return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
+}
+
+/**
+ * Probel'in saat listesinden randevu ızgarasını (slot aralığı) çıkarır.
+ *
+ * Neden: randevu süresi 30 dakika sabitti, Metropol'ün ızgarası 15 dakika.
+ * 14:00 randevusunu 14:00–14:30 diye yazınca, Probel'in boş dediği 14:15
+ * kendi çakışma kontrolümüze takılıyordu. Süreyi hastanenin listesinden
+ * öğreniyoruz: ardışık slotlar arasındaki en küçük pozitif fark.
+ *
+ * Tek slot dönen günlerde ızgara hesaplanamaz — null döner, çağıran
+ * tarafta 30 dakikaya düşülür (o durumda çakışma kontrolü zaten atlanır).
+ */
+function slotMinutesFromHours(hours) {
+    if (!Array.isArray(hours) || hours.length < 2) return null;
+    const dakikalar = hours
+        .map(h => String(h?.saat || '').match(/^(\d{1,2}):(\d{2})/))
+        .filter(Boolean)
+        .map(m => Number(m[1]) * 60 + Number(m[2]))
+        .sort((a, b) => a - b);
+    if (dakikalar.length < 2) return null;
+
+    let enKucuk = null;
+    for (let i = 1; i < dakikalar.length; i++) {
+        const fark = dakikalar[i] - dakikalar[i - 1];
+        if (fark > 0 && (enKucuk === null || fark < enKucuk)) enKucuk = fark;
+    }
+    return (enKucuk && enKucuk >= 5 && enKucuk <= 120) ? enKucuk : null;
+}
+
+/**
  * args.date ("12.05.2026", "12-05-2026", "2026-05-12") ve
  * args.time ("10:00", "10:00:00") değerlerinden Türkiye saatine (UTC+3)
  * göre doğru startTime ve endTime üretir.
@@ -218,6 +256,8 @@ Müşteri onaylarsa 'create_appointment' fonksiyonunu çağır.
 - Fonksiyonlara parametre gönderirken sana verilen listedeki KOD değerlerini BİREBİR KULLAN, kafandan uydurma!
 - Müşteri branş adı söylerse (örn: "dermatoloji"), listede eşleştirip doğrudan get_doctors çağır.
 - Müşteri doktor adı söylerse, listede eşleştirip doğrudan get_available_days çağır.
+- 📅 "O TARİHTE KİM BOŞ?": Müşteri bir doktor seçmeden "şu tarihte kim müsait / kim boş / hangi doktor var" diye sorarsa get_doctors_available_on_date çağır. Tek bir doktorun gün listesine bakıp "o gün kimse yok" DEME — branşta başka doktorlar olabilir.
+- 🚫 UYDURMA YASAĞI: Doktor adı, tarih ve saat bilgisini YALNIZCA fonksiyon sonuçlarından al. Fonksiyon çağırmadan "dolu", "müsait değil", "kimse yok" gibi bir sonuç BİLDİRME; önce ilgili fonksiyonu çağır.
 - Doğum tarihi örneği olarak **/**/****  kullan, gerçek tarih gösterme.
 - Türkçe yanıt ver ve samimi bir iletişim kur.
 - Müşteri randevu dışında bir şey sorarsa, kibarca randevu konusuna yönlendir.
@@ -306,6 +346,19 @@ export function getAppointmentToolDeclarations() {
                     servis_kodu: { type: 'string', description: 'Servis kodu (get_doctors sonucundan)' }
                 },
                 required: ['brans_kodu', 'doktor_kodu', 'servis_kodu']
+            }
+        },
+        {
+            name: 'get_doctors_available_on_date',
+            description: 'BELİRLİ BİR TARİHTE o branşta müsait olan doktorları listeler. Hasta "şu tarihte kim boş / kim müsait / o gün hangi doktor var" diye sorduğunda MUTLAKA bunu çağır. Tek tek doktor sorup genelleme YAPMA.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    brans_kodu: { type: 'string', description: 'Branş kodu (get_branches sonucundan)' },
+                    brans_adi: { type: 'string', description: 'Branş adı (eşleştirme için, opsiyonel)' },
+                    tarih: { type: 'string', description: 'Randevu tarihi DD.MM.YYYY formatında (örn: 19.09.2026)' }
+                },
+                required: ['brans_kodu', 'tarih']
             }
         },
         {
@@ -678,6 +731,122 @@ async function executeGetAvailableDays(workspaceId, conversationId, args) {
  * get_available_hours — Uygun saatler
  * AI'ın gönderdiği kodlara GÜVENMİYORUZ. State'den doğru servis_kodu çekiyoruz.
  */
+/**
+ * get_doctors_available_on_date — "19'unda kim boş?"
+ *
+ * get_available_days tek doktor alıyor. Hasta doktor seçmeden tarih sorunca
+ * model tek doktora bakıp tüm branşa genelliyordu: Kadın Hastalıkları'nda
+ * yalnız Özgen Nahya Özdoğar'a bakıp "19.09'da müsait doktor yok" dedi,
+ * oysa Rafiga Ahmadova'nın o gün 5 boş slotu vardı.
+ *
+ * Bu araç branştaki doktorları tek tek gezip o tarihi taşıyanları döndürür.
+ * getAvailableDays zaten BOS > 0 olmayan günleri eliyor.
+ */
+const MAX_DOKTOR_TARAMA = 12;
+
+async function executeGetDoctorsAvailableOnDate(workspaceId, conversationId, args) {
+    const hasConnection = await checkHealthConnection(workspaceId);
+    if (!hasConnection) {
+        return { success: false, message: 'Sağlık sistemi bağlantısı bulunamadı.' };
+    }
+
+    // Branş kodunu state ile doğrula — model yanlış/sıra numarası gönderebiliyor
+    let realBransKodu = args.brans_kodu;
+    let bransAdi = args.brans_adi || '';
+    if (conversationId) {
+        try {
+            const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
+            const state = conv?.appointmentState ? JSON.parse(conv.appointmentState) : null;
+            if (state?.branches?.length > 0) {
+                let selected = state.branches.find(b => String(b.brans_kodu) === String(args.brans_kodu));
+                if (!selected && args.brans_adi) {
+                    selected = state.branches.find(b =>
+                        b.brans_adi.toLowerCase().includes(String(args.brans_adi).toLowerCase())
+                    );
+                }
+                if (!selected) {
+                    const idx = parseInt(args.brans_kodu, 10) - 1;
+                    if (!isNaN(idx) && idx >= 0 && idx < state.branches.length) selected = state.branches[idx];
+                }
+                if (selected) {
+                    realBransKodu = selected.brans_kodu;
+                    bransAdi = selected.brans_adi || bransAdi;
+                }
+            }
+        } catch (e) {
+            console.error('⚠️ [AppointmentBot] get_doctors_available_on_date state okunamadı:', e.message);
+        }
+    }
+
+    const hedefTarih = normalizeTarih(args.tarih);
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(hedefTarih)) {
+        return { success: false, message: `Tarihi anlayamadım ("${args.tarih}"). GG.AA.YYYY biçiminde ver.` };
+    }
+
+    const { getDoctors, getAvailableDays } = await import('./probel_appointment.service.js');
+
+    const docRes = await getDoctors(workspaceId, realBransKodu);
+    if (!docRes.success || !docRes.doctors?.length) {
+        return { success: false, message: docRes.message || 'Bu branşta doktor bulunamadı.' };
+    }
+
+    const taranacak = docRes.doctors.slice(0, MAX_DOKTOR_TARAMA);
+    const atlanan = docRes.doctors.length - taranacak.length;
+    if (atlanan > 0) {
+        console.warn(`⚠️ [AppointmentBot] ${docRes.doctors.length} doktorun ilk ${taranacak.length} tanesi tarandı, ${atlanan} tanesi atlandı`);
+    }
+
+    // Sırayla — Probel'e aynı anda yük bindirmemek için (doktor senkronunda da böyle)
+    const musait = [];
+    for (const doc of taranacak) {
+        try {
+            const dayRes = await getAvailableDays(workspaceId, realBransKodu, doc);
+            if (!dayRes.success || !dayRes.days?.length) continue;
+            const gun = dayRes.days.find(d => normalizeTarih(d.tarih) === hedefTarih);
+            if (gun) {
+                musait.push({
+                    sira: musait.length + 1,
+                    doktor_adi: doc.doktor_adi,
+                    doktor_kodu: doc.doktor_kodu,
+                    servis_kodu: gun.servis_kodu || doc.servis_kodu,
+                    brans_kodu: doc.brans_kodu || realBransKodu,
+                    bos_randevu: gun.bos_randevu
+                });
+            }
+        } catch (err) {
+            console.warn(`⚠️ [AppointmentBot] ${doc.doktor_adi} için gün sorgusu başarısız:`, err.message);
+        }
+    }
+
+    console.log(`📅 [AppointmentBot] ${hedefTarih}: ${taranacak.length} doktor tarandı, ${musait.length} tanesi müsait`);
+
+    // Sonraki adımların (get_available_days/hours) state eşleşmesi için doktor listesi dursun
+    if (conversationId) {
+        await updateAppointmentState(conversationId, { doctors: docRes.doctors, days: null, hours: null });
+    }
+
+    const tarananAdlar = taranacak.map(d => d.doktor_adi).join(', ');
+
+    if (musait.length === 0) {
+        return {
+            success: true,
+            tarih: hedefTarih,
+            doctors: [],
+            scanned: taranacak.length,
+            message: `${hedefTarih} tarihinde ${bransAdi || 'bu branşta'} müsait doktor yok. Taranan doktorlar: ${tarananAdlar}${atlanan > 0 ? ` (${atlanan} doktor taranmadı)` : ''}. Hastaya başka bir tarih öner.`
+        };
+    }
+
+    const liste = musait.map(d => `${d.sira}. ${d.doktor_adi} (${d.bos_randevu} boş saat)`).join('\n');
+    return {
+        success: true,
+        tarih: hedefTarih,
+        doctors: musait,
+        scanned: taranacak.length,
+        message: `${hedefTarih} tarihinde müsait doktorlar:\n${liste}\n\nHastaya bu listeyi sun (KODLARI GÖSTERME!) ve hangisini seçtiğini sor.`
+    };
+}
+
 async function executeGetAvailableHours(workspaceId, conversationId, args) {
     const hasConnection = await checkHealthConnection(workspaceId);
     
@@ -757,12 +926,17 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
     // randevu_id'yi şimdi okuyup dışarıdaki değişkenlere alıyoruz.
     let probelHastaToken = null;
     let probelRandevuId = null;
+    let probelSlotDk = null;
     if (conversationId) {
         try {
             const preConv = await prisma.conversation.findUnique({ where: { id: conversationId } });
             if (preConv?.appointmentState) {
                 const preState = JSON.parse(preConv.appointmentState);
                 probelHastaToken = preState.hasta_token || null;
+                probelSlotDk = slotMinutesFromHours(preState.hours);
+                if (probelSlotDk) {
+                    console.log(`⏱️ [AppointmentBot] Ön-okuma: hastane slot aralığı ${probelSlotDk} dk`);
+                }
                 if (preState.hours?.length > 0 && args.time) {
                     const match = preState.hours.find(h => h.saat === args.time || h.saat.startsWith(args.time));
                     if (match) {
@@ -922,7 +1096,7 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             }
         }
 
-        const { startTime, endTime, error: dateError } = parseAppointmentDateTime(date, time);
+        const { startTime, endTime, error: dateError } = parseAppointmentDateTime(date, time, probelSlotDk || 30);
         if (!startTime) {
             console.error(`❌ [AppointmentBot] Randevu oluşturulmadı — tarih/saat anlaşılamadı: "${date}" "${time}"`);
             return {
@@ -957,6 +1131,11 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             conversationId: conversationId || null,
             color:          '#10b981',
             notes:          `Tarih: ${date || '?'} | Saat: ${time || '?'}`,
+            // Slot Probel'den geldiyse müsaitliğin tek otoritesi hastane sistemidir.
+            // Kendi kaydımızdaki süre varsayımı, Probel'in boş dediği bir sonraki
+            // slotu reddediyordu: 14:00 randevusu 14:00–14:30 yazılıyor, hastanenin
+            // 15 dakikalık ızgarasındaki boş 14:15 "dolu" sayılıyordu.
+            skipConflictCheck: !!probelRandevuId,
         });
 
         if (!outcome.ok) {
@@ -1222,6 +1401,9 @@ export async function executeAppointmentFunction(functionName, args, workspaceId
 
         case 'get_available_days':
             return await executeGetAvailableDays(workspaceId, conversationId, args);
+
+        case 'get_doctors_available_on_date':
+            return await executeGetDoctorsAvailableOnDate(workspaceId, conversationId, args);
 
         case 'get_available_hours':
             return await executeGetAvailableHours(workspaceId, conversationId, args);

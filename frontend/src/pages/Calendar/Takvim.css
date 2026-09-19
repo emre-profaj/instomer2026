@@ -195,7 +195,12 @@ select.cal-meeting-type-select {
 .view-mode-toggle { gap: 2px !important; padding: 2px !important; background: #f1f2f5 !important; border-radius: 9px !important; }
 .view-mode-toggle button { border-radius: 7px !important; font-size: 12px !important; font-weight: 600 !important; padding: 4px 10px !important; }
 
-.calendar-header-nav { gap: 8px; }
+/* Calendar.css:531 bu satıra padding: 4px 0 8px veriyor ve hiçbir yerde
+   ezilmemişti: araç çubuğu 27 piksellik içerikle 40 piksel yer kaplıyordu.
+   Alttaki 8 piksel tamamen ölü — satır arası boşluk zaten .calendar-header
+   gap'inden geliyor. Üstteki 4 piksel duruyor: başlıkla arasındaki görünen
+   boşluk ona göre ayarlanmıştı, kaldırılırsa 9 pikselden 5'e düşüyor. */
+.calendar-header-nav { gap: 8px; padding: 4px 0 0; }
 .nav-buttons { gap: 4px; background: transparent; padding: 0; }
 .nav-buttons button:not(.today-btn) {
     width: 28px;
