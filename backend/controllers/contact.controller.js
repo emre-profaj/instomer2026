@@ -477,11 +477,12 @@ export const getWorkspaceTags = async (workspaceId) => {
                 workspaceId,
                 isArchived: false,
                 isDeleted: false,
-                tags: { not: '[]' },
-                NOT: [
-                    { tags: null },
-                    { tags: '' }
-                ]
+                // tags nullable DEĞİL (String @default("[]")). Eskiden burada
+                // NOT: [{ tags: null }, { tags: '' }] vardı; Prisma null'ı
+                // "argüman verilmedi" sayıp sorguyu reddediyordu. Hata catch'e
+                // düşüp boş dizi dönüyor, etiket süzgeci yalnızca o sayfadaki
+                // kişilerin etiketlerini gösteriyordu.
+                tags: { notIn: ['[]', ''] }
             },
             select: { tags: true }
         });
