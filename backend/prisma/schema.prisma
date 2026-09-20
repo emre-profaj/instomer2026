@@ -434,6 +434,11 @@ model Contact {
   instagramUsername String?
   whatsappId        String?              @unique
   tags              String               @default("[]")
+  // Web widget anonim ziyaretçi kimliği (v_xxxxxxxxx).
+  // Eskiden tags içinde tutuluyordu: etiket listesini çöplüyor (Metropol'de
+  // 163 gerçek etikete karşı 2.812 ziyaretçi kimliği) ve her widget
+  // mesajında indekssiz "contains" taraması yaptırıyordu.
+  widgetVisitorId   String?
   status            String               @default("NEW")
   source            String               @default("MANUAL")
   leadSource        String? // "Bizi nereden buldunuz?": INBOUND, SOCIAL_MEDIA, FACEBOOK, GOOGLE, REFERRAL, WALK_IN, EVENT, OTHER
@@ -479,6 +484,7 @@ model Contact {
   @@index([workspaceId])
   @@index([instagramId])
   @@index([whatsappId])
+  @@index([workspaceId, widgetVisitorId])
   @@map("contacts")
 }
 

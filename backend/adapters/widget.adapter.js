@@ -11,6 +11,7 @@
  */
 
 import prisma from '../lib/prisma.js';
+import { ziyaretciKisiBul, ziyaretciAlanlari } from '../utils/widgetVisitor.js';
 
 const getAvatarFallback = (name, size = 150) => {
   const encodedName = encodeURIComponent(name || 'User');
@@ -59,16 +60,10 @@ export function normalizeWidgetMessage(reqBody, widget) {
         assignedBotId: widget.assignedBotId,
       },
 
-      // Kişi bulma: visitorId tag'inde ara veya email/phone ile
+      // Kişi bulma: ziyaretçi kimliği, sonra email/phone
       findContact: async (workspaceId, sid) => {
-        // Önce visitorId tag'inde ara
-        let contact = await prisma.contact.findFirst({
-          where: {
-            workspaceId,
-            isDeleted: false,
-            tags: { contains: visitorId },
-          }
-        });
+        // Kimlik artık indeksli kolonda; eski kayıtlar için tags yoluna düşülür
+        let contact = await ziyaretciKisiBul({ workspaceId, isDeleted: false }, visitorId);
         if (contact) return contact;
 
         // Email ile ara
@@ -92,13 +87,17 @@ export function normalizeWidgetMessage(reqBody, widget) {
 
       // Kişi oluşturma
       createContactData: async (workspaceId, sid, cName, avatar) => {
+        const ziyaretci = await ziyaretciAlanlari(visitorId);
         return {
           workspaceId,
           name: cName || senderName,
           email: email || undefined,
           phone: phone || undefined,
           avatar: avatar || getAvatarFallback(cName || senderName),
-          tags: JSON.stringify(['web_widget', visitorId]),
+          // Ziyaretçi kimliği artık etikete değil kendi kolonuna yazılıyor.
+          // Kolon henüz açılmadıysa ziyaretci boş gelir ve eski davranışa düşülür.
+          ...ziyaretci,
+          tags: JSON.stringify(ziyaretci.widgetVisitorId ? ['web_widget'] : ['web_widget', visitorId]),
           status: 'OPPORTUNITY',
           source: 'WEB_WIDGET',
         };

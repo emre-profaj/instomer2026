@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { ziyaretciKisiBul, etiketlerdenCikar, ziyaretciAlanlari, kolonDestekleniyorMu } from '../utils/widgetVisitor.js';
 import { getAutoReply } from './ai.controller.js';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting } from '../services/conversationRouting.service.js';
@@ -233,20 +234,18 @@ export const handleWidgetChat = async (req, res) => {
 
 
         // 1. Find or Create Contact for this visitor in this workspace
-        let contact = await prisma.contact.findFirst({
-            where: {
-                workspaceId: workspaceId,
-                tags: { contains: visitorId }
-            }
-        });
+        let contact = await ziyaretciKisiBul({ workspaceId }, visitorId);
 
         // If contact with this visitorId exists, reuse it (even if it has phone/email from prechat form)
         if (!contact) {
+            const ziyaretci = await ziyaretciAlanlari(visitorId);
             contact = await prisma.contact.create({
                 data: {
                     workspaceId: workspaceId,
                     name: 'Web Ziyaretçisi',
-                    tags: JSON.stringify([visitorId])
+                    // Kimlik etikete değil kendi kolonuna; kolon yoksa eski yol
+                    ...ziyaretci,
+                    tags: ziyaretci.widgetVisitorId ? '[]' : JSON.stringify([visitorId])
                 }
             });
         }
@@ -559,16 +558,19 @@ export const handlePrechat = async (req, res) => {
         const normalizedPhone = normalizePhone(phone);
 
         // 1. Find existing contact by phone OR visitorId, or create new one
+        const kolonAcik = await kolonDestekleniyorMu();
         let contact = await prisma.contact.findFirst({
             where: {
                 workspaceId,
                 OR: [
                     { phone: normalizedPhone },
                     { phone: phone }, // Try exact match too
-                    { tags: { contains: visitorId } }
+                    ...(kolonAcik ? [{ widgetVisitorId: visitorId }] : [])
                 ]
             }
         });
+        // Henüz taşınmamış eski kayıtlar (ve kolon yoksa hepsi) için tags yolu
+        if (!contact) contact = await ziyaretciKisiBul({ workspaceId }, visitorId);
 
         if (contact) {
             // Update existing contact with new info and mark as HOT_LEAD
@@ -578,7 +580,10 @@ export const handlePrechat = async (req, res) => {
                     name: name,
                     phone: normalizedPhone,
                     status: 'HOT_OPPORTUNITY',
-                    tags: JSON.stringify([visitorId, ...(contact.tags ? JSON.parse(contact.tags).filter(t => t !== visitorId) : [])])
+                    ...(await ziyaretciAlanlari(visitorId)),
+                    tags: kolonAcik
+                        ? etiketlerdenCikar(contact.tags, visitorId)
+                        : JSON.stringify([visitorId, ...(() => { try { return JSON.parse(contact.tags || '[]').filter(t => t !== visitorId); } catch { return []; } })()])
                 }
             });
             console.log(`✅ [Widget Prechat] Updated existing contact ${contact.id} as HOT_OPPORTUNITY`);
@@ -589,7 +594,8 @@ export const handlePrechat = async (req, res) => {
                     workspaceId,
                     name: name,
                     phone: normalizedPhone,
-                    tags: JSON.stringify([visitorId]),
+                    ...(await ziyaretciAlanlari(visitorId)),
+                    tags: kolonAcik ? '[]' : JSON.stringify([visitorId]),
                     source: 'WEB_WIDGET',
                     status: 'HOT_OPPORTUNITY'
                 }
