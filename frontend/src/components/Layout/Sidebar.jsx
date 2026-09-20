@@ -58,6 +58,11 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
+        // Deneysel liste görünümü — yalnız SUPER_ADMIN görür, rota da
+        // AdminRoute ile korunuyor (App.jsx).
+        ...(user?.role === 'SUPER_ADMIN'
+            ? [{ path: '/customers-2', icon: Contact, label: 'Kişiler 2' }]
+            : []),
         { path: '/activities/calendar', icon: CalendarDays, label: 'Takvim' }
     ];
 

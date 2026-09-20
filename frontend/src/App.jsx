@@ -22,6 +22,8 @@ import Channels from './pages/Channels/Channels';
 import Users from './pages/Users/Users';
 import Teams from './pages/Teams/Teams';
 import Customers from './pages/Customers/Customers';
+// Deneysel liste görünümü — yalnız SUPER_ADMIN (AdminRoute ile korunuyor)
+import Customers2 from './pages/Customers/Customers2';
 import Leads from './pages/Leads/Leads';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import Emails from './pages/Emails/Emails';
@@ -121,6 +123,7 @@ function App() {
               <Route path="emails" element={<Navigate to="/inbox" replace />} />
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
+              <Route path="customers-2" element={<AdminRoute><Customers2 /></AdminRoute>} />
               {/* Settings Hub with Unified Middle Panel */}
               <Route element={<SettingsLayout />}>
                 <Route path="base" element={<KnowledgeBase hideSidebar={true} />} />
