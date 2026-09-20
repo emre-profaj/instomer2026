@@ -1216,13 +1216,39 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
 
             if (isRealProbelToken && probelRandevuId) {
                 const { createAppointment } = await import('./probel_appointment.service.js');
-                const probelResult = await createAppointment(workspaceId, probelHastaToken, probelRandevuId);
-                if (probelResult.success) {
-                    probelDurum = 'onaylandi';
-                    console.log('✅ [AppointmentBot] Probel HBYS randevusu da oluşturuldu');
-                } else {
-                    probelNot = probelResult.message || 'Probel kaydı doğrulanamadı';
-                    console.warn('⚠️ [AppointmentBot] Probel HBYS BAŞARISIZ → temsilci teyidi gerekiyor:', probelNot);
+                
+                // Probel'e en fazla 3 deneme (1 asıl + 2 retry) — anlık kesintilere karşı
+                const MAX_RETRIES = 2;
+                const RETRY_DELAYS = [2000, 5000]; // 2s, 5s bekleme
+                let probelResult = null;
+                
+                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                    try {
+                        probelResult = await createAppointment(workspaceId, probelHastaToken, probelRandevuId);
+                        if (probelResult.success) {
+                            probelDurum = 'onaylandi';
+                            console.log(`✅ [AppointmentBot] Probel HBYS randevusu oluşturuldu (deneme ${attempt + 1}/${MAX_RETRIES + 1})`);
+                            break;
+                        }
+                        
+                        // Başarısız ama hata yok — retry'a gerek olabilir
+                        if (attempt < MAX_RETRIES) {
+                            console.warn(`⚠️ [AppointmentBot] Probel başarısız (deneme ${attempt + 1}), ${RETRY_DELAYS[attempt]}ms sonra tekrar denenecek: ${probelResult.message}`);
+                            await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+                        }
+                    } catch (retryErr) {
+                        if (attempt < MAX_RETRIES) {
+                            console.warn(`⚠️ [AppointmentBot] Probel hata (deneme ${attempt + 1}), ${RETRY_DELAYS[attempt]}ms sonra tekrar denenecek: ${retryErr.message}`);
+                            await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+                        } else {
+                            probelResult = { success: false, message: retryErr.message };
+                        }
+                    }
+                }
+                
+                if (probelDurum !== 'onaylandi') {
+                    probelNot = probelResult?.message || 'Probel kaydı 3 denemede de doğrulanamadı';
+                    console.warn(`⚠️ [AppointmentBot] Probel HBYS 3 DENEMEDE DE BAŞARISIZ → temsilci teyidi gerekiyor: ${probelNot}`);
                 }
             } else if (!isRealProbelToken) {
                 probelNot = 'Hasta Probel sisteminde kayıtlı değil (LOCAL token)';
