@@ -16,6 +16,7 @@ import {
     ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
     List, KanbanSquare, BarChart3
 } from 'lucide-react';
+import Customers2Bulk from './Customers2Bulk';
 import './Customers2.css';
 
 const LIMIT = 25;
@@ -29,6 +30,13 @@ const ASAMA_RENK = {
     'Yeni Başvuru': '#0ea5e9', 'Fırsat': '#d97706', 'Sıcak Fırsat': '#dc2626',
     'Bilgi Verildi': '#64748b', 'Görüşme Planlandı': '#7c3aed', 'Teklif Aşaması': '#0d9488',
     'Satış': '#16a34a', 'Ulaşılamadı': '#94a3b8', 'Kayıp': '#94a3b8'
+};
+const DONEM_ETIKET = {
+    TODAY: 'Bugün gelen',
+    WEEK: 'Bu hafta gelen',
+    MONTH: 'Bu ay gelen',
+    YEAR: 'Bu yıl gelen',
+    ALL: 'Toplam kişi'
 };
 const AVATAR_RENK = ['#6366f1', '#0ea5e9', '#14b8a6', '#8b5cf6', '#f59e0b', '#ec4899', '#10b981', '#f97316', '#3b82f6'];
 
@@ -112,6 +120,9 @@ export default function Customers2() {
     const [hata, setHata] = useState(null);
     const [acik, setAcik] = useState(null);
     const [sayfa, setSayfa] = useState(1);
+    // Seçim sayfa değişince kaybolmasın diye id→kişi haritası tutuluyor
+    const [secim, setSecim] = useState(new Map());
+    const [hepsiSeciliyor, setHepsiSeciliyor] = useState(false);
 
     // Süzgeçler — hepsi uç noktaya birebir geçiyor
     const [arama, setArama] = useState('');
@@ -173,8 +184,44 @@ export default function Customers2() {
 
     useEffect(() => { getir(); }, [getir]);
 
+    const secili = (id) => secim.has(id);
+    const secimDegistir = (k) => setSecim(m => {
+        const y = new Map(m);
+        if (y.has(k.id)) y.delete(k.id); else y.set(k.id, k);
+        return y;
+    });
+    const sayfaHepsi = kisiler.length > 0 && kisiler.every(k => secim.has(k.id));
+    const sayfaSec = () => setSecim(m => {
+        const y = new Map(m);
+        if (sayfaHepsi) kisiler.forEach(k => y.delete(k.id));
+        else kisiler.forEach(k => y.set(k.id, k));
+        return y;
+    });
+
+    // Süzgece uyan TÜM kişileri seç — sayfadakiler değil
+    const tumunuSec = async () => {
+        setHepsiSeciliyor(true);
+        try {
+            const { data } = await contactAPI.getAll(currentWorkspace.id, {
+                search: aramaGec, source: kaynak, tag: etiket,
+                assignmentFilter: atama !== 'all' ? atama : undefined,
+                onlyOpenCases: acikTalep.toString(),
+                sortField: sirala, sortDir: 'desc',
+                limit: 10000, offset: 0,
+                dateFilter: tarih !== 'ALL' ? tarih : undefined,
+                tzOffset: new Date().getTimezoneOffset(),
+                ...hizliParam
+            });
+            setSecim(new Map((data.contacts || []).map(c => [c.id, c])));
+        } catch (e) {
+            setHata(e?.response?.data?.message || e.message || 'Tümü seçilemedi.');
+        } finally {
+            setHepsiSeciliyor(false);
+        }
+    };
+
     const metrikler = [
-        { key: null,           lb: 'Dönem',      vl: stats.periodCount },
+        { key: null,           lb: DONEM_ETIKET[tarih] || 'Dönem', vl: stats.periodCount },
         { key: 'HAS_PHONE',    lb: 'Numaralı',   vl: stats.withPhoneCount },
         { key: 'NO_PHONE',     lb: 'Numarasız',  vl: stats.noPhoneCount },
         { key: 'AGENT_CALLS',  lb: 'Aranan',     vl: stats.agentCalledCount },
@@ -199,7 +246,12 @@ export default function Customers2() {
 
         return (
             <div key={k.id}>
-                <div className={`rw${buAcik ? ' exp' : ''}`} onClick={() => setAcik(buAcik ? null : k.id)}>
+                <div className={`rw${buAcik ? ' exp' : ''}${secili(k.id) ? ' sel' : ''}`} onClick={() => setAcik(buAcik ? null : k.id)}>
+                    <button
+                        className={`cb${secili(k.id) ? ' on' : ''}`}
+                        onClick={e => { e.stopPropagation(); secimDegistir(k); }}
+                        aria-label={secili(k.id) ? 'Seçimi kaldır' : 'Seç'}
+                    />
                     <Avatar kisi={k} kanal={kanal} />
                     <div className="who">
                         <div className="nm">{k.name || 'İsimsiz'}</div>
@@ -426,6 +478,11 @@ export default function Customers2() {
                 <>
                     <div className="ls sr">
                         <div className="lh">
+                            <button
+                                className={`cb${sayfaHepsi ? ' on' : ''}`}
+                                onClick={sayfaSec}
+                                aria-label={sayfaHepsi ? 'Sayfadaki seçimi kaldır' : 'Sayfadakilerin hepsini seç'}
+                            />
                             <span /><span>Kişi</span><span>Talep</span><span>Aşama</span>
                             <span>Aktivite</span><span>İlk yazma</span><span>Son yazma</span><span />
                         </div>
@@ -437,6 +494,11 @@ export default function Customers2() {
                     </div>
                     <div className="ft sr">
                         <span><b>{kisiler.length ? (sayfa - 1) * LIMIT + 1 : 0}–{(sayfa - 1) * LIMIT + kisiler.length}</b> / <b>{sayi(toplam)}</b> kişi</span>
+                        {secim.size > 0 && secim.size < toplam && (
+                            <button className="lnk" style={{ marginLeft: 0 }} onClick={tumunuSec} disabled={hepsiSeciliyor}>
+                                {hepsiSeciliyor ? 'Seçiliyor…' : `Süzgece uyan ${sayi(toplam)} kişinin hepsini seç`}
+                            </button>
+                        )}
                         <div className="pg">
                             <button disabled={sayfa === 1} onClick={() => setSayfa(s => Math.max(1, s - 1))}><ChevronLeft size={14} /></button>
                             <button className="on">{sayfa}</button>
@@ -485,6 +547,13 @@ export default function Customers2() {
                         </div>
                     )
             )}
+
+            <Customers2Bulk
+                workspaceId={currentWorkspace?.id}
+                secilenler={[...secim.values()]}
+                onTemizle={() => setSecim(new Map())}
+                onYenile={getir}
+            />
 
             <p className="tp-c" style={{ marginTop: 18 }}>
                 Bu sayfa deneyseldir ve yalnızca SUPER_ADMIN tarafından görülür. Mevcut Kişiler sayfası değişmedi.

@@ -37,7 +37,7 @@
 .k2-page .mt button{all:unset;cursor:pointer;padding:16px 20px;position:relative;display:block}
 .k2-page .mt button + button{box-shadow:inset 1px 0 0 var(--line)}
 .k2-page .mt button:hover{background:#fffafa}
-.k2-page .mt .lb{display:block;font-size:11.5px;font-weight:600;color:var(--ink-3);margin-bottom:5px}
+.k2-page .mt .lb{display:block;font-size:11.5px;font-weight:600;color:var(--ink-3);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .k2-page .mt .vl{display:block;font-size:22px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .k2-page .mt button.on .vl{color:var(--accent-deep)}
 .k2-page .mt button.on::after{content:'';position:absolute;left:20px;right:20px;bottom:0;height:2px;background:var(--accent);border-radius:2px 2px 0 0}
@@ -59,8 +59,8 @@
 /* ── Liste ── */
 .k2-page .ls{overflow:hidden}
 .k2-page .lh,.k2-page .rw{display:grid;
-  grid-template-columns:34px minmax(190px,2fr) minmax(150px,1.4fr) 122px 116px 84px 84px 106px;
-  align-items:center;gap:14px;padding:0 20px}
+  grid-template-columns:18px 34px minmax(180px,2fr) minmax(145px,1.4fr) 118px 112px 82px 82px 104px;
+  align-items:center;gap:12px;padding:0 18px}
 .k2-page .lh{height:38px;box-shadow:inset 0 -1px 0 var(--line)}
 .k2-page .lh span{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
 .k2-page .rw{padding-top:13px;padding-bottom:13px;cursor:pointer}
@@ -102,7 +102,7 @@
 
 /* ── Açılmış satır ── */
 .k2-page .rw.exp{background:#fffafa}
-.k2-page .dt{padding:2px 20px 20px 84px;background:#fffafa;box-shadow:inset 0 -1px 0 var(--line)}
+.k2-page .dt{padding:2px 20px 20px 82px;background:#fffafa;box-shadow:inset 0 -1px 0 var(--line)}
 .k2-page .dt-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
 .k2-page .jr{position:relative;padding-left:20px}
 .k2-page .jr::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:1px;background:#ece7e8}
@@ -124,7 +124,7 @@
   display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:var(--ink-2);background:#fff}
 .k2-page .pg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
-@media (max-width:1400px){.k2-page .lh,.k2-page .rw{grid-template-columns:34px minmax(170px,2fr) 118px 112px 80px 80px 106px;}.k2-page .lh span:nth-child(3),.k2-page .rw .tp{display:none}}
+@media (max-width:1400px){.k2-page .lh,.k2-page .rw{grid-template-columns:18px 34px minmax(160px,2fr) 114px 108px 78px 78px 104px;}.k2-page .lh span:nth-child(4),.k2-page .rw .tp{display:none}}
 
 /* ── Süzgeç paneli ── */
 .k2-page .fb{padding:14px 16px;margin-bottom:14px}
@@ -186,3 +186,60 @@
 .k2-page .pc-mr{padding:9px 12px 12px;font-size:11.5px;font-weight:600;color:var(--ink-3)}
 .k2-page .pc.bos .pc-b{align-items:center;justify-content:center}
 .k2-page .pc.bos .pc-b em{font-style:normal;font-size:11.5px;color:#cbd5e1}
+
+/* ── Toplu işlem çubuğu ─────────────────────────────────── */
+.k2-page .bb{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
+  display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:16px;background:#0b1220;
+  box-shadow:0 18px 44px -14px rgba(11,18,32,.55);color:#fff}
+.k2-page .bb-x{all:unset;cursor:pointer;width:28px;height:28px;border-radius:9px;display:flex;
+  align-items:center;justify-content:center;color:#94a3b8}
+.k2-page .bb-x:hover{background:#1e293b;color:#fff}
+.k2-page .bb-n{font-size:12.5px;color:#cbd5e1;padding:0 4px;white-space:nowrap}
+.k2-page .bb-n b{color:#fff;font-weight:700;font-variant-numeric:tabular-nums}
+.k2-page .bb-sep{width:1px;height:20px;background:#334155;margin:0 2px}
+.k2-page .bb-a{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 13px;
+  border-radius:10px;font-size:12.5px;font-weight:600;color:#e2e8f0;white-space:nowrap}
+.k2-page .bb-a:hover{background:#1e293b;color:#fff}
+.k2-page .bb-a.dgr{color:#fca5a5}
+.k2-page .bb-a.dgr:hover{background:#3f1d1d;color:#fecaca}
+
+/* ── Seçim kutusu ── */
+.k2-page .cb{all:unset;cursor:pointer;width:17px;height:17px;border-radius:5px;border:1.5px solid #d4dae3;
+  background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .12s,border-color .12s}
+.k2-page .cb:hover{border-color:var(--accent)}
+.k2-page .cb.on{background:var(--accent);border-color:var(--accent)}
+.k2-page .cb.on::after{content:'';width:9px;height:5px;border-left:2px solid #fff;border-bottom:2px solid #fff;
+  transform:rotate(-45deg) translate(1px,-1px)}
+.k2-page .rw.sel{background:#fff7f7}
+
+/* ── Pencere ── */
+.k2-page .ov{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(11,18,32,.42)}
+.k2-page .md{width:100%;max-width:620px;max-height:100%;overflow-y:auto;background:#fff;border-radius:20px;
+  box-shadow:0 24px 64px -24px rgba(15,23,42,.45),0 0 0 1px rgba(15,23,42,.06)}
+.k2-page .md-h{display:flex;align-items:flex-start;gap:14px;padding:22px 24px 14px}
+.k2-page .md-h h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.025em}
+.k2-page .md-h p{margin:5px 0 0;font-size:12.5px;color:var(--ink-3)}
+.k2-page .md-i{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.k2-page .md-i.ok{background:#ecfdf5;color:#059669}
+.k2-page .md-i.dgr{background:var(--accent-soft);color:var(--accent-deep)}
+.k2-page .md-x{all:unset;cursor:pointer;width:32px;height:32px;border-radius:10px;border:1px solid #e6e9ee;
+  display:flex;align-items:center;justify-content:center;color:var(--ink-3);flex-shrink:0}
+.k2-page .md-b{padding:4px 24px 22px;display:flex;flex-direction:column;gap:14px}
+.k2-page .md-f2{display:flex;flex-direction:column;gap:6px}
+.k2-page .tk-l{font-size:12px;font-weight:650;color:var(--ink-2)}
+.k2-page .tk-i{width:100%;padding:10px 13px;border:1px solid #e6e9ee;border-radius:11px;background:#fff;
+  font:inherit;font-size:13px;color:var(--ink);outline:none;resize:vertical}
+.k2-page .tk-i:focus{border-color:var(--accent)}
+.k2-page .tk-h{font-size:11.5px;color:var(--ink-3)}
+.k2-page .md-uy{margin:0;padding:11px 14px;border-radius:11px;background:#fffbeb;color:#92400e;font-size:12.3px;line-height:1.5}
+.k2-page .md-uy.ok{background:#ecfdf5;color:#065f46}
+.k2-page .md-uy.dgr{background:var(--accent-soft);color:var(--accent-deep)}
+.k2-page .md-f{display:flex;align-items:center;gap:9px;padding:16px 24px;background:#fafafb;
+  box-shadow:inset 0 1px 0 var(--line)}
+.k2-page .md-f .sp{flex-grow:1}
+.k2-page .btn.dan{background:var(--accent);border-color:var(--accent);color:#fff}
+.k2-page .btn:disabled{opacity:.5;cursor:not-allowed}
+.k2-page .spn{animation:k2spin 1s linear infinite}
+@keyframes k2spin{to{transform:rotate(360deg)}}
