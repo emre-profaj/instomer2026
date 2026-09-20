@@ -1287,6 +1287,13 @@ export const getContacts = async (req, res) => {
                 console.log(`🔍 [CASE-DEBUG] ${contact.name} → case#${lastActiveCase.caseNumber}, assignedTo: ${JSON.stringify(lastActiveCase.assignedTo)}, assignedToId: ${lastActiveCase.assignedToId}, assignedTeamId: ${lastActiveCase.assignedTeamId}, caseAssignedToName: ${caseAssignedToName}, funnelStageId: ${lastActiveCase.funnelStageId}`);
             }
 
+            // Extract channel details and campaign/ad info
+            const attr = contact.attributions?.[0] || null;
+            const conv = contact.conversations?.[0] || null;
+            const campaignOrAd = attr?.fb_ad_name || attr?.fb_campaign_name || attr?.utm_campaign || conv?.utmCampaign || contact.leadSourceDetail || null;
+            const formName = attr?.meta_lead_form_name || attr?.form_name || null;
+            const pageName = conv?.facebookPage?.name || null;
+
             return {
                 ...contact,
                 source: contactSource,
@@ -1295,6 +1302,10 @@ export const getContacts = async (req, res) => {
                 lastMessageAt,
                 aiTopic,
                 activeCase,
+                campaignOrAd,
+                formName,
+                pageName,
+                attribution: attr,
                 lastNote: lastNote ? (lastNote.length > 80 ? lastNote.substring(0, 80) + '...' : lastNote) : null,
                 lastNoteType
             };
@@ -1334,6 +1345,12 @@ export const getContacts = async (req, res) => {
                             caseId: true,
                             funnelStageId: true,
                             funnelType: true,
+                            utmSource: true,
+                            utmMedium: true,
+                            utmCampaign: true,
+                            utmContent: true,
+                            facebookPageId: true,
+                            facebookPage: { select: { id: true, name: true } },
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -1405,6 +1422,25 @@ export const getContacts = async (req, res) => {
                                 creator: { select: { name: true } }
                             }
                         }
+                    } : {}),
+                    ...(prisma.contactAttribution ? {
+                        attributions: {
+                            where: { workspaceId: workspaceId },
+                            orderBy: { id: 'desc' },
+                            take: 1,
+                            select: {
+                                utm_source: true,
+                                utm_medium: true,
+                                utm_campaign: true,
+                                utm_content: true,
+                                fb_ad_name: true,
+                                fb_campaign_name: true,
+                                meta_lead_form_name: true,
+                                wa_referral_headline: true,
+                                channel: true,
+                                landing_page: true
+                            }
+                        }
                     } : {})
                 },
                 orderBy: ['name', 'company', 'status', 'createdAt'].includes(sortField)
@@ -1469,6 +1505,12 @@ export const getContacts = async (req, res) => {
                             caseId: true,
                             funnelStageId: true,
                             funnelType: true,
+                            utmSource: true,
+                            utmMedium: true,
+                            utmCampaign: true,
+                            utmContent: true,
+                            facebookPageId: true,
+                            facebookPage: { select: { id: true, name: true } },
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -1535,6 +1577,25 @@ export const getContacts = async (req, res) => {
                                 callTopic: true,
                                 assignee: { select: { name: true } },
                                 creator: { select: { name: true } }
+                            }
+                        }
+                    } : {}),
+                    ...(prisma.contactAttribution ? {
+                        attributions: {
+                            where: { workspaceId: workspaceId },
+                            orderBy: { id: 'desc' },
+                            take: 1,
+                            select: {
+                                utm_source: true,
+                                utm_medium: true,
+                                utm_campaign: true,
+                                utm_content: true,
+                                fb_ad_name: true,
+                                fb_campaign_name: true,
+                                meta_lead_form_name: true,
+                                wa_referral_headline: true,
+                                channel: true,
+                                landing_page: true
                             }
                         }
                     } : {})

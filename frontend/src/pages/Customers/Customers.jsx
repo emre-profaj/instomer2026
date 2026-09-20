@@ -58,7 +58,9 @@ import {
     ShoppingCart,
     Sparkles,
     ChevronUp,
-    Globe
+    Globe,
+    Target,
+    Activity
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -1839,14 +1841,138 @@ const Customers = () => {
         }
     };
 
+    const getDetailedChannelInfo = (contact) => {
+        if (!contact) return { icon: '📥', label: 'Bilinmiyor', badgeColor: '#64748b', bg: '#f1f5f9' };
+
+        const src = (contact.source || '').toUpperCase();
+        const channels = Array.isArray(contact.channels) ? contact.channels.map(c => (c || '').toUpperCase()) : [];
+        const hasChan = (val) => channels.some(c => c.includes(val));
+        const formName = contact.formName || contact.attribution?.meta_lead_form_name || contact.leadSourceDetail || null;
+        const isLeadForm = src.includes('LEAD') || hasChan('LEAD') || !!formName;
+
+        let icon = '📥';
+        let label = 'Doğrudan';
+        let badgeColor = '#64748b';
+        let bg = '#f1f5f9';
+
+        if (src.includes('FACEBOOK') || hasChan('FACEBOOK') || contact.facebookId) {
+            if (isLeadForm) {
+                icon = '📘';
+                label = 'Facebook Lead Formu';
+                badgeColor = '#1877f2';
+                bg = '#eff6ff';
+            } else {
+                icon = '💬';
+                label = 'Facebook Messenger';
+                badgeColor = '#0084ff';
+                bg = '#eff6ff';
+            }
+        } else if (src.includes('INSTAGRAM') || hasChan('INSTAGRAM') || contact.instagramId) {
+            if (isLeadForm) {
+                icon = '📸';
+                label = 'Instagram Lead Formu';
+                badgeColor = '#e1306c';
+                bg = '#fdf2f8';
+            } else {
+                icon = '📸';
+                label = 'Instagram DM';
+                badgeColor = '#e1306c';
+                bg = '#fdf2f8';
+            }
+        } else if (src.includes('WHATSAPP') || hasChan('WHATSAPP') || contact.whatsappId) {
+            icon = '💬';
+            label = 'WhatsApp';
+            badgeColor = '#16a34a';
+            bg = '#f0fdf4';
+        } else if (isLeadForm) {
+            icon = '📋';
+            label = 'Meta Lead Formu';
+            badgeColor = '#2563eb';
+            bg = '#eff6ff';
+        } else if (src === 'WEB_FORM' || src === 'WEBFORM' || src === 'FORM' || hasChan('FORM')) {
+            icon = '📝';
+            label = 'Web Formu';
+            badgeColor = '#0284c7';
+            bg = '#f0f9ff';
+        } else if (src === 'WEB_WIDGET' || src === 'WIDGET' || src === 'WEB' || hasChan('WEB') || hasChan('WIDGET')) {
+            icon = '🌐';
+            label = 'Web Canlı Destek';
+            badgeColor = '#0284c7';
+            bg = '#f0f9ff';
+        } else if (src === 'EMAIL' || hasChan('EMAIL')) {
+            icon = '✉️';
+            label = 'E-Posta';
+            badgeColor = '#7c3aed';
+            bg = '#faf5ff';
+        } else if (src === 'MANUAL') {
+            icon = '✍️';
+            label = 'Manuel Kayıt';
+            badgeColor = '#64748b';
+            bg = '#f8fafc';
+        } else if (contact.source) {
+            label = contact.source;
+        }
+
+        // Ek kampanya / reklam / sayfa detayları
+        const campaign = contact.campaignOrAd || contact.attribution?.fb_ad_name || contact.attribution?.fb_campaign_name || contact.attribution?.utm_campaign || null;
+        const page = contact.pageName || null;
+        const form = formName || null;
+
+        const extraParts = [];
+        if (campaign) extraParts.push(campaign);
+        if (form && !extraParts.includes(form)) extraParts.push(form);
+        if (page && !extraParts.includes(page)) extraParts.push(page);
+
+        return {
+            icon,
+            label,
+            badgeColor,
+            bg,
+            extra: extraParts.length > 0 ? extraParts.join(' · ') : null,
+            campaign,
+            form,
+            page
+        };
+    };
+
     const getCardSourceInfo = (contact) => {
-        if (!contact) return { icon: '📥', label: '—', color: '#94a3b8' };
-        if (contact.facebookId) return { icon: '📘', label: 'Facebook', color: '#1877f2' };
-        if (contact.instagramId) return { icon: '📸', label: 'Instagram', color: '#e1306c' };
-        if (contact.whatsappId) return { icon: '💬', label: 'WhatsApp', color: '#25d366' };
-        if (contact.source === 'WEBFORM' || contact.source === 'WEB') return { icon: '🌐', label: 'Web', color: '#64748b' };
-        if (contact.source === 'MANUAL') return { icon: '✍️', label: 'Manuel', color: '#94a3b8' };
-        return { icon: '📥', label: contact.source || '—', color: '#94a3b8' };
+        const info = getDetailedChannelInfo(contact);
+        return { icon: info.icon, label: info.label, color: info.badgeColor };
+    };
+
+    const getCustomerInquiry = (contact) => {
+        if (!contact) return null;
+        const primaryCase = getPrimaryCase(contact);
+        const GENERIC_TITLES = ['💬 WHATSAPP', '💬 FACEBOOK', '💬 INSTAGRAM', '📧 E-POSTA', '📞 TELEFON', '🌐 WEB WIDGET', '📝 FORM', 'YENİ İLETİŞİM', 'YENİ CASE', 'LEAD'];
+
+        if (primaryCase?.title && !GENERIC_TITLES.includes(primaryCase.title.trim().toUpperCase())) {
+            return {
+                title: primaryCase.title,
+                caseNumber: primaryCase.caseNumber || null,
+                status: primaryCase.status,
+                score: primaryCase.leadScore,
+                fromCase: true
+            };
+        }
+        if (contact.aiTopic && !GENERIC_TITLES.includes(contact.aiTopic.trim().toUpperCase())) {
+            return {
+                title: contact.aiTopic,
+                caseNumber: primaryCase?.caseNumber || null,
+                status: primaryCase?.status || null,
+                score: primaryCase?.leadScore || contact.leadScore || null,
+                fromCase: false
+            };
+        }
+        if (primaryCase?.title) {
+            return {
+                title: primaryCase.title,
+                caseNumber: primaryCase.caseNumber || null,
+                status: primaryCase.status,
+                score: primaryCase.leadScore,
+                fromCase: true
+            };
+        }
+        return null;
     };
 
     const getContactAllCases = (contact) => {
@@ -2942,7 +3068,9 @@ const Customers = () => {
                                         const primaryCase = getPrimaryCase(contact);
                                         const caseCount = allCases.length;
                                         const touchInfo = getCaseTouchInfo(contact, primaryCase);
+                                        const channelInfo = getDetailedChannelInfo(contact);
                                         const source = getCardSourceInfo(contact);
+                                        const customerInquiry = getCustomerInquiry(contact);
                                         const phone = getContactPrimaryPhone(contact);
                                         const email = contact.email || (Array.isArray(contact.emails) ? contact.emails[0] : null) || null;
                                         const company = contact.company || contact.companyName || null;
@@ -2970,13 +3098,13 @@ const Customers = () => {
                                                     <div className="cust-card__id-row">
                                                         <div className="cust-card__avatar" style={{ background: getCardAvatarColor(contact) }}>
                                                             {getCardInitials(contact)}
-                                                            <span className="cust-card__src-dot" style={{ background: source?.color || '#94a3b8' }} title={source?.label || ''}>
-                                                                {source?.icon || '📥'}
+                                                            <span className="cust-card__src-dot" style={{ background: channelInfo.badgeColor || '#94a3b8' }} title={channelInfo.label || ''}>
+                                                                {channelInfo.icon || '📥'}
                                                             </span>
                                                         </div>
                                                         <div className="cust-card__id-info">
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                                <span className="cust-card__name" onClick={(e) => { e.stopPropagation(); handleSelectContact(contact); }} style={{ cursor: 'pointer' }} title="Detayları aç">
+                                                                <span className="cust-card__name" onClick={(e) => { e.stopPropagation(); handleSelectContact(contact); }} style={{ cursor: 'pointer' }} title="Kişi Detay Panelini Aç">
                                                                     {displayName}
                                                                 </span>
                                                                 {/* Vaka Sayısı Rozeti */}
@@ -2985,7 +3113,7 @@ const Customers = () => {
                                                                 </span>
                                                             </div>
                                                             <div className="cust-card__details">
-                                                                {phone && (
+                                                                {phone ? (
                                                                     <a
                                                                         href={`tel:${phone}`}
                                                                         onClick={e => e.stopPropagation()}
@@ -2994,6 +3122,10 @@ const Customers = () => {
                                                                     >
                                                                         <Phone size={11} style={{ color: '#10b981' }} /> {phone}
                                                                     </a>
+                                                                ) : (
+                                                                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                                                        Telefon yok
+                                                                    </span>
                                                                 )}
                                                                 {email && (
                                                                     <>
@@ -3002,8 +3134,15 @@ const Customers = () => {
                                                                     </>
                                                                 )}
                                                                 <span className="cust-card__sep">·</span>
-                                                                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                                                                    {source?.icon} {source?.label || 'Kanal'}
+                                                                {/* Belirgin Geliş Kanalı Rozeti */}
+                                                                <span
+                                                                    className="cust-card__channel-badge"
+                                                                    style={{ color: channelInfo.badgeColor, background: channelInfo.bg }}
+                                                                    title={`Geliş Kanalı: ${channelInfo.label}${channelInfo.extra ? ` · ${channelInfo.extra}` : ''}`}
+                                                                >
+                                                                    <span>{channelInfo.icon}</span>
+                                                                    <span>{channelInfo.label}</span>
+                                                                    {channelInfo.extra && <span className="cust-card__channel-extra">· {channelInfo.extra}</span>}
                                                                 </span>
                                                                 {company && (
                                                                     <>
@@ -3036,6 +3175,39 @@ const Customers = () => {
                                                             </button>
                                                         </div>
                                                     </div>
+
+                                                    {/* MÜŞTERİ TALEBİ BARI (Tıklanabilir - Doğrudan Aktivitelere / Vakaya Girer) */}
+                                                    {customerInquiry && (
+                                                        <div
+                                                            className={`cust-card__demand-bar ${isExpanded ? 'cust-card__demand-bar--open' : ''}`}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                toggleCardExpanded(contact.id);
+                                                            }}
+                                                            title="Müşteri talebini ve aktivitelerini incelemek için tıklayın"
+                                                        >
+                                                            <div className="cust-card__demand-left">
+                                                                <span className="cust-card__demand-badge">
+                                                                    <Target size={12} /> MÜŞTERİ TALEBİ
+                                                                </span>
+                                                                <span className="cust-card__demand-title">
+                                                                    "{customerInquiry.title}"
+                                                                </span>
+                                                                {customerInquiry.caseNumber && (
+                                                                    <span className="cust-card__demand-cse">CSE-{customerInquiry.caseNumber}</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="cust-card__demand-right">
+                                                                <span className="cust-card__demand-toggle-hint">
+                                                                    {isExpanded ? (
+                                                                        <>Aktiviteleri Gizle <ChevronUp size={13} /></>
+                                                                    ) : (
+                                                                        <>Aktiviteleri Gör ({allContactActs.length}) <ChevronDown size={13} /></>
+                                                                    )}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     {/* Row 2: Aktivite & Arama Sayaçları Şeridi */}
                                                     <div className="cust-card__stat-pills-row">
@@ -3084,7 +3256,7 @@ const Customers = () => {
                                                         </div>
                                                     )}
 
-                                                    {/* Row 3: Zamanlama & Hızlı Butonlar */}
+                                                    {/* Row 3: Zamanlama & Anlaşılır Hızlı Butonlar */}
                                                     <div className="cust-card__footer">
                                                         <div className="cust-card__time-chips">
                                                             {createdShort && <span className="cust-card__tc">📥 <strong>{createdShort}</strong></span>}
@@ -3101,34 +3273,31 @@ const Customers = () => {
                                                                     href={`https://wa.me/${phone.replace(/\D/g, '')}`}
                                                                     target="_blank"
                                                                     rel="noreferrer"
-                                                                    className="cust-card__qb cust-card__qb--primary"
-                                                                    title="WhatsApp Yaz"
+                                                                    className="cust-card__qb-btn cust-card__qb-btn--wa"
+                                                                    title="WhatsApp ile mesaj gönder"
                                                                 >
-                                                                    💬
+                                                                    <MessageCircle size={12} />
+                                                                    <span>WhatsApp</span>
                                                                 </a>
                                                             )}
                                                             {phone && (
                                                                 <a
                                                                     href={`tel:${phone}`}
-                                                                    className="cust-card__qb"
-                                                                    title="Hemen Ara"
+                                                                    className="cust-card__qb-btn cust-card__qb-btn--call"
+                                                                    title="Telefonla hemen ara"
                                                                 >
-                                                                    📞
+                                                                    <PhoneCall size={12} />
+                                                                    <span>Ara</span>
                                                                 </a>
                                                             )}
                                                             <button
-                                                                className="cust-card__qb"
-                                                                title="Randevu Planla"
+                                                                type="button"
+                                                                className="cust-card__qb-btn cust-card__qb-btn--detail"
+                                                                title="Kişi Detay Panelini Aç"
                                                                 onClick={() => handleSelectContact(contact)}
                                                             >
-                                                                📅
-                                                            </button>
-                                                            <button
-                                                                className="cust-card__qb"
-                                                                title="Detay Gör"
-                                                                onClick={() => handleSelectContact(contact)}
-                                                            >
-                                                                👁️
+                                                                <FileText size={12} />
+                                                                <span>Detay Paneli</span>
                                                             </button>
                                                         </div>
                                                     </div>
@@ -3536,8 +3705,16 @@ const Customers = () => {
                                                                 <span className="cust-card__ig-val">{email || 'E-posta Yok'}</span>
                                                             </div>
                                                             <div className="cust-card__ig-item">
-                                                                <span className="cust-card__ig-label">KAYNAK / REKLAM</span>
-                                                                <span className="cust-card__ig-val">{source?.label || 'Doğrudan'}</span>
+                                                                <span className="cust-card__ig-label">GELDİĞİ KANAL</span>
+                                                                <span className="cust-card__ig-val" style={{ fontWeight: 600, color: channelInfo.badgeColor }}>
+                                                                    {channelInfo.icon} {channelInfo.label}
+                                                                </span>
+                                                            </div>
+                                                            <div className="cust-card__ig-item">
+                                                                <span className="cust-card__ig-label">REKLAM / KAMPANYA</span>
+                                                                <span className="cust-card__ig-val">
+                                                                    {channelInfo.campaign || channelInfo.form || channelInfo.page || 'Organik / Doğrudan'}
+                                                                </span>
                                                             </div>
                                                             <div className="cust-card__ig-item">
                                                                 <span className="cust-card__ig-label">İLK KAYIT</span>
@@ -3562,7 +3739,7 @@ const Customers = () => {
                                                                         rel="noreferrer"
                                                                         className="cust-card__exp-btn cust-card__exp-btn--wa"
                                                                     >
-                                                                        💬 WhatsApp Yaz
+                                                                        <MessageCircle size={13} /> WhatsApp Yaz
                                                                     </a>
                                                                 )}
                                                                 {phone && (
@@ -3570,22 +3747,16 @@ const Customers = () => {
                                                                         href={`tel:${phone}`}
                                                                         className="cust-card__exp-btn cust-card__exp-btn--call"
                                                                     >
-                                                                        📞 Hemen Ara
+                                                                        <PhoneCall size={13} /> Hemen Ara
                                                                     </a>
                                                                 )}
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleSelectContact(contact)}
-                                                                    className="cust-card__exp-btn cust-card__exp-btn--gray"
-                                                                >
-                                                                    📅 Randevu Planla
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleSelectContact(contact)}
                                                                     className="cust-card__exp-btn cust-card__exp-btn--dark"
+                                                                    title="Kişi Detay Panelini Aç"
                                                                 >
-                                                                    👁️ Tüm Detayları Gör
+                                                                    <FileText size={13} /> Detay Panelini Aç
                                                                 </button>
                                                                 <button
                                                                     type="button"
