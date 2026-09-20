@@ -573,6 +573,16 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
 
         const branches = branchRes.branches;
         let totalDoctorCount = 0;
+
+        // Workspace'in varsayılan slot süresini al
+        let wsSlotMinutes = 30;
+        try {
+            const ws = await prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { defaultSlotMinutes: true }
+            });
+            wsSlotMinutes = ws?.defaultSlotMinutes || 30;
+        } catch { /* fallback 30 */ }
         const syncedList = [];
 
         // 2. Her branş için doktorları sıralı çek (Yarış durumunu ve mükerrer kaydı önlemek için)
@@ -668,7 +678,7 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                                 workspaceId,
                                 availableStart: '09:00',
                                 availableEnd: '18:00',
-                                slotMinutes: 30,
+                                slotMinutes: wsSlotMinutes,
                                 ...resourceData
                             }
                         });
@@ -711,7 +721,7 @@ export async function syncProbelDoctorsToResources(workspaceId, force = false) {
                                     workingDays: JSON.stringify(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']),
                                     workStart: '09:00',
                                     workEnd: '17:00',
-                                    slotMinutes: 30,
+                                    slotMinutes: wsSlotMinutes,
                                     isActive: true
                                 }
                             });

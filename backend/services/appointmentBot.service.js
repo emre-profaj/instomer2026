@@ -1064,6 +1064,7 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
 
         // CalendarResource eşleştirmesi
         let resolvedResourceId = null;
+        let resolvedSlotMinutes = null; // Resource veya workspace'ten gelecek
         if (doctor_name || branch) {
             try {
                 if (doctor_name) {
@@ -1071,10 +1072,12 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                         where: {
                             workspaceId,
                             name: { contains: doctor_name.trim(), mode: 'insensitive' }
-                        }
+                        },
+                        select: { id: true, slotMinutes: true, name: true, type: true, description: true }
                     });
                     if (matchedRes) {
                         resolvedResourceId = matchedRes.id;
+                        resolvedSlotMinutes = matchedRes.slotMinutes;
                     }
                 }
                 if (!resolvedResourceId && branch) {
@@ -1082,10 +1085,12 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                         where: {
                             workspaceId,
                             description: { contains: branch.trim(), mode: 'insensitive' }
-                        }
+                        },
+                        select: { id: true, slotMinutes: true, name: true, type: true, description: true }
                     });
                     if (matchedBranchRes) {
                         resolvedResourceId = matchedBranchRes.id;
+                        resolvedSlotMinutes = matchedBranchRes.slotMinutes;
                         if (!doctor_name && matchedBranchRes.type === 'PERSON') {
                             doctor_name = matchedBranchRes.name;
                         }
@@ -1096,7 +1101,20 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             }
         }
 
-        const { startTime, endTime, error: dateError } = parseAppointmentDateTime(date, time, probelSlotDk || 30);
+        // Slot süresini belirle: probelSlotDk (saatlerden) → resource → workspace default → 30 dk fallback
+        let finalSlotMinutes = probelSlotDk || resolvedSlotMinutes;
+        if (!finalSlotMinutes) {
+            try {
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { defaultSlotMinutes: true }
+                });
+                finalSlotMinutes = ws?.defaultSlotMinutes || 30;
+            } catch { finalSlotMinutes = 30; }
+        }
+        console.log(`⏱️ [AppointmentBot] Slot süresi: ${finalSlotMinutes} dk (probel: ${probelSlotDk || '-'}, resource: ${resolvedResourceId || 'yok'})`);
+
+        const { startTime, endTime, error: dateError } = parseAppointmentDateTime(date, time, finalSlotMinutes);
         if (!startTime) {
             console.error(`❌ [AppointmentBot] Randevu oluşturulmadı — tarih/saat anlaşılamadı: "${date}" "${time}"`);
             return {

@@ -232,6 +232,11 @@ model Workspace {
   // Kanal Fiyatlandırma { whatsapp: { baseCost, multiplier }, sms: {...}, email: {...}, aiCall: {...} }
   channelPricing Json?
 
+  // Randevu slot süresi (dakika) — workspace varsayılanı. 
+  // Her doktor (CalendarResource.slotMinutes) bunu override edebilir.
+  // null = 30 dakika (geriye uyumlu)
+  defaultSlotMinutes Int?
+
   // Workspace saat dilimi — IANA timezone (ör: "Europe/Istanbul", "America/New_York")
   // null = "Europe/Istanbul" (UTC+3) — mevcut müşteriler için geriye uyumlu
   timezone String?

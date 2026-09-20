@@ -583,7 +583,17 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                 if (!startTime) {
                     return { success: false, message: 'Geçersiz tarih/saat. Tarih YYYY-MM-DD, saat HH:MM olmalı.' };
                 }
-                const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+
+                // Slot süresini workspace ayarından çek (15, 20, 30 dk vs.)
+                let slotMin = 30;
+                try {
+                    const ws = await prisma.workspace.findUnique({
+                        where: { id: workspaceId },
+                        select: { defaultSlotMinutes: true }
+                    });
+                    slotMin = ws?.defaultSlotMinutes || 30;
+                } catch { /* fallback 30 */ }
+                const endTime = new Date(startTime.getTime() + slotMin * 60 * 1000);
 
                 const { createAppointment, APPOINTMENT_SOURCE, APPOINTMENT_RESULT } =
                     await import('../services/domain/appointment.domain.js');

@@ -392,6 +392,133 @@ async function migrateStatusToFunnelStage(workspaceId) {
     }
 }
 
+// Helper to get all call contact IDs (both human call activities and Retell AI calls)
+export const getWorkspaceCallSets = async (workspaceId) => {
+    // 1) Human call activities (ContactActivity type=CALL)
+    let humanCalledIds = new Set();
+    if (prisma.contactActivity) {
+        try {
+            const humanCallActs = await prisma.contactActivity.findMany({
+                where: {
+                    workspaceId,
+                    type: 'CALL',
+                    OR: [
+                        { status: 'COMPLETED' },
+                        { status: 'DONE' },
+                        { isCompleted: true },
+                        { result: { not: null } },
+                        { callSuccessful: { not: null } }
+                    ]
+                },
+                select: { contactId: true }
+            });
+            humanCalledIds = new Set(humanCallActs.map(a => a.contactId).filter(Boolean));
+        } catch (err) {
+            console.warn('⚠️ Error fetching human call activities:', err.message);
+        }
+    }
+
+    // 2) AI calls (RetellCall)
+    const aiCalledIds = new Set();
+    if (prisma.retellCall) {
+        try {
+            const retellCalls = await prisma.retellCall.findMany({
+                where: { workspaceId },
+                select: { id: true, contactId: true, toNumber: true }
+            });
+            const unlinkedCallPhones = new Set();
+            retellCalls.forEach(rc => {
+                if (rc.contactId) {
+                    aiCalledIds.add(rc.contactId);
+                } else if (rc.toNumber) {
+                    const raw = rc.toNumber.replace(/\D/g, '').slice(-10);
+                    if (raw.length >= 10) unlinkedCallPhones.add(raw);
+                }
+            });
+
+            if (unlinkedCallPhones.size > 0) {
+                const contactsWithPhones = await prisma.contact.findMany({
+                    where: {
+                        workspaceId,
+                        isDeleted: false,
+                        phone: { not: '' },
+                        NOT: { phone: null }
+                    },
+                    select: { id: true, phone: true }
+                });
+                const phoneMap = {};
+                contactsWithPhones.forEach(c => {
+                    if (c.phone) {
+                        const raw = c.phone.replace(/\D/g, '').slice(-10);
+                        if (raw.length >= 10) phoneMap[raw] = c.id;
+                    }
+                });
+
+                unlinkedCallPhones.forEach(p => {
+                    const cid = phoneMap[p];
+                    if (cid) aiCalledIds.add(cid);
+                });
+            }
+        } catch (err) {
+            console.warn('⚠️ Error fetching retell calls in getWorkspaceCallSets:', err.message);
+        }
+    }
+
+    const allCalledIds = new Set([...humanCalledIds, ...aiCalledIds]);
+    return { humanCalledIds, aiCalledIds, allCalledIds };
+};
+
+// Helper to extract all distinct tags across workspace contacts
+export const getWorkspaceTags = async (workspaceId) => {
+    const allTags = new Set();
+    try {
+        const contactsWithTags = await prisma.contact.findMany({
+            where: {
+                workspaceId,
+                isArchived: false,
+                isDeleted: false,
+                tags: { not: '[]' },
+                NOT: [
+                    { tags: null },
+                    { tags: '' }
+                ]
+            },
+            select: { tags: true }
+        });
+        contactsWithTags.forEach(c => {
+            if (!c.tags) return;
+            let raw = c.tags;
+            let parsed = [];
+            if (Array.isArray(raw)) {
+                parsed = raw;
+            } else if (typeof raw === 'string') {
+                const trimmed = raw.trim();
+                if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                    try {
+                        const arr = JSON.parse(trimmed);
+                        if (Array.isArray(arr)) parsed = arr;
+                    } catch {
+                        parsed = trimmed.slice(1, -1).split(',').map(s => s.replace(/['"`]/g, '').trim());
+                    }
+                } else {
+                    parsed = trimmed.split(',').map(s => s.replace(/['"`]/g, '').trim());
+                }
+            }
+            parsed.forEach(t => {
+                if (t && typeof t === 'string') {
+                    const clean = t.trim();
+                    if (clean && !clean.startsWith('v_')) {
+                        allTags.add(clean);
+                    }
+                }
+            });
+        });
+    } catch (err) {
+        console.warn('⚠️ Error fetching workspace tags:', err.message);
+    }
+    return Array.from(allTags).sort();
+};
+
 // Get all contacts in a workspace
 export const getContacts = async (req, res) => {
     try {
@@ -499,7 +626,12 @@ export const getContacts = async (req, res) => {
             where = {
                 AND: [
                     where,
-                    { tags: { contains: tag } }
+                    {
+                        OR: [
+                            { tags: { contains: `"${tag}"`, mode: 'insensitive' } },
+                            { tags: { contains: tag, mode: 'insensitive' } }
+                        ]
+                    }
                 ]
             };
         }
@@ -987,77 +1119,46 @@ export const getContacts = async (req, res) => {
         }
 
         // Filter by call status
+        let cachedCallSets = null;
         if (callStatus && callStatus !== 'ALL') {
-            if (callStatus === 'ended') {
-                // Agent Aramaları: contacts with phone numbers who have human calls
-                const humanCalledActivities = await prisma.contactActivity.findMany({
-                    where: {
-                        workspaceId,
-                        type: 'CALL',
-                        status: 'COMPLETED',
-                        contact: {
-                            phone: { not: '' },
-                            NOT: { phone: null },
-                            isDeleted: false,
-                            isArchived: false
-                        }
-                    },
-                    select: { contactId: true },
-                    distinct: ['contactId']
-                });
-                const matchedIds = humanCalledActivities.map(a => a.contactId).filter(Boolean);
+            cachedCallSets = await getWorkspaceCallSets(workspaceId);
+            const { humanCalledIds, aiCalledIds, allCalledIds } = cachedCallSets;
+
+            if (callStatus === 'ended' || callStatus === 'called' || callStatus === 'arananlar') {
+                // Arananlar: contacts with phone numbers who have been called (human or AI)
+                const matchedIds = Array.from(allCalledIds);
                 where = {
                     AND: [
                         where,
-                        { id: { in: matchedIds } }
+                        { id: { in: matchedIds.length > 0 ? matchedIds : ['__no_matching_called_contact__'] } }
                     ]
                 };
             } else if (callStatus === 'ai_called') {
                 // AI Aramaları: contacts with phone numbers who have AI calls
-                const contactsWithPhone = await prisma.contact.findMany({
-                    where: {
-                        workspaceId,
-                        phone: { not: '' },
-                        NOT: { phone: null },
-                        isDeleted: false,
-                        isArchived: false
-                    },
-                    select: { id: true }
-                });
-                const contactIdsWithPhone = contactsWithPhone.map(c => c.id);
-
-                const aiCalls = await prisma.retellCall.findMany({
-                    where: {
-                        workspaceId,
-                        contactId: { in: contactIdsWithPhone }
-                    },
-                    select: { contactId: true },
-                    distinct: ['contactId']
-                });
-                const matchedIds = aiCalls.map(c => c.contactId).filter(Boolean);
+                const matchedIds = Array.from(aiCalledIds);
                 where = {
                     AND: [
                         where,
-                        { id: { in: matchedIds } }
+                        { id: { in: matchedIds.length > 0 ? matchedIds : ['__no_matching_ai_call_contact__'] } }
+                    ]
+                };
+            } else if (callStatus === 'agent_called') {
+                // Temsilci Aramaları: contacts with human call activities
+                const matchedIds = Array.from(humanCalledIds);
+                where = {
+                    AND: [
+                        where,
+                        { id: { in: matchedIds.length > 0 ? matchedIds : ['__no_matching_agent_call_contact__'] } }
                     ]
                 };
             } else if (callStatus === 'no_call') {
-                // İletişim Yok: contacts with phone numbers who have NOT been called by humans
-                const humanCalledActivities = await prisma.contactActivity.findMany({
-                    where: {
-                        workspaceId,
-                        type: 'CALL',
-                        status: 'COMPLETED'
-                    },
-                    select: { contactId: true },
-                    distinct: ['contactId']
-                });
-                const calledIds = humanCalledActivities.map(a => a.contactId).filter(Boolean);
+                // Aranmayanlar: contacts with phone numbers who have NOT been called by anyone
+                const calledIds = Array.from(allCalledIds);
                 where = {
                     AND: [
                         where,
                         { phone: { not: '' }, NOT: { phone: null } },
-                        { id: { notIn: calledIds } }
+                        ...(calledIds.length > 0 ? [{ id: { notIn: calledIds } }] : [])
                     ]
                 };
             } else {
@@ -1078,14 +1179,10 @@ export const getContacts = async (req, res) => {
                 });
                 const matchedIds = matchingCalls.map(c => c.contactId).filter(Boolean);
 
-                if (matchedIds.length === 0) {
-                    return res.json({ contacts: [], total: 0, allImportGroups: [], allTags: [] });
-                }
-
                 where = {
                     AND: [
                         where,
-                        { id: { in: matchedIds } }
+                        { id: { in: matchedIds.length > 0 ? matchedIds : ['__no_matching_status_call__'] } }
                     ]
                 };
             }
@@ -1639,64 +1736,13 @@ export const getContacts = async (req, res) => {
             .filter(Boolean)
             .sort();
 
-        // Fetch all distinct tags (filtered)
-        const allContactsForTags = await prisma.contact.findMany({
-            where: { workspaceId, isArchived: false },
-            select: { tags: true }
-        });
-        const allTags = new Set();
-        allContactsForTags.forEach(c => {
-            try {
-                const tags = JSON.parse(c.tags || '[]');
-                tags.forEach(t => {
-                    if (t && !t.startsWith('v_') && t.length > 2) allTags.add(t);
-                });
-            } catch { }
-        });
+        // Fetch all distinct tags
+        const allTags = await getWorkspaceTags(workspaceId);
 
         // ── Quick Stats (uses statsWhere which inherits ALL active filters except contactInfo & callStatus) ──
-
-        // Fetch contacts matching statsWhere + has phone to query their calls/activities
-        const matchingContacts = await prisma.contact.findMany({
-            where: {
-                AND: [
-                    statsWhere,
-                    { phone: { not: '' } },
-                    { NOT: { phone: null } }
-                ]
-            },
-            select: { id: true }
-        });
-        const contactIdsWithPhone = matchingContacts.map(c => c.id);
-
-        const retellCallWhere = {
-            workspaceId,
-            contactId: { in: contactIdsWithPhone }
-        };
-        const humanCallWhere = {
-            workspaceId,
-            type: 'CALL',
-            status: 'COMPLETED',
-            contactId: { in: contactIdsWithPhone }
-        };
-
-        const hasRetellModel = !!prisma.retellCall;
-        const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime, funnelCountsRaw, noPhoneCount] = await Promise.all([
+        const [periodCount, withPhoneCount, totalAllTime, funnelCountsRaw, noPhoneCount] = await Promise.all([
             prisma.contact.count({ where: statsWhere }),
             prisma.contact.count({ where: { AND: [statsWhere, { phone: { not: '' } }, { NOT: { phone: null } }] } }),
-            // 1) Retell AI calls — distinct contacts
-            hasRetellModel && contactIdsWithPhone.length > 0 ? prisma.retellCall.findMany({
-                where: retellCallWhere,
-                select: { contactId: true },
-                distinct: ['contactId']
-            }) : Promise.resolve([]),
-            // 2) Human / manual completed calls (ContactActivity type=CALL)
-            hasActivitiesModel && contactIdsWithPhone.length > 0 ? prisma.contactActivity.findMany({
-                where: humanCallWhere,
-                select: { contactId: true },
-                distinct: ['contactId']
-            }) : Promise.resolve([]),
-            // totalAllTime
             prisma.contact.count({ where: statsWhere }),
             prisma.contact.groupBy({
                 by: ['funnelType'],
@@ -1715,12 +1761,25 @@ export const getContacts = async (req, res) => {
                 }
             })
         ]);
-        // Deduplicate: each contact counted at most once
-        const uniqueHumanCalledSet = new Set(humanCalledIds.map(r => r.contactId).filter(Boolean));
-        const uniqueAiCalledSet = new Set(retellCalledIds.map(r => r.contactId).filter(Boolean));
-        const agentCalledCount = uniqueHumanCalledSet.size;
-        const aiCalledCount = uniqueAiCalledSet.size;
-        // noActivityCount = contacts with phone numbers that have never been called by agents (human)
+
+        const matchingContactsWithPhone = await prisma.contact.findMany({
+            where: {
+                AND: [
+                    statsWhere,
+                    { phone: { not: '' } },
+                    { NOT: { phone: null } }
+                ]
+            },
+            select: { id: true }
+        });
+
+        const activeCallSets = cachedCallSets || await getWorkspaceCallSets(workspaceId);
+        let agentCalledCount = 0;
+        let aiCalledCount = 0;
+        matchingContactsWithPhone.forEach(c => {
+            if (activeCallSets.allCalledIds.has(c.id)) agentCalledCount++;
+            if (activeCallSets.aiCalledIds.has(c.id)) aiCalledCount++;
+        });
         const noActivityCount = Math.max(0, withPhoneCount - agentCalledCount);
 
         const funnelCounts = {};
@@ -1887,8 +1946,22 @@ export const getContacts = async (req, res) => {
                     activeCase: null
                 };
             });
-            console.log(`✅ [Get Contacts] Fallback query succeeded -> ${totalCount} total, showing ${finalContacts.length}`);
-            return res.json({ contacts: finalContacts, total: totalCount, allImportGroups: [], allTags: [], quickStats: { periodCount: totalCount, withPhoneCount, agentCalledCount: 0, aiCalledCount: 0, noActivityCount: totalCount, totalAllTime: totalCount } });
+            const fbTags = await getWorkspaceTags(workspaceId);
+            const { allCalledIds: fbCalledIds, aiCalledIds: fbAiIds } = await getWorkspaceCallSets(workspaceId);
+            return res.json({
+                contacts: finalContacts,
+                total: totalCount,
+                allImportGroups: [],
+                allTags: fbTags,
+                quickStats: {
+                    periodCount: totalCount,
+                    withPhoneCount,
+                    agentCalledCount: fbCalledIds.size,
+                    aiCalledCount: fbAiIds.size,
+                    noActivityCount: Math.max(0, withPhoneCount - fbCalledIds.size),
+                    totalAllTime: totalCount
+                }
+            });
         } catch (fallbackError) {
             console.error('Get contacts fallback error:', fallbackError);
             return res.status(500).json({ error: 'Failed to fetch contacts' });

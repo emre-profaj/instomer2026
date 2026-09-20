@@ -555,7 +555,27 @@ const Customers = () => {
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
 
             if (response.data.allTags) {
-                setAvailableTags(response.data.allTags);
+                const serverTags = Array.isArray(response.data.allTags) ? response.data.allTags : [];
+                const mergedTagSet = new Set(serverTags);
+                (response.data.contacts || []).forEach(c => {
+                    let tList = [];
+                    if (Array.isArray(c.tags)) tList = c.tags;
+                    else if (typeof c.tags === 'string' && c.tags && c.tags !== '[]') {
+                        try {
+                            const parsed = JSON.parse(c.tags);
+                            if (Array.isArray(parsed)) tList = parsed;
+                            else if (typeof parsed === 'string') tList = [parsed];
+                        } catch {
+                            tList = c.tags.replace(/[\[\]'"`]/g, '').split(',').map(s => s.trim());
+                        }
+                    }
+                    tList.forEach(t => {
+                        if (t && typeof t === 'string' && !t.startsWith('v_')) {
+                            mergedTagSet.add(t.trim());
+                        }
+                    });
+                });
+                setAvailableTags(Array.from(mergedTagSet).sort());
             }
             if (response.data.allImportGroups) {
                 setAvailableImportGroups(response.data.allImportGroups);
@@ -674,7 +694,27 @@ const Customers = () => {
 
             // Use allTags from backend response (filtered)
             if (response.data.allTags) {
-                setAvailableTags(response.data.allTags);
+                const serverTags = Array.isArray(response.data.allTags) ? response.data.allTags : [];
+                const mergedTagSet = new Set(serverTags);
+                (response.data.contacts || []).forEach(c => {
+                    let tList = [];
+                    if (Array.isArray(c.tags)) tList = c.tags;
+                    else if (typeof c.tags === 'string' && c.tags && c.tags !== '[]') {
+                        try {
+                            const parsed = JSON.parse(c.tags);
+                            if (Array.isArray(parsed)) tList = parsed;
+                            else if (typeof parsed === 'string') tList = [parsed];
+                        } catch {
+                            tList = c.tags.replace(/[\[\]'"`]/g, '').split(',').map(s => s.trim());
+                        }
+                    }
+                    tList.forEach(t => {
+                        if (t && typeof t === 'string' && !t.startsWith('v_')) {
+                            mergedTagSet.add(t.trim());
+                        }
+                    });
+                });
+                setAvailableTags(Array.from(mergedTagSet).sort());
             }
             // Use allImportGroups from backend response
             if (response.data.allImportGroups) {
