@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI } from '../../services/api';
+import { contactAPI, funnelAPI } from '../../services/api';
 import {
     Search, Plus, Download, Phone, MessageSquare, StickyNote, Bot,
     ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
@@ -39,6 +39,12 @@ const DONEM_ETIKET = {
     ALL: 'Toplam kişi'
 };
 const AVATAR_RENK = ['#6366f1', '#0ea5e9', '#14b8a6', '#8b5cf6', '#f59e0b', '#ec4899', '#10b981', '#f97316', '#3b82f6'];
+
+/* API activeCase içinde yalnız funnelStageId / funnelType döndürüyor — ikisi de
+   kimlik. Aşama adını huni listesinden çözüyoruz; çözülemezse ham kimliği
+   ekrana basmaktansa hiç göstermiyoruz. */
+const KIMLIK_RE = /^(c[a-z0-9]{20,}|[0-9a-f]{8}-[0-9a-f]{4}-)/i;
+const kimlikMi = (v) => KIMLIK_RE.test(String(v || ''));
 
 const sayi = (n) => (n === null || n === undefined || isNaN(n)) ? '0' : Number(n).toLocaleString('tr-TR');
 const gun = (d) => {
@@ -140,6 +146,32 @@ export default function Customers2() {
         return () => clearTimeout(t);
     }, [arama]);
 
+    // funnelStageId → aşama adı
+    const [asamaAdlari, setAsamaAdlari] = useState({});
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        funnelAPI.getAll(currentWorkspace.id)
+            .then(r => {
+                const liste = r.data.funnels || r.data || [];
+                const harita = {};
+                for (const f of liste) {
+                    for (const st of (f.stages || [])) harita[st.id] = st.name;
+                    if (f.id && f.name) harita[f.id] = f.name;
+                }
+                setAsamaAdlari(harita);
+            })
+            .catch(() => {});
+    }, [currentWorkspace?.id]);
+
+    const asamaAdi = useCallback((k) => {
+        const c = k.activeCase;
+        if (!c) return null;
+        const cozulmus = asamaAdlari[c.funnelStageId] || asamaAdlari[c.funnelType];
+        if (cozulmus) return cozulmus;
+        // Çözülemedi: funnelType okunabilir bir etiketse onu kullan, kimlikse hiç gösterme
+        return (c.funnelType && !kimlikMi(c.funnelType)) ? c.funnelType : null;
+    }, [asamaAdlari]);
+
     const hizliParam = useMemo(() => {
         switch (hizli) {
             case 'HAS_PHONE':   return { contactInfo: 'HAS_PHONE' };
@@ -235,7 +267,7 @@ export default function Customers2() {
     const satir = (k) => {
         const dokum = aktiviteDokumu(k);
         const kanal = (k.channels?.[0]) || k.source;
-        const asamaAd = k.activeCase?.funnelStageName || k.activeCase?.funnelType || null;
+        const asamaAd = asamaAdi(k);
         const asamaRenk = ASAMA_RENK[asamaAd] || '#64748b';
         const ilk = gun(k.firstMessageAt);
         const son = gun(k.lastMessageAt);
@@ -324,7 +356,7 @@ export default function Customers2() {
     const kart = (k) => {
         const dokum = aktiviteDokumu(k);
         const kanal = (k.channels?.[0]) || k.source;
-        const asamaAd = k.activeCase?.funnelStageName || k.activeCase?.funnelType || null;
+        const asamaAd = asamaAdi(k);
         const asamaRenk = ASAMA_RENK[asamaAd] || '#64748b';
         return (
             <div className="cd sr" key={k.id}>
@@ -354,12 +386,12 @@ export default function Customers2() {
     const asamalar = useMemo(() => {
         const g = new Map();
         for (const k of kisiler) {
-            const ad = k.activeCase?.funnelStageName || k.activeCase?.funnelType || 'Aşamasız';
+            const ad = asamaAdi(k) || 'Aşamasız';
             if (!g.has(ad)) g.set(ad, []);
             g.get(ad).push(k);
         }
         return [...g.entries()];
-    }, [kisiler]);
+    }, [kisiler, asamaAdi]);
 
     const gorunumAnahtari = (
         <div className="vsw">
