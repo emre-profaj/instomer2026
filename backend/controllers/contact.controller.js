@@ -680,24 +680,43 @@ export const getContacts = async (req, res) => {
                 ] 
             };
         } else if (funnelTypes && funnelTypes !== 'ALL') {
-            // Multi-funnel: comma-separated IDs → OR filter
+            // Multi-funnel: comma-separated IDs → match by stageId or funnelType
             const ids = funnelTypes.split(',').map(id => id.trim()).filter(Boolean);
             const funnels = await prisma.funnel.findMany({
-                where: { id: { in: ids } }
-            });
+                where: { id: { in: ids } },
+                include: { stages: { select: { id: true } } }
+            }).catch(() => []);
             const names = funnels.map(f => f.name).filter(Boolean);
+            const stageIds = funnels.flatMap(f => (f.stages || []).map(s => s.id));
             const allTerms = [...ids, ...names];
-            if (allTerms.length > 0) {
-                where = { AND: [where, { OR: allTerms.map(term => ({ funnelType: term })) }] };
+            const orConditions = [
+                ...(stageIds.length > 0 ? [{ funnelStageId: { in: stageIds } }] : []),
+                ...(allTerms.length > 0 ? allTerms.map(term => ({ funnelType: term })) : [])
+            ];
+            if (orConditions.length > 0) {
+                where = { AND: [where, { OR: orConditions }] };
             }
         } else if (funnelType && funnelType !== 'ALL') {
-            const descendantKeys = await getDescendantFunnelKeys(workspaceId, funnelType);
-            where = { 
-                AND: [
-                    where, 
-                    { OR: descendantKeys.map(term => ({ funnelType: term })) }
-                ] 
-            };
+            const funnels = await prisma.funnel.findMany({
+                where: {
+                    workspaceId,
+                    OR: [
+                        { id: funnelType },
+                        { name: funnelType }
+                    ]
+                },
+                include: { stages: { select: { id: true } } }
+            }).catch(() => []);
+            const descendantKeys = await getDescendantFunnelKeys(workspaceId, funnelType).catch(() => []);
+            const stageIds = funnels.flatMap(f => (f.stages || []).map(s => s.id));
+            const allTerms = [...new Set([...descendantKeys, funnelType])];
+            const orConditions = [
+                ...(stageIds.length > 0 ? [{ funnelStageId: { in: stageIds } }] : []),
+                ...(allTerms.length > 0 ? allTerms.map(term => ({ funnelType: term })) : [])
+            ];
+            if (orConditions.length > 0) {
+                where = { AND: [where, { OR: orConditions }] };
+            }
         }
 
         // Add date filter (createdAt) — use client timezone offset
@@ -1200,8 +1219,66 @@ export const getContacts = async (req, res) => {
             }
         }
 
+        // Helper function to fetch Retell AI call records for a contact batch
+        const fetchRetellCallsMap = async (contactList) => {
+            const map = {};
+            if (!prisma.retellCall || !contactList || contactList.length === 0) return map;
+            try {
+                const contactIds = contactList.map(c => c.id).filter(Boolean);
+                const phoneMap = {};
+                contactList.forEach(c => {
+                    if (c.phone) {
+                        const raw = c.phone.replace(/\D/g, '').slice(-10);
+                        if (raw.length >= 7) phoneMap[raw] = c.id;
+                    }
+                });
+                const rawPhones = Object.keys(phoneMap);
+
+                const retellCalls = await prisma.retellCall.findMany({
+                    where: {
+                        workspaceId,
+                        OR: [
+                            { contactId: { in: contactIds } },
+                            ...(rawPhones.length > 0 ? [{ toNumber: { in: contactList.map(c => c.phone).filter(Boolean) } }] : [])
+                        ]
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    select: {
+                        id: true,
+                        callId: true,
+                        contactId: true,
+                        toNumber: true,
+                        direction: true,
+                        status: true,
+                        duration: true,
+                        summary: true,
+                        sentiment: true,
+                        callSuccessful: true,
+                        callTopic: true,
+                        caseId: true,
+                        createdAt: true
+                    }
+                });
+
+                retellCalls.forEach(rc => {
+                    let targetContactId = rc.contactId;
+                    if (!targetContactId && rc.toNumber) {
+                        const rawTo = rc.toNumber.replace(/\D/g, '').slice(-10);
+                        targetContactId = phoneMap[rawTo] || null;
+                    }
+                    if (targetContactId) {
+                        if (!map[targetContactId]) map[targetContactId] = [];
+                        map[targetContactId].push(rc);
+                    }
+                });
+            } catch (err) {
+                console.error('Error fetching retellCallsMap:', err.message);
+            }
+            return map;
+        };
+
         // Helper function to add source field and message dates
-        const enrichContactWithSource = (contact) => {
+        const enrichContactWithSource = (contact, retellCallsMap = {}) => {
             const channels = contact.conversations?.map(c => c.channel) || [];
             // DB'deki source sadece anlamlı bir değerse kullan
             // MANUAL veya null ise → en eski conversation channel'ını tercih et
@@ -1287,12 +1364,69 @@ export const getContacts = async (req, res) => {
             }
             const aiTopic = caseTopic || convAiTopic || classificationTopic || firstMessageTopic;
 
-            // Build lastNote from: 1) Planned activity, 2) Last completed activity, 3) Last manual note
+            // Merge retell calls for this contact if available
+            const contactRetellCalls = (retellCallsMap && retellCallsMap[contact.id]) ? retellCallsMap[contact.id] : [];
+            const mergedActivities = [...(contact.activities || [])];
+
+            contactRetellCalls.forEach(rc => {
+                const rcTime = new Date(rc.createdAt).getTime();
+                const existing = mergedActivities.find(a => {
+                    const aTime = new Date(a.completedAt || a.createdAt || a.dueDate).getTime();
+                    return Math.abs(aTime - rcTime) < 5 * 60 * 1000;
+                });
+
+                if (existing) {
+                    if (rc.summary && (!existing.result || !existing.result.includes(rc.summary))) {
+                        existing.result = existing.result ? `${existing.result}\nÖzet: ${rc.summary}` : rc.summary;
+                    }
+                    if (rc.summary && !existing.description) existing.description = rc.summary;
+                    if (rc.summary && !existing.summary) existing.summary = rc.summary;
+                    if (rc.duration && !existing.duration) existing.duration = rc.duration;
+                    if (rc.sentiment && !existing.callSentiment) existing.callSentiment = rc.sentiment;
+                    if (rc.callSuccessful !== null && rc.callSuccessful !== undefined) existing.callSuccessful = rc.callSuccessful;
+                    existing.assignedByType = 'AI';
+                    existing.source = 'RETELL';
+                } else {
+                    const isInbound = rc.direction === 'inbound';
+                    const durationText = rc.duration ? `${rc.duration} sn` : null;
+                    let resultText = '';
+                    if (rc.summary) {
+                        resultText = durationText ? `${durationText} · ${rc.summary}` : rc.summary;
+                    } else if (rc.callSuccessful) {
+                        resultText = durationText ? `Görüşüldü (${durationText})` : 'Ulaşıldı';
+                    } else {
+                        resultText = 'Ulaşılamadı';
+                    }
+
+                    mergedActivities.push({
+                        id: rc.id || rc.callId,
+                        type: 'CALL',
+                        source: 'RETELL',
+                        assignedByType: 'AI',
+                        title: isInbound ? 'Gelen AI Arama' : 'AI Arama (Retell)',
+                        description: rc.summary || rc.callTopic || (isInbound ? 'Müşteri geri aradı' : 'AI sesli arama'),
+                        result: resultText,
+                        summary: rc.summary || null,
+                        status: rc.status === 'completed' || rc.callSuccessful ? 'COMPLETED' : 'CANCELLED',
+                        callSuccessful: rc.callSuccessful,
+                        callSentiment: rc.sentiment,
+                        duration: rc.duration,
+                        createdAt: rc.createdAt,
+                        completedAt: rc.createdAt,
+                        caseId: rc.caseId || null,
+                        _isRetell: true
+                    });
+                }
+            });
+
+            mergedActivities.sort((a, b) => new Date(b.createdAt || b.completedAt || 0) - new Date(a.createdAt || a.completedAt || 0));
+
+            // Build lastNote from: 1) Planned activity, 2) Last completed activity (including AI calls), 3) Last manual note
             let lastNote = null;
             let lastNoteType = null;
 
             // 1) Check for planned activities (upcoming calls, meetings)
-            const plannedActivity = contact.activities?.find(a => a.status === 'PLANNED');
+            const plannedActivity = mergedActivities.find(a => a.status === 'PLANNED');
             if (plannedActivity) {
                 const typeLabels = { CALL: '📞 Arama', MEETING: '🤝 Toplantı', VISIT: '📍 Ziyaret', TASK: '📋 Görev', REMINDER: '⏰ Hatırlatıcı' };
                 const typeLabel = typeLabels[plannedActivity.type] || '📌 Planlı';
@@ -1303,11 +1437,17 @@ export const getContacts = async (req, res) => {
 
             // 2) If no planned, get last completed activity
             if (!lastNote) {
-                const completedActivity = contact.activities?.find(a => a.status !== 'PLANNED');
+                const completedActivity = mergedActivities.find(a => a.status !== 'PLANNED');
                 if (completedActivity) {
-                    const typeLabels = { CALL: '📞', MEETING: '🤝', VISIT: '📍', NOTE: '📝', TASK: '✅', REMINDER: '⏰' };
-                    const icon = typeLabels[completedActivity.type] || '📌';
-                    lastNote = `${icon} ${completedActivity.result || completedActivity.title || completedActivity.description || ''}`.trim();
+                    const isAi = completedActivity.assignedByType === 'AI' || completedActivity.source === 'RETELL';
+                    if (isAi) {
+                        const dur = completedActivity.duration ? `${completedActivity.duration}sn ` : '';
+                        lastNote = `🤖 AI Arama: ${dur}${completedActivity.summary || completedActivity.result || completedActivity.description || 'Görüşüldü'}`.trim();
+                    } else {
+                        const typeLabels = { CALL: '📞', MEETING: '🤝', VISIT: '📍', NOTE: '📝', TASK: '✅', REMINDER: '⏰' };
+                        const icon = typeLabels[completedActivity.type] || '📌';
+                        lastNote = `${icon} ${completedActivity.result || completedActivity.title || completedActivity.description || ''}`.trim();
+                    }
                     lastNoteType = 'activity';
                 }
             }
@@ -1403,7 +1543,9 @@ export const getContacts = async (req, res) => {
                 formName,
                 pageName,
                 attribution: attr,
-                lastNote: lastNote ? (lastNote.length > 80 ? lastNote.substring(0, 80) + '...' : lastNote) : null,
+                activities: mergedActivities,
+                retellCalls: contactRetellCalls,
+                lastNote: lastNote ? (lastNote.length > 120 ? lastNote.substring(0, 120) + '...' : lastNote) : null,
                 lastNoteType
             };
         };
@@ -1496,7 +1638,6 @@ export const getContacts = async (req, res) => {
                     } : {}),
                     ...(hasActivitiesModel ? {
                         activities: {
-                            where: { workspaceId: workspaceId },
                             orderBy: { createdAt: 'desc' },
                             take: 25,
                             select: {
@@ -1546,8 +1687,8 @@ export const getContacts = async (req, res) => {
                 // NO take/skip here - we get all and paginate after filtering
             });
 
-            // Enrich with source info
-            const allContactsWithSource = allContacts.map(enrichContactWithSource);
+            // Enrich with basic source info first to filter by source
+            const allContactsWithSource = allContacts.map(c => enrichContactWithSource(c, {}));
 
             // Apply source filter
             let filteredContacts;
@@ -1576,7 +1717,11 @@ export const getContacts = async (req, res) => {
             // Apply pagination at application level
             const parsedLimit = parseInt(limit);
             const parsedOffset = parseInt(offset);
-            finalContacts = filteredContacts.slice(parsedOffset, parsedOffset + parsedLimit);
+            const pagedContacts = filteredContacts.slice(parsedOffset, parsedOffset + parsedLimit);
+
+            // Fetch Retell AI calls for paged contacts and enrich them fully
+            const retellCallsMap = await fetchRetellCallsMap(pagedContacts);
+            finalContacts = pagedContacts.map(c => enrichContactWithSource(c, retellCallsMap));
 
             console.log(`✅ [Get Contacts] Source filter '${source}' -> ${totalCount} total, showing ${finalContacts.length} (offset: ${parsedOffset})`);
         } else {
@@ -1653,7 +1798,6 @@ export const getContacts = async (req, res) => {
                     } : {}),
                     ...(hasActivitiesModel ? {
                         activities: {
-                            where: { workspaceId: workspaceId },
                             orderBy: { createdAt: 'desc' },
                             take: 25,
                             select: {
@@ -1704,22 +1848,25 @@ export const getContacts = async (req, res) => {
                 skip: ['firstMessageAt', 'lastMessageAt'].includes(sortField) ? undefined : parseInt(offset)
             });
 
-            finalContacts = contacts.map(enrichContactWithSource);
-
             // Sort by computed fields if needed (firstMessageAt / lastMessageAt)
             if (['firstMessageAt', 'lastMessageAt'].includes(sortField)) {
-                finalContacts.sort((a, b) => {
+                const enrichedAll = contacts.map(c => enrichContactWithSource(c, {}));
+                enrichedAll.sort((a, b) => {
                     const aVal = a[sortField] ? new Date(a[sortField]).getTime() : 0;
                     const bVal = b[sortField] ? new Date(b[sortField]).getTime() : 0;
                     return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
                 });
                 // Manual pagination since we fetched all
-                totalCount = finalContacts.length;
+                totalCount = enrichedAll.length;
                 const parsedLimit = parseInt(limit);
                 const parsedOffset = parseInt(offset);
-                finalContacts = finalContacts.slice(parsedOffset, parsedOffset + parsedLimit);
+                const pagedContacts = enrichedAll.slice(parsedOffset, parsedOffset + parsedLimit);
+                const retellCallsMap = await fetchRetellCallsMap(pagedContacts);
+                finalContacts = pagedContacts.map(c => enrichContactWithSource(c, retellCallsMap));
             } else {
                 totalCount = await prisma.contact.count({ where });
+                const retellCallsMap = await fetchRetellCallsMap(contacts);
+                finalContacts = contacts.map(c => enrichContactWithSource(c, retellCallsMap));
             }
 
             console.log(`✅ [Get Contacts] No source filter -> ${totalCount} total, showing ${finalContacts.length}`);
@@ -1740,27 +1887,41 @@ export const getContacts = async (req, res) => {
         const allTags = await getWorkspaceTags(workspaceId);
 
         // ── Quick Stats (uses statsWhere which inherits ALL active filters except contactInfo & callStatus) ──
-        const [periodCount, withPhoneCount, totalAllTime, funnelCountsRaw, noPhoneCount] = await Promise.all([
-            prisma.contact.count({ where: statsWhere }),
-            prisma.contact.count({ where: { AND: [statsWhere, { phone: { not: '' } }, { NOT: { phone: null } }] } }),
-            prisma.contact.count({ where: statsWhere }),
-            prisma.contact.groupBy({
-                by: ['funnelType'],
-                where: statsWhere,
-                _count: {
-                    _all: true
-                }
-            }),
-            // "Numarasız Başvurular" count — contacts without a phone number
-            prisma.contact.count({
-                where: {
-                    AND: [
-                        statsWhere,
-                        { OR: [{ phone: null }, { phone: '' }] }
-                    ]
-                }
-            })
-        ]);
+        let periodCount = 0;
+        let withPhoneCount = 0;
+        let totalAllTime = 0;
+        let funnelCountsRaw = [];
+        let noPhoneCount = 0;
+        try {
+            [periodCount, withPhoneCount, totalAllTime, funnelCountsRaw, noPhoneCount] = await Promise.all([
+                prisma.contact.count({ where: statsWhere }),
+                prisma.contact.count({ where: { AND: [statsWhere, { phone: { not: '' } }, { NOT: { phone: null } }] } }),
+                prisma.contact.count({ where: statsWhere }),
+                prisma.contact.groupBy({
+                    by: ['funnelType'],
+                    where: statsWhere,
+                    _count: { _all: true }
+                }).catch(() => []),
+                prisma.contact.count({
+                    where: {
+                        AND: [
+                            statsWhere,
+                            { OR: [{ phone: null }, { phone: '' }] }
+                        ]
+                    }
+                }).catch(() => 0)
+            ]);
+        } catch (err) {
+            console.warn('⚠️ Error in count queries:', err.message);
+            periodCount = await prisma.contact.count({ where: { workspaceId, isArchived: false, isDeleted: false } }).catch(() => 0);
+            withPhoneCount = await prisma.contact.count({ where: { workspaceId, isArchived: false, isDeleted: false, phone: { not: '' }, NOT: { phone: null } } }).catch(() => 0);
+            noPhoneCount = Math.max(0, periodCount - withPhoneCount);
+            totalAllTime = periodCount;
+        }
+
+        if (noPhoneCount === 0 && periodCount > withPhoneCount) {
+            noPhoneCount = Math.max(0, periodCount - withPhoneCount);
+        }
 
         const matchingContactsWithPhone = await prisma.contact.findMany({
             where: {
@@ -1771,7 +1932,7 @@ export const getContacts = async (req, res) => {
                 ]
             },
             select: { id: true }
-        });
+        }).catch(() => []);
 
         const activeCallSets = cachedCallSets || await getWorkspaceCallSets(workspaceId);
         let agentCalledCount = 0;
@@ -1782,26 +1943,63 @@ export const getContacts = async (req, res) => {
         });
         const noActivityCount = Math.max(0, withPhoneCount - agentCalledCount);
 
+        // Stage-level counts (grouped by funnelStageId)
+        let funnelStageCountsRaw = [];
+        try {
+            funnelStageCountsRaw = await prisma.contact.groupBy({
+                by: ['funnelStageId'],
+                where: statsWhere,
+                _count: { _all: true }
+            });
+        } catch (e) {
+            console.warn('⚠️ Error in funnelStageId groupBy:', e.message);
+        }
+        const funnelStageCounts = {};
+        funnelStageCountsRaw.forEach(item => {
+            if (item.funnelStageId) {
+                funnelStageCounts[item.funnelStageId] = item._count?._all || 0;
+            }
+        });
+
         const funnelCounts = {};
         let nullOrGenelCount = 0;
 
-        // Resolve all funnelType values to actual funnel records for proper ID/name mapping
-        const uniqueFunnelTypes = funnelCountsRaw.map(item => item.funnelType).filter(Boolean);
-        let funnelLookup = {};
-        if (uniqueFunnelTypes.length > 0) {
-            const funnelRecords = await prisma.funnel.findMany({
-                where: {
-                    workspaceId,
-                    OR: [
-                        { id: { in: uniqueFunnelTypes } },
-                        { name: { in: uniqueFunnelTypes } }
-                    ]
-                }
-            });
-            funnelRecords.forEach(f => {
-                funnelLookup[f.id] = f;
-                funnelLookup[f.name] = f;
-            });
+        // Fetch all funnels for this workspace and their stages to properly calculate funnelCounts
+        const allWorkspaceFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: {
+                stages: { select: { id: true } }
+            }
+        }).catch(() => []);
+
+        for (const f of allWorkspaceFunnels) {
+            let count = 0;
+            const stageIds = (f.stages || []).map(s => s.id);
+            if (stageIds.length > 0) {
+                stageIds.forEach(sid => {
+                    count += (funnelStageCounts[sid] || 0);
+                });
+            }
+            const directTypeCount = funnelCountsRaw.find(item => item.funnelType === f.id || item.funnelType === f.name)?._count?._all || 0;
+            let totalFunnel = Math.max(count, directTypeCount);
+            if (totalFunnel === 0 && stageIds.length > 0) {
+                totalFunnel = await prisma.contact.count({
+                    where: {
+                        AND: [
+                            statsWhere,
+                            {
+                                OR: [
+                                    { funnelStageId: { in: stageIds } },
+                                    { funnelType: f.name },
+                                    { funnelType: f.id }
+                                ]
+                            }
+                        ]
+                    }
+                }).catch(() => 0);
+            }
+            funnelCounts[f.id] = totalFunnel;
+            funnelCounts[f.name] = totalFunnel;
         }
 
         funnelCountsRaw.forEach(item => {
@@ -1809,30 +2007,9 @@ export const getContacts = async (req, res) => {
             const count = item._count?._all || 0;
             if (!fType || fType === 'Genel') {
                 nullOrGenelCount += count;
-            } else {
-                const resolved = funnelLookup[fType];
-                if (resolved) {
-                    funnelCounts[resolved.id] = (funnelCounts[resolved.id] || 0) + count;
-                    funnelCounts[resolved.name] = (funnelCounts[resolved.name] || 0) + count;
-                } else {
-                    nullOrGenelCount += count;
-                }
             }
         });
         funnelCounts['Genel'] = nullOrGenelCount;
-
-        // Stage-level counts (grouped by funnelStageId)
-        const funnelStageCountsRaw = await prisma.contact.groupBy({
-            by: ['funnelStageId'],
-            where: statsWhere,
-            _count: { _all: true }
-        });
-        const funnelStageCounts = {};
-        funnelStageCountsRaw.forEach(item => {
-            if (item.funnelStageId) {
-                funnelStageCounts[item.funnelStageId] = item._count?._all || 0;
-            }
-        });
 
 
 
@@ -1855,8 +2032,9 @@ export const getContacts = async (req, res) => {
             const limit = req.query.limit || 100;
             const offset = req.query.offset || 0;
             console.log('⚠️ [Get Contacts] Attempting fallback query without cases/activities...');
+            const fallbackWhere = where || { workspaceId, isArchived: false, isDeleted: false };
             const contacts = await prisma.contact.findMany({
-                where: { workspaceId, isArchived: false, isDeleted: false },
+                where: fallbackWhere,
                 include: {
                     _count: { select: { conversations: true } },
                     conversations: {
@@ -1885,8 +2063,8 @@ export const getContacts = async (req, res) => {
                 take: parseInt(limit),
                 skip: parseInt(offset)
             });
-            const totalCount = await prisma.contact.count({ where: { workspaceId, isArchived: false, isDeleted: false } });
-            const withPhoneCount = await prisma.contact.count({ where: { workspaceId, isArchived: false, isDeleted: false, AND: [{ phone: { not: null } }, { phone: { not: '' } }] } });
+            const totalCount = await prisma.contact.count({ where: fallbackWhere });
+            const withPhoneCount = await prisma.contact.count({ where: { AND: [fallbackWhere, { phone: { not: null } }, { phone: { not: '' } }] } });
 
             const GENERIC_LABELS = ['form', 'web widget', 'web_widget', 'whatsapp', 'instagram', 'facebook', 'messenger', 'email', 'manual'];
             const finalContacts = contacts.map(c => {
@@ -1948,6 +2126,15 @@ export const getContacts = async (req, res) => {
             });
             const fbTags = await getWorkspaceTags(workspaceId);
             const { allCalledIds: fbCalledIds, aiCalledIds: fbAiIds } = await getWorkspaceCallSets(workspaceId);
+            const fbFunnels = await prisma.funnel.findMany({
+                where: { workspaceId },
+                include: { stages: { select: { id: true } } }
+            }).catch(() => []);
+            const fbFunnelCounts = {};
+            fbFunnels.forEach(f => {
+                fbFunnelCounts[f.id] = totalCount;
+                fbFunnelCounts[f.name] = totalCount;
+            });
             return res.json({
                 contacts: finalContacts,
                 total: totalCount,
@@ -1956,10 +2143,14 @@ export const getContacts = async (req, res) => {
                 quickStats: {
                     periodCount: totalCount,
                     withPhoneCount,
+                    noPhoneCount: Math.max(0, totalCount - withPhoneCount),
                     agentCalledCount: fbCalledIds.size,
                     aiCalledCount: fbAiIds.size,
                     noActivityCount: Math.max(0, withPhoneCount - fbCalledIds.size),
-                    totalAllTime: totalCount
+                    totalAllTime: totalCount,
+                    funnelCounts: fbFunnelCounts,
+                    funnelStageCounts: {},
+                    salesCount: 0
                 }
             });
         } catch (fallbackError) {

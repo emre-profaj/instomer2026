@@ -4297,3 +4297,203 @@
 .cust-card__exp-btn--dark:hover {
     background: #1e293b;
 }
+
+/* ══════════════════════════════════════════════════════════
+   CUSTOMER CARD JOURNEY & AI CALL SUMMARY (EXPANDED CARD)
+   ══════════════════════════════════════════════════════════ */
+.cust-card__journey-section {
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 10px;
+}
+.cust-card__journey-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.cust-card__journey-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cust-card__journey-item:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.cust-card__journey-item--reached {
+    border-left: 3px solid #10b981;
+    background: #f0fdf4;
+}
+.cust-card__journey-item--failed {
+    border-left: 3px solid #ef4444;
+    background: #fef2f2;
+}
+.cust-card__journey-item--record {
+    border-left: 3px solid #6366f1;
+    background: #f8faff;
+}
+.cust-card__journey-item--conv {
+    border-left: 3px solid #0284c7;
+    background: #f0f9ff;
+}
+.cust-card__journey-item--phone {
+    border-left: 3px solid #16a34a;
+    background: #f0fdf4;
+}
+.cust-card__journey-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.cust-card__journey-content {
+    flex: 1;
+    min-width: 0;
+}
+.cust-card__journey-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.cust-card__journey-title {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+.cust-card__journey-desc {
+    font-size: 0.72rem;
+    color: #475569;
+    margin-top: 2px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+/* AI Call Box */
+.cust-card__ai-call-box {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #faf5ff;
+    border: 1px solid #e9d5ff;
+    border-left: 4px solid #8b5cf6;
+    transition: box-shadow 0.15s;
+}
+.cust-card__ai-call-box:hover {
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.12);
+}
+.cust-card__ai-call-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.cust-card__ai-call-title-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.cust-card__ai-call-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #7c3aed;
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    letter-spacing: 0.2px;
+}
+.cust-card__ai-dur-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #f3e8ff;
+    color: #6b21a8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 6px;
+    border: 1px solid #e9d5ff;
+}
+.cust-card__call-status {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+.cust-card__call-status--reached {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+.cust-card__call-status--failed {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+/* AI Summary Box - Detailed readable 2-3+ lines */
+.cust-card__ai-summary-box {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e9d5ff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+.cust-card__ai-summary-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.cust-card__ai-summary-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #6d28d9;
+}
+.cust-card__sentiment-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 5px;
+}
+.cust-card__sentiment-badge--positive {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+}
+.cust-card__sentiment-badge--negative {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.cust-card__sentiment-badge--neutral {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.cust-card__ai-summary-content {
+    font-size: 0.75rem;
+    color: #334155;
+    line-height: 1.45;
+    word-break: break-word;
+}
