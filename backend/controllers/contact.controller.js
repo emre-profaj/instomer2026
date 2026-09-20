@@ -521,6 +521,10 @@ export const getWorkspaceTags = async (workspaceId) => {
 
 // Get all contacts in a workspace
 export const getContacts = async (req, res) => {
+    // catch bloğundaki yedek sorgu da bu filtreyi kullanıyor. try içinde
+    // bildirilince catch onu göremiyor, "where is not defined" ile yedek
+    // sorgu da düşüyordu — bildirim dışarı alındı.
+    let where;
     try {
         const { workspaceId } = req.params;
         const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases, tzOffset, topicCategoryId, hasSales } = req.query;
@@ -562,7 +566,6 @@ export const getContacts = async (req, res) => {
         }
 
         // Build where clause based on role
-        let where;
         if (role === 'AGENT') {
             // AGENT: see contacts that have conversations OR active cases assigned to them or their teams
             const caseOrConditions = [{ assignedToId: req.user.id }];
@@ -1529,7 +1532,7 @@ export const getContacts = async (req, res) => {
             const conv = contact.conversations?.[0] || null;
             const campaignOrAd = attr?.fb_ad_name || attr?.fb_campaign_name || attr?.utm_campaign || conv?.utmCampaign || contact.leadSourceDetail || null;
             const formName = attr?.meta_lead_form_name || attr?.form_name || null;
-            const pageName = conv?.facebookPage?.name || null;
+            const pageName = conv?.facebookPage?.pageName || null;
 
             return {
                 ...contact,
@@ -1589,7 +1592,7 @@ export const getContacts = async (req, res) => {
                             utmCampaign: true,
                             utmContent: true,
                             facebookPageId: true,
-                            facebookPage: { select: { id: true, name: true } },
+                            facebookPage: { select: { id: true, pageName: true } },
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -1752,7 +1755,7 @@ export const getContacts = async (req, res) => {
                             utmCampaign: true,
                             utmContent: true,
                             facebookPageId: true,
-                            facebookPage: { select: { id: true, name: true } },
+                            facebookPage: { select: { id: true, pageName: true } },
                             assignedTo: {
                                 select: {
                                     id: true,
