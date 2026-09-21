@@ -22,6 +22,23 @@
  * taraf kart görselini kendisi vermek zorunda.
  */
 
+/**
+ * Göreli yüklenme yolunu Meta'nın çekebileceği mutlak adrese çevirir.
+ *
+ * Kart görsellerini `/api/uploads/templates/...` olarak saklıyoruz; Meta
+ * gönderimde bu bağlantıyı KENDİSİ indiriyor, dolayısıyla dışarıdan
+ * erişilebilir tam adres şart. Taban adres FRONTEND_URL'den gelir.
+ */
+export function toPublicUrl(url) {
+    if (!url || typeof url !== 'string') return url || null;
+    if (/^https?:\/\//i.test(url)) return url;
+    if (!url.startsWith('/')) return url;
+    const base = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+    if (!base) return url;
+    const path = url.startsWith('/uploads') ? `/api${url}` : url;
+    return `${base}${path}`;
+}
+
 /** Şablonun ham Meta bileşenlerini güvenle çözer. */
 export function parseComponents(template) {
     if (!template?.components) return [];
@@ -76,7 +93,7 @@ export function buildSendComponents({ template, mediaUrl, bodyParams = [], cardI
     // ── Ana başlık (carousel dışı medya) ────────────────────────
     const headerType = String(template?.headerType || '').toUpperCase();
     if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerType)) {
-        const link = mediaUrl || template?.headerContent;
+        const link = toPublicUrl(mediaUrl || template?.headerContent);
         if (link) {
             components.push({
                 type: 'header',
@@ -110,7 +127,7 @@ export function buildSendComponents({ template, mediaUrl, bodyParams = [], cardI
             const metaHeader = (metaKart.components || [])
                 .find(c => String(c.type).toUpperCase() === 'HEADER');
             const format = String(girdi.headerFormat || yerel.headerFormat || metaHeader?.format || 'IMAGE').toLowerCase();
-            const kartMedya = girdi.mediaUrl || yerel.mediaUrl || null;
+            const kartMedya = toPublicUrl(girdi.mediaUrl || yerel.mediaUrl || null);
             if (kartMedya) {
                 kartBilesenleri.push({
                     type: 'header',
@@ -173,4 +190,4 @@ export function buildSendComponents({ template, mediaUrl, bodyParams = [], cardI
     return components;
 }
 
-export default { parseComponents, hasCarousel, getCarouselCards, getLocalCards, buildSendComponents };
+export default { parseComponents, hasCarousel, getCarouselCards, getLocalCards, buildSendComponents, toPublicUrl };

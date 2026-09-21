@@ -6,6 +6,25 @@ import multer from 'multer';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { generateCaseNumber } from './case.controller.js';
 import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
+import { hasCarousel, buildSendComponents, toPublicUrl } from '../services/whatsappTemplate.service.js';
+
+/**
+ * Carousel şablonunun kart bileşenlerini gönderim yüküne ekler.
+ *
+ * Tekil gönderim yolları `components` dizisini elle kuruyor ve carousel'i
+ * atlıyordu; Meta bu durumda (#132012) "header component parameter should
+ * not be empty" döndürüyor. Kartları merkezi kurucudan alıp ekliyoruz.
+ */
+const carouselBilesenEkle = (template, components, cardInputs = []) => {
+    if (!hasCarousel(template)) return components;
+    const kurulan = buildSendComponents({ template, cardInputs });
+    const carousel = kurulan.find(c => c.type === 'carousel');
+    if (carousel) {
+        components.push(carousel);
+        console.log(`🎠 [Şablon] Carousel eklendi: ${carousel.cards?.length || 0} kart`);
+    }
+    return components;
+};
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -718,11 +737,8 @@ export const sendTemplateMessage = async (req, res) => {
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
             let rawMediaUrl = headerMediaUrl || template.headerContent;
             
-            // If it's a local relative path, convert to absolute (using chatcrm.instomer.com/api/uploads)
-            if (rawMediaUrl && (rawMediaUrl.startsWith('/api/uploads') || rawMediaUrl.startsWith('/uploads'))) {
-                const cleanPath = rawMediaUrl.startsWith('/uploads') ? `/api${rawMediaUrl}` : rawMediaUrl;
-                rawMediaUrl = `https://chatcrm.instomer.com${cleanPath}`;
-            }
+            // Göreli yolu dışarıdan erişilebilir adrese çevir (FRONTEND_URL).
+            rawMediaUrl = toPublicUrl(rawMediaUrl);
             
             const mediaUrl = convertGoogleDriveLink(rawMediaUrl);
             
@@ -774,6 +790,9 @@ export const sendTemplateMessage = async (req, res) => {
                 parameters: variables.filter(v => v && v.trim()).map(v => ({ type: 'text', text: v }))
             });
         }
+
+        // Carousel kartları (varsa)
+        carouselBilesenEkle(template, components, req.body.cards || []);
 
         // Only add components if there are any
         if (components.length > 0) {
@@ -945,11 +964,19 @@ export const sendTemplateFromInbox = async (req, res) => {
         };
 
         // Add body variables if provided
+        const inboxComponents = [];
         if (variables && variables.length > 0 && variables.some(v => v)) {
-            templatePayload.template.components = [{
+            inboxComponents.push({
                 type: 'body',
                 parameters: variables.filter(v => v).map(v => ({ type: 'text', text: v }))
-            }];
+            });
+        }
+
+        // Carousel kartları (varsa)
+        carouselBilesenEkle(template, inboxComponents, req.body.cards || []);
+
+        if (inboxComponents.length > 0) {
+            templatePayload.template.components = inboxComponents;
         }
 
         console.log('📤 WhatsApp API Request:', {
@@ -1135,10 +1162,7 @@ export const sendTemplateDynamic = async (req, res) => {
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
             let rawUrl = headerMediaUrl || template.headerContent;
             
-            if (rawUrl && (rawUrl.startsWith('/api/uploads') || rawUrl.startsWith('/uploads'))) {
-                const cleanPath = rawUrl.startsWith('/uploads') ? `/api${rawUrl}` : rawUrl;
-                rawUrl = `https://chatcrm.instomer.com${cleanPath}`;
-            }
+            rawUrl = toPublicUrl(rawUrl);
             const mediaUrl = convertGoogleDriveLink(rawUrl);
 
             if (!mediaUrl) {
@@ -1225,6 +1249,9 @@ export const sendTemplateDynamic = async (req, res) => {
                 console.log('📝 [sendTemplateDynamic] Body params:', bodyParams);
             }
         }
+
+        // Carousel kartları (varsa)
+        carouselBilesenEkle(template, components, req.body.cards || []);
 
         // Add components to payload if any
         if (components.length > 0) {
