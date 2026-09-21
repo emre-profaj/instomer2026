@@ -265,12 +265,31 @@ async function runTypeSpecificAction(workspaceId, ruleType, contactId, config, c
                     where: { id: workspaceId },
                     select: { googleMapsUrl: true, companyAddress: true, companyName: true }
                 });
-                // Şube konumu varsa onu tercih et
-                const branch = await prisma.appointmentBranch.findFirst({
-                    where: { workspaceId, isActive: true, googleMapsUrl: { not: null } },
-                    select: { name: true, address: true, googleMapsUrl: true },
-                    orderBy: { order: 'asc' }
-                }).catch(() => null);
+                // Şube konumu varsa onu tercih et.
+                //
+                // DİKKAT: Şubeler İKİ ayrı yerde tutuluyor.
+                //   1) WorkspaceRule / CLINIC_LOCATIONS JSON — Ayarlar >
+                //      "Merkez ve Şubeler" ekranının yazdığı yer.
+                //   2) appointment_branches tablosu — randevu akışının kullandığı.
+                // Burası yalnız (2)'ye bakıyordu; kullanıcı ekrandan konum linki
+                // girse bile bot göremiyordu. Önce ekranın yazdığı yere bakılır.
+                let branch = null;
+                try {
+                    const locRule = await prisma.workspaceRule.findFirst({
+                        where: { workspaceId, ruleType: 'CLINIC_LOCATIONS' },
+                        select: { config: true }
+                    });
+                    const loclar = locRule?.config ? (JSON.parse(locRule.config).locations || []) : [];
+                    branch = loclar.find(l => l.isActive !== false && l.googleMapsUrl) || null;
+                } catch (_) { /* bozuk JSON: tabloya düşülür */ }
+
+                if (!branch) {
+                    branch = await prisma.appointmentBranch.findFirst({
+                        where: { workspaceId, isActive: true, googleMapsUrl: { not: null } },
+                        select: { name: true, address: true, googleMapsUrl: true },
+                        orderBy: { order: 'asc' }
+                    }).catch(() => null);
+                }
 
                 const mapsUrl = branch?.googleMapsUrl || ws?.googleMapsUrl || null;
                 const address = branch?.address || ws?.companyAddress || null;

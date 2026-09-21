@@ -148,6 +148,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     const [newBranchName, setNewBranchName] = useState('');
     const [newBranchAddress, setNewBranchAddress] = useState('');
     const [newBranchPhone, setNewBranchPhone] = useState('');
+    const [newBranchMapsUrl, setNewBranchMapsUrl] = useState('');
     const [newBranchIntegrationType, setNewBranchIntegrationType] = useState('WORKSPACE_DEFAULT');
     const [newBranchExternalCode, setNewBranchExternalCode] = useState('');
     const [newBranchGoogleEmail, setNewBranchGoogleEmail] = useState('');
@@ -155,6 +156,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     const [editBranchName, setEditBranchName] = useState('');
     const [editBranchAddress, setEditBranchAddress] = useState('');
     const [editBranchPhone, setEditBranchPhone] = useState('');
+    const [editBranchMapsUrl, setEditBranchMapsUrl] = useState('');
     const [editBranchIntegrationType, setEditBranchIntegrationType] = useState('WORKSPACE_DEFAULT');
     const [editBranchExternalCode, setEditBranchExternalCode] = useState('');
     const [editBranchGoogleEmail, setEditBranchGoogleEmail] = useState('');
@@ -241,6 +243,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                 name: newBranchName,
                 address: newBranchAddress,
                 phone: newBranchPhone,
+                googleMapsUrl: newBranchMapsUrl,
                 integrationType: newBranchIntegrationType,
                 externalBranchCode: newBranchExternalCode || null,
                 googleEmail: newBranchGoogleEmail || null,
@@ -250,6 +253,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             setNewBranchName('');
             setNewBranchAddress('');
             setNewBranchPhone('');
+            setNewBranchMapsUrl('');
             setNewBranchIntegrationType('WORKSPACE_DEFAULT');
             setNewBranchExternalCode('');
             setNewBranchGoogleEmail('');
@@ -267,6 +271,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                 name: editBranchName,
                 address: editBranchAddress,
                 phone: editBranchPhone,
+                googleMapsUrl: editBranchMapsUrl,
                 integrationType: editBranchIntegrationType,
                 externalBranchCode: editBranchExternalCode || null,
                 googleEmail: editBranchGoogleEmail || null,
@@ -1568,6 +1573,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                                             setEditBranchName(branch.name);
                                                             setEditBranchAddress(branch.address || '');
                                                             setEditBranchPhone(branch.phone || '');
+                                                            setEditBranchMapsUrl(branch.googleMapsUrl || '');
                                                             setEditBranchIntegrationType(branch.integrationType || 'WORKSPACE_DEFAULT');
                                                             setEditBranchExternalCode(branch.externalBranchCode || '');
                                                             setEditBranchGoogleEmail(branch.googleEmail || '');
@@ -1659,6 +1665,26 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                     onChange={e => editingBranch ? setEditBranchPhone(e.target.value) : setNewBranchPhone(e.target.value)}
                                     placeholder="+90…"
                                 />
+                            </div>
+
+                            <div className="br-f">
+                                <label htmlFor="br-in-maps">📍 Konum linki</label>
+                                <input
+                                    id="br-in-maps"
+                                    type="url"
+                                    className="br-in"
+                                    value={editingBranch ? editBranchMapsUrl : newBranchMapsUrl}
+                                    onChange={e => editingBranch ? setEditBranchMapsUrl(e.target.value) : setNewBranchMapsUrl(e.target.value)}
+                                    placeholder="https://maps.google.com/…"
+                                />
+                                {(editingBranch ? editBranchMapsUrl : newBranchMapsUrl) && (
+                                    <a
+                                        href={editingBranch ? editBranchMapsUrl : newBranchMapsUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ fontSize: 12, color: '#dc2626', textDecoration: 'none', marginTop: 4, display: 'inline-block' }}
+                                    >🔗 Haritada görüntüle</a>
+                                )}
                             </div>
 
                             <div className="br-f">
