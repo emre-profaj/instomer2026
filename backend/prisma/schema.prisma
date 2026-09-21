@@ -162,6 +162,7 @@ model Workspace {
   appointmentBranches  AppointmentBranch[]
   botTools             AIBotTool[]
   retellActions        RetellAction[]
+  retellAgentLinks     RetellAgentLink[]
   cases                Case[]
   products             Product[]
   marketingCampaigns   MarketingCampaign[]
@@ -178,6 +179,10 @@ model Workspace {
 
   // Retell AI Voice
   retellApiKey          String?
+  // Varsayılan agent: açıkça agent verilmeyen aramalarda kullanılır.
+  // Bağlı agent'ların TAMAMI RetellAgentLink tablosundadır — gelen arama
+  // eşleştirmesi oradan yapılır, yoksa bağlı olmayan agent'a gelen çağrı
+  // "workspace not found" deyip düşüyordu.
   retellAgentId         String?
   retellFromNumber      String?
   retellKnowledgeBaseId String? // Instomer KB → Retell sync sonrası oluşturulan KB ID
@@ -2578,6 +2583,22 @@ model AutomationLog {
 // Retell Arama Şablonları
 // WhatsApp şablonları gibi, farklı amaçlara yönelik arama senaryoları.
 // ─────────────────────────────────────────────────────────────────────────────
+
+model RetellAgentLink {
+  id          String   @id @default(uuid())
+  workspaceId String
+  agentId     String // Retell tarafındaki agent_id
+  label       String? // Panelde görünen ad; boşsa Retell'deki adı kullanılır
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agentId])
+  @@index([workspaceId])
+  @@index([agentId]) // Gelen aramada agent_id -> workspace çözümlemesi
+  @@map("retell_agent_links")
+}
 
 model RetellTemplate {
   id           String    @id @default(uuid())

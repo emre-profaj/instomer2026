@@ -23,6 +23,9 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
         aiFallbackDelayMinutes: 60,
         aiFallbackPoolEnabled: false
     });
+    // Bu workspace'e bağlı agent'lar. Varsayılan agent her zaman içindedir;
+    // bağlı olmayan bir agent'a gelen arama Instomer'a düşmez.
+    const [connectedAgentIds, setConnectedAgentIds] = useState([]);
     const [agents, setAgents] = useState([]);
     const [connectedChannels, setConnectedChannels] = useState([]);
     const [rules, setRules] = useState([]); // [{source: 'WHATSAPP', delay: 30, agentId: '', status: ''}, ...]
@@ -129,6 +132,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                 aiFallbackDelayMinutes: res.data.aiFallbackDelayMinutes ?? 60,
                 aiFallbackPoolEnabled: res.data.aiFallbackPoolEnabled || false
             });
+            setConnectedAgentIds(res.data.connectedAgentIds || (res.data.retellAgentId ? [res.data.retellAgentId] : []));
             if (res.data.isConfigured) loadAgents();
         } catch (err) {
             console.error('Error loading Retell settings:', err);
@@ -209,6 +213,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
             data.aiFallbackEnabled = settings.aiFallbackEnabled;
             data.aiFallbackDelayMinutes = parseInt(settings.aiFallbackDelayMinutes) || 60;
             data.aiFallbackPoolEnabled = settings.aiFallbackPoolEnabled;
+            data.connectedAgentIds = connectedAgentIds;
 
             await retellAPI.saveSettings(workspaceId, data);
             setMessage({ type: 'success', text: 'Ayarlar başarıyla kaydedildi!' });
@@ -403,6 +408,63 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                         />
                     )}
                 </div>
+                {/* ── Bağlı agent'lar ──────────────────────────────────
+                    Eskiden tek agent bağlanabiliyordu. Bağlı olmayan bir
+                    agent'a GELEN arama, numara da eşleşmezse Instomer'a hiç
+                    düşmüyordu. Buradan işaretlenen her agent hem gelen
+                    aramada tanınır hem de arama başlatırken listede çıkar. */}
+                <div className="form-group" style={{ marginBottom: 20 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 8 }}>
+                        <Bot size={16} /> Bağlı Agent'lar
+                        <span style={{ fontWeight: 400, fontSize: '0.78rem', color: '#8b93a3' }}>
+                            — bu workspace'in tanıdığı agent'lar
+                        </span>
+                    </label>
+                    {agents.length === 0 ? (
+                        <div style={{ fontSize: '0.82rem', color: '#8b93a3', padding: '10px 12px', background: '#f8fafc', border: '1px solid #e8eaf0', borderRadius: 8 }}>
+                            Agent listesi boş. API Key'i kaydedip yenileyin.
+                        </div>
+                    ) : (
+                        <div style={{ border: '1px solid #e8eaf0', borderRadius: 8, maxHeight: 220, overflowY: 'auto' }}>
+                            {agents.map(a => {
+                                const id = a.agent_id;
+                                const varsayilan = id === settings.retellAgentId;
+                                const secili = varsayilan || connectedAgentIds.includes(id);
+                                return (
+                                    <label key={id}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10,
+                                            padding: '9px 12px', borderBottom: '1px solid #f1f3f7',
+                                            cursor: varsayilan ? 'default' : 'pointer', fontSize: '0.85rem'
+                                        }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={secili}
+                                            disabled={varsayilan}
+                                            onChange={(e) => {
+                                                setConnectedAgentIds(prev => e.target.checked
+                                                    ? [...new Set([...prev, id])]
+                                                    : prev.filter(x => x !== id));
+                                            }}
+                                            style={{ width: 16, height: 16, accentColor: '#ef4444', cursor: 'inherit' }}
+                                        />
+                                        <span style={{ flex: 1 }}>{a.agent_name || id}</span>
+                                        {varsayilan && (
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 999, padding: '2px 8px' }}>
+                                                varsayılan
+                                            </span>
+                                        )}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <div style={{ fontSize: '0.75rem', color: '#8b93a3', marginTop: 6, lineHeight: 1.5 }}>
+                        Varsayılan agent her zaman bağlıdır, işareti kaldırılamaz. Arama başlatırken
+                        hangi agent'ın kullanılacağını kişi kartından tek tek seçebilirsiniz.
+                    </div>
+                </div>
+
                 <div className="form-group">
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 8 }}>
                         <Phone size={16} /> Arama Numarası

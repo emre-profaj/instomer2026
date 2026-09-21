@@ -26,6 +26,51 @@ function parseDateEndTR(dateStr) {
     return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// BAĞLI AGENT'LAR
+// ═══════════════════════════════════════════════════════════════
+// Bir workspace'e birden çok Retell agent'ı bağlanabilir; hepsi
+// retell_agent_links tablosundadır. workspaces.retellAgentId artık
+// "varsayılan agent" demektir (açıkça agent verilmeyen giden aramalar).
+//
+// Gelen arama eşleştirmesi BURADAN geçer. Eskiden iki ayrı yerde
+// doğrudan `retellAgentId: call.agent_id` yazıyordu; bağlı olmayan bir
+// agent'a gelen çağrı "workspace not found" deyip düşüyordu.
+
+/** agent_id'den workspace bulur: önce bağlantı tablosu, sonra varsayılan alan. */
+async function resolveWorkspaceIdByAgent(agentId) {
+    if (!agentId) return null;
+    const link = await prisma.retellAgentLink.findFirst({
+        where: { agentId, isActive: true },
+        select: { workspaceId: true }
+    });
+    if (link) return link.workspaceId;
+
+    // Bağlantı tablosu henüz taşınmamışsa eski alana düş.
+    const ws = await prisma.workspace.findFirst({
+        where: { retellAgentId: agentId },
+        select: { id: true }
+    });
+    return ws?.id || null;
+}
+
+/** Bir workspace'in bağlı agent kimlikleri (varsayılan dahil). */
+async function getLinkedAgentIds(workspaceId) {
+    const [links, ws] = await Promise.all([
+        prisma.retellAgentLink.findMany({
+            where: { workspaceId, isActive: true },
+            select: { agentId: true }
+        }),
+        prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellAgentId: true }
+        })
+    ]);
+    const ids = links.map(l => l.agentId);
+    if (ws?.retellAgentId && !ids.includes(ws.retellAgentId)) ids.unshift(ws.retellAgentId);
+    return ids;
+}
+
 // Helper to find the team that a Retell agent belongs to
 async function resolveAgentTeamId(workspaceId, agentId) {
     if (!agentId) return null;
@@ -117,9 +162,18 @@ export const getSettings = async (req, res) => {
             }
         });
 
+        // Bağlı agent'lar: kurulum ekranındaki çoklu seçim bunu gösterir.
+        const links = await prisma.retellAgentLink.findMany({
+            where: { workspaceId },
+            orderBy: { createdAt: 'asc' },
+            select: { agentId: true, label: true, isActive: true }
+        });
+
         res.json({
             retellApiKey: workspace?.retellApiKey ? '••••••••' + workspace.retellApiKey.slice(-4) : null,
             retellAgentId: workspace?.retellAgentId || null,
+            connectedAgents: links,
+            connectedAgentIds: links.filter(l => l.isActive).map(l => l.agentId),
             retellFromNumber: workspace?.retellFromNumber || null,
             isConfigured: !!(workspace?.retellApiKey && workspace?.retellAgentId),
             retellAutoCallEnabled: workspace?.retellAutoCallEnabled || false,
@@ -143,7 +197,7 @@ export const getSettings = async (req, res) => {
 export const saveSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { retellApiKey, retellAgentId, retellFromNumber,
+        const { retellApiKey, retellAgentId, retellFromNumber, connectedAgentIds,
             retellAutoCallEnabled, retellAutoCallTriggers, retellAutoCallDelay, retellAutoCallSchedule,
             aiFallbackEnabled, aiFallbackDelayMinutes, aiFallbackPoolEnabled } = req.body;
 
@@ -170,6 +224,39 @@ export const saveSettings = async (req, res) => {
             where: { id: workspaceId },
             data: updateData
         });
+
+        // ── Bağlı agent listesi ─────────────────────────────────
+        // Gönderilen liste tektir: olmayanlar eklenir, çıkarılanlar silinir.
+        // Varsayılan agent listede yoksa kendiliğinden eklenir — aksi hâlde
+        // ona gelen çağrılar workspace'e bağlanamazdı.
+        if (Array.isArray(connectedAgentIds)) {
+            const hedef = [...new Set(connectedAgentIds.filter(Boolean))];
+            const varsayilan = updateData.retellAgentId ?? (await prisma.workspace.findUnique({
+                where: { id: workspaceId }, select: { retellAgentId: true }
+            }))?.retellAgentId;
+            if (varsayilan && !hedef.includes(varsayilan)) hedef.push(varsayilan);
+
+            const mevcut = await prisma.retellAgentLink.findMany({
+                where: { workspaceId }, select: { agentId: true }
+            });
+            const mevcutIds = mevcut.map(l => l.agentId);
+
+            const eklenecek = hedef.filter(a => !mevcutIds.includes(a));
+            const silinecek = mevcutIds.filter(a => !hedef.includes(a));
+
+            if (eklenecek.length) {
+                await prisma.retellAgentLink.createMany({
+                    data: eklenecek.map(agentId => ({ workspaceId, agentId })),
+                    skipDuplicates: true
+                });
+            }
+            if (silinecek.length) {
+                await prisma.retellAgentLink.deleteMany({
+                    where: { workspaceId, agentId: { in: silinecek } }
+                });
+            }
+            console.log(`🔗 [Retell] Bağlı agent: +${eklenecek.length} / -${silinecek.length} (toplam ${hedef.length})`);
+        }
 
         // If auto-call was just turned OFF, cancel all pending scheduled calls
         if (retellAutoCallEnabled === false) {
@@ -2756,15 +2843,14 @@ async function handleCallStarted(call) {
             const toNumber = call.to_number || call.to || '';
 
             // Find workspace by agent or from_number
-            const workspace = await prisma.workspace.findFirst({
-                where: {
-                    OR: [
-                        { retellAgentId: call.agent_id },
-                        { retellFromNumber: toNumber }
-                    ]
-                },
-                select: { id: true }
-            });
+            // Agent eşleşmesi bağlı agent'ların TAMAMINI kapsar.
+            const agentWsId = await resolveWorkspaceIdByAgent(call.agent_id);
+            const workspace = agentWsId
+                ? { id: agentWsId }
+                : await prisma.workspace.findFirst({
+                    where: { retellFromNumber: toNumber },
+                    select: { id: true }
+                });
 
             if (!workspace) {
                 console.warn(`📞 [Retell] Inbound call ${call.call_id}: workspace not found for agent ${call.agent_id}`);
@@ -3146,10 +3232,13 @@ async function handleCallEnded(call) {
             // Determine workspace from agent_id or phone numbers
             let workspaceId = call.metadata?.workspaceId || null;
             if (!workspaceId) {
+                // Önce bağlı agent'lar üzerinden; bulunamazsa numaradan.
+                workspaceId = await resolveWorkspaceIdByAgent(call.agent_id);
+            }
+            if (!workspaceId) {
                 const ws = await prisma.workspace.findFirst({
                     where: {
                         OR: [
-                            ...(call.agent_id ? [{ retellAgentId: call.agent_id }] : []),
                             ...(toNumber ? [{ retellFromNumber: toNumber }] : []),
                             ...(fromNumber ? [{ retellFromNumber: fromNumber }] : [])
                         ]
