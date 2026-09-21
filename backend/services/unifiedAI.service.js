@@ -95,8 +95,22 @@ export async function executeUnifiedAICall({
             select: { aiApiKey: true, aiModel: true, companyName: true, companyDescription: true, industry: true, company: { select: { aiModel: true } } }
         });
 
-        if (!workspace?.aiApiKey) {
-            console.log('🧠 [UnifiedAI] API key yok, atlanıyor');
+        // Anahtar: çalışma alanının kendi anahtarı, yoksa global anahtar.
+        // Eskiden yalnızca çalışma alanı anahtarına bakılıyordu; global
+        // anahtarla çalışan işletmelerde birleşik çağrı hiç kurulmuyor,
+        // dolayısıyla SIRALI KATALOG AKIŞI da hiç devreye girmiyordu.
+        let effectiveApiKey = workspace?.aiApiKey || null;
+        if (!effectiveApiKey) {
+            const globalSettings = await prisma.globalSettings.findUnique({
+                where: { id: 'singleton' },
+                select: { globalAiApiKey: true }
+            });
+            effectiveApiKey = globalSettings?.globalAiApiKey || null;
+            if (effectiveApiKey) console.log('🌐 [UnifiedAI] Global API key kullanılıyor');
+        }
+
+        if (!effectiveApiKey) {
+            console.log('🧠 [UnifiedAI] API key yok (ne çalışma alanı ne global), atlanıyor');
             return null;
         }
 
@@ -387,7 +401,7 @@ YANIT FORMATI (JSON):
         // Workspace veya company model'i kullan, yoksa default
         const effectiveModel = workspace.aiModel || workspace.company?.aiModel || DEFAULT_MODEL;
         console.log(`🧠 [UnifiedAI] Model: ${effectiveModel}`);
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(effectiveApiKey);
         const model = genAI.getGenerativeModel({
             model: effectiveModel,
             systemInstruction: systemPrompt,
