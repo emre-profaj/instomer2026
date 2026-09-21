@@ -28,6 +28,8 @@ import {
     updateAppointmentSchedule,
     toggleRealEstateModuleWS,
     toggleSalesModuleWS,
+    getCatalogFlowSettings,
+    updateCatalogFlowSettings,
     updateDisaoCrmSettings,
     testDisaoCrmConnection,
     seedAllWorkspaces,
@@ -172,6 +174,10 @@ router.patch('/:workspaceId/realestate-module', requireWorkspaceAccess, toggleRe
 
 // Satış modülü (workspace tarafından)
 router.patch('/:workspaceId/sales-module', requireWorkspaceAccess, toggleSalesModuleWS);
+
+// Sıralı katalog akışı (Şube → Kategori → Grup → Ürün)
+router.get('/:workspaceId/catalog-flow', requireWorkspaceAccess, getCatalogFlowSettings);
+router.patch('/:workspaceId/catalog-flow', requireWorkspaceAccess, updateCatalogFlowSettings);
 
 // Disao CRM Settings
 router.patch('/:workspaceId/disao-crm', requireWorkspaceAccess, updateDisaoCrmSettings);

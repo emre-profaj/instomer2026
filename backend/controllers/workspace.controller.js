@@ -1043,6 +1043,55 @@ export const toggleSalesModuleWS = async (req, res) => {
     }
 };
 
+/**
+ * Sıralı katalog akışı ayarları + yetenek durumu.
+ * UI, akışın neden açık/kapalı olduğunu buradan gösterir.
+ */
+export const getCatalogFlowSettings = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { getCatalogCapability } = await import('../services/catalogFlow.service.js');
+        const capability = await getCatalogCapability(workspaceId);
+        res.json({ success: true, capability });
+    } catch (error) {
+        console.error('getCatalogFlowSettings error:', error);
+        res.status(500).json({ error: 'Katalog akışı ayarları alınamadı.' });
+    }
+};
+
+export const updateCatalogFlowSettings = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { catalogFlowEnabled, catalogPriceDisclosure } = req.body;
+
+        const data = {};
+        if (catalogFlowEnabled !== undefined) {
+            if (catalogFlowEnabled !== null && typeof catalogFlowEnabled !== 'boolean') {
+                return res.status(400).json({ error: 'catalogFlowEnabled true, false veya null olmalıdır.' });
+            }
+            data.catalogFlowEnabled = catalogFlowEnabled;
+        }
+        if (catalogPriceDisclosure !== undefined) {
+            if (typeof catalogPriceDisclosure !== 'boolean') {
+                return res.status(400).json({ error: 'catalogPriceDisclosure boolean olmalıdır.' });
+            }
+            data.catalogPriceDisclosure = catalogPriceDisclosure;
+        }
+        if (Object.keys(data).length === 0) {
+            return res.status(400).json({ error: 'Güncellenecek alan bulunamadı.' });
+        }
+
+        await prisma.workspace.update({ where: { id: workspaceId }, data });
+
+        const { getCatalogCapability } = await import('../services/catalogFlow.service.js');
+        const capability = await getCatalogCapability(workspaceId);
+        res.json({ success: true, capability });
+    } catch (error) {
+        console.error('updateCatalogFlowSettings error:', error);
+        res.status(500).json({ error: 'Katalog akışı ayarları güncellenemedi.' });
+    }
+};
+
 export const updateDisaoCrmSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;

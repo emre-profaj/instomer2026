@@ -240,6 +240,24 @@ export async function executeUnifiedAICall({
         }
 
 
+        // ── 6b. Sıralı katalog akışı (Şube → Kategori → Grup → Ürün) ──
+        // Veri kurulu değilse null döner ve bot bugünkü serbest akışta kalır.
+        let catalogContext = '';
+        try {
+            const { buildCatalogStep } = await import('./catalogFlow.service.js');
+            const catalogStep = await buildCatalogStep(workspaceId, {
+                conversationId,
+                recentMessages,
+                userMessage
+            });
+            if (catalogStep) {
+                catalogContext = catalogStep.text;
+                console.log(`🔢 [UnifiedAI] Katalog adımı: ${catalogStep.step}`);
+            }
+        } catch (catErr) {
+            console.error('⚠️ [UnifiedAI] Katalog adımı hatası:', catErr.message);
+        }
+
         // ── 7. Bot system prompt (kişilik + yasaklar) ──
         const botPrompt = activeBot?.prompt || 'Müşteri temsilcisi olarak yardımcı ol.';
 
@@ -279,6 +297,14 @@ ${stageContext}
 Müşteriyi bir sonraki aşamaya taşımak için çalış. İşletme talimatlarına ve kurallara harfiyen uy.
 ═══════════════════════════════════════` : '═══════════════════════════════════════'}
 
+${catalogContext ? `
+═══════════════════════════════════════
+${catalogContext}
+
+⚡ Bu blok, bu mesajda atılacak ADIMI belirler ve genel talimatların önünde gelir.
+Aynı anda yalnızca BU adımı uygula, sonraki adımların sorusunu şimdiden sorma.
+═══════════════════════════════════════
+` : ''}
 MEVCUT AKIŞLAR:
 ${funnelContext || '(Akış tanımlanmamış)'}
 

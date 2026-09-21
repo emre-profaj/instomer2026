@@ -207,6 +207,14 @@ model Workspace {
   // Satış Modülü (Teklifler, Siparişler, Faturalar, Ürünler)
   salesEnabled Boolean @default(false)
 
+  // Sıralı Katalog Akışı — bot müşteriyi Şube → Kategori → Grup → Ürün
+  // sırasıyla daraltır. null = otomatik (şube + ürün tanımlıysa açılır),
+  // true = zorla açık, false = kapalı (bot bugünkü serbest akışta kalır).
+  catalogFlowEnabled     Boolean?
+  // Bot ürün fiyatı söyleyebilir mi? Varsayılan hayır — fiyat sorulunca
+  // yetkiliye aktarılır (bkz. baseKnowledge.service.js).
+  catalogPriceDisclosure Boolean  @default(false)
+
   // Disao CRM
   disaoCrmEnabled  Boolean @default(false)
   disaoCrmSettings Json?

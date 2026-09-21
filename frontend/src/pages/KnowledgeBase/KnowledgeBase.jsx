@@ -144,6 +144,8 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     const [branches, setBranches] = useState([]);
     const [branchesLoading, setBranchesLoading] = useState(false);
     const [members, setMembers] = useState([]); // Temsilciler — şubede kim yetkili
+    const [catalogFlow, setCatalogFlow] = useState(null); // Sıralı akış yeteneği + ayarlar
+    const [catalogSaving, setCatalogSaving] = useState(false);
     const [teams, setTeams] = useState([]);
     const [funnels, setFunnels] = useState([]);
     const [newBranchName, setNewBranchName] = useState('');
@@ -175,6 +177,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             loadCompanyInfo();
             loadBranches();
             loadMembers();
+            loadCatalogFlow();
             loadTeams();
             loadFunnels();
             loadCategories();
@@ -217,6 +220,25 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             const res = await teamAPI.getWorkspaceTeams(currentWorkspace.id);
             setTeams(res.data?.teams || []);
         } catch (err) { console.error('Error loading teams:', err); }
+    };
+
+    const loadCatalogFlow = async () => {
+        try {
+            const res = await workspaceAPI.getCatalogFlow(currentWorkspace.id);
+            setCatalogFlow(res.data?.capability || null);
+        } catch (err) { console.error('Error loading catalog flow:', err); }
+    };
+
+    const saveCatalogFlow = async (patch) => {
+        setCatalogSaving(true);
+        try {
+            const res = await workspaceAPI.updateCatalogFlow(currentWorkspace.id, patch);
+            setCatalogFlow(res.data?.capability || null);
+        } catch (err) {
+            console.error('Error saving catalog flow:', err);
+        } finally {
+            setCatalogSaving(false);
+        }
     };
 
     const loadMembers = async () => {
@@ -1543,6 +1565,58 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                         <h1>{labels.branchesTab || 'Şubeler'}</h1>
                         <p>{labels.branchesDesc || 'Şubelerinizi ve lokasyonlarınızı yönetin.'}</p>
                     </div>
+
+                    {catalogFlow && (
+                        <div className="br-surface br-flow">
+                            <div className="br-flow-head">
+                                <div>
+                                    <h2>Bot sıralı akışı</h2>
+                                    <p>Bot müşteriyi sırayla daraltır: şube → kategori → ürün grubu → ürün.</p>
+                                </div>
+                                <span className={`br-flow-state ${catalogFlow.enabled ? 'on' : 'off'}`}>
+                                    {catalogFlow.enabled ? 'Çalışıyor' : 'Devre dışı'}
+                                </span>
+                            </div>
+
+                            <div className="br-flow-rows">
+                                <label className="br-flow-row">
+                                    <input
+                                        type="checkbox"
+                                        disabled={catalogSaving}
+                                        checked={catalogFlow.flag === null ? catalogFlow.auto : catalogFlow.flag}
+                                        onChange={e => saveCatalogFlow({ catalogFlowEnabled: e.target.checked })}
+                                    />
+                                    <span>
+                                        <strong>Sıralı akış açık</strong>
+                                        <em>
+                                            {catalogFlow.flag === null
+                                                ? `Otomatik: ${catalogFlow.branchCount} şube, ${catalogFlow.productCount} ürün tanımlı olduğu için ${catalogFlow.auto ? 'açık' : 'kapalı'}.`
+                                                : 'Elle ayarlandı. Kapatılırsa bot serbest akışta çalışır.'}
+                                        </em>
+                                    </span>
+                                </label>
+
+                                <label className="br-flow-row">
+                                    <input
+                                        type="checkbox"
+                                        disabled={catalogSaving || !catalogFlow.enabled}
+                                        checked={catalogFlow.priceDisclosure}
+                                        onChange={e => saveCatalogFlow({ catalogPriceDisclosure: e.target.checked })}
+                                    />
+                                    <span>
+                                        <strong>Bot fiyat söyleyebilsin</strong>
+                                        <em>Kapalıyken bot rakam vermez, fiyat sorusunu yetkiliye aktarır. Açıkken şubeye tanımlı fiyatı yazar.</em>
+                                    </span>
+                                </label>
+                            </div>
+
+                            {catalogFlow.enabled && catalogFlow.categoryCount === 0 && (
+                                <div className="br-flow-warn">
+                                    Kategori tanımlı değil; bot şubeyi sorup doğrudan ürünleri sunar.
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="br-cols">
                         <div className="br-surface">

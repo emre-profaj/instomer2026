@@ -424,3 +424,49 @@ select.br-in {
     box-shadow: 0 1px 2px rgba(239, 68, 68, .28);
 }
 .br-btn-primary:hover:not(:disabled) { background: var(--accent-deep); border-color: var(--accent-deep); }
+
+
+/* ── Bot sıralı akışı ayar kartı ─────────────────────────── */
+.br-flow { padding: 18px 24px 20px; margin-bottom: 16px; }
+.br-flow-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+.br-flow-head h2 { margin: 0; font-size: 15px; }
+.br-flow-head p { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-3); }
+.br-flow-state {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.br-flow-state.on { color: #166534; background: #dcfce7; box-shadow: inset 0 0 0 1px #bbf7d0; }
+.br-flow-state.off { color: #6b7280; background: #f1f5f9; box-shadow: inset 0 0 0 1px #e2e8f0; }
+.br-flow-rows { display: grid; gap: 10px; margin-top: 14px; }
+.br-flow-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fffafa;
+    box-shadow: inset 0 0 0 1px #f2dede;
+    cursor: pointer;
+}
+.br-flow-row input { margin-top: 2px; accent-color: #ef4444; cursor: pointer; }
+.br-flow-row input:disabled { cursor: not-allowed; opacity: .5; }
+.br-flow-row strong { display: block; font-size: 13px; color: var(--ink-1); }
+.br-flow-row em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.br-flow-warn {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #92400e;
+    background: #fffbeb;
+    box-shadow: inset 0 0 0 1px #fde68a;
+}
