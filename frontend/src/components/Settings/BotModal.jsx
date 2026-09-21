@@ -150,6 +150,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
     const [fallbackDelayMinutes, setFallbackDelayMinutes] = useState(bot.fallbackDelayMinutes ?? 5);
     const [fallbackScope, setFallbackScope] = useState(bot.fallbackScope || 'UNASSIGNED');
     const [updating, setUpdating] = useState(false);
+    // Şube bazlı sıralı akış (çalışma alanı ayarı — anında kaydedilir)
+    const [catalogFlow, setCatalogFlow] = useState(null);
+    const [catalogSaving, setCatalogSaving] = useState(false);
     // Sol raydaki aktif bölüm
     const [activeSection, setActiveSection] = useState('channels');
     // Alt çubuktaki kayıt geri bildirimi
@@ -215,8 +218,29 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                 setChannelsLoading(false);
             }
         };
-        if (workspaceId) loadChannels();
+        const loadCatalogFlow = async () => {
+            try {
+                const res = await workspaceAPI.getCatalogFlow(workspaceId);
+                setCatalogFlow(res.data?.capability || null);
+            } catch (err) {
+                console.error('Failed to load catalog flow:', err);
+            }
+        };
+        if (workspaceId) { loadChannels(); loadCatalogFlow(); }
     }, [workspaceId]);
+
+    // Sıralı akışı aç/kapat — kaydet düğmesini beklemez
+    const handleCatalogFlowToggle = async (next) => {
+        setCatalogSaving(true);
+        try {
+            const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogFlowEnabled: next });
+            setCatalogFlow(res.data?.capability || null);
+        } catch (err) {
+            console.error('Catalog flow toggle error:', err);
+        } finally {
+            setCatalogSaving(false);
+        }
+    };
 
     // Toggle channel assignment
     const handleChannelToggle = async (channel, isCurrentlyAssigned) => {
@@ -415,7 +439,8 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
 
     // ── Sol raydaki özet sayılar ────────────────────────────────
     const assignedChannelCount = workspaceChannels.filter(ch => ch.assignedBotId === bot.id).length;
-    const behaviourRules = [fallbackEnabled, schedulerEnabled, autoReplyDelayEnabled, reminderSteps.some(s => s.enabled)];
+    const catalogFlowOn = catalogFlow ? (catalogFlow.flag === null ? catalogFlow.auto : catalogFlow.flag) : false;
+    const behaviourRules = [catalogFlowOn, fallbackEnabled, schedulerEnabled, autoReplyDelayEnabled, reminderSteps.some(s => s.enabled)];
     const openBehaviourCount = behaviourRules.filter(Boolean).length;
     const TOOL_LIST = [
         { key: 'create_appointment', label: 'Randevu oluştur' },
@@ -641,6 +666,45 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                             </div>
 
                             <div className="bm-list">
+                                {/* Şube bazlı sıralı akış */}
+                                {catalogFlow && (
+                                    <div className={`bm-rule ${catalogFlowOn ? 'on' : ''}`}>
+                                        <div className="bm-rule-head">
+                                            <span className="bm-rule-ico"><GitBranch size={15} /></span>
+                                            <span className="bm-rule-text">
+                                                <span className="bm-rule-title">Şube bazlı sıralı akış</span>
+                                                <span className="bm-rule-desc">
+                                                    Bot sırayla şube, kategori, ürün grubu ve ürün soruyor. Kapatınca serbest akışta çalışır.
+                                                </span>
+                                            </span>
+                                            <span className="bm-count">{catalogSaving ? 'Kaydediliyor…' : 'Anında kaydedilir'}</span>
+                                            <label className="toggle-switch" title="Şube bazlı sıralı akış">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={catalogFlowOn}
+                                                    disabled={catalogSaving}
+                                                    onChange={(e) => handleCatalogFlowToggle(e.target.checked)}
+                                                />
+                                                <span className="toggle-slider"></span>
+                                            </label>
+                                        </div>
+                                        <div className="bm-rule-body">
+                                            <p className="bm-hint" style={{ margin: 0 }}>
+                                                {catalogFlow.flag === null
+                                                    ? (catalogFlow.hasHealthApi
+                                                        ? 'Şu an otomatik: randevu entegrasyonu olduğu için kapalı, randevu asistanının kendi akışı kullanılıyor.'
+                                                        : `Şu an otomatik: ${catalogFlow.branchCount} şube ve ${catalogFlow.productCount} ürün tanımlı olduğu için ${catalogFlow.auto ? 'açık' : 'kapalı'}. Otomatik açılması için en az 2 şube ve 1 ürün gerekir.`)
+                                                    : catalogFlowOn
+                                                        ? 'Elle açıldı. Kapatırsanız bot anında eski davranışına döner.'
+                                                        : 'Elle kapatıldı. Bot serbest akışta, yani eski haliyle çalışıyor.'}
+                                            </p>
+                                            <p className="bm-hint" style={{ margin: 0 }}>
+                                                Bu ayar çalışma alanının tamamı için geçerlidir, tek bota özel değildir.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Yazışma devralma */}
                                 <div className={`bm-rule ${fallbackEnabled ? 'on' : ''}`}>
                                     <div className="bm-rule-head">
