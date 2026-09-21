@@ -143,6 +143,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     // Branches (Lokasyonlar / Şubeler) States
     const [branches, setBranches] = useState([]);
     const [branchesLoading, setBranchesLoading] = useState(false);
+    const [members, setMembers] = useState([]); // Temsilciler — şubede kim yetkili
     const [teams, setTeams] = useState([]);
     const [funnels, setFunnels] = useState([]);
     const [newBranchName, setNewBranchName] = useState('');
@@ -173,6 +174,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             loadKnowledgeBase();
             loadCompanyInfo();
             loadBranches();
+            loadMembers();
             loadTeams();
             loadFunnels();
             loadCategories();
@@ -216,6 +218,23 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             setTeams(res.data?.teams || []);
         } catch (err) { console.error('Error loading teams:', err); }
     };
+
+    const loadMembers = async () => {
+        try {
+            const res = await workspaceAPI.getMembers(currentWorkspace.id);
+            setMembers((res.data?.members || []).filter(m => !m.isBot && m.userId));
+        } catch (err) { console.error('Error loading members:', err); }
+    };
+
+    const parseMemberBranchIds = (raw) => {
+        if (!raw) return [];
+        try { const v = typeof raw === 'string' ? JSON.parse(raw) : raw; return Array.isArray(v) ? v : []; } catch { return []; }
+    };
+    // Şubeye açıkça yetkili temsilciler
+    const agentsOfBranch = (branchId) => members.filter(m => parseMemberBranchIds(m.branchIds).includes(branchId));
+    // Şube seçmemiş = tüm şubelerde yetkili (Çağrı Merkezi vb.)
+    const allBranchAgents = () => members.filter(m => parseMemberBranchIds(m.branchIds).length === 0);
+    const agentInitials = (name) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 
     const loadFunnels = async () => {
         try {
@@ -1545,6 +1564,8 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                     const isOpen = selectedBranch?.id === branch.id;
                                     const branchProducts = products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id)));
                                     const branchResources = resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id)));
+                                    const branchAgents = agentsOfBranch(branch.id);
+                                    const sharedAgents = allBranchAgents();
                                     return (
                                         <div key={branch.id}>
                                             <div className={`br-row ${isOpen ? 'open' : ''}`}>
@@ -1559,6 +1580,27 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                                         {branch.name}
                                                     </button>
                                                     {branch.address && <div className="br-sub">{branch.address}</div>}
+                                                    <div className="br-agents" title={branchAgents.length > 0 ? `Yetkili temsilciler: ${branchAgents.map(m => m.user?.name).join(', ')}` : 'Bu şubeye açıkça yetkili temsilci yok'}>
+                                                        <UserCircle size={12} />
+                                                        {branchAgents.length > 0 ? (
+                                                            <>
+                                                                <span className="br-agent-avs">
+                                                                    {branchAgents.slice(0, 5).map(m => (
+                                                                        <span key={m.id} className="br-agent-av">{agentInitials(m.user?.name)}</span>
+                                                                    ))}
+                                                                </span>
+                                                                <span className="br-agent-names">
+                                                                    {branchAgents.slice(0, 3).map(m => m.user?.name?.split(' ')[0]).join(', ')}
+                                                                    {branchAgents.length > 3 ? ` +${branchAgents.length - 3}` : ''}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="br-agent-none">Temsilci atanmadı</span>
+                                                        )}
+                                                        {sharedAgents.length > 0 && (
+                                                            <span className="br-agent-shared">· {sharedAgents.length} kişi tüm şubelerde</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div className="br-phone">
                                                     {branch.phone || <span className="br-dash">—</span>}
@@ -1594,6 +1636,29 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
 
                                             {isOpen && (
                                                 <div className="br-detail">
+                                                    <div className="br-dsec">
+                                                        <span className="br-dsec-name">Temsilciler</span>
+                                                        <span className="br-dsec-rule"></span>
+                                                        <span className="br-dsec-count">{branchAgents.length}</span>
+                                                    </div>
+                                                    {branchAgents.length > 0 ? (
+                                                        <div className="br-chips">
+                                                            {branchAgents.map(m => (
+                                                                <span key={m.id} className="br-chip br-chip-agent">
+                                                                    <span className="br-agent-av">{agentInitials(m.user?.name)}</span>
+                                                                    {m.user?.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="br-chip-none">Bu şubeye açıkça yetkili temsilci yok. Takım ve Üyeler ekranından üyeyi düzenleyip şube seçin.</div>
+                                                    )}
+                                                    {sharedAgents.length > 0 && (
+                                                        <div className="br-chip-none" style={{ marginTop: 6 }}>
+                                                            Tüm şubelerde yetkili: {sharedAgents.map(m => m.user?.name).join(', ')}
+                                                        </div>
+                                                    )}
+
                                                     <div className="br-dsec">
                                                         <span className="br-dsec-name">{labels.productsTab || 'Ürünler'}</span>
                                                         <span className="br-dsec-rule"></span>
