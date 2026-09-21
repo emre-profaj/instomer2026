@@ -386,6 +386,9 @@ model WorkspaceMember {
   userId      String
   workspaceId String
   teamId      String?
+  // Temsilcinin çalıştığı / yetkili olduğu şubeler — JSON array: ["branch-id-1","branch-id-2"]
+  // null veya [] = tüm şubeler (Call Center gibi şubeden bağımsız roller)
+  branchIds   String?   @db.Text
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

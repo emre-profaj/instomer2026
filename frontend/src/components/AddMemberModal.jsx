@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { workspaceAPI, companyAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { X, UserPlus, Users } from 'lucide-react';
+import { X, UserPlus, Users, MapPin } from 'lucide-react';
 import './AddMemberModal.css';
 
 const DEFAULT_WORKING_HOURS = {
@@ -19,8 +19,11 @@ const DAY_LABELS = {
     thursday: 'Perşembe', friday: 'Cuma', saturday: 'Cumartesi', sunday: 'Pazar'
 };
 
-const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
+const AddMemberModal = ({ workspaceId, branches = [], onClose, onSuccess }) => {
     const { currentWorkspace } = useAuth();
+    const [branchIds, setBranchIds] = useState([]);
+    const activeBranches = branches.filter(b => b.isActive !== false);
+    const toggleBranch = (id) => setBranchIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     const [activeTab, setActiveTab] = useState('existing'); // 'existing' or 'new'
 
     // New user form
@@ -77,7 +80,8 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
                 role,
                 name: name || undefined,
                 password: password || undefined,
-                workingHours
+                workingHours,
+                branchIds
             });
             onSuccess();
             onClose();
@@ -103,7 +107,8 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
             const selectedUser = companyUsers.find(u => u.id === selectedUserId);
             await workspaceAPI.addMember(workspaceId, {
                 email: selectedUser.email,
-                role
+                role,
+                branchIds
             });
             onSuccess();
             onClose();
@@ -189,6 +194,27 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
                                             Agent: Sadece atanan sohbetleri görür ve yönetir
                                         </small>
                                     </div>
+                                {activeBranches.length > 0 && (
+                                    <div className="form-group">
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <MapPin size={14} color="#ef4444" /> Çalıştığı Şubeler
+                                        </label>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                                            {activeBranches.map(b => {
+                                                const checked = branchIds.includes(b.id);
+                                                return (
+                                                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '6px 8px', borderRadius: 6, background: checked ? '#eff6ff' : '#fff', border: checked ? '1px solid #93c5fd' : '1px solid #e2e8f0', color: checked ? '#1e40af' : '#334155', fontWeight: checked ? 600 : 400 }}>
+                                                        <input type="checkbox" checked={checked} onChange={() => toggleBranch(b.id)} style={{ accentColor: '#3b82f6' }} />
+                                                        <span>{b.name}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        <small className="text-muted">
+                                            Hiçbiri seçilmezse temsilci tüm şubelerde yetkili sayılır (ör. Çağrı Merkezi).
+                                        </small>
+                                    </div>
+                                )}
                                 </>
                             )}
 
@@ -277,6 +303,28 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
                                     Agent: Sadece atanan sohbetleri görür ve yönetir
                                 </small>
                             </div>
+
+                            {activeBranches.length > 0 && (
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <MapPin size={14} color="#ef4444" /> Çalıştığı Şubeler
+                                    </label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                                        {activeBranches.map(b => {
+                                            const checked = branchIds.includes(b.id);
+                                            return (
+                                                <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '6px 8px', borderRadius: 6, background: checked ? '#eff6ff' : '#fff', border: checked ? '1px solid #93c5fd' : '1px solid #e2e8f0', color: checked ? '#1e40af' : '#334155', fontWeight: checked ? 600 : 400 }}>
+                                                    <input type="checkbox" checked={checked} onChange={() => toggleBranch(b.id)} style={{ accentColor: '#3b82f6' }} />
+                                                    <span>{b.name}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                    <small className="text-muted">
+                                        Hiçbiri seçilmezse temsilci tüm şubelerde yetkili sayılır (ör. Çağrı Merkezi).
+                                    </small>
+                                </div>
+                            )}
 
                             {/* Working Hours */}
                             <div className="wh-section">

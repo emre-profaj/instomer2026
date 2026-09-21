@@ -232,6 +232,25 @@ export const getWorkspace = async (req, res) => {
     }
 };
 
+/**
+ * Temsilcinin şube listesini doğrula ve JSON string'e çevir.
+ * - undefined → alan gönderilmedi, dokunma (undefined döner)
+ * - null / [] → tüm şubeler (null döner)
+ * - ["id", ...] → yalnızca bu çalışma alanındaki gerçek şube id'leri kalır
+ */
+const normalizeMemberBranchIds = async (workspaceId, branchIds) => {
+    if (branchIds === undefined) return undefined;
+    if (!Array.isArray(branchIds) || branchIds.length === 0) return null;
+    const requested = [...new Set(branchIds.filter(id => typeof id === 'string' && id.trim()))];
+    if (requested.length === 0) return null;
+    const valid = await prisma.appointmentBranch.findMany({
+        where: { workspaceId, id: { in: requested } },
+        select: { id: true }
+    });
+    const validIds = valid.map(b => b.id);
+    return validIds.length > 0 ? JSON.stringify(validIds) : null;
+};
+
 export const getWorkspaceMembers = async (req, res) => {
     try {
         const { workspaceId } = req.params;
@@ -295,12 +314,14 @@ export const addMember = async (req, res) => {
         }
 
         const { workspaceId } = req.params;
-        const { email, role, name, password } = req.body;
+        const { email, role, name, password, branchIds } = req.body;
 
         // Check if requester has permission (must be OWNER or ADMIN)
         if (!['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
+
+        const memberBranchIds = await normalizeMemberBranchIds(workspaceId, branchIds);
 
         // Find user by email
         let user = await prisma.user.findUnique({
@@ -346,7 +367,8 @@ export const addMember = async (req, res) => {
             data: {
                 userId: user.id,
                 workspaceId,
-                role
+                role,
+                branchIds: memberBranchIds ?? null
             },
             include: {
                 user: {
@@ -518,7 +540,7 @@ export const changeMemberPassword = async (req, res) => {
 export const updateMemberInfo = async (req, res) => {
     try {
         const { workspaceId, userId } = req.params;
-        const { name, email, workingHours } = req.body;
+        const { name, email, workingHours, branchIds } = req.body;
 
         if (!['OWNER', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
             return res.status(403).json({ error: 'Yetkiniz yok' });
@@ -547,14 +569,29 @@ export const updateMemberInfo = async (req, res) => {
         if (email) updateData.email = email;
         if (workingHours !== undefined) updateData.workingHours = workingHours;
 
-        const updatedUser = await prisma.user.update({
-            where: { id: userId },
-            data: updateData,
-            select: { id: true, name: true, email: true, avatar: true, isOnline: true, workingHours: true }
-        });
+        const updatedUser = Object.keys(updateData).length > 0
+            ? await prisma.user.update({
+                where: { id: userId },
+                data: updateData,
+                select: { id: true, name: true, email: true, avatar: true, isOnline: true, workingHours: true }
+            })
+            : await prisma.user.findUnique({
+                where: { id: userId },
+                select: { id: true, name: true, email: true, avatar: true, isOnline: true, workingHours: true }
+            });
+
+        // Şube yetkisi üyeliğe yazılır (kullanıcı birden fazla çalışma alanında olabilir)
+        let updatedMember = member;
+        const memberBranchIds = await normalizeMemberBranchIds(workspaceId, branchIds);
+        if (memberBranchIds !== undefined) {
+            updatedMember = await prisma.workspaceMember.update({
+                where: { id: member.id },
+                data: { branchIds: memberBranchIds }
+            });
+        }
 
         console.log(`✏️ Member info updated for ${updatedUser.email} by ${req.user.email}`);
-        res.json({ user: updatedUser });
+        res.json({ user: updatedUser, member: { id: updatedMember.id, role: updatedMember.role, branchIds: updatedMember.branchIds } });
     } catch (error) {
         console.error('Update member info error:', error);
         res.status(500).json({ error: 'Kullanıcı güncellenemedi' });

@@ -97,9 +97,77 @@ const WorkingHoursEditor = ({ workingHours, onChange }) => {
     );
 };
 
+// ─── Şube yardımcıları ────────────────────────────────
+const parseBranchIds = (raw) => {
+    if (!raw) return [];
+    try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+};
+
+// Çoklu şube seçimi (temsilci / takım için ortak)
+const BranchPicker = ({ branches = [], value = [], onChange, label = 'Çalıştığı Şubeler', hint }) => {
+    const active = branches.filter(b => b.isActive !== false);
+    if (active.length === 0) return null;
+    const toggle = (id) => onChange(value.includes(id) ? value.filter(x => x !== id) : [...value, id]);
+    return (
+        <div className="ut-form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: '#1e293b' }}>
+                <MapPin size={15} color="#ef4444" /> {label}
+            </label>
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                gap: 8,
+                marginTop: 6,
+                padding: '10px 12px',
+                background: '#f8fafc',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0'
+            }}>
+                {active.map(branch => {
+                    const isChecked = value.includes(branch.id);
+                    return (
+                        <label
+                            key={branch.id}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                fontSize: 13,
+                                cursor: 'pointer',
+                                padding: '6px 8px',
+                                borderRadius: 6,
+                                background: isChecked ? '#eff6ff' : '#ffffff',
+                                border: isChecked ? '1px solid #93c5fd' : '1px solid #e2e8f0',
+                                color: isChecked ? '#1e40af' : '#334155',
+                                fontWeight: isChecked ? 600 : 400,
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggle(branch.id)}
+                                style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                            />
+                            <span>{branch.name}</span>
+                        </label>
+                    );
+                })}
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 5 }}>
+                ℹ️ {hint || <>Hiçbiri seçilmezse temsilci <strong>tüm şubelerde</strong> yetkili sayılır (ör. Çağrı Merkezi).</>}
+            </div>
+        </div>
+    );
+};
+
 // ─── Edit Member Modal ────────────────────────────────
-const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
+const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, onClose }) => {
     const [name, setName] = useState(member.user?.name || '');
+    const [branchIds, setBranchIds] = useState(() => parseBranchIds(member.branchIds));
     const [email, setEmail] = useState(member.user?.email || '');
     const [workingHours, setWorkingHours] = useState(member.user?.workingHours || DEFAULT_WORKING_HOURS);
     const [error, setError] = useState('');
@@ -121,7 +189,7 @@ const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
         }
         setLoading(true);
         try {
-            await onSubmit({ name: name.trim(), email: email.trim(), workingHours });
+            await onSubmit({ name: name.trim(), email: email.trim(), workingHours, branchIds });
             if (password) {
                 await onPasswordChange(password);
                 setPassword('');
@@ -177,6 +245,8 @@ const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
                             </div>
                         )}
                     </div>
+
+                    <BranchPicker branches={branches} value={branchIds} onChange={setBranchIds} />
 
                     <WorkingHoursEditor workingHours={workingHours} onChange={setWorkingHours} />
 
@@ -1045,6 +1115,24 @@ const UsersTeams = () => {
                                             <div className="ut-user-info">
                                                 <span className="ut-user-name">{member.user?.name}</span>
                                                 <span className="ut-user-email">{member.user?.email}</span>
+                                                {branches.length > 0 && (() => {
+                                                    const ids = parseBranchIds(member.branchIds);
+                                                    const names = ids.map(id => branches.find(b => b.id === id)?.name).filter(Boolean);
+                                                    return (
+                                                        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}
+                                                            title={names.length > 0 ? `Yetkili olduğu şubeler: ${names.join(', ')}` : 'Tüm şubelerde yetkili'}>
+                                                            {names.length > 0 ? names.map(n => (
+                                                                <span key={n} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe' }}>
+                                                                    📍 {n}
+                                                                </span>
+                                                            )) : (
+                                                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                                                                    🌐 Tüm şubeler
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </div>
                                             <div className="ut-user-actions">
                                                 <span className="ut-role-badge" style={{ background: roleInfo.bg, color: roleInfo.color }}>
@@ -1182,6 +1270,7 @@ const UsersTeams = () => {
             {showAddMemberModal && (
                 <AddMemberModal
                     workspaceId={currentWorkspace.id}
+                    branches={branches}
                     onClose={() => setShowAddMemberModal(false)}
                     onSuccess={loadMembers}
                 />
@@ -1190,6 +1279,7 @@ const UsersTeams = () => {
             {editModal.show && (
                 <EditMemberModal
                     member={editModal.member}
+                    branches={branches}
                     onSubmit={handleUpdateMemberInfo}
                     onPasswordChange={async (newPassword) => {
                         await workspaceAPI.changeMemberPassword(currentWorkspace.id, editModal.member.userId, newPassword);
