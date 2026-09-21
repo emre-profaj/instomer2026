@@ -996,21 +996,42 @@ const Channels = () => {
             });
         });
 
-        // Retell Setting
+        // Retell — her numara ayrı kanaldır (WhatsApp numaraları gibi).
+        // Numara tanımlı değilse tek bir genel kart gösterilir.
         if (retellSettings && retellSettings.isConfigured) {
-            channels.push({
-                id: 'retell',
-                type: 'retell',
-                routingChannel: 'RETELL', // Just in case, though it has no routing UI yet
-                icon: Phone,
-                color: '#0d9488',
-                bgColor: '#f0fdfa',
-                name: 'AI Call – Sesli Arama',
-                subtitle: retellSettings.retellFromNumber || 'Yapılandırıldı',
-                data: retellSettings,
-                hasRouting: false,
-                hasChatBot: false
-            });
+            const numaralar = retellSettings.phoneNumbers || [];
+            if (numaralar.length > 0) {
+                numaralar.forEach(n => {
+                    const varsayilan = n.number === retellSettings.retellFromNumber;
+                    channels.push({
+                        id: `retell:${n.number}`,
+                        type: 'retell',
+                        routingChannel: 'RETELL',
+                        icon: Phone,
+                        color: '#0d9488',
+                        bgColor: '#f0fdfa',
+                        name: n.label || n.number,
+                        subtitle: n.label ? `${n.number}${varsayilan ? ' · varsayılan' : ''}` : (varsayilan ? 'varsayılan hat' : 'AI Call hattı'),
+                        data: retellSettings,
+                        hasRouting: false,
+                        hasChatBot: false
+                    });
+                });
+            } else {
+                channels.push({
+                    id: 'retell',
+                    type: 'retell',
+                    routingChannel: 'RETELL',
+                    icon: Phone,
+                    color: '#0d9488',
+                    bgColor: '#f0fdfa',
+                    name: 'AI Call – Sesli Arama',
+                    subtitle: retellSettings.retellFromNumber || 'Yapılandırıldı',
+                    data: retellSettings,
+                    hasRouting: false,
+                    hasChatBot: false
+                });
+            }
         }
 
         // Health System

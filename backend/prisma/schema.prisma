@@ -163,6 +163,7 @@ model Workspace {
   botTools             AIBotTool[]
   retellActions        RetellAction[]
   retellAgentLinks     RetellAgentLink[]
+  retellPhoneNumbers   RetellPhoneNumber[]
   cases                Case[]
   products             Product[]
   marketingCampaigns   MarketingCampaign[]
@@ -503,6 +504,7 @@ model Conversation {
   assignedBotId         String?
   assignedBot           AIBot?         @relation(fields: [assignedBotId], references: [id])
   whatsappPhoneNumberId String?
+  retellPhoneNumberId   String? // AI Call: aramanın geldiği/gittiği numara (kanal)
   instagramBusinessId   String?
   emailChannelId        String?
   channel               String         @default("UNKNOWN")
@@ -574,6 +576,7 @@ model Conversation {
   facebookPage        FacebookPage?          @relation(fields: [facebookPageId], references: [id])
   assignedTo          User?                  @relation(fields: [assignedToId], references: [id])
   whatsappPhoneNumber WhatsappPhoneNumber?   @relation(fields: [whatsappPhoneNumberId], references: [id])
+  retellPhoneNumber   RetellPhoneNumber?     @relation(fields: [retellPhoneNumberId], references: [id], onDelete: SetNull)
   emailChannel        EmailChannel?          @relation(fields: [emailChannelId], references: [id])
   internalNotes       InternalNote[]
   messages            Message[]
@@ -607,6 +610,7 @@ model Conversation {
   @@index([caseId])
   @@index([workspaceId, isArchived]) // Archive filter
   @@index([workspaceId, lastContactMessageAt(sort: Desc)]) // Müşteri Yanıtı sıralaması
+  @@index([retellPhoneNumberId])
   @@map("conversations")
 }
 
@@ -2583,6 +2587,26 @@ model AutomationLog {
 // Retell Arama Şablonları
 // WhatsApp şablonları gibi, farklı amaçlara yönelik arama senaryoları.
 // ─────────────────────────────────────────────────────────────────────────────
+
+model RetellPhoneNumber {
+  id          String   @id @default(uuid())
+  workspaceId String
+  number      String // +905xxxxxxxxx
+  label       String? // "Satış hattı", "Destek" — kanal adı olarak görünür
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  // Numara bir KANALDIR; agent (konuşma metni) ile bağı yoktur.
+  // Hangi agent'la arama yapılacağı çağrı anında ayrıca seçilir.
+  @@unique([workspaceId, number])
+  @@index([number]) // Gelen aramada numara -> workspace çözümlemesi
+  @@index([workspaceId])
+  @@map("retell_phone_numbers")
+}
 
 model RetellAgentLink {
   id          String   @id @default(uuid())

@@ -1,10 +1,19 @@
 /**
  * ═══════════════════════════════════════════════════════════════
- * BAĞLI RETELL AGENT'LARI — TEK OKUMA NOKTASI
+ * RETELL AGENT'LARI VE NUMARALARI — TEK OKUMA NOKTASI
  * ═══════════════════════════════════════════════════════════════
  *
- * Bir workspace'e birden çok Retell agent'ı bağlanabilir; her birinin
- * kendi arama numarası olabilir. Hepsi retell_agent_links tablosundadır.
+ * İki ayrı ve BİRBİRİNDEN BAĞIMSIZ kavram:
+ *
+ *   Numara (retell_phone_numbers) → KANAL. O numaraya gelen ve o
+ *     numaradan çıkan aramalar birlikte durur; WhatsApp numaralarıyla
+ *     aynı mantık (conversations.retellPhoneNumberId).
+ *
+ *   Agent (retell_agent_links) → KONUŞMA METNİ. Hangi senaryoyla
+ *     konuşulacağını belirler. Numarayla bağı yoktur.
+ *
+ * Giden aramada ikisi ayrı ayrı seçilir; seçilmezse workspace
+ * varsayılanları kullanılır.
  *
  * workspaces.retellAgentId / retellFromNumber kalıyor ve artık
  * "varsayılan" anlamına geliyor: açıkça agent verilmeyen aramalarda ve
@@ -37,12 +46,13 @@ export async function resolveWorkspaceIdByAgent(agentId) {
 /** Aranan/arayan numaradan workspace bulur (bağlı agent numaraları dahil). */
 export async function resolveWorkspaceIdByNumber(number) {
     if (!number) return null;
-    const link = await prisma.retellAgentLink.findFirst({
-        where: { fromNumber: number, isActive: true },
+    const kanal = await prisma.retellPhoneNumber.findFirst({
+        where: { number, isActive: true },
         select: { workspaceId: true }
     });
-    if (link) return link.workspaceId;
+    if (kanal) return kanal.workspaceId;
 
+    // Kanal olarak kaydedilmemişse eski alana düş.
     const ws = await prisma.workspace.findFirst({
         where: { retellFromNumber: number },
         select: { id: true }
@@ -50,16 +60,48 @@ export async function resolveWorkspaceIdByNumber(number) {
     return ws?.id || null;
 }
 
-/** Seçilen agent'ın arama numarası; tanımlı değilse workspace varsayılanı. */
-export async function resolveFromNumber(workspaceId, agentId, varsayilan) {
-    if (workspaceId && agentId) {
-        const link = await prisma.retellAgentLink.findUnique({
-            where: { workspaceId_agentId: { workspaceId, agentId } },
-            select: { fromNumber: true }
-        });
-        if (link?.fromNumber) return link.fromNumber;
-    }
+/**
+ * Giden aramanın çıkacağı numara.
+ *
+ * Numara agent'a BAĞLI DEĞİLDİR — ayrı bir kanaldır. Sıra:
+ *   1) çağrıda açıkça verilen numara
+ *   2) workspace varsayılanı
+ * İstenen numara bu workspace'e kayıtlı değilse yok sayılır; yabancı bir
+ * numaradan arama Retell tarafında zaten reddedilir, sessizce denemeyiz.
+ */
+export async function resolveFromNumber(workspaceId, istenenNumara, varsayilan) {
+    const istenen = (istenenNumara || '').trim();
+    if (!istenen) return varsayilan;
+
+    const kayitli = await prisma.retellPhoneNumber.findFirst({
+        where: { workspaceId, number: istenen, isActive: true },
+        select: { number: true }
+    });
+    if (kayitli) return kayitli.number;
+
+    // Henüz kanal olarak kaydedilmemiş ama workspace varsayılanıysa kabul et.
+    if (istenen === (varsayilan || '').trim()) return istenen;
+
+    console.warn(`⚠️ [Retell] ${istenen} bu workspace'e kayıtlı değil, varsayılan kullanılıyor`);
     return varsayilan;
+}
+
+/** Bir workspace'in kayıtlı arama numaraları (kanallar). */
+export async function getPhoneNumbers(workspaceId) {
+    return prisma.retellPhoneNumber.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, number: true, label: true, isActive: true }
+    });
+}
+
+/** Numaradan kanal kaydını bulur (konuşmayı ona bağlamak için). */
+export async function findPhoneNumberRecord(workspaceId, number) {
+    if (!number) return null;
+    return prisma.retellPhoneNumber.findFirst({
+        where: { workspaceId, number },
+        select: { id: true, number: true, label: true }
+    });
 }
 
 /** Bir workspace'in bağlı agent kimlikleri (varsayılan dahil). */
@@ -83,5 +125,7 @@ export default {
     resolveWorkspaceIdByAgent,
     resolveWorkspaceIdByNumber,
     resolveFromNumber,
-    getLinkedAgentIds
+    getLinkedAgentIds,
+    getPhoneNumbers,
+    findPhoneNumberRecord
 };

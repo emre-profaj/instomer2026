@@ -27,8 +27,10 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
     // Varsayılan agent her zaman içindedir; bağlı olmayan bir agent'a
     // gelen arama Instomer'a düşmez.
     const [connectedAgents, setConnectedAgents] = useState([]);
+    // Numaralar KANALDIR; agent'tan bağımsız. [{ number, label }]
+    const [phoneNumbers, setPhoneNumbers] = useState([]);
+    const [yeniNumara, setYeniNumara] = useState('');
     const agentBagli = (id) => connectedAgents.some(a => a.agentId === id);
-    const agentNumarasi = (id) => connectedAgents.find(a => a.agentId === id)?.fromNumber || '';
     const agentAyarla = (id, alanlar) => setConnectedAgents(prev => {
         const v = prev.find(a => a.agentId === id);
         return v ? prev.map(a => a.agentId === id ? { ...a, ...alanlar } : a)
@@ -142,8 +144,9 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
             });
             setConnectedAgents(
                 (res.data.connectedAgents || []).filter(a => a.isActive !== false)
-                    .map(a => ({ agentId: a.agentId, fromNumber: a.fromNumber || '' }))
+                    .map(a => ({ agentId: a.agentId }))
             );
+            setPhoneNumbers((res.data.phoneNumbers || []).map(n => ({ number: n.number, label: n.label || '' })));
             if (res.data.isConfigured) loadAgents();
         } catch (err) {
             console.error('Error loading Retell settings:', err);
@@ -225,6 +228,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
             data.aiFallbackDelayMinutes = parseInt(settings.aiFallbackDelayMinutes) || 60;
             data.aiFallbackPoolEnabled = settings.aiFallbackPoolEnabled;
             data.connectedAgents = connectedAgents;
+            data.phoneNumbers = phoneNumbers;
 
             await retellAPI.saveSettings(workspaceId, data);
             setMessage({ type: 'success', text: 'Ayarlar başarıyla kaydedildi!' });
@@ -468,20 +472,6 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                                                 {a.agent_name || id}
                                             </span>
                                         </label>
-                                        {secili && (
-                                            <input
-                                                type="text"
-                                                value={agentNumarasi(id)}
-                                                onChange={(e) => agentAyarla(id, { fromNumber: e.target.value })}
-                                                placeholder={settings.retellFromNumber || '+905xxxxxxxxx'}
-                                                title="Bu agent'ın arama numarası. Boşsa varsayılan numara kullanılır."
-                                                style={{
-                                                    width: 150, flexShrink: 0, fontSize: '0.78rem',
-                                                    padding: '5px 9px', border: '1px solid #e8eaf0',
-                                                    borderRadius: 7, background: '#fcfcfd', fontVariantNumeric: 'tabular-nums'
-                                                }}
-                                            />
-                                        )}
                                         {varsayilan && (
                                             <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>
                                                 varsayılan
@@ -493,21 +483,94 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                         </div>
                     )}
                     <div style={{ fontSize: '0.75rem', color: '#8b93a3', marginTop: 6, lineHeight: 1.5 }}>
-                        Varsayılan agent her zaman bağlıdır, işareti kaldırılamaz. Her agent'a kendi
-                        arama numarasını yazabilirsiniz; boş bırakırsanız yukarıdaki varsayılan numara
-                        kullanılır. Arama başlatırken hangi agent'ın kullanılacağını kişi kartından seçersiniz.
+                        Agent, konuşmanın metnidir — numarayla ilgisi yoktur. Varsayılan agent her zaman
+                        bağlıdır, işareti kaldırılamaz. Arama başlatırken hangi agent'ın kullanılacağını
+                        kişi kartından seçersiniz.
                     </div>
                 </div>
 
-                <div className="form-group">
+                {/* ── Numaralar (kanallar) ──────────────────────────
+                    Numara agent'tan bağımsız bir KANALDIR: o numaraya gelen
+                    ve o numaradan çıkan aramalar birlikte durur — WhatsApp
+                    numaralarıyla aynı mantık. */}
+                <div className="form-group" style={{ marginBottom: 20 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 8 }}>
-                        <Phone size={16} /> Arama Numarası
+                        <Phone size={16} /> Numaralar
+                        <span style={{ fontWeight: 400, fontSize: '0.78rem', color: '#8b93a3' }}>
+                            — her numara ayrı bir kanaldır
+                        </span>
                     </label>
-                    <input type="text" value={settings.retellFromNumber}
-                        onChange={(e) => setSettings(prev => ({ ...prev, retellFromNumber: e.target.value }))}
-                        placeholder="+905xxxxxxxxx"
-                        style={{ width: '100%', ...inputStyle }}
-                    />
+
+                    {phoneNumbers.length > 0 && (
+                        <div style={{ border: '1px solid #e8eaf0', borderRadius: 8, marginBottom: 8 }}>
+                            {phoneNumbers.map((n, i) => (
+                                <div key={n.number}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 10,
+                                        padding: '9px 12px', borderBottom: i < phoneNumbers.length - 1 ? '1px solid #f1f3f7' : 'none',
+                                        fontSize: '0.85rem'
+                                    }}>
+                                    <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 132 }}>{n.number}</span>
+                                    <input
+                                        type="text"
+                                        value={n.label}
+                                        onChange={(e) => setPhoneNumbers(prev => prev.map((x, xi) => xi === i ? { ...x, label: e.target.value } : x))}
+                                        placeholder="Kanal adı (ör. Satış hattı)"
+                                        style={{ flex: 1, minWidth: 0, fontSize: '0.8rem', padding: '5px 9px', border: '1px solid #e8eaf0', borderRadius: 7, background: '#fcfcfd' }}
+                                    />
+                                    {n.number === settings.retellFromNumber ? (
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>
+                                            varsayılan
+                                        </span>
+                                    ) : (
+                                        <button type="button"
+                                            onClick={() => setSettings(prev => ({ ...prev, retellFromNumber: n.number }))}
+                                            style={{ fontSize: '0.7rem', background: 'none', border: '1px solid #e8eaf0', borderRadius: 999, padding: '2px 8px', color: '#8b93a3', cursor: 'pointer', flexShrink: 0 }}>
+                                            varsayılan yap
+                                        </button>
+                                    )}
+                                    <button type="button"
+                                        onClick={() => setPhoneNumbers(prev => prev.filter((_, xi) => xi !== i))}
+                                        title="Numarayı kaldır"
+                                        style={{ background: 'none', border: 'none', color: '#8b93a3', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                            type="text"
+                            value={yeniNumara}
+                            onChange={(e) => setYeniNumara(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key !== 'Enter') return;
+                                e.preventDefault();
+                                const v = yeniNumara.trim();
+                                if (!v || phoneNumbers.some(n => n.number === v)) return;
+                                setPhoneNumbers(prev => [...prev, { number: v, label: '' }]);
+                                if (!settings.retellFromNumber) setSettings(prev => ({ ...prev, retellFromNumber: v }));
+                                setYeniNumara('');
+                            }}
+                            placeholder="+905xxxxxxxxx — yazıp Enter'a basın"
+                            style={{ flex: 1, ...inputStyle }}
+                        />
+                        <button type="button"
+                            onClick={() => {
+                                const v = yeniNumara.trim();
+                                if (!v || phoneNumbers.some(n => n.number === v)) return;
+                                setPhoneNumbers(prev => [...prev, { number: v, label: '' }]);
+                                if (!settings.retellFromNumber) setSettings(prev => ({ ...prev, retellFromNumber: v }));
+                                setYeniNumara('');
+                            }}
+                            style={{ whiteSpace: 'nowrap', padding: '0 16px', border: '1px solid #e8eaf0', borderRadius: 8, background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
+                            Ekle
+                        </button>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#8b93a3', marginTop: 6, lineHeight: 1.5 }}>
+                        Varsayılan numara, arama başlatırken numara seçilmediğinde kullanılır.
+                        Numarayı kaldırmak geçmiş konuşmaları silmez, yalnızca kanal bağını koparır.
+                    </div>
                 </div>
             </div>
             )}

@@ -10,7 +10,7 @@ import { executeRule } from '../services/ruleEngine.service.js';
 import { generateCaseNumber } from './case.controller.js';
 import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
 import { parseTimeWindow } from '../utils/preferredTimeWindow.js';
-import { resolveWorkspaceIdByAgent, resolveWorkspaceIdByNumber, resolveFromNumber } from '../services/retellAgent.service.js';
+import { resolveWorkspaceIdByAgent, resolveWorkspaceIdByNumber, resolveFromNumber, findPhoneNumberRecord } from '../services/retellAgent.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -25,6 +25,19 @@ function parseDateEndTR(dateStr) {
     const d = new Date(dateOnly + 'T00:00:00.000Z');
     if (isNaN(d.getTime())) return new Date();
     return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
+/**
+ * Konuşmanın bağlanacağı numara kanalı.
+ * Gelen aramada ARANAN, giden aramada ARAYAN numara bizimkidir.
+ * Numara kanal olarak kayıtlı değilse null döner — konuşma yine açılır,
+ * sadece kanala bağlanmaz.
+ */
+async function kanalNumarasiId(workspaceId, kayit) {
+    const yon = String(kayit?.direction || '').toLowerCase();
+    const bizim = yon === 'inbound' ? kayit?.toNumber : kayit?.fromNumber;
+    const rec = await findPhoneNumberRecord(workspaceId, bizim);
+    return rec?.id || null;
 }
 
 // Helper to find the team that a Retell agent belongs to
@@ -122,7 +135,13 @@ export const getSettings = async (req, res) => {
         const links = await prisma.retellAgentLink.findMany({
             where: { workspaceId },
             orderBy: { createdAt: 'asc' },
-            select: { agentId: true, label: true, fromNumber: true, isActive: true }
+            select: { agentId: true, label: true, isActive: true }
+        });
+        // Numaralar kanaldır, agent'tan bağımsız listelenir.
+        const phoneNumbers = await prisma.retellPhoneNumber.findMany({
+            where: { workspaceId },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, number: true, label: true, isActive: true }
         });
 
         res.json({
@@ -130,6 +149,7 @@ export const getSettings = async (req, res) => {
             retellAgentId: workspace?.retellAgentId || null,
             connectedAgents: links,
             connectedAgentIds: links.filter(l => l.isActive).map(l => l.agentId),
+            phoneNumbers,
             retellFromNumber: workspace?.retellFromNumber || null,
             isConfigured: !!(workspace?.retellApiKey && workspace?.retellAgentId),
             retellAutoCallEnabled: workspace?.retellAutoCallEnabled || false,
@@ -153,7 +173,7 @@ export const getSettings = async (req, res) => {
 export const saveSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { retellApiKey, retellAgentId, retellFromNumber, connectedAgentIds, connectedAgents,
+        const { retellApiKey, retellAgentId, retellFromNumber, connectedAgentIds, connectedAgents, phoneNumbers,
             retellAutoCallEnabled, retellAutoCallTriggers, retellAutoCallDelay, retellAutoCallSchedule,
             aiFallbackEnabled, aiFallbackDelayMinutes, aiFallbackPoolEnabled } = req.body;
 
@@ -192,7 +212,6 @@ export const saveSettings = async (req, res) => {
             : (Array.isArray(connectedAgentIds) ? connectedAgentIds.filter(Boolean).map(agentId => ({ agentId })) : null);
 
         if (gelenListe) {
-            const numaralar = new Map(gelenListe.map(a => [a.agentId, (a.fromNumber || '').trim() || null]));
             const hedef = [...new Set(gelenListe.map(a => a.agentId))];
             const varsayilan = updateData.retellAgentId ?? (await prisma.workspace.findUnique({
                 where: { id: workspaceId }, select: { retellAgentId: true }
@@ -209,16 +228,8 @@ export const saveSettings = async (req, res) => {
 
             if (eklenecek.length) {
                 await prisma.retellAgentLink.createMany({
-                    data: eklenecek.map(agentId => ({ workspaceId, agentId, fromNumber: numaralar.get(agentId) || null })),
+                    data: eklenecek.map(agentId => ({ workspaceId, agentId })),
                     skipDuplicates: true
-                });
-            }
-            // Numarası değişenler
-            for (const agentId of hedef) {
-                if (eklenecek.includes(agentId)) continue;
-                await prisma.retellAgentLink.updateMany({
-                    where: { workspaceId, agentId },
-                    data: { fromNumber: numaralar.get(agentId) ?? null }
                 });
             }
             if (silinecek.length) {
@@ -227,6 +238,41 @@ export const saveSettings = async (req, res) => {
                 });
             }
             console.log(`🔗 [Retell] Bağlı agent: +${eklenecek.length} / -${silinecek.length} (toplam ${hedef.length})`);
+        }
+
+        // ── Numara kanalları ────────────────────────────────────
+        // Numara agent'tan bağımsızdır. Silinen numaranın konuşmaları
+        // silinmez; bağ kopar (şemada onDelete: SetNull).
+        if (Array.isArray(phoneNumbers)) {
+            const temiz = phoneNumbers
+                .map(n => ({ number: String(n.number || '').trim(), label: (n.label || '').trim() || null }))
+                .filter(n => n.number);
+            const hedefNo = [...new Set(temiz.map(n => n.number))];
+
+            const mevcut = await prisma.retellPhoneNumber.findMany({
+                where: { workspaceId }, select: { id: true, number: true }
+            });
+            const mevcutNo = mevcut.map(n => n.number);
+
+            for (const n of temiz) {
+                if (mevcutNo.includes(n.number)) {
+                    await prisma.retellPhoneNumber.updateMany({
+                        where: { workspaceId, number: n.number },
+                        data: { label: n.label, isActive: true }
+                    });
+                } else {
+                    await prisma.retellPhoneNumber.create({
+                        data: { workspaceId, number: n.number, label: n.label }
+                    });
+                }
+            }
+            const silinecek = mevcutNo.filter(no => !hedefNo.includes(no));
+            if (silinecek.length) {
+                await prisma.retellPhoneNumber.deleteMany({
+                    where: { workspaceId, number: { in: silinecek } }
+                });
+            }
+            console.log(`☎️ [Retell] Numara kanalı: ${hedefNo.length} kayıtlı, ${silinecek.length} kaldırıldı`);
         }
 
         // If auto-call was just turned OFF, cancel all pending scheduled calls
@@ -1243,7 +1289,7 @@ async function buildRetellDynamicVariables(workspaceId, contactId, contactName, 
 }
 
 // Execute a phone call via Retell API (used by both immediate & scheduled calls)
-async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '', dynamicVariables = null) {
+async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '', dynamicVariables = null, fromNumberIstenen = null) {
     const workspace = await prisma.workspace.findUnique({
         where: { id: workspaceId },
         select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true, companyName: true, defaultLanguage: true }
@@ -1260,8 +1306,8 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
     if (!effectiveAgentId) throw new Error('No AI Call Agent ID configured/provided');
 
     const client = new Retell({ apiKey: workspace.retellApiKey });
-    // Numara seçilen agent'a bağlıdır; tanımlı değilse workspace varsayılanı.
-    const fromNumber = await resolveFromNumber(workspaceId, effectiveAgentId, workspace.retellFromNumber);
+    // Numara ve agent birbirinden bağımsız seçilir.
+    const fromNumber = await resolveFromNumber(workspaceId, fromNumberIstenen, workspace.retellFromNumber);
     const formattedFrom = normalizePhone(fromNumber);
 
     // Build dynamic variables for the AI agent
@@ -2457,7 +2503,8 @@ export const makeCall = async (req, res) => {
         const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, sourceConversationId);
         const effectiveAgentId = agentId || teamAgentId || workspace.retellAgentId;
 
-        const fromNumber = await resolveFromNumber(workspaceId, effectiveAgentId, workspace.retellFromNumber);
+        // Numara ve agent ayrı seçilir; numara verilmezse workspace varsayılanı.
+        const fromNumber = await resolveFromNumber(workspaceId, req.body?.fromNumber, workspace.retellFromNumber);
         const formattedFrom = normalizePhone(fromNumber);
 
         const callParams = {
@@ -2954,6 +3001,7 @@ async function handleCallStarted(call) {
                         workspaceId,
                         contactId,
                         channel: 'PHONE',
+                        retellPhoneNumberId: await kanalNumarasiId(workspaceId, { direction: 'inbound', toNumber }),
                         status: 'OPEN',
                         lastMessageAt: new Date(),
                         assignedTeamId
@@ -3373,6 +3421,7 @@ async function handleCallEnded(call) {
                             conversation = await prisma.conversation.create({
                                 data: {
                                     workspaceId: callRecord.workspaceId,
+                                    retellPhoneNumberId: await kanalNumarasiId(callRecord.workspaceId, callRecord),
                                     contactId: callRecord.contactId,
                                     channel: 'PHONE',
                                     status: 'OPEN',
@@ -3800,6 +3849,7 @@ async function injectTranscriptToChat(callRecord, call, duration) {
                 workspaceId,
                 contactId,
                 channel: 'PHONE',
+                retellPhoneNumberId: await kanalNumarasiId(workspaceId, callRecord),
                 status: 'OPEN',
                 lastMessageAt: new Date(),
                 assignedTeamId
@@ -4518,6 +4568,7 @@ export const recoverCallConversations = async (req, res) => {
                             workspaceId,
                             contactId: callRecord.contactId,
                             channel: 'PHONE',
+                            retellPhoneNumberId: await kanalNumarasiId(workspaceId, callRecord),
                             status: 'OPEN',
                             lastMessageAt: callRecord.createdAt || new Date()
                         }

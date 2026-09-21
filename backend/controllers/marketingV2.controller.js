@@ -842,8 +842,8 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                     if (!phone) continue;
 
                     try {
-                        // Numara seçilen agent'a bağlıdır; yoksa workspace varsayılanı.
-                        const kampanyaFrom = await resolveFromNumber(workspaceId, effectiveAgentId, workspace.retellFromNumber);
+                        // Numara ve agent bağımsız: adımda numara seçilmişse o, yoksa varsayılan.
+                        const kampanyaFrom = await resolveFromNumber(workspaceId, msgTemplate?.fromNumber, workspace.retellFromNumber);
                         const callResponse = await client.call.createPhoneCall({
                             from_number: normalizePhone(kampanyaFrom),
                             to_number: phone,
