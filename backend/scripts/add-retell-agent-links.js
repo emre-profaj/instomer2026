@@ -66,6 +66,16 @@ async function main() {
         END $$;
     `);
 
+    // Sonradan eklenen sütun: her agent'ın kendi arama numarası.
+    // Tabloyu daha önce oluşturmuş kurulumlarda da çalışsın diye ayrı.
+    await prisma.$executeRawUnsafe(
+        `ALTER TABLE "retell_agent_links" ADD COLUMN IF NOT EXISTS "fromNumber" TEXT`
+    );
+    await prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "retell_agent_links_fromNumber_idx"
+            ON "retell_agent_links" ("fromNumber")`
+    );
+
     console.log('✅ Tablo hazır: retell_agent_links');
 
     // ── Mevcut kurulumları taşı ─────────────────────────────────────
@@ -73,7 +83,7 @@ async function main() {
     // Böylece taşımadan sonra hiçbir workspace'in davranışı değişmez.
     const workspaces = await prisma.workspace.findMany({
         where: { retellAgentId: { not: null } },
-        select: { id: true, name: true, retellAgentId: true }
+        select: { id: true, name: true, retellAgentId: true, retellFromNumber: true }
     });
 
     let eklenen = 0;
@@ -83,13 +93,27 @@ async function main() {
         });
         if (varMi) continue;
         await prisma.retellAgentLink.create({
-            data: { workspaceId: ws.id, agentId: ws.retellAgentId }
+            data: { workspaceId: ws.id, agentId: ws.retellAgentId, fromNumber: ws.retellFromNumber || null }
         });
         eklenen++;
         console.log(`   + ${ws.name}: ${ws.retellAgentId}`);
     }
 
     console.log(`✅ Taşındı: ${eklenen} bağlantı (${workspaces.length} workspace'te agent tanımlı)`);
+
+    // fromNumber sonradan eklendiği için, daha önce oluşmuş bağlantılarda
+    // boş kalmış olabilir. Varsayılan agent'ın satırına workspace numarasını
+    // yaz — böylece taşımadan sonra o agent aynı numaradan aramaya devam eder.
+    let numaraDolduruldu = 0;
+    for (const ws of workspaces) {
+        if (!ws.retellFromNumber) continue;
+        const r = await prisma.retellAgentLink.updateMany({
+            where: { workspaceId: ws.id, agentId: ws.retellAgentId, fromNumber: null },
+            data: { fromNumber: ws.retellFromNumber }
+        });
+        numaraDolduruldu += r.count;
+    }
+    console.log(`✅ Numara yazıldı: ${numaraDolduruldu} bağlantı`);
 }
 
 main()

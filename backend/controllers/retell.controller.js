@@ -10,6 +10,7 @@ import { executeRule } from '../services/ruleEngine.service.js';
 import { generateCaseNumber } from './case.controller.js';
 import { invalidatePolicyCache } from '../services/policy/automationPolicy.service.js';
 import { parseTimeWindow } from '../utils/preferredTimeWindow.js';
+import { resolveWorkspaceIdByAgent, resolveWorkspaceIdByNumber, resolveFromNumber } from '../services/retellAgent.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -24,51 +25,6 @@ function parseDateEndTR(dateStr) {
     const d = new Date(dateOnly + 'T00:00:00.000Z');
     if (isNaN(d.getTime())) return new Date();
     return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
-}
-
-// ═══════════════════════════════════════════════════════════════
-// BAĞLI AGENT'LAR
-// ═══════════════════════════════════════════════════════════════
-// Bir workspace'e birden çok Retell agent'ı bağlanabilir; hepsi
-// retell_agent_links tablosundadır. workspaces.retellAgentId artık
-// "varsayılan agent" demektir (açıkça agent verilmeyen giden aramalar).
-//
-// Gelen arama eşleştirmesi BURADAN geçer. Eskiden iki ayrı yerde
-// doğrudan `retellAgentId: call.agent_id` yazıyordu; bağlı olmayan bir
-// agent'a gelen çağrı "workspace not found" deyip düşüyordu.
-
-/** agent_id'den workspace bulur: önce bağlantı tablosu, sonra varsayılan alan. */
-async function resolveWorkspaceIdByAgent(agentId) {
-    if (!agentId) return null;
-    const link = await prisma.retellAgentLink.findFirst({
-        where: { agentId, isActive: true },
-        select: { workspaceId: true }
-    });
-    if (link) return link.workspaceId;
-
-    // Bağlantı tablosu henüz taşınmamışsa eski alana düş.
-    const ws = await prisma.workspace.findFirst({
-        where: { retellAgentId: agentId },
-        select: { id: true }
-    });
-    return ws?.id || null;
-}
-
-/** Bir workspace'in bağlı agent kimlikleri (varsayılan dahil). */
-async function getLinkedAgentIds(workspaceId) {
-    const [links, ws] = await Promise.all([
-        prisma.retellAgentLink.findMany({
-            where: { workspaceId, isActive: true },
-            select: { agentId: true }
-        }),
-        prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { retellAgentId: true }
-        })
-    ]);
-    const ids = links.map(l => l.agentId);
-    if (ws?.retellAgentId && !ids.includes(ws.retellAgentId)) ids.unshift(ws.retellAgentId);
-    return ids;
 }
 
 // Helper to find the team that a Retell agent belongs to
@@ -166,7 +122,7 @@ export const getSettings = async (req, res) => {
         const links = await prisma.retellAgentLink.findMany({
             where: { workspaceId },
             orderBy: { createdAt: 'asc' },
-            select: { agentId: true, label: true, isActive: true }
+            select: { agentId: true, label: true, fromNumber: true, isActive: true }
         });
 
         res.json({
@@ -197,7 +153,7 @@ export const getSettings = async (req, res) => {
 export const saveSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { retellApiKey, retellAgentId, retellFromNumber, connectedAgentIds,
+        const { retellApiKey, retellAgentId, retellFromNumber, connectedAgentIds, connectedAgents,
             retellAutoCallEnabled, retellAutoCallTriggers, retellAutoCallDelay, retellAutoCallSchedule,
             aiFallbackEnabled, aiFallbackDelayMinutes, aiFallbackPoolEnabled } = req.body;
 
@@ -229,8 +185,15 @@ export const saveSettings = async (req, res) => {
         // Gönderilen liste tektir: olmayanlar eklenir, çıkarılanlar silinir.
         // Varsayılan agent listede yoksa kendiliğinden eklenir — aksi hâlde
         // ona gelen çağrılar workspace'e bağlanamazdı.
-        if (Array.isArray(connectedAgentIds)) {
-            const hedef = [...new Set(connectedAgentIds.filter(Boolean))];
+        // connectedAgents: [{ agentId, fromNumber }] — numaralı yeni biçim.
+        // connectedAgentIds: yalnız kimlik listesi — eski biçim, hâlâ kabul edilir.
+        const gelenListe = Array.isArray(connectedAgents)
+            ? connectedAgents.filter(a => a && a.agentId)
+            : (Array.isArray(connectedAgentIds) ? connectedAgentIds.filter(Boolean).map(agentId => ({ agentId })) : null);
+
+        if (gelenListe) {
+            const numaralar = new Map(gelenListe.map(a => [a.agentId, (a.fromNumber || '').trim() || null]));
+            const hedef = [...new Set(gelenListe.map(a => a.agentId))];
             const varsayilan = updateData.retellAgentId ?? (await prisma.workspace.findUnique({
                 where: { id: workspaceId }, select: { retellAgentId: true }
             }))?.retellAgentId;
@@ -246,8 +209,16 @@ export const saveSettings = async (req, res) => {
 
             if (eklenecek.length) {
                 await prisma.retellAgentLink.createMany({
-                    data: eklenecek.map(agentId => ({ workspaceId, agentId })),
+                    data: eklenecek.map(agentId => ({ workspaceId, agentId, fromNumber: numaralar.get(agentId) || null })),
                     skipDuplicates: true
+                });
+            }
+            // Numarası değişenler
+            for (const agentId of hedef) {
+                if (eklenecek.includes(agentId)) continue;
+                await prisma.retellAgentLink.updateMany({
+                    where: { workspaceId, agentId },
+                    data: { fromNumber: numaralar.get(agentId) ?? null }
                 });
             }
             if (silinecek.length) {
@@ -1289,7 +1260,9 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
     if (!effectiveAgentId) throw new Error('No AI Call Agent ID configured/provided');
 
     const client = new Retell({ apiKey: workspace.retellApiKey });
-    const formattedFrom = normalizePhone(workspace.retellFromNumber);
+    // Numara seçilen agent'a bağlıdır; tanımlı değilse workspace varsayılanı.
+    const fromNumber = await resolveFromNumber(workspaceId, effectiveAgentId, workspace.retellFromNumber);
+    const formattedFrom = normalizePhone(fromNumber);
 
     // Build dynamic variables for the AI agent
     let dynVars = { ...(dynamicVariables || {}) };
@@ -2484,7 +2457,8 @@ export const makeCall = async (req, res) => {
         const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, sourceConversationId);
         const effectiveAgentId = agentId || teamAgentId || workspace.retellAgentId;
 
-        const formattedFrom = normalizePhone(workspace.retellFromNumber);
+        const fromNumber = await resolveFromNumber(workspaceId, effectiveAgentId, workspace.retellFromNumber);
+        const formattedFrom = normalizePhone(fromNumber);
 
         const callParams = {
             from_number: formattedFrom,
@@ -2844,13 +2818,9 @@ async function handleCallStarted(call) {
 
             // Find workspace by agent or from_number
             // Agent eşleşmesi bağlı agent'ların TAMAMINI kapsar.
-            const agentWsId = await resolveWorkspaceIdByAgent(call.agent_id);
-            const workspace = agentWsId
-                ? { id: agentWsId }
-                : await prisma.workspace.findFirst({
-                    where: { retellFromNumber: toNumber },
-                    select: { id: true }
-                });
+            const agentWsId = await resolveWorkspaceIdByAgent(call.agent_id)
+                || await resolveWorkspaceIdByNumber(toNumber);
+            const workspace = agentWsId ? { id: agentWsId } : null;
 
             if (!workspace) {
                 console.warn(`📞 [Retell] Inbound call ${call.call_id}: workspace not found for agent ${call.agent_id}`);
@@ -3236,16 +3206,8 @@ async function handleCallEnded(call) {
                 workspaceId = await resolveWorkspaceIdByAgent(call.agent_id);
             }
             if (!workspaceId) {
-                const ws = await prisma.workspace.findFirst({
-                    where: {
-                        OR: [
-                            ...(toNumber ? [{ retellFromNumber: toNumber }] : []),
-                            ...(fromNumber ? [{ retellFromNumber: fromNumber }] : [])
-                        ]
-                    },
-                    select: { id: true, retellFromNumber: true }
-                });
-                workspaceId = ws?.id;
+                workspaceId = await resolveWorkspaceIdByNumber(toNumber)
+                    || await resolveWorkspaceIdByNumber(fromNumber);
             }
 
             if (workspaceId) {

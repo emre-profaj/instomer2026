@@ -2589,6 +2589,7 @@ model RetellAgentLink {
   workspaceId String
   agentId     String // Retell tarafındaki agent_id
   label       String? // Panelde görünen ad; boşsa Retell'deki adı kullanılır
+  fromNumber  String? // Bu agent'ın arama numarası; boşsa workspace varsayılanı
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
@@ -2597,6 +2598,7 @@ model RetellAgentLink {
   @@unique([workspaceId, agentId])
   @@index([workspaceId])
   @@index([agentId]) // Gelen aramada agent_id -> workspace çözümlemesi
+  @@index([fromNumber]) // Gelen aramada numara -> workspace çözümlemesi
   @@map("retell_agent_links")
 }
 

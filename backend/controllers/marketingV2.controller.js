@@ -6,6 +6,7 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { sendSms } from '../services/netgsm.service.js';
 import { sendEmailViaChannel } from '../services/emailSender.service.js';
 import { calculateNextRun } from '../services/marketingEngine.service.js';
+import { resolveFromNumber } from '../services/retellAgent.service.js';
 
 // ─── Kampanya triggerType → WorkspaceRule ruleType eşlemesi ──────
 const TRIGGER_TO_RULES = {
@@ -841,8 +842,10 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                     if (!phone) continue;
 
                     try {
+                        // Numara seçilen agent'a bağlıdır; yoksa workspace varsayılanı.
+                        const kampanyaFrom = await resolveFromNumber(workspaceId, effectiveAgentId, workspace.retellFromNumber);
                         const callResponse = await client.call.createPhoneCall({
-                            from_number: normalizePhone(workspace.retellFromNumber),
+                            from_number: normalizePhone(kampanyaFrom),
                             to_number: phone,
                             override_agent_id: effectiveAgentId,
                             metadata: {

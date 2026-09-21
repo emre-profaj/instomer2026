@@ -23,9 +23,17 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
         aiFallbackDelayMinutes: 60,
         aiFallbackPoolEnabled: false
     });
-    // Bu workspace'e bağlı agent'lar. Varsayılan agent her zaman içindedir;
-    // bağlı olmayan bir agent'a gelen arama Instomer'a düşmez.
-    const [connectedAgentIds, setConnectedAgentIds] = useState([]);
+    // Bu workspace'e bağlı agent'lar: [{ agentId, fromNumber }].
+    // Varsayılan agent her zaman içindedir; bağlı olmayan bir agent'a
+    // gelen arama Instomer'a düşmez.
+    const [connectedAgents, setConnectedAgents] = useState([]);
+    const agentBagli = (id) => connectedAgents.some(a => a.agentId === id);
+    const agentNumarasi = (id) => connectedAgents.find(a => a.agentId === id)?.fromNumber || '';
+    const agentAyarla = (id, alanlar) => setConnectedAgents(prev => {
+        const v = prev.find(a => a.agentId === id);
+        return v ? prev.map(a => a.agentId === id ? { ...a, ...alanlar } : a)
+                 : [...prev, { agentId: id, fromNumber: '', ...alanlar }];
+    });
     const [agents, setAgents] = useState([]);
     const [connectedChannels, setConnectedChannels] = useState([]);
     const [rules, setRules] = useState([]); // [{source: 'WHATSAPP', delay: 30, agentId: '', status: ''}, ...]
@@ -132,7 +140,10 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                 aiFallbackDelayMinutes: res.data.aiFallbackDelayMinutes ?? 60,
                 aiFallbackPoolEnabled: res.data.aiFallbackPoolEnabled || false
             });
-            setConnectedAgentIds(res.data.connectedAgentIds || (res.data.retellAgentId ? [res.data.retellAgentId] : []));
+            setConnectedAgents(
+                (res.data.connectedAgents || []).filter(a => a.isActive !== false)
+                    .map(a => ({ agentId: a.agentId, fromNumber: a.fromNumber || '' }))
+            );
             if (res.data.isConfigured) loadAgents();
         } catch (err) {
             console.error('Error loading Retell settings:', err);
@@ -213,7 +224,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
             data.aiFallbackEnabled = settings.aiFallbackEnabled;
             data.aiFallbackDelayMinutes = parseInt(settings.aiFallbackDelayMinutes) || 60;
             data.aiFallbackPoolEnabled = settings.aiFallbackPoolEnabled;
-            data.connectedAgentIds = connectedAgentIds;
+            data.connectedAgents = connectedAgents;
 
             await retellAPI.saveSettings(workspaceId, data);
             setMessage({ type: 'success', text: 'Ayarlar başarıyla kaydedildi!' });
@@ -429,39 +440,62 @@ const RetellSettings = ({ onSave, hideApiSetup = false, hideAgentManager = false
                             {agents.map(a => {
                                 const id = a.agent_id;
                                 const varsayilan = id === settings.retellAgentId;
-                                const secili = varsayilan || connectedAgentIds.includes(id);
+                                const secili = varsayilan || agentBagli(id);
                                 return (
-                                    <label key={id}
+                                    <div key={id}
                                         style={{
                                             display: 'flex', alignItems: 'center', gap: 10,
                                             padding: '9px 12px', borderBottom: '1px solid #f1f3f7',
-                                            cursor: varsayilan ? 'default' : 'pointer', fontSize: '0.85rem'
+                                            fontSize: '0.85rem'
                                         }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={secili}
-                                            disabled={varsayilan}
-                                            onChange={(e) => {
-                                                setConnectedAgentIds(prev => e.target.checked
-                                                    ? [...new Set([...prev, id])]
-                                                    : prev.filter(x => x !== id));
-                                            }}
-                                            style={{ width: 16, height: 16, accentColor: '#ef4444', cursor: 'inherit' }}
-                                        />
-                                        <span style={{ flex: 1 }}>{a.agent_name || id}</span>
+                                        {/* Numara kutusu label'ın DIŞINDA: içinde olsaydı
+                                            ona her tıklayış onay kutusunu da değiştirirdi. */}
+                                        <label style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, margin: 0,
+                                            cursor: varsayilan ? 'default' : 'pointer'
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={secili}
+                                                disabled={varsayilan}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) agentAyarla(id, {});
+                                                    else setConnectedAgents(prev => prev.filter(x => x.agentId !== id));
+                                                }}
+                                                style={{ width: 16, height: 16, accentColor: '#ef4444', cursor: 'inherit', flexShrink: 0 }}
+                                            />
+                                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {a.agent_name || id}
+                                            </span>
+                                        </label>
+                                        {secili && (
+                                            <input
+                                                type="text"
+                                                value={agentNumarasi(id)}
+                                                onChange={(e) => agentAyarla(id, { fromNumber: e.target.value })}
+                                                placeholder={settings.retellFromNumber || '+905xxxxxxxxx'}
+                                                title="Bu agent'ın arama numarası. Boşsa varsayılan numara kullanılır."
+                                                style={{
+                                                    width: 150, flexShrink: 0, fontSize: '0.78rem',
+                                                    padding: '5px 9px', border: '1px solid #e8eaf0',
+                                                    borderRadius: 7, background: '#fcfcfd', fontVariantNumeric: 'tabular-nums'
+                                                }}
+                                            />
+                                        )}
                                         {varsayilan && (
-                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 999, padding: '2px 8px' }}>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 999, padding: '2px 8px', flexShrink: 0 }}>
                                                 varsayılan
                                             </span>
                                         )}
-                                    </label>
+                                    </div>
                                 );
                             })}
                         </div>
                     )}
                     <div style={{ fontSize: '0.75rem', color: '#8b93a3', marginTop: 6, lineHeight: 1.5 }}>
-                        Varsayılan agent her zaman bağlıdır, işareti kaldırılamaz. Arama başlatırken
-                        hangi agent'ın kullanılacağını kişi kartından tek tek seçebilirsiniz.
+                        Varsayılan agent her zaman bağlıdır, işareti kaldırılamaz. Her agent'a kendi
+                        arama numarasını yazabilirsiniz; boş bırakırsanız yukarıdaki varsayılan numara
+                        kullanılır. Arama başlatırken hangi agent'ın kullanılacağını kişi kartından seçersiniz.
                     </div>
                 </div>
 
