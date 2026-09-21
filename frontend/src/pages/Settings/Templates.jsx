@@ -263,7 +263,10 @@ const Templates = () => {
     const [templateForm, setTemplateForm] = useState({
         name: '', language: 'tr', category: 'MARKETING', status: 'PENDING',
         headerType: '', headerContent: '', headerHandle: '', headerMediaUrl: '',
-        bodyText: '', footerText: '', buttons: [], whatsappPhoneNumberId: ''
+        bodyText: '', footerText: '', buttons: [], whatsappPhoneNumberId: '',
+        // Carousel kartları. Meta kuralı: 1-10 kart, hepsi AYNI yapıda
+        // (aynı başlık türü, aynı buton sayısı).
+        cards: []
     });
 
     // --- Send Modal state ---
@@ -1918,6 +1921,165 @@ const Templates = () => {
                                     ))}
                                 </div>
                             </div>
+
+                                {/* ── Carousel Kartları ─────────────────────
+                                    Meta kuralı: 1-10 kart ve bütün kartlar aynı
+                                    yapıda olmalı. Kart eklerken ilk kartın buton
+                                    yapısı kopyalanır, yoksa Meta reddeder. */}
+                                {templateForm.category === 'MARKETING' && (
+                                <div className="tpl-form-group">
+                                    <div className="tpl-label-row">
+                                        <label>Carousel Kartları ({templateForm.cards.length}/10)</label>
+                                        {templateForm.cards.length < 10 && (
+                                            <button type="button" className="tpl-insert-var-btn"
+                                                onClick={() => {
+                                                    const ilk = templateForm.cards[0];
+                                                    setTemplateForm({
+                                                        ...templateForm,
+                                                        cards: [...templateForm.cards, {
+                                                            headerFormat: ilk?.headerFormat || 'IMAGE',
+                                                            mediaUrl: '', headerHandle: '', bodyText: '',
+                                                            // Buton YAPISI ilk karttan kopyalanır; metinler boş.
+                                                            buttons: (ilk?.buttons || []).map(b => ({ ...b, text: '' }))
+                                                        }]
+                                                    });
+                                                }}>+ Kart Ekle</button>
+                                        )}
+                                    </div>
+
+                                    {templateForm.cards.length === 0 ? (
+                                        <div style={{ fontSize: 12, color: '#8b93a3', padding: '8px 0' }}>
+                                            Kart eklemezseniz şablon normal (carousel'siz) gönderilir.
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: 11, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.5 }}>
+                                            Meta kuralı: bütün kartlar aynı yapıda olmalı — aynı başlık türü ve
+                                            aynı sayıda buton. Her kartın görseli zorunludur.
+                                        </div>
+                                    )}
+
+                                    {templateForm.cards.map((kart, ki) => (
+                                        <div key={ki} style={{ border: '1px solid #e8eaf0', borderRadius: 10, padding: 12, marginBottom: 10, background: '#fcfcfd' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                                <strong style={{ fontSize: 12 }}>Kart {ki + 1}</strong>
+                                                <button type="button" title="Kartı kaldır"
+                                                    onClick={() => setTemplateForm({ ...templateForm, cards: templateForm.cards.filter((_, i) => i !== ki) })}
+                                                    style={{ background: 'none', border: 'none', color: '#8b93a3', cursor: 'pointer' }}>
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+
+                                            <input
+                                                type="file"
+                                                className="tpl-file-input"
+                                                accept={kart.headerFormat === 'VIDEO' ? 'video/mp4' : 'image/jpeg,image/png'}
+                                                disabled={isUploadingMedia}
+                                                onChange={async (e) => {
+                                                    const file = e.target.files[0];
+                                                    if (!file) return;
+                                                    setIsUploadingMedia(true);
+                                                    const fd = new FormData();
+                                                    fd.append('file', file);
+                                                    try {
+                                                        const res = await api.post(`/automations/${workspaceId}/templates/upload-media`, fd, {
+                                                            headers: { 'Content-Type': 'multipart/form-data' }
+                                                        });
+                                                        setTemplateForm(prev => ({
+                                                            ...prev,
+                                                            cards: prev.cards.map((c, i) => i === ki
+                                                                ? { ...c, mediaUrl: res.data.mediaUrl, headerHandle: res.data.headerHandle }
+                                                                : c)
+                                                        }));
+                                                    } catch (error) {
+                                                        alert('Kart görseli yüklenemedi: ' + (error.response?.data?.error || error.message));
+                                                    } finally {
+                                                        setIsUploadingMedia(false);
+                                                    }
+                                                }}
+                                            />
+                                            {kart.headerHandle && <div className="tpl-upload-status success">✅ Görsel yüklendi</div>}
+
+                                            <textarea
+                                                value={kart.bodyText}
+                                                onChange={(e) => setTemplateForm({
+                                                    ...templateForm,
+                                                    cards: templateForm.cards.map((c, i) => i === ki ? { ...c, bodyText: e.target.value } : c)
+                                                })}
+                                                placeholder="Kart metni — değişken için {{1}} yazabilirsiniz"
+                                                rows={2}
+                                                maxLength={160}
+                                                style={{ width: '100%', marginTop: 8, fontSize: 13, padding: '8px 10px', border: '1px solid #e8eaf0', borderRadius: 8, resize: 'vertical' }}
+                                            />
+
+                                            {(kart.buttons || []).map((btn, bi) => (
+                                                <div key={bi} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                                                    <select
+                                                        value={btn.type}
+                                                        onChange={(e) => setTemplateForm({
+                                                            ...templateForm,
+                                                            // Buton TÜRÜ bütün kartlarda aynı olmalı — hepsine uygula.
+                                                            cards: templateForm.cards.map(c => ({
+                                                                ...c,
+                                                                buttons: (c.buttons || []).map((b, i) => i === bi ? { ...b, type: e.target.value } : b)
+                                                            }))
+                                                        })}
+                                                        style={{ fontSize: 12, padding: '5px 8px', border: '1px solid #e8eaf0', borderRadius: 7 }}>
+                                                        <option value="QUICK_REPLY">Hızlı Yanıt</option>
+                                                        <option value="URL">Bağlantı</option>
+                                                    </select>
+                                                    <input
+                                                        type="text"
+                                                        value={btn.text || ''}
+                                                        onChange={(e) => setTemplateForm({
+                                                            ...templateForm,
+                                                            cards: templateForm.cards.map((c, i) => i === ki
+                                                                ? { ...c, buttons: c.buttons.map((b, x) => x === bi ? { ...b, text: e.target.value } : b) }
+                                                                : c)
+                                                        })}
+                                                        placeholder="Buton yazısı"
+                                                        maxLength={25}
+                                                        style={{ flex: 1, fontSize: 12, padding: '5px 8px', border: '1px solid #e8eaf0', borderRadius: 7 }}
+                                                    />
+                                                    {btn.type === 'URL' && (
+                                                        <input
+                                                            type="text"
+                                                            value={btn.url || ''}
+                                                            onChange={(e) => setTemplateForm({
+                                                                ...templateForm,
+                                                                cards: templateForm.cards.map((c, i) => i === ki
+                                                                    ? { ...c, buttons: c.buttons.map((b, x) => x === bi ? { ...b, url: e.target.value } : b) }
+                                                                    : c)
+                                                            })}
+                                                            placeholder="https://..."
+                                                            style={{ flex: 1, fontSize: 12, padding: '5px 8px', border: '1px solid #e8eaf0', borderRadius: 7 }}
+                                                        />
+                                                    )}
+                                                    <button type="button" title="Butonu bütün kartlardan kaldır"
+                                                        onClick={() => setTemplateForm({
+                                                            ...templateForm,
+                                                            cards: templateForm.cards.map(c => ({ ...c, buttons: (c.buttons || []).filter((_, x) => x !== bi) }))
+                                                        })}
+                                                        style={{ background: 'none', border: 'none', color: '#8b93a3', cursor: 'pointer' }}>
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
+                                            ))}
+
+                                            {ki === 0 && (kart.buttons || []).length < 2 && (
+                                                <button type="button" className="tpl-insert-var-btn" style={{ marginTop: 8 }}
+                                                    onClick={() => setTemplateForm({
+                                                        ...templateForm,
+                                                        // Buton bütün kartlara birden eklenir.
+                                                        cards: templateForm.cards.map(c => ({
+                                                            ...c, buttons: [...(c.buttons || []), { type: 'QUICK_REPLY', text: '' }]
+                                                        }))
+                                                    })}>+ Buton (tüm kartlara)</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                )}
+
 
                             {/* Live Phone Preview Side */}
                             <div className="tpl-modal-preview-col">

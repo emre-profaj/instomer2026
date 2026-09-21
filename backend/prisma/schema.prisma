@@ -1127,6 +1127,12 @@ model WhatsappTemplate {
   bodyText              String // Main template text with {{1}}, {{2}} placeholders
   footerText            String?
   buttons               String? // JSON array of buttons
+  // Carousel kartları (bizim tarafımızdaki kopya). Meta'nın components'i
+  // kart görselini yalnız "handle" olarak döndürür, handle'dan bağlantı
+  // üretilemez; gönderirken her karta bağlantı vermek ZORUNLU olduğu için
+  // yüklediğimiz dosyanın URL'ini burada tutuyoruz.
+  // [{ mediaUrl, headerFormat, bodyText, buttons: [...] }]
+  carouselCards         String?
   exampleValues         String? // JSON array of example values for placeholders
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

@@ -174,7 +174,7 @@ export const createTemplate = async (req, res) => {
         const {
             language, category, status,
             headerType, headerContent, headerHandle, headerMediaUrl, bodyText, footerText,
-            buttons, exampleValues, whatsappPhoneNumberId
+            buttons, exampleValues, whatsappPhoneNumberId, cards
         } = req.body;
 
         if (!name || !bodyText) {
@@ -230,6 +230,66 @@ export const createTemplate = async (req, res) => {
             if (Array.isArray(parsedButtons) && parsedButtons.length > 0) {
                 components.push({ type: 'BUTTONS', buttons: parsedButtons });
             }
+        }
+
+        // ── Carousel ────────────────────────────────────────────────
+        // Meta kuralı: 1-10 kart ve BÜTÜN KARTLAR AYNI YAPIDA olmalı —
+        // biri görselse hepsi görsel, biri iki butonluysa hepsi iki butonlu.
+        // Yapı bozuksa Meta'nın hatası anlaşılmaz oluyor, burada durduruyoruz.
+        const kartlar = typeof cards === 'string' ? JSON.parse(cards) : cards;
+        if (Array.isArray(kartlar) && kartlar.length > 0) {
+            if (kartlar.length > 10) {
+                return res.status(400).json({ error: 'Carousel en fazla 10 kart alabilir.' });
+            }
+            const ilkFormat = (kartlar[0].headerFormat || 'IMAGE').toUpperCase();
+            const ilkButonSayisi = (kartlar[0].buttons || []).length;
+
+            const carouselCards = [];
+            for (let i = 0; i < kartlar.length; i++) {
+                const k = kartlar[i];
+                const format = (k.headerFormat || 'IMAGE').toUpperCase();
+                const kButonlar = k.buttons || [];
+
+                if (format !== ilkFormat) {
+                    return res.status(400).json({
+                        error: `Kart ${i + 1}: tüm kartların başlık türü aynı olmalı (${ilkFormat} bekleniyordu, ${format} geldi).`
+                    });
+                }
+                if (kButonlar.length !== ilkButonSayisi) {
+                    return res.status(400).json({
+                        error: `Kart ${i + 1}: tüm kartlarda aynı sayıda buton olmalı (${ilkButonSayisi} bekleniyordu, ${kButonlar.length} geldi).`
+                    });
+                }
+                if (kButonlar.length > 2) {
+                    return res.status(400).json({ error: `Kart ${i + 1}: bir kartta en fazla 2 buton olabilir.` });
+                }
+                if (!k.headerHandle) {
+                    return res.status(400).json({
+                        error: `Kart ${i + 1}: görsel yüklenmemiş. Şablon oluştururken Meta düz bağlantı kabul etmez, önce yükleyin.`
+                    });
+                }
+                if (!k.bodyText) {
+                    return res.status(400).json({ error: `Kart ${i + 1}: gövde metni boş olamaz.` });
+                }
+
+                const kartBilesenleri = [
+                    { type: 'HEADER', format, example: { header_handle: [k.headerHandle] } }
+                ];
+                const kartBody = { type: 'BODY', text: k.bodyText };
+                const kartDegiskenSayisi = (k.bodyText.match(/\{\{\d+\}\}/g) || []).length;
+                if (kartDegiskenSayisi > 0) {
+                    kartBody.example = {
+                        body_text: [Array.from({ length: kartDegiskenSayisi }, (_, x) => `Örnek ${x + 1}`)]
+                    };
+                }
+                kartBilesenleri.push(kartBody);
+                if (kButonlar.length > 0) {
+                    kartBilesenleri.push({ type: 'BUTTONS', buttons: kButonlar });
+                }
+                carouselCards.push({ components: kartBilesenleri });
+            }
+            components.push({ type: 'CAROUSEL', cards: carouselCards });
+            console.log(`🎠 [CREATE_TEMPLATE] Carousel: ${carouselCards.length} kart, format ${ilkFormat}, ${ilkButonSayisi} buton`);
         }
 
         // 3. Call Meta API to create the template
@@ -294,6 +354,19 @@ export const createTemplate = async (req, res) => {
                 bodyText,
                 footerText,
                 buttons: buttons ? JSON.stringify(buttons) : null,
+                // Meta'ya gönderilen bileşenler kaydedilmiyordu; carousel
+                // gönderiminde kart yapısı buradan okunuyor, şart.
+                components: JSON.stringify(components),
+                // Kart görsellerinin URL'i: gönderirken Meta bağlantı ister,
+                // handle'dan bağlantı üretilemediği için burada saklanıyor.
+                carouselCards: Array.isArray(kartlar) && kartlar.length > 0
+                    ? JSON.stringify(kartlar.map(k => ({
+                        mediaUrl: k.mediaUrl || null,
+                        headerFormat: (k.headerFormat || 'IMAGE').toUpperCase(),
+                        bodyText: k.bodyText || '',
+                        buttons: k.buttons || []
+                    })))
+                    : null,
                 exampleValues: exampleValues ? JSON.stringify(exampleValues) : null
             }
         });

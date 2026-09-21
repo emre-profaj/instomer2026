@@ -7,6 +7,7 @@ import { sendSms } from '../services/netgsm.service.js';
 import { sendEmailViaChannel } from '../services/emailSender.service.js';
 import { calculateNextRun } from '../services/marketingEngine.service.js';
 import { resolveFromNumber } from '../services/retellAgent.service.js';
+import { buildSendComponents, hasCarousel } from '../services/whatsappTemplate.service.js';
 
 // ─── Kampanya triggerType → WorkspaceRule ruleType eşlemesi ──────
 const TRIGGER_TO_RULES = {
@@ -709,29 +710,22 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                             }
                         };
 
-                        const components = [];
+                        // Bileşenler ortak kurucudan — carousel dahil.
+                        // Eskiden burada elle kuruluyordu ve carousel bilinmiyordu.
+                        let components = [];
                         if (waTpl) {
-                            if (waTpl.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(waTpl.headerType)) {
-                                const mediaUrl = msgTemplate.mediaUrl || waTpl.headerContent;
-                                if (mediaUrl) {
-                                    components.push({
-                                        type: 'header',
-                                        parameters: [{
-                                            type: waTpl.headerType.toLowerCase(),
-                                            [waTpl.headerType.toLowerCase()]: { link: mediaUrl }
-                                        }]
-                                    });
-                                }
-                            }
-
                             const placeholderCount = (waTpl.bodyText?.match(/\{\{\d+\}\}/g) || []).length;
-                            if (placeholderCount > 0) {
-                                const bodyParams = [{ type: 'text', text: contact.name || 'Müşteri' }];
-                                while (bodyParams.length < placeholderCount) {
-                                    bodyParams.push({ type: 'text', text: '' });
-                                }
-                                components.push({ type: 'body', parameters: bodyParams });
-                            }
+                            const bodyParams = placeholderCount > 0
+                                ? [contact.name || 'Müşteri', ...Array(Math.max(0, placeholderCount - 1)).fill('')]
+                                : [];
+                            components = buildSendComponents({
+                                template: waTpl,
+                                mediaUrl: msgTemplate.mediaUrl,
+                                bodyParams,
+                                // Kampanya adımında kart girdisi varsa kullanılır;
+                                // yoksa şablonu kurarken saklanan görseller geçerli.
+                                cardInputs: msgTemplate.carouselInputs || []
+                            });
                         }
 
                         if (components.length > 0) {
@@ -2479,6 +2473,14 @@ export const retryCampaignFailed = async (req, res) => {
             message: `${targetRecipients.length} alıcıya tekrar gönderiliyor...`
         });
 
+        // Şablon kaydı: bileşenleri (carousel dahil) kurabilmek için gerekli.
+        const tekrarSablonu = templateName
+            ? await prisma.whatsappTemplate.findFirst({ where: { workspaceId, name: templateName } })
+            : null;
+        if (templateName && !tekrarSablonu) {
+            console.warn(`⚠️ [Marketing] "${templateName}" şablonu veritabanında yok; bileşensiz gönderilecek.`);
+        }
+
         // Arka planda gönder
         const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v21.0';
         setImmediate(async () => {
@@ -2500,6 +2502,20 @@ export const retryCampaignFailed = async (req, res) => {
                             language: { code: templateLang }
                         }
                     };
+
+                    // Bu yol bileşen göndermiyordu. Değişkensiz şablonlarda
+                    // sorun çıkarmıyor ama carousel'de ve değişkenli
+                    // şablonlarda Meta reddeder: kart medyası zorunlu.
+                    if (tekrarSablonu) {
+                        const placeholderCount = (tekrarSablonu.bodyText?.match(/\{\{\d+\}\}/g) || []).length;
+                        const comps = buildSendComponents({
+                            template: tekrarSablonu,
+                            bodyParams: placeholderCount > 0
+                                ? [recipient.name || 'Müşteri', ...Array(Math.max(0, placeholderCount - 1)).fill('')]
+                                : []
+                        });
+                        if (comps.length > 0) payload.template.components = comps;
+                    }
 
                     const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.phoneNumberId}/messages`;
                     const response = await axios.post(apiUrl, payload, {
