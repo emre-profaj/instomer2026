@@ -232,6 +232,10 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     };
     // Şubeye açıkça yetkili temsilciler
     const agentsOfBranch = (branchId) => members.filter(m => parseMemberBranchIds(m.branchIds).includes(branchId));
+    // Takımlar iç içe geliyor (üst takım → children); düzleştir
+    const flattenTeams = (list, acc = []) => { (list || []).forEach(t => { acc.push(t); if (t.children?.length) flattenTeams(t.children, acc); }); return acc; };
+    // Bu şubeden sorumlu takımlar (Takım kartındaki "Sorumlu Olduğu Şubeler")
+    const teamsOfBranch = (branchId) => flattenTeams(teams).filter(t => parseMemberBranchIds(t.branchIds).includes(branchId));
     // Şube seçmemiş = tüm şubelerde yetkili (Çağrı Merkezi vb.)
     const allBranchAgents = () => members.filter(m => parseMemberBranchIds(m.branchIds).length === 0);
     const agentInitials = (name) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -1565,6 +1569,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                     const branchProducts = products.filter(p => p.allBranches || (p.productBranches && p.productBranches.some(pb => pb.branchId === branch.id)));
                                     const branchResources = resources.filter(r => r.branchId === branch.id || r.resourceBranch === branch.id || (r.branchIds && r.branchIds.includes(branch.id)));
                                     const branchAgents = agentsOfBranch(branch.id);
+                                    const branchTeams = teamsOfBranch(branch.id);
                                     const sharedAgents = allBranchAgents();
                                     return (
                                         <div key={branch.id}>
@@ -1580,7 +1585,19 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                                         {branch.name}
                                                     </button>
                                                     {branch.address && <div className="br-sub">{branch.address}</div>}
-                                                    <div className="br-agents" title={branchAgents.length > 0 ? `Yetkili temsilciler: ${branchAgents.map(m => m.user?.name).join(', ')}` : 'Bu şubeye açıkça yetkili temsilci yok'}>
+                                                    <div className="br-agents" title={[
+                                                        branchTeams.length > 0 ? `Takımlar: ${branchTeams.map(t => t.name).join(', ')}` : 'Bu şubeden sorumlu takım yok',
+                                                        branchAgents.length > 0 ? `Temsilciler: ${branchAgents.map(m => m.user?.name).join(', ')}` : 'Bu şubeye açıkça yetkili temsilci yok'
+                                                    ].join(' · ')}>
+                                                        {branchTeams.length > 0 && (
+                                                            <span className="br-team-chips">
+                                                                {branchTeams.map(t => (
+                                                                    <span key={t.id} className="br-team-chip" style={{ '--tc': t.color || '#3b82f6' }}>
+                                                                        <span className="br-team-dot" />{t.name}
+                                                                    </span>
+                                                                ))}
+                                                            </span>
+                                                        )}
                                                         <UserCircle size={12} />
                                                         {branchAgents.length > 0 ? (
                                                             <>
@@ -1595,7 +1612,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                                                 </span>
                                                             </>
                                                         ) : (
-                                                            <span className="br-agent-none">Temsilci atanmadı</span>
+                                                            <span className="br-agent-none">{branchTeams.length > 0 ? 'Temsilci atanmadı' : 'Takım ve temsilci atanmadı'}</span>
                                                         )}
                                                         {sharedAgents.length > 0 && (
                                                             <span className="br-agent-shared">· {sharedAgents.length} kişi tüm şubelerde</span>
@@ -1636,6 +1653,24 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
 
                                             {isOpen && (
                                                 <div className="br-detail">
+                                                    <div className="br-dsec">
+                                                        <span className="br-dsec-name">Takımlar</span>
+                                                        <span className="br-dsec-rule"></span>
+                                                        <span className="br-dsec-count">{branchTeams.length}</span>
+                                                    </div>
+                                                    {branchTeams.length > 0 ? (
+                                                        <div className="br-chips">
+                                                            {branchTeams.map(t => (
+                                                                <span key={t.id} className="br-chip br-chip-team" style={{ '--tc': t.color || '#3b82f6' }}>
+                                                                    <span className="br-team-dot" />{t.name}
+                                                                    <span className="br-chip-meta">{t._count?.members ?? t.members?.length ?? 0} üye</span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="br-chip-none">Bu şubeden sorumlu takım yok. Takım ve Üyeler ekranında takımı düzenleyip "Sorumlu Olduğu Şubeler" seçin.</div>
+                                                    )}
+
                                                     <div className="br-dsec">
                                                         <span className="br-dsec-name">Temsilciler</span>
                                                         <span className="br-dsec-rule"></span>
