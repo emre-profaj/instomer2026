@@ -595,6 +595,16 @@ const Templates = () => {
             parsedButtons = template.buttons ? (typeof template.buttons === 'string' ? JSON.parse(template.buttons) : template.buttons) : [];
         } catch {}
 
+        // Kayıtlı carousel kartları. Yoksa boş dizi — undefined bırakılırsa
+        // form ".length" okurken patlar.
+        let parsedCards = [];
+        try {
+            parsedCards = template.carouselCards
+                ? (typeof template.carouselCards === 'string' ? JSON.parse(template.carouselCards) : template.carouselCards)
+                : [];
+            if (!Array.isArray(parsedCards)) parsedCards = [];
+        } catch { parsedCards = []; }
+
         setTemplateForm({
             name: template.name || '',
             language: template.language || 'tr',
@@ -607,7 +617,8 @@ const Templates = () => {
             headerMediaUrl: template.headerContent || '',
             footerText: template.footerText || '',
             buttons: parsedButtons,
-            whatsappPhoneNumberId: template.whatsappPhoneNumberId || ''
+            whatsappPhoneNumberId: template.whatsappPhoneNumberId || '',
+            cards: parsedCards
         });
         setShowTemplateModal(true);
     };
@@ -625,7 +636,8 @@ const Templates = () => {
             bodyText: '',
             footerText: '',
             buttons: [],
-            whatsappPhoneNumberId: phoneNumbers[0]?.id || ''
+            whatsappPhoneNumberId: phoneNumbers[0]?.id || '',
+            cards: []
         });
     };
 
@@ -1929,14 +1941,14 @@ const Templates = () => {
                                 {templateForm.category === 'MARKETING' && (
                                 <div className="tpl-form-group">
                                     <div className="tpl-label-row">
-                                        <label>Carousel Kartları ({templateForm.cards.length}/10)</label>
-                                        {templateForm.cards.length < 10 && (
+                                        <label>Carousel Kartları ({(templateForm.cards || []).length}/10)</label>
+                                        {(templateForm.cards || []).length < 10 && (
                                             <button type="button" className="tpl-insert-var-btn"
                                                 onClick={() => {
-                                                    const ilk = templateForm.cards[0];
+                                                    const ilk = (templateForm.cards || [])[0];
                                                     setTemplateForm({
                                                         ...templateForm,
-                                                        cards: [...templateForm.cards, {
+                                                        cards: [...(templateForm.cards || []), {
                                                             headerFormat: ilk?.headerFormat || 'IMAGE',
                                                             mediaUrl: '', headerHandle: '', bodyText: '',
                                                             // Buton YAPISI ilk karttan kopyalanır; metinler boş.
@@ -1947,7 +1959,7 @@ const Templates = () => {
                                         )}
                                     </div>
 
-                                    {templateForm.cards.length === 0 ? (
+                                    {(templateForm.cards || []).length === 0 ? (
                                         <div style={{ fontSize: 12, color: '#8b93a3', padding: '8px 0' }}>
                                             Kart eklemezseniz şablon normal (carousel'siz) gönderilir.
                                         </div>
@@ -1958,12 +1970,12 @@ const Templates = () => {
                                         </div>
                                     )}
 
-                                    {templateForm.cards.map((kart, ki) => (
+                                    {(templateForm.cards || []).map((kart, ki) => (
                                         <div key={ki} style={{ border: '1px solid #e8eaf0', borderRadius: 10, padding: 12, marginBottom: 10, background: '#fcfcfd' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                                                 <strong style={{ fontSize: 12 }}>Kart {ki + 1}</strong>
                                                 <button type="button" title="Kartı kaldır"
-                                                    onClick={() => setTemplateForm({ ...templateForm, cards: templateForm.cards.filter((_, i) => i !== ki) })}
+                                                    onClick={() => setTemplateForm({ ...templateForm, cards: (templateForm.cards || []).filter((_, i) => i !== ki) })}
                                                     style={{ background: 'none', border: 'none', color: '#8b93a3', cursor: 'pointer' }}>
                                                     <Trash2 size={14} />
                                                 </button>
@@ -1986,7 +1998,7 @@ const Templates = () => {
                                                         });
                                                         setTemplateForm(prev => ({
                                                             ...prev,
-                                                            cards: prev.cards.map((c, i) => i === ki
+                                                            cards: (prev.cards || []).map((c, i) => i === ki
                                                                 ? { ...c, mediaUrl: res.data.mediaUrl, headerHandle: res.data.headerHandle }
                                                                 : c)
                                                         }));
@@ -2003,7 +2015,7 @@ const Templates = () => {
                                                 value={kart.bodyText}
                                                 onChange={(e) => setTemplateForm({
                                                     ...templateForm,
-                                                    cards: templateForm.cards.map((c, i) => i === ki ? { ...c, bodyText: e.target.value } : c)
+                                                    cards: (templateForm.cards || []).map((c, i) => i === ki ? { ...c, bodyText: e.target.value } : c)
                                                 })}
                                                 placeholder="Kart metni — değişken için {{1}} yazabilirsiniz"
                                                 rows={2}
@@ -2018,7 +2030,7 @@ const Templates = () => {
                                                         onChange={(e) => setTemplateForm({
                                                             ...templateForm,
                                                             // Buton TÜRÜ bütün kartlarda aynı olmalı — hepsine uygula.
-                                                            cards: templateForm.cards.map(c => ({
+                                                            cards: (templateForm.cards || []).map(c => ({
                                                                 ...c,
                                                                 buttons: (c.buttons || []).map((b, i) => i === bi ? { ...b, type: e.target.value } : b)
                                                             }))
@@ -2032,8 +2044,8 @@ const Templates = () => {
                                                         value={btn.text || ''}
                                                         onChange={(e) => setTemplateForm({
                                                             ...templateForm,
-                                                            cards: templateForm.cards.map((c, i) => i === ki
-                                                                ? { ...c, buttons: c.buttons.map((b, x) => x === bi ? { ...b, text: e.target.value } : b) }
+                                                            cards: (templateForm.cards || []).map((c, i) => i === ki
+                                                                ? { ...c, buttons: (c.buttons || []).map((b, x) => x === bi ? { ...b, text: e.target.value } : b) }
                                                                 : c)
                                                         })}
                                                         placeholder="Buton yazısı"
@@ -2046,8 +2058,8 @@ const Templates = () => {
                                                             value={btn.url || ''}
                                                             onChange={(e) => setTemplateForm({
                                                                 ...templateForm,
-                                                                cards: templateForm.cards.map((c, i) => i === ki
-                                                                    ? { ...c, buttons: c.buttons.map((b, x) => x === bi ? { ...b, url: e.target.value } : b) }
+                                                                cards: (templateForm.cards || []).map((c, i) => i === ki
+                                                                    ? { ...c, buttons: (c.buttons || []).map((b, x) => x === bi ? { ...b, url: e.target.value } : b) }
                                                                     : c)
                                                             })}
                                                             placeholder="https://..."
@@ -2057,7 +2069,7 @@ const Templates = () => {
                                                     <button type="button" title="Butonu bütün kartlardan kaldır"
                                                         onClick={() => setTemplateForm({
                                                             ...templateForm,
-                                                            cards: templateForm.cards.map(c => ({ ...c, buttons: (c.buttons || []).filter((_, x) => x !== bi) }))
+                                                            cards: (templateForm.cards || []).map(c => ({ ...c, buttons: (c.buttons || []).filter((_, x) => x !== bi) }))
                                                         })}
                                                         style={{ background: 'none', border: 'none', color: '#8b93a3', cursor: 'pointer' }}>
                                                         <Trash2 size={13} />
@@ -2070,7 +2082,7 @@ const Templates = () => {
                                                     onClick={() => setTemplateForm({
                                                         ...templateForm,
                                                         // Buton bütün kartlara birden eklenir.
-                                                        cards: templateForm.cards.map(c => ({
+                                                        cards: (templateForm.cards || []).map(c => ({
                                                             ...c, buttons: [...(c.buttons || []), { type: 'QUICK_REPLY', text: '' }]
                                                         }))
                                                     })}>+ Buton (tüm kartlara)</button>
