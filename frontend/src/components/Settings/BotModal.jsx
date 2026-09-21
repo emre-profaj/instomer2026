@@ -123,7 +123,7 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
 };
 
 // Sub-component for individual Bot Item
-const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => {
+const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClose }) => {
     const { t } = useTranslation();
     const [name, setName] = useState(bot.name || '');
     const [role, setRole] = useState(bot.role || '');
@@ -150,6 +150,10 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
     const [fallbackDelayMinutes, setFallbackDelayMinutes] = useState(bot.fallbackDelayMinutes ?? 5);
     const [fallbackScope, setFallbackScope] = useState(bot.fallbackScope || 'UNASSIGNED');
     const [updating, setUpdating] = useState(false);
+    // Sol raydaki aktif bölüm
+    const [activeSection, setActiveSection] = useState('channels');
+    // Alt çubuktaki kayıt geri bildirimi
+    const [saveState, setSaveState] = useState(null); // null | 'saved' | 'error'
 
     // Built-in tools state
     const [enabledTools, setEnabledTools] = useState(() => {
@@ -398,548 +402,517 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 // Built-in tools
                 enabledTools: JSON.stringify(enabledTools)
             });
-            alert('Bot ayarları güncellendi!');
+            setSaveState('saved');
+            setTimeout(() => setSaveState(null), 2600);
             if (onRefresh) onRefresh();
         } catch (error) {
             console.error('Update bot error:', error);
-            alert('Güncelleme başarısız.');
+            setSaveState('error');
         } finally {
             setUpdating(false);
         }
     };
 
+    // ── Sol raydaki özet sayılar ────────────────────────────────
+    const assignedChannelCount = workspaceChannels.filter(ch => ch.assignedBotId === bot.id).length;
+    const behaviourRules = [fallbackEnabled, schedulerEnabled, autoReplyDelayEnabled, reminderSteps.some(s => s.enabled)];
+    const openBehaviourCount = behaviourRules.filter(Boolean).length;
+    const TOOL_LIST = [
+        { key: 'create_appointment', label: 'Randevu oluştur' },
+        { key: 'recommend_product', label: 'Ürün öner' },
+        { key: 'transfer_to_team', label: 'Takıma devret' },
+        { key: 'send_location', label: 'Konum gönder' },
+        { key: 'add_note', label: 'Not ekle' },
+        { key: 'change_funnel_stage', label: 'Huni aşaması değiştir' },
+        { key: 'send_whatsapp_template', label: 'WhatsApp şablon gönder' },
+        { key: 'create_order', label: 'Sipariş oluştur' },
+        { key: 'send_payment_link', label: 'Ödeme linki gönder' },
+        { key: 'add_tag', label: 'Etiket ekle' },
+        { key: 'check_stock', label: 'Stok kontrol' }
+    ];
+
+    // Kaydedilmemiş değişiklik sayısı — kanal atamaları anında kaydedildiği için sayılmaz
+    const savedScheduleDays = (() => { try { return bot.scheduleDays ? JSON.parse(bot.scheduleDays) : []; } catch { return []; } })();
+    const savedReminderSteps = (() => { try { return bot.reminderSteps ? JSON.parse(bot.reminderSteps) : null; } catch { return null; } })();
+    const savedTools = (() => { try { return bot.enabledTools ? JSON.parse(bot.enabledTools) : null; } catch { return null; } })();
+    const sameSet = (a, b) => Array.isArray(b) && a.length === b.length && a.every(x => b.includes(x));
+    const pendingChanges = [
+        name !== (bot.name || '') || role !== (bot.role || ''),
+        prompt !== (bot.prompt || ''),
+        handoffMessage !== (bot.handoffMessage || ''),
+        fallbackEnabled !== !!bot.fallbackEnabled || String(fallbackDelayMinutes) !== String(bot.fallbackDelayMinutes ?? 5) || fallbackScope !== (bot.fallbackScope || 'UNASSIGNED'),
+        schedulerEnabled !== !!bot.schedulerEnabled || scheduleStartTime !== (bot.scheduleStartTime || '09:00') || scheduleEndTime !== (bot.scheduleEndTime || '18:00') || !sameSet(scheduleDays, savedScheduleDays),
+        autoReplyDelayEnabled !== !!bot.autoReplyDelayEnabled || String(autoReplyDelaySeconds) !== String(bot.autoReplyDelaySeconds || 30) || autoReplyDelayMessage !== (bot.autoReplyDelayMessage || ''),
+        savedReminderSteps ? JSON.stringify(reminderSteps) !== JSON.stringify(savedReminderSteps) : false,
+        savedTools ? !sameSet(enabledTools, savedTools) : false,
+        routingConfig.routingEnabled !== !!bot.routingEnabled
+    ].filter(Boolean).length;
+
+    const navItems = [
+        { key: 'channels', icon: <Zap size={17} />, label: 'Kimlik ve kanallar', hint: channelsLoading ? 'Yükleniyor…' : `${assignedChannelCount} kanal bağlı` },
+        { key: 'prompt', icon: <FileText size={17} />, label: 'Talimat ve devir', hint: `${prompt.length.toLocaleString('tr-TR')} karakter` },
+        { key: 'behaviour', icon: <Gauge size={17} />, label: 'Davranış kuralları', hint: `${behaviourRules.length} kural, ${openBehaviourCount} açık` },
+        { key: 'tools', icon: <Sparkles size={17} />, label: 'Yetenekler', hint: `${enabledTools.length} / ${TOOL_LIST.length} açık` },
+        { key: 'routing', icon: <GitBranch size={17} />, label: 'Yönlendirme', hint: routingConfig.routingEnabled ? 'Açık' : 'Kapalı' },
+        { key: 'knowledge', icon: <BookOpen size={17} />, label: 'Bilgi bankası', hint: 'PDF ve DOCX' }
+    ];
+    if (bot.botType === 'APPOINTMENT') {
+        navItems.push({ key: 'appointment', icon: <Calendar size={17} />, label: 'Randevu ayarları', hint: 'Bölüm ve uzmanlar' });
+    }
+
     return (
-        <div className="bot-card">
-            <div className="bot-card-header">
-                <div className="bot-info">
-                <div className="bot-avatar">
-                    {bot.botType === 'APPOINTMENT' ? <Stethoscope size={18} /> : <Bot size={18} />}
+        <div className="bm-shell">
+
+            {/* ── Başlık ──────────────────────────────────────────── */}
+            <header className="bm-head">
+                <div className="bm-head-avatar">
+                    {bot.botType === 'APPOINTMENT' ? <Stethoscope size={21} /> : <Bot size={21} />}
                 </div>
-                    <div className="bot-title-group">
-                        {isEditingTitle ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                <input
-                                    type="text"
-                                    className="input-modern"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="Bot İsmi"
-                                    style={{ padding: '3px 8px', fontSize: '13px', height: 'auto' }}
-                                    autoFocus
-                                />
-                                <input
-                                    type="text"
-                                    className="input-modern"
-                                    value={role}
-                                    onChange={(e) => setRole(e.target.value)}
-                                    placeholder="Departman/Rol"
-                                    style={{ padding: '2px 8px', fontSize: '11px', height: 'auto' }}
-                                />
-                            </div>
-                        ) : (
-                            <>
-                                <h4>{name}</h4>
-                                <span className="bot-role-badge">{bot.botType === 'APPOINTMENT' ? '🏥 Randevu Asistanı' : role}</span>
-                            </>
-                        )}
-                    </div>
-                </div>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: '600', color: isActive ? '#10b981' : '#94a3b8' }}>
-                            {isActive ? 'Aktif' : 'Pasif'}
-                        </span>
-                        <label className="toggle-switch" title={isActive ? "Botu Pasife Al" : "Botu Aktifleştir"}>
+                <div className="bm-head-id">
+                    {isEditingTitle ? (
+                        <div className="bm-head-edit">
                             <input
-                                type="checkbox"
-                                checked={isActive}
-                                onChange={handleToggleStatus}
+                                type="text"
+                                className="input-modern input-sm"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="Bot ismi"
+                                autoFocus
                             />
-                            <span className="toggle-slider"></span>
-                        </label>
-                    </div>
+                            <input
+                                type="text"
+                                className="input-modern input-sm"
+                                value={role}
+                                onChange={(e) => setRole(e.target.value)}
+                                placeholder="Departman / rol"
+                            />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="bm-head-name-row">
+                                <h2 className="bm-head-name">{name}</h2>
+                                <span className="bm-head-badge">{bot.botType === 'APPOINTMENT' ? 'Randevu Asistanı' : (role || 'AI Asistan')}</span>
+                            </div>
+                            <p className="bm-head-sub">
+                                Mesaj asistanı
+                                {!channelsLoading && <> · {assignedChannelCount} kanalda yayında</>}
+                                {' · '}{enabledTools.length} yetenek açık
+                            </p>
+                        </>
+                    )}
+                </div>
+                <div className="bm-head-actions">
+                    <span className={`bm-status ${isActive ? 'on' : 'off'}`}>{isActive ? 'Aktif' : 'Pasif'}</span>
+                    <label className="toggle-switch" title={isActive ? 'Botu pasife al' : 'Botu aktifleştir'}>
+                        <input type="checkbox" checked={isActive} onChange={handleToggleStatus} />
+                        <span className="toggle-slider"></span>
+                    </label>
+                    <span className="bm-head-sep"></span>
                     <button
-                        className={`btn-modern ${isEditingTitle ? 'btn-primary' : 'btn-outline-primary'}`}
-                        onClick={() => {
-                            if (isEditingTitle) {
-                                handleUpdate();
-                            }
-                            setIsEditingTitle(!isEditingTitle);
-                        }}
-                        title={isEditingTitle ? "Tamam" : "İsmi Düzenle"}
-                        style={{ padding: '6px' }}
+                        type="button"
+                        className={`bm-ico ${isEditingTitle ? 'primary' : ''}`}
+                        title={isEditingTitle ? 'Tamam' : 'İsmi düzenle'}
+                        onClick={() => { if (isEditingTitle) handleUpdate(); setIsEditingTitle(!isEditingTitle); }}
                     >
                         {isEditingTitle ? <Save size={15} /> : <Edit2 size={15} />}
                     </button>
-                    <button
-                        className="btn-modern btn-outline-danger"
-                        onClick={() => onDelete(bot.id)}
-                        title="Botu Sil"
-                        style={{ padding: '6px' }}
-                    >
+                    <button type="button" className="bm-ico danger" title="Botu sil" onClick={() => onDelete(bot.id)}>
                         <Trash2 size={15} />
                     </button>
+                    {onClose && (
+                        <button type="button" className="bm-ico plain" title="Kapat" onClick={onClose}>
+                            <X size={16} />
+                        </button>
+                    )}
                 </div>
-            </div>
+            </header>
 
-            {/* Bağlı Kanallar — Checkbox ile bot atama */}
-            <div style={{ marginTop: '15px', padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: '500', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📡 Bağlı Kanallar
-                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 'normal' }}>(Seçtiğiniz kanallarda bu bot çalışır)</span>
-                </div>
-                {channelsLoading ? (
-                    <div style={{ padding: '10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                        <Loader size={14} className="spin" style={{ marginRight: '6px' }} /> Kanallar yükleniyor...
-                    </div>
-                ) : workspaceChannels.length === 0 ? (
-                    <div style={{ padding: '10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                        Henüz bağlı kanal yok. Kanallar sayfasından WhatsApp, Facebook veya Instagram bağlayın.
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {workspaceChannels.map(ch => {
-                            const isAssigned = ch.assignedBotId === bot.id;
-                            const assignedToOther = ch.assignedBotId && ch.assignedBotId !== bot.id;
-                            const colorMap = {
-                                'WHATSAPP': '#25D366',
-                                'FACEBOOK': '#1877F2',
-                                'INSTAGRAM': '#E4405F',
-                                'EMAIL': '#6366f1',
-                                'WEB_WIDGET': '#0ea5e9'
-                            };
-                            const color = colorMap[ch.type] || '#64748b';
-                            return (
-                                <label
-                                    key={`${ch.type}-${ch.id}`}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                        padding: '8px 12px',
-                                        borderRadius: '8px',
-                                        cursor: channelSaving ? 'wait' : 'pointer',
-                                        background: isAssigned ? `${color}10` : '#fff',
-                                        border: `1px solid ${isAssigned ? color : '#e2e8f0'}`,
-                                        transition: 'all 0.2s',
-                                        opacity: assignedToOther ? 0.5 : 1
-                                    }}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={isAssigned}
-                                        disabled={channelSaving}
-                                        onChange={() => handleChannelToggle(ch, isAssigned)}
-                                        style={{ width: '16px', height: '16px', accentColor: color, cursor: 'pointer' }}
-                                    />
-                                    <span style={{ fontSize: '16px' }}>{ch.icon}</span>
-                                    <span style={{ fontSize: '13px', fontWeight: isAssigned ? '600' : '400', color: isAssigned ? '#1e293b' : '#64748b', flex: 1 }}>
-                                        {ch.name}
-                                    </span>
-                                    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '400' }}>
-                                        {ch.type === 'WHATSAPP' ? 'WhatsApp' : ch.type === 'FACEBOOK' ? 'Facebook' : ch.type === 'INSTAGRAM' ? 'Instagram' : ch.type === 'EMAIL' ? 'E-posta' : 'Canlı Destek'}
-                                    </span>
-                                    {assignedToOther && (
-                                        <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: '500' }}>Başka bota atanmış</span>
+            <div className="bm-body">
+
+                {/* ── Sol ray ─────────────────────────────────────── */}
+                <nav className="bm-rail" aria-label="Bot ayarları bölümleri">
+                    <p className="bm-rail-eyebrow">Bot ayarları</p>
+                    {navItems.map(item => (
+                        <button
+                            key={item.key}
+                            type="button"
+                            className={`bm-rail-item ${activeSection === item.key ? 'active' : ''}`}
+                            aria-current={activeSection === item.key ? 'true' : undefined}
+                            onClick={() => setActiveSection(item.key)}
+                        >
+                            <span className="bm-rail-ico">{item.icon}</span>
+                            <span className="bm-rail-text">
+                                <span className="bm-rail-label">{item.label}</span>
+                                <span className="bm-rail-hint">{item.hint}</span>
+                            </span>
+                        </button>
+                    ))}
+                </nav>
+
+                {/* ── İçerik ──────────────────────────────────────── */}
+                <div className="bm-content">
+
+                    {activeSection === 'channels' && (
+                        <section className="bm-sec">
+                            <div className="bm-sec-head">
+                                <h3>Bağlı kanallar</h3>
+                                <span className="bm-sec-note">Seçtiğiniz kanallarda bu bot çalışır</span>
+                            </div>
+                            {channelsLoading ? (
+                                <div className="bm-empty"><Loader size={14} className="spin" /> Kanallar yükleniyor…</div>
+                            ) : workspaceChannels.length === 0 ? (
+                                <div className="bm-empty">Henüz bağlı kanal yok. Kanallar sayfasından WhatsApp, Facebook veya Instagram bağlayın.</div>
+                            ) : (
+                                <div className="bm-list">
+                                    {workspaceChannels.map(ch => {
+                                        const isAssigned = ch.assignedBotId === bot.id;
+                                        const assignedToOther = ch.assignedBotId && ch.assignedBotId !== bot.id;
+                                        const colorMap = { WHATSAPP: '#0f766e', FACEBOOK: '#1877F2', INSTAGRAM: '#c13584', EMAIL: '#4f46e5', WEB_WIDGET: '#0369a1' };
+                                        const tintMap = { WHATSAPP: '#e9f9ef', FACEBOOK: '#eff4ff', INSTAGRAM: '#fdeef5', EMAIL: '#eef2ff', WEB_WIDGET: '#e8f4fd' };
+                                        const color = colorMap[ch.type] || '#475569';
+                                        const tint = tintMap[ch.type] || '#f4f5f7';
+                                        const typeLabel = ch.type === 'WHATSAPP' ? 'WhatsApp' : ch.type === 'FACEBOOK' ? 'Facebook' : ch.type === 'INSTAGRAM' ? 'Instagram' : ch.type === 'EMAIL' ? 'E-posta' : 'Canlı Destek';
+                                        return (
+                                            <label
+                                                key={`${ch.type}-${ch.id}`}
+                                                className={`bm-row ${isAssigned ? 'on' : ''} ${assignedToOther ? 'muted' : ''}`}
+                                                style={{ cursor: channelSaving ? 'wait' : 'pointer' }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isAssigned}
+                                                    disabled={channelSaving}
+                                                    onChange={() => handleChannelToggle(ch, isAssigned)}
+                                                />
+                                                <span className="bm-row-ico" style={{ background: tint, color }}>{ch.icon}</span>
+                                                <span className="bm-row-name">{ch.name}</span>
+                                                {assignedToOther && <span className="bm-row-warn">Başka bota atanmış</span>}
+                                                <span className="bm-chip" style={{ background: tint, color }}>{typeLabel}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {activeSection === 'prompt' && (
+                        <>
+                            <section className="bm-sec">
+                                <div className="bm-sec-head">
+                                    <h3>{t('assistants.systemPrompt')}</h3>
+                                    <span className="bm-sec-note">Botun kişiliği, tonu ve kuralları</span>
+                                </div>
+                                <textarea
+                                    className="input-modern bm-textarea"
+                                    rows="12"
+                                    value={prompt}
+                                    onChange={(e) => setPrompt(e.target.value)}
+                                    placeholder="Örn: Sen yardımsever bir teknik destek uzmanısın. Müşterilere kibar dille yanıt ver…"
+                                />
+                                <div className="bm-meter">
+                                    <span>{prompt.length.toLocaleString('tr-TR')} karakter</span>
+                                    <span className="bm-meter-ok">Bilgi bankası ve şube listesi otomatik ekleniyor</span>
+                                </div>
+                            </section>
+
+                            <section className="bm-sec">
+                                <div className="bm-sec-head">
+                                    <h3>Devir mesajı</h3>
+                                    <span className="bm-sec-note">Bot emin olmadığında müşteriye bunu yazar</span>
+                                </div>
+                                <textarea
+                                    className="input-modern bm-textarea"
+                                    rows="3"
+                                    value={handoffMessage}
+                                    onChange={(e) => setHandoffMessage(e.target.value)}
+                                    placeholder="Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır…"
+                                />
+                                <p className="bm-hint">Boş bırakırsanız varsayılan mesaj kullanılır.</p>
+                            </section>
+                        </>
+                    )}
+
+                    {activeSection === 'behaviour' && (
+                        <section className="bm-sec">
+                            <div className="bm-sec-head">
+                                <h3>Davranış kuralları</h3>
+                                <span className="bm-sec-note">Bot ne zaman devreye girsin, ne zaman sussun</span>
+                            </div>
+
+                            <div className="bm-list">
+                                {/* Yazışma devralma */}
+                                <div className={`bm-rule ${fallbackEnabled ? 'on' : ''}`}>
+                                    <div className="bm-rule-head">
+                                        <span className="bm-rule-ico"><Zap size={15} /></span>
+                                        <span className="bm-rule-text">
+                                            <span className="bm-rule-title">Yazışma devralma</span>
+                                            <span className="bm-rule-desc">Kimsenin üzerine almadığı veya yanıt verilmeyen konuşmalarda bot devralır</span>
+                                        </span>
+                                        <label className="toggle-switch">
+                                            <input type="checkbox" checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    {fallbackEnabled && (
+                                        <div className="bm-rule-body">
+                                            <div className="bm-field">
+                                                <label className="form-label-sm">Devralma kapsamı</label>
+                                                <select className="input-modern input-sm" value={fallbackScope} onChange={(e) => setFallbackScope(e.target.value)}>
+                                                    <option value="UNASSIGNED">Sadece atanmamış konuşmalar</option>
+                                                    <option value="MY_TEAMS">Kendi takımımdaki tüm konuşmalar</option>
+                                                    <option value="ALL">Tüm konuşmalar (çalışma alanı geneli)</option>
+                                                </select>
+                                            </div>
+                                            <div className="bm-field">
+                                                <label className="form-label-sm">Bekleme süresi: <strong>{fallbackDelayMinutes} dakika</strong></label>
+                                                <input
+                                                    type="range"
+                                                    min="1"
+                                                    max="120"
+                                                    value={fallbackDelayMinutes}
+                                                    onChange={(e) => setFallbackDelayMinutes(parseInt(e.target.value))}
+                                                />
+                                                <div className="bm-scale"><span>1 dk</span><span>30 dk</span><span>60 dk</span><span>120 dk</span></div>
+                                            </div>
+                                        </div>
                                     )}
-                                </label>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
+                                </div>
 
-            <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label">{t('assistants.systemPrompt')}</label>
-                <textarea
-                    className="input-modern"
-                    rows="4"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Örn: Sen yardımsever bir teknik destek uzmanısın. Müşterilere kibar dille yanıt ver..."
-                />
-            </div>
+                                {/* Zamanlayıcı */}
+                                <div className={`bm-rule ${schedulerEnabled ? 'on' : ''}`}>
+                                    <div className="bm-rule-head">
+                                        <span className="bm-rule-ico"><Clock size={15} /></span>
+                                        <span className="bm-rule-text">
+                                            <span className="bm-rule-title">{t('assistants.scheduler')}</span>
+                                            <span className="bm-rule-desc">Botun çalışacağı saatler ve günler</span>
+                                        </span>
+                                        <label className="toggle-switch">
+                                            <input type="checkbox" checked={schedulerEnabled} onChange={(e) => setSchedulerEnabled(e.target.checked)} />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    {schedulerEnabled && (
+                                        <div className="bm-rule-body">
+                                            <div className="scheduler-row">
+                                                <div className="bm-field">
+                                                    <label className="form-label-sm">{t('assistants.startTime')}</label>
+                                                    <input type="time" className="input-modern input-sm" value={scheduleStartTime} onChange={(e) => setScheduleStartTime(e.target.value)} />
+                                                </div>
+                                                <div className="bm-field">
+                                                    <label className="form-label-sm">Bitiş saati</label>
+                                                    <input type="time" className="input-modern input-sm" value={scheduleEndTime} onChange={(e) => setScheduleEndTime(e.target.value)} />
+                                                </div>
+                                            </div>
+                                            <div className="scheduler-row">
+                                                <div className="bm-field">
+                                                    <label className="form-label-sm">Başlangıç tarihi (opsiyonel)</label>
+                                                    <input type="date" className="input-modern input-sm" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
+                                                </div>
+                                                <div className="bm-field">
+                                                    <label className="form-label-sm">Bitiş tarihi (opsiyonel)</label>
+                                                    <input type="date" className="input-modern input-sm" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
+                                                </div>
+                                            </div>
+                                            <div className="bm-field">
+                                                <label className="form-label-sm">Aktif günler</label>
+                                                <div className="days-selector">
+                                                    {daysOfWeek.map(day => (
+                                                        <button
+                                                            key={day.key}
+                                                            type="button"
+                                                            className={`day-btn ${scheduleDays.includes(day.key) ? 'active' : ''}`}
+                                                            onClick={() => toggleDay(day.key)}
+                                                        >
+                                                            {day.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <p className="bm-hint">Hiçbiri seçilmezse her gün aktif olur.</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
-            <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <MessageSquare size={14} />
-                    {t('assistants.handoffMessage', 'Handoff Mesajı')}
-                </label>
-                <p className="section-description" style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#888' }}>
-                    Bot cevabından emin olmadığında müşteriye gönderilecek mesaj. Boş bırakırsanız varsayılan mesaj kullanılır.
-                </p>
-                <textarea
-                    className="input-modern"
-                    rows="3"
-                    value={handoffMessage}
-                    onChange={(e) => setHandoffMessage(e.target.value)}
-                    placeholder="Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır..."
-                    style={{ fontSize: '13px' }}
-                />
-            </div>
+                                {/* Otomatik yanıt gecikmesi */}
+                                <div className={`bm-rule ${autoReplyDelayEnabled ? 'on' : ''}`}>
+                                    <div className="bm-rule-head">
+                                        <span className="bm-rule-ico"><Timer size={15} /></span>
+                                        <span className="bm-rule-text">
+                                            <span className="bm-rule-title">Otomatik yanıt gecikmesi</span>
+                                            <span className="bm-rule-desc">Müşteri mesajına bu süre içinde yanıt verilmezse bot yazar</span>
+                                        </span>
+                                        <label className="toggle-switch">
+                                            <input type="checkbox" checked={autoReplyDelayEnabled} onChange={(e) => setAutoReplyDelayEnabled(e.target.checked)} />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    {autoReplyDelayEnabled && (
+                                        <div className="bm-rule-body">
+                                            <div className="bm-field">
+                                                <label className="form-label-sm">Bekleme süresi (saniye)</label>
+                                                <input
+                                                    type="number"
+                                                    className="input-modern input-sm"
+                                                    min="5"
+                                                    max="300"
+                                                    value={autoReplyDelaySeconds}
+                                                    onChange={(e) => setAutoReplyDelaySeconds(parseInt(e.target.value) || 30)}
+                                                    style={{ width: '120px' }}
+                                                />
+                                            </div>
+                                            <div className="bm-field">
+                                                <label className="form-label-sm">Otomatik mesaj (opsiyonel)</label>
+                                                <textarea
+                                                    className="input-modern bm-textarea"
+                                                    rows="2"
+                                                    value={autoReplyDelayMessage}
+                                                    onChange={(e) => setAutoReplyDelayMessage(e.target.value)}
+                                                    placeholder="Boş bırakılırsa AI yanıtı gönderilir. Özel mesaj için buraya yazın…"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
-            {/* AI Devralma / Müdahale Kapsamı */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <span style={{ fontSize: 18 }}>⚡</span>
-                        <span>Yazışma Devralma</span>
-                    </div>
-                    <label className="toggle-switch">
-                        <input
-                            type="checkbox"
-                            checked={fallbackEnabled}
-                            onChange={(e) => setFallbackEnabled(e.target.checked)}
-                        />
-                        <span className="toggle-slider"></span>
-                    </label>
-                </div>
-                {fallbackEnabled && (
-                    <div className="section-content">
-                        <p className="section-description">
-                            Kimsenin üzerine almadığı veya yanıt verilmeyen konuşmalarda AI otomatik devralır.
-                        </p>
-
-                        <div className="form-group" style={{ marginBottom: '12px' }}>
-                            <label className="form-label" style={{ fontSize: 13 }}>🎯 Devralma Kapsamı</label>
-                            <select
-                                className="input-modern"
-                                value={fallbackScope}
-                                onChange={(e) => setFallbackScope(e.target.value)}
-                            >
-                                <option value="UNASSIGNED">Sadece atanmamış konuşmalar</option>
-                                <option value="MY_TEAMS">Kendi takımımdaki tüm konuşmalar</option>
-                                <option value="ALL">Tüm konuşmalar (workspace geneli)</option>
-                            </select>
-                        </div>
-
-                        <div className="form-group" style={{ marginBottom: '12px' }}>
-                            <label className="form-label" style={{ fontSize: 13 }}>
-                                ⏱️ Bekleme Süresi: <strong>{fallbackDelayMinutes} dakika</strong>
-                            </label>
-                            <p className="section-description" style={{ margin: '0 0 6px 0', fontSize: '11px', color: '#888' }}>
-                                Atanmış ama yanıt verilmeyen konuşmalarda AI kaç dakika beklesin. Atanmamışlarda anında devralır.
-                            </p>
-                            <input
-                                type="range"
-                                min="1"
-                                max="120"
-                                value={fallbackDelayMinutes}
-                                onChange={(e) => setFallbackDelayMinutes(parseInt(e.target.value))}
-                                style={{ width: '100%' }}
-                            />
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#999' }}>
-                                <span>1 dk</span>
-                                <span>30 dk</span>
-                                <span>60 dk</span>
-                                <span>120 dk</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Scheduler Section */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <Clock size={18} />
-                        <span>{t('assistants.scheduler')}</span>
-                    </div>
-                    <label className="toggle-switch">
-                        <input
-                            type="checkbox"
-                            checked={schedulerEnabled}
-                            onChange={(e) => setSchedulerEnabled(e.target.checked)}
-                        />
-                        <span className="toggle-slider"></span>
-                    </label>
-                </div>
-                {schedulerEnabled && (
-                    <div className="section-content">
-                        <p className="section-description">{t('assistants.schedulerDesc')}</p>
-
-                        <div className="scheduler-row">
-                            <div className="form-group">
-                                <label className="form-label-sm">{t('assistants.startTime')}</label>
-                                <input
-                                    type="time"
-                                    className="input-modern input-sm"
-                                    value={scheduleStartTime}
-                                    onChange={(e) => setScheduleStartTime(e.target.value)}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label-sm">Bitiş Saati</label>
-                                <input
-                                    type="time"
-                                    className="input-modern input-sm"
-                                    value={scheduleEndTime}
-                                    onChange={(e) => setScheduleEndTime(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="scheduler-row">
-                            <div className="form-group">
-                                <label className="form-label-sm">Başlangıç Tarihi (Opsiyonel)</label>
-                                <input
-                                    type="date"
-                                    className="input-modern input-sm"
-                                    value={scheduleStartDate}
-                                    onChange={(e) => setScheduleStartDate(e.target.value)}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-label-sm">Bitiş Tarihi (Opsiyonel)</label>
-                                <input
-                                    type="date"
-                                    className="input-modern input-sm"
-                                    value={scheduleEndDate}
-                                    onChange={(e) => setScheduleEndDate(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label-sm">Active Günler</label>
-                            <div className="days-selector">
-                                {daysOfWeek.map(day => (
-                                    <button
-                                        key={day.key}
-                                        type="button"
-                                        className={`day-btn ${scheduleDays.includes(day.key) ? 'active' : ''}`}
-                                        onClick={() => toggleDay(day.key)}
-                                    >
-                                        {day.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <p className="text-muted text-xs" style={{ marginTop: '4px' }}>Hiçbiri seçilmezse her gün aktif olur.</p>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Auto-Reply Delay Section */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <Timer size={18} />
-                        <span>Otomatik Yanıt Gecikmesi</span>
-                    </div>
-                    <label className="toggle-switch">
-                        <input
-                            type="checkbox"
-                            checked={autoReplyDelayEnabled}
-                            onChange={(e) => setAutoReplyDelayEnabled(e.target.checked)}
-                        />
-                        <span className="toggle-slider"></span>
-                    </label>
-                </div>
-                {autoReplyDelayEnabled && (
-                    <div className="section-content">
-                        <p className="section-description">Müşteri mesajına belirlenen süre içinde yanıt verilmezse otomatik mesaj gönderilir.</p>
-
-                        <div className="form-group">
-                            <label className="form-label-sm">Bekleme Süresi (Saniye)</label>
-                            <input
-                                type="number"
-                                className="input-modern input-sm"
-                                min="5"
-                                max="300"
-                                value={autoReplyDelaySeconds}
-                                onChange={(e) => setAutoReplyDelaySeconds(parseInt(e.target.value) || 30)}
-                                style={{ width: '120px' }}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label-sm">Otomatik Mesaj (Opsiyonel)</label>
-                            <textarea
-                                className="input-modern"
-                                rows="2"
-                                value={autoReplyDelayMessage}
-                                onChange={(e) => setAutoReplyDelayMessage(e.target.value)}
-                                placeholder="Boş bırakılırsa AI yanıtı gönderilir. Özel mesaj için buraya yazın..."
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* 5-Step Smart Reminder System */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <AlertCircle size={18} />
-                        <span>Akıllı Hatırlatma Kademeleri</span>
-                    </div>
-                </div>
-                <div className="section-content">
-                    <p className="section-description" style={{ marginBottom: '12px' }}>
-                        Müşteri yanıt vermezse, bot otomatik olarak <strong>konuşma bağlamına uygun</strong> hatırlatma mesajları üretir.
-                        Amacını gerçekleştirmiş veya planlanmış görüşmesi olan kişilere mesaj gönderilmez.
-                    </p>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {reminderSteps.map((step, idx) => (
-                            <div key={idx} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                padding: '10px 14px',
-                                borderRadius: '10px',
-                                border: `1px solid ${step.enabled ? '#c7d2fe' : '#e2e8f0'}`,
-                                background: step.enabled ? '#eef2ff' : '#f8fafc',
-                                transition: 'all 0.2s'
-                            }}>
-                                <label className="toggle-switch" style={{ flexShrink: 0 }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={step.enabled}
-                                        onChange={(e) => {
-                                            const updated = [...reminderSteps];
-                                            updated[idx] = { ...updated[idx], enabled: e.target.checked };
-                                            setReminderSteps(updated);
-                                        }}
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-                                <span style={{ fontSize: '13px', fontWeight: 600, color: step.enabled ? '#4338ca' : '#94a3b8', minWidth: '80px' }}>
-                                    Kademe {idx + 1}
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <input
-                                        type="number"
-                                        className="input-modern input-sm"
-                                        min="1"
-                                        max="999"
-                                        value={step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440)}
-                                        onChange={(e) => {
-                                            const val = parseInt(e.target.value) || 1;
-                                            const unit = step.delayMinutes < 1440 ? 'saat' : 'gun';
-                                            const minutes = unit === 'saat' ? val * 60 : val * 1440;
-                                            const updated = [...reminderSteps];
-                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
-                                            setReminderSteps(updated);
-                                        }}
-                                        style={{ width: '65px', textAlign: 'center' }}
-                                    />
-                                    <select
-                                        className="input-modern input-sm"
-                                        value={step.delayMinutes < 1440 ? 'saat' : 'gun'}
-                                        onChange={(e) => {
-                                            const unit = e.target.value;
-                                            const currentVal = step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440);
-                                            const minutes = unit === 'saat' ? currentVal * 60 : currentVal * 1440;
-                                            const updated = [...reminderSteps];
-                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
-                                            setReminderSteps(updated);
-                                        }}
-                                        style={{ width: '70px', fontSize: '12px', padding: '4px 6px' }}
-                                    >
-                                        <option value="saat">saat</option>
-                                        <option value="gun">gün</option>
-                                    </select>
+                                {/* Akıllı hatırlatma kademeleri */}
+                                <div className={`bm-rule ${reminderSteps.some(s => s.enabled) ? 'on' : ''}`}>
+                                    <div className="bm-rule-head">
+                                        <span className="bm-rule-ico"><AlertCircle size={15} /></span>
+                                        <span className="bm-rule-text">
+                                            <span className="bm-rule-title">Akıllı hatırlatma kademeleri</span>
+                                            <span className="bm-rule-desc">Müşteri yanıt vermezse bot konuşmaya uygun hatırlatma üretir</span>
+                                        </span>
+                                        <span className="bm-count">{reminderSteps.filter(s => s.enabled).length} / {reminderSteps.length}</span>
+                                    </div>
+                                    <div className="bm-rule-body">
+                                        <div className="bm-steps">
+                                            {reminderSteps.map((step, idx) => (
+                                                <div key={idx} className={`bm-step ${step.enabled ? 'on' : ''}`}>
+                                                    <label className="toggle-switch">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={step.enabled}
+                                                            onChange={(e) => {
+                                                                const updated = [...reminderSteps];
+                                                                updated[idx] = { ...updated[idx], enabled: e.target.checked };
+                                                                setReminderSteps(updated);
+                                                            }}
+                                                        />
+                                                        <span className="toggle-slider"></span>
+                                                    </label>
+                                                    <span className="bm-step-name">Kademe {idx + 1}</span>
+                                                    <input
+                                                        type="number"
+                                                        className="input-modern input-sm"
+                                                        min="1"
+                                                        max="999"
+                                                        value={step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440)}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value) || 1;
+                                                            const unit = step.delayMinutes < 1440 ? 'saat' : 'gun';
+                                                            const minutes = unit === 'saat' ? val * 60 : val * 1440;
+                                                            const updated = [...reminderSteps];
+                                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
+                                                            setReminderSteps(updated);
+                                                        }}
+                                                        style={{ width: '62px', textAlign: 'center' }}
+                                                    />
+                                                    <select
+                                                        className="input-modern input-sm"
+                                                        value={step.delayMinutes < 1440 ? 'saat' : 'gun'}
+                                                        onChange={(e) => {
+                                                            const unit = e.target.value;
+                                                            const currentVal = step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440);
+                                                            const minutes = unit === 'saat' ? currentVal * 60 : currentVal * 1440;
+                                                            const updated = [...reminderSteps];
+                                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
+                                                            setReminderSteps(updated);
+                                                        }}
+                                                        style={{ width: '76px' }}
+                                                    >
+                                                        <option value="saat">saat</option>
+                                                        <option value="gun">gün</option>
+                                                    </select>
+                                                    <span className="bm-step-tail">sonra</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="bm-note-ok">Her hatırlatmada bot, konuşma geçmişine göre farklı ve doğal bir mesaj üretir. Sabit mesaj yazmanız gerekmez.</p>
+                                    </div>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+                        </section>
+                    )}
 
-                    <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: '12px', color: '#15803d', lineHeight: '1.5' }}>
-                        <strong>✨ AI Otomatik Mesaj:</strong> Her hatırlatmada bot, konuşma geçmişine ve talimatlarına göre farklı, doğal mesajlar üretir. Sabit mesaj yazmanıza gerek yoktur.
-                    </div>
+                    {activeSection === 'tools' && (
+                        <section className="bm-sec">
+                            <div className="bm-sec-head">
+                                <h3>Yetenekler</h3>
+                                <span className="bm-sec-note">Botun kendi başına yapabilecekleri</span>
+                                <span className="bm-sec-count">{enabledTools.length} / {TOOL_LIST.length} açık</span>
+                            </div>
+                            <div className="bm-tools">
+                                {TOOL_LIST.map(tool => {
+                                    const on = enabledTools.includes(tool.key);
+                                    return (
+                                        <label key={tool.key} className={`bm-tool ${on ? 'on' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={on}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setEnabledTools(prev => [...prev, tool.key]);
+                                                    else setEnabledTools(prev => prev.filter(x => x !== tool.key));
+                                                }}
+                                            />
+                                            <span>{tool.label}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <p className="bm-hint">Kapalı yetenekler bota hiç sunulmaz, yanlışlıkla kullanamaz.</p>
+                        </section>
+                    )}
+
+                    {activeSection === 'routing' && (
+                        <section className="bm-sec">
+                            <BotRoutingSettings routingConfig={routingConfig} onChange={setRoutingConfig} />
+                        </section>
+                    )}
+
+                    {activeSection === 'knowledge' && (
+                        <section className="bm-sec">
+                            <BotDocumentManager workspaceId={workspaceId} botId={bot.id} />
+                        </section>
+                    )}
+
+                    {activeSection === 'appointment' && bot.botType === 'APPOINTMENT' && (
+                        <section className="bm-sec">
+                            <AppointmentBotConfig workspaceId={workspaceId} />
+                        </section>
+                    )}
+
                 </div>
             </div>
 
-            {/* Built-in Tools Toggle Section */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <Zap size={18} />
-                        <span>Bot Yetenekleri (Araçlar)</span>
-                    </div>
-                </div>
-                <div className="section-content">
-                    <p className="section-description" style={{ marginBottom: '12px' }}>
-                        Botun kullanabileceği yerleşik araçları açıp kapatabilirsiniz. Kapalı araçlar AI&apos;a sunulmaz.
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
-                        {[
-                            { key: 'transfer_to_team', icon: '🔄', label: 'Takıma Devret' },
-                            { key: 'change_funnel_stage', icon: '📊', label: 'Huni Aşaması Değiştir' },
-                            { key: 'send_whatsapp_template', icon: '💬', label: 'WhatsApp Şablon Gönder' },
-                            { key: 'recommend_product', icon: '🛍️', label: 'Ürün Öner' },
-                            { key: 'create_order', icon: '🛒', label: 'Sipariş Oluştur' },
-                            { key: 'send_payment_link', icon: '💳', label: 'Ödeme Linki Gönder' },
-                            { key: 'create_appointment', icon: '📅', label: 'Randevu Oluştur' },
-                            { key: 'send_location', icon: '📍', label: 'Konum Gönder' },
-                            { key: 'add_note', icon: '📝', label: 'Not Ekle' },
-                            { key: 'add_tag', icon: '🏷️', label: 'Etiket Ekle' },
-                            { key: 'check_stock', icon: '📦', label: 'Stok Kontrol' }
-                        ].map(tool => (
-                            <label key={tool.key} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '10px 12px',
-                                borderRadius: '10px',
-                                border: `1px solid ${enabledTools.includes(tool.key) ? '#c7d2fe' : '#e2e8f0'}`,
-                                background: enabledTools.includes(tool.key) ? '#eef2ff' : '#f8fafc',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s',
-                                userSelect: 'none'
-                            }}>
-                                <input
-                                    type="checkbox"
-                                    checked={enabledTools.includes(tool.key)}
-                                    onChange={(e) => {
-                                        if (e.target.checked) {
-                                            setEnabledTools(prev => [...prev, tool.key]);
-                                        } else {
-                                            setEnabledTools(prev => prev.filter(t => t !== tool.key));
-                                        }
-                                    }}
-                                    style={{ accentColor: '#6366f1', width: '15px', height: '15px', flexShrink: 0 }}
-                                />
-                                <span style={{ fontSize: '13px', fontWeight: enabledTools.includes(tool.key) ? 600 : 400, color: enabledTools.includes(tool.key) ? '#4338ca' : '#64748b' }}>
-                                    {tool.icon} {tool.label}
-                                </span>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            {/* Routing Settings Section */}
-            <div className="bot-settings-section" style={{ marginTop: '15px' }}>
-                <BotRoutingSettings
-                    routingConfig={routingConfig}
-                    onChange={setRoutingConfig}
-                />
-            </div>
-
-            {/* Appointment Bot Config — Branş & Doktor Yönetimi */}
-            {bot.botType === 'APPOINTMENT' && (
-                <AppointmentBotConfig workspaceId={workspaceId} />
-            )}
-
-
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', marginBottom: '16px' }}>
-                <button
-                    className="btn-modern btn-primary"
-                    onClick={handleUpdate}
-                    disabled={updating}
-                    style={{ fontSize: '13px', padding: '8px 16px' }}
-                >
+            {/* ── Alt çubuk ───────────────────────────────────────── */}
+            <footer className="bm-foot">
+                {saveState === 'saved' ? (
+                    <><span className="bm-dot ok"></span><span className="bm-foot-text">Ayarlar kaydedildi</span></>
+                ) : saveState === 'error' ? (
+                    <><span className="bm-dot err"></span><span className="bm-foot-text err">Kaydedilemedi, tekrar deneyin</span></>
+                ) : pendingChanges > 0 ? (
+                    <><span className="bm-dot warn"></span><span className="bm-foot-text">{pendingChanges} değişiklik kaydedilmedi</span></>
+                ) : (
+                    <><span className="bm-dot idle"></span><span className="bm-foot-text">Tüm değişiklikler kaydedildi</span></>
+                )}
+                <span className="bm-foot-gap"></span>
+                {onClose && <button type="button" className="bm-btn" onClick={onClose}>Kapat</button>}
+                <button type="button" className="bm-btn primary" onClick={handleUpdate} disabled={updating}>
                     <Save size={14} />
-                    {updating ? 'Kaydediliyor...' : 'Tüm Ayarları Kaydet'}
+                    {updating ? 'Kaydediliyor…' : 'Tüm ayarları kaydet'}
                 </button>
-            </div>
-
-            <BotDocumentManager workspaceId={workspaceId} botId={bot.id} />
+            </footer>
         </div>
     );
 };
@@ -948,23 +921,16 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
 const BotModal = ({ isOpen, onClose, bot, workspaceId, automationsList, onRefresh, onDelete }) => {
     if (!isOpen) return null;
     return (
-        <div className="ut-modal-overlay">
-            <div className="ut-modal ut-modal-wide" style={{ width: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '0', position: 'relative' }}>
-                <button 
-                    onClick={onClose} 
-                    style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', cursor: 'pointer', zIndex: 10 }}
-                >
-                    <X size={20} color="#6b7280" />
-                </button>
-                <div style={{ padding: '24px' }}>
-                    <BotItem 
-                        bot={bot} 
-                        workspaceId={workspaceId} 
-                        onRefresh={onRefresh} 
-                        automationsList={automationsList} 
-                        onDelete={onDelete}
-                    />
-                </div>
+        <div className="bm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="bm-modal" onMouseDown={(e) => e.stopPropagation()}>
+                <BotItem
+                    bot={bot}
+                    workspaceId={workspaceId}
+                    onRefresh={onRefresh}
+                    automationsList={automationsList}
+                    onDelete={onDelete}
+                    onClose={onClose}
+                />
             </div>
         </div>
     );
