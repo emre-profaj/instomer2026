@@ -1491,6 +1491,10 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 where: { id: conversationId },
                 select: {
                     id: true,
+                    // contactId seçilmiyordu: birleşik AI bloğu bunu
+                    // prisma.contact.findUnique'e undefined olarak geçirip
+                    // hata alıyor, hazır yanıt çöpe gidiyordu.
+                    contactId: true,
                     handoffPending: true,
                     botEnabled: true,
                     botPausedUntil: true,
@@ -1871,11 +1875,13 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                             }
 
                             // Aksiyonları çalıştır: Lead, telefon, kategori, ürün veya şube eşleşmesi varsa
-                            const freshContact = await prisma.contact.findUnique({ where: { id: conversation.contactId }, select: { phone: true } });
+                            const freshContact = conversation?.contactId
+                                ? await prisma.contact.findUnique({ where: { id: conversation.contactId }, select: { phone: true } })
+                                : null;
                             const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
                             const hasClassification = !!(classResult.topicCategoryId || classResult.matchedProductIds?.length > 0 || classResult.matchedBranchId);
                             const shouldRunActions = (classResult.isQualifiedLead && !conversation?.isQualifiedLead) || contactHasPhone || hasClassification;
-                            if (shouldRunActions) {
+                            if (shouldRunActions && conversation?.contactId) {
                                 try {
                                     const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
                                     await executeClassificationActions(
