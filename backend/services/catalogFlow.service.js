@@ -86,6 +86,51 @@ function bestMatch(items, text) {
     return best;
 }
 
+/** Adın ayırt edici kelimeleri (jenerik olanlar atılır). */
+function distinctiveWords(name) {
+    return norm(name).split(' ').filter(w => w.length >= 3 && !GENERIC_WORDS.has(w));
+}
+
+/**
+ * Müşterinin verdiği ipucuyla hâlâ mümkün olan kayıtlar.
+ *
+ * "Bornova" diyen müşteri hem Bornova Erkek hem Bornova Kadın'a uyar;
+ * matchScore bu durumda 0 döndüğü için seçim yapılmıyor ama ADAY LİSTESİNİ
+ * de daraltmıyordu. Bot da 4 şubeyi "Bornova mı Gaziemir mi" diye
+ * özetleyip cinsiyet ayrımını hiç sormuyordu. Burada ipucunu tutan
+ * kayıtları döndürüyoruz; hiç ipucu yoksa liste aynen kalır.
+ */
+function narrowCandidates(items, text) {
+    const t = norm(text);
+    if (!t) return items;
+    let best = 0;
+    const scored = items.map(it => {
+        const words = distinctiveWords(it.name);
+        const hit = words.filter(w => t.includes(w)).length;
+        if (hit > best) best = hit;
+        return { it, hit };
+    });
+    if (best === 0) return items;
+    return scored.filter(x => x.hit === best).map(x => x.it);
+}
+
+/** Adayların ortak olmayan (ayırt eden) kısmını okunur biçimde verir. */
+function distinguishingHint(items) {
+    if (items.length < 2) return '';
+    const sets = items.map(it => distinctiveWords(it.name));
+    const common = sets[0].filter(w => sets.every(set => set.includes(w)));
+    if (common.length === 0) return '';
+    const farklar = items.map(it => {
+        const kelimeler = String(it.name).split(/\s+/)
+            .filter(w => {
+                const n = norm(w);
+                return n.length >= 3 && !GENERIC_WORDS.has(n) && !common.includes(n);
+            });
+        return kelimeler.join(' ');
+    }).filter(Boolean);
+    return farklar.length === items.length ? farklar.join(' / ') : '';
+}
+
 /** Müşterinin son mesajlarını tek metinde toplar (en yenisi en sonda). */
 function customerText(recentMessages = [], limit = 4) {
     return recentMessages
@@ -219,21 +264,34 @@ export async function buildCatalogStep(workspaceId, { conversationId = null, rec
         if (allProducts.length === 0) return null;
 
         if (!branch && branches.length > 1) {
-            const lines = branches.map((b, i) => `${i + 1}. ${b.name}${b.address ? ` — ${b.address}` : ''}`).join('\n');
+            // Müşteri kısmi bilgi verdiyse (ör. yalnızca semt) aday listesini daralt;
+            // böylece bot 4 şubeyi iki semte indirip cinsiyet ayrımını atlayamaz.
+            const adaylar = narrowCandidates(branches, text);
+            const daraldi = adaylar.length < branches.length;
+            const fark = distinguishingHint(adaylar);
+            const lines = adaylar.map((b, i) => `${i + 1}. ${b.name}${b.address ? ` — ${b.address}` : ''}`).join('\n');
             return {
                 step: 'ASK_BRANCH',
                 branchId: null,
                 categoryId: null,
                 text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ŞUBE SEÇİMİ
-Müşterinin hangi şubeyle ilgilendiği henüz belli değil. Hizmet ve fiyatlar şubeye göre değişebildiği için ÖNCE bunu netleştir.
+${daraldi
+    ? 'Müşteri kısmi bilgi verdi ama HÂLÂ tek şubeye inmedi. Aşağıdaki şubeler hâlâ mümkün.'
+    : 'Müşterinin hangi şubeyle ilgilendiği henüz belli değil.'}
+Hizmet ve fiyatlar şubeye göre değişebildiği için ÖNCE bunu netleştir.
 
-Şubeler:
+Hâlâ mümkün olan şubeler (${adaylar.length} adet):
 ${lines}
+${fark ? `\nAyrım tam olarak şu: ${fark}. Soruyu SADECE bu ayrım üzerine kur.` : ''}
 
 Kurallar:
-- Bu adımda ürün listesi verme, fiyat yazma, başka soru sorma.
-- Tek bir soruyla sor ve seçenekleri yukarıdaki adlarla, kısaca sun.
-- Müşteri yalnızca bir kısmını söylediyse (örn. sadece semt) yalnızca eksik kalan ayrımı sor.
+- BU MESAJDA TEK İŞİN VAR: yukarıdaki şubelerden hangisini istediğini sormak.
+- Seçenekleri EKSİKSİZ ver. İki şubeyi tek isim altında birleştirme, kısaltma, birini atlama.
+- ${fark
+    ? `Ortak kısmı tekrar sorma; yalnızca "${fark}" ayrımını sor.`
+    : 'Şube adlarını yukarıdaki hâliyle kullan.'}
+- Hizmet/tesis listesi verme, fiyat yazma, "hangi hizmetle ilgileniyorsunuz" gibi BAŞKA BİR SORU SORMA.
+- Müşteri bu soruyu geçiştirip başka bir şey sorarsa kısa cevap ver ve soruyu tekrar sor.
 - Müşteri şube söylemek istemiyorsa ısrar etme; genel bilgi ver ve konuyu yetkiliye aktar.`
             };
         }
