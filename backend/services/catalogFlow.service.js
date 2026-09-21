@@ -131,6 +131,52 @@ function distinguishingHint(items) {
     return farklar.length === items.length ? farklar.join(' / ') : '';
 }
 
+/**
+ * Müşteri metninde adı geçen ürünler.
+ *
+ * Birleşik AI'a ürün kimlikleri verilmediği için `matchedProductIds` hep
+ * boş dönüyordu; müşteri "Aromaterapi yağ masajı" dediği hâlde vakaya
+ * ürün yazılmıyordu. Eşleştirmeyi modele bırakmak yerine burada
+ * hesaplıyoruz: adı metinde geçen ürünleri puanına göre veriyoruz.
+ */
+// Ürün adlarında geçen ama ayırt etmeyen ekler. "Aromaterapi Yağ Masajı
+// (40 Dakika)" adında "dakika" bilgi taşımıyor; müşteri onu yazmadığı için
+// matchScore'un "bütün kelimeler geçsin" kuralı hiçbir ürünü tutturamıyordu.
+const PRODUCT_NOISE = new Set(['dakika', 'dakikalik', 'adet', 'seans', 'kisi', 'kisilik']);
+
+function productWords(name) {
+    return norm(name)
+        .replace(/[^a-z0-9ğüşıöç+ ]+/gi, ' ')
+        .split(' ')
+        .filter(w => w.length >= 3 && !PRODUCT_NOISE.has(w));
+}
+
+function matchingProducts(products, text, limit = 3) {
+    const t = norm(text);
+    if (!t) return [];
+
+    // Tam ad geçiyorsa tartışma yok
+    const tam = products.filter(p => t.includes(norm(p.name)));
+    if (tam.length > 0) return tam.slice(0, limit).map(p => p.id);
+
+    // Yoksa adın kaç ayırt edici kelimesi metinde geçiyor
+    let best = 0;
+    const scored = products.map(p => {
+        const words = productWords(p.name);
+        const hit = words.filter(w => t.includes(w)).length;
+        if (hit > best) best = hit;
+        return { p, hit };
+    });
+
+    // Tek kelime eşleşmesi yetmez: "masaj" yazan müşteri bütün masajlara
+    // uyar, hiçbirini vakaya yazmamak doğru olur.
+    if (best < 2) return [];
+
+    const top = scored.filter(x => x.hit === best);
+    if (top.length > limit) return [];   // hâlâ belirsiz
+    return top.map(x => x.p.id);
+}
+
 /** Müşterinin son mesajlarını tek metinde toplar (en yenisi en sonda). */
 function customerText(recentMessages = [], limit = 4) {
     return recentMessages
@@ -274,6 +320,7 @@ export async function buildCatalogStep(workspaceId, { conversationId = null, rec
                 step: 'ASK_BRANCH',
                 branchId: null,
                 categoryId: null,
+                productIds: [],
                 text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ŞUBE SEÇİMİ
 ${daraldi
     ? 'Müşteri kısmi bilgi verdi ama HÂLÂ tek şubeye inmedi. Aşağıdaki şubeler hâlâ mümkün.'
@@ -334,6 +381,7 @@ Kurallar:
                 step: 'ASK_CATEGORY',
                 branchId,
                 categoryId: null,
+                productIds: [],
                 text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: KATEGORİ SEÇİMİ
 Seçili şube: ${branch ? branch.name : '(tek şube)'}
 Müşterinin hangi hizmet grubunu istediği belli değil.
@@ -374,6 +422,7 @@ Kurallar:
                         step: 'ASK_GROUP',
                         branchId,
                         categoryId: category?.id || null,
+                        productIds: matchingProducts(inCategory, text),
                         text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ÜRÜN GRUBU SEÇİMİ
 Seçili şube: ${branch ? branch.name : '(tek şube)'}${category ? ` | Kategori: ${category.name}` : ''}
 Bu kategoride ${inCategory.length} seçenek var, hepsini birden listeleme.
@@ -406,6 +455,7 @@ Kurallar:
             step: 'SHOW_PRODUCTS',
             branchId,
             categoryId: category?.id || null,
+            productIds: matchingProducts(inGroup, text),
             text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ÜRÜN SUNUMU
 Seçili şube: ${branch ? branch.name : '(tek şube)'}${category ? ` | Kategori: ${category.name}` : ''}${group ? ` | Grup: ${group.name}` : ''}
 

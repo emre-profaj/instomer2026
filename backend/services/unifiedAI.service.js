@@ -115,7 +115,7 @@ export async function executeUnifiedAICall({
         }
 
         // ── 2. Akış, konu ve BASE MODÜLÜ (Şubeler, Ürünler, Uzmanlar, SSS) yükle ──
-        const [funnels, topicCategories, baseKnowledge] = await Promise.all([
+        const [funnels, topicCategories, baseKnowledge, branchList] = await Promise.all([
             prisma.funnel.findMany({
                 where: { workspaceId },
                 select: {
@@ -134,7 +134,14 @@ export async function executeUnifiedAICall({
                     }
                 }
             }),
-            getBaseKnowledgeContext(workspaceId)
+            getBaseKnowledgeContext(workspaceId),
+            // Şube kimlikleri: bilgi bankası şubeleri yalnızca adıyla
+            // yazıyor, model matchedBranchId'yi dolduramıyordu.
+            prisma.appointmentBranch.findMany({
+                where: { workspaceId, isActive: true },
+                select: { id: true, name: true },
+                orderBy: { order: 'asc' }
+            })
         ]);
 
         // ── 3. Konuşma geçmişini formatla ──
@@ -212,8 +219,12 @@ export async function executeUnifiedAICall({
         }).join('\n');
 
         // ── 5. Konu kontekstini formatla ──
+        const branchContext = (branchList || []).map(b => `- ${b.name} [${b.id}]`).join('\n');
+
         const topicContext = topicCategories.map(tc => {
-            const products = tc.products.map(p => p.name).join(', ');
+            // Ürün KİMLİKLERİ de yazılmalı; yoksa model matchedProductIds
+            // dizisini dolduramaz ve vakaya ürün hiç işlenmez.
+            const products = tc.products.map(p => `${p.name} [${p.id}]`).join(', ');
             const keywords = tc.keywords ? ` (${tc.keywords})` : '';
             return `- ${tc.name} [${tc.id}]${keywords}${products ? ` | Ürünler: ${products}` : ''}`;
         }).join('\n');
@@ -257,6 +268,7 @@ export async function executeUnifiedAICall({
         // ── 6b. Sıralı katalog akışı (Şube → Kategori → Grup → Ürün) ──
         // Veri kurulu değilse null döner ve bot bugünkü serbest akışta kalır.
         let catalogContext = '';
+        let catalogResolved = null;   // { branchId, categoryId, productIds }
         try {
             const { buildCatalogStep } = await import('./catalogFlow.service.js');
             const catalogStep = await buildCatalogStep(workspaceId, {
@@ -266,7 +278,15 @@ export async function executeUnifiedAICall({
             });
             if (catalogStep) {
                 catalogContext = catalogStep.text;
-                console.log(`🔢 [UnifiedAI] Katalog adımı: ${catalogStep.step}`);
+                catalogResolved = {
+                    branchId: catalogStep.branchId || null,
+                    categoryId: catalogStep.categoryId || null,
+                    productIds: catalogStep.productIds || []
+                };
+                console.log(`🔢 [UnifiedAI] Katalog adımı: ${catalogStep.step}`
+                    + ` (şube=${catalogStep.branchId ? 'var' : '-'},`
+                    + ` kategori=${catalogStep.categoryId ? 'var' : '-'},`
+                    + ` ürün=${(catalogStep.productIds || []).length})`);
             }
         } catch (catErr) {
             console.error('⚠️ [UnifiedAI] Katalog adımı hatası:', catErr.message);
@@ -324,6 +344,9 @@ ${funnelContext || '(Akış tanımlanmamış)'}
 
 KONU KATEGORİLERİ VE ÜRÜNLER:
 ${topicContext || '(Konu tanımlanmamış)'}
+${branchContext ? `
+ŞUBELER:
+${branchContext}` : ''}
 ${baseKnowledge?.text ? `
 ═══════════════════════════════════════
 🏢 BASE MODÜLÜ TANIMLARI (ŞİRKET, ŞUBELER, ÜRÜNLER/FİYATLAR, UZMANLAR, SSS):
@@ -369,6 +392,11 @@ ${stageAIConfig.transitionCriteria?.description ? `\n⚠️ GEÇİŞ KRİTERİ: 
    - ASLA şüphe uyandıran zayıf ifadeler ("bilmiyorum", "emin değilim", "galiba") kullanma. Bilgi yoksa doğrudan yetkiliye aktaracağını belirt.
    - Müşteri kızgınsa veya şikayetçiyse sakinleştirici, anlayışlı ve kurumsal bir dil kullan.
 
+ALAN KURALLARI:
+- topicCategoryId: KONU KATEGORİLERİ listesindeki köşeli parantez içindeki kimlik. Yoksa null.
+- matchedBranchId: ŞUBELER listesindeki kimlik. YALNIZCA müşteri o şubeyi açıkça söylediyse yaz; semt adı iki şubeye de uyuyorsa (ör. yalnızca "Bornova") null yaz.
+- matchedProductIds: Müşterinin adını andığı ürünlerin köşeli parantez içindeki kimlikleri. Emin değilsen boş dizi.
+
 YANIT FORMATI (JSON):
 {
   "response": "Müşteriye yanıtın buraya",
@@ -389,6 +417,7 @@ YANIT FORMATI (JSON):
   },
   "matchedFunnelId": "String | null",
   "topicCategoryId": "String | null",
+  "matchedBranchId": "String | null",
   "matchedProductIds": [],
   "isQualifiedLead": false,
   "stageTransition": {
@@ -438,8 +467,12 @@ YANIT FORMATI (JSON):
                 reasoning: parsed.classification?.reasoning || '',
                 extractedData: parsed.extractedData || {},
                 matchedFunnelId: parsed.matchedFunnelId || null,
-                topicCategoryId: parsed.topicCategoryId || null,
-                matchedProductIds: parsed.matchedProductIds || [],
+                // Sıralı akış şubeyi/kategoriyi/ürünü metinden DETERMİNİSTİK
+                // çözüyor; modelin tahmininden güvenilir olduğu için önce o
+                // kullanılır, yoksa modelin çıkardığı değere düşülür.
+                topicCategoryId: catalogResolved?.categoryId || parsed.topicCategoryId || null,
+                matchedBranchId: catalogResolved?.branchId || parsed.matchedBranchId || null,
+                matchedProductIds: (catalogResolved?.productIds?.length ? catalogResolved.productIds : parsed.matchedProductIds) || [],
                 isQualifiedLead: parsed.isQualifiedLead || false,
             },
             chatResponse: (parsed.response || '').replace(/\[HANDOFF\]/gi, '').trim(),
