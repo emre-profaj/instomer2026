@@ -1034,6 +1034,10 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     }
 
                     // Ürün eşleştirmesi — mevcut ürünlerle birleştir (duplicate olmasın)
+                    // Günlükte GERÇEKTEN yazılan sayıyı raporluyoruz: eşleşen
+                    // kimlik veritabanında bulunamazsa (ör. AI uydurduysa)
+                    // ürün eklenmiyor, eski log yine "ürün=2" yazıp yanıltıyordu.
+                    let yazilanUrun = 0;
                     if (matchedProductIds?.length > 0) {
                         const existingCase = await prisma.case.findUnique({
                             where: { id: conv.caseId },
@@ -1062,6 +1066,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             }
                         }
                         caseUpdateData.products = JSON.stringify(existingProducts);
+                        yazilanUrun = existingProducts.length;
                     }
 
                     if (Object.keys(caseUpdateData).length > 0) {
@@ -1069,7 +1074,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             where: { id: conv.caseId },
                             data: caseUpdateData
                         });
-                        console.log(`📦 [Classifier] Case güncellendi: şube=${resolvedBranchId || '-'}, kategori=${topicCategoryId || '-'}, ürün=${matchedProductIds?.length || 0}${matchedProductGroupId ? ', grup=' + matchedProductGroupId : ''}`);
+                        console.log(`📦 [Classifier] Case güncellendi: şube=${resolvedBranchId || '-'}, kategori=${topicCategoryId || '-'}, ürün=${yazilanUrun}/${matchedProductIds?.length || 0}${matchedProductGroupId ? ', grup=' + matchedProductGroupId : ''}`);
                     }
                 }
             } catch (caseErr) {

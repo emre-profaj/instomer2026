@@ -146,9 +146,14 @@ const PRODUCT_NOISE = new Set(['dakika', 'dakikalik', 'adet', 'seans', 'kisi', '
 
 function productWords(name) {
     return norm(name)
-        .replace(/[^a-z0-9ğüşıöç+ ]+/gi, ' ')
+        // Süre eki at: "(40 Dakika)" bilgi taşımıyor. Ama adın başındaki
+        // adet SAYISI anlamlı — "10 Sıcak Yağ Masajı" ile tekil masajı,
+        // "20 Kontör Giriş" ile "10 Kontör Giriş"i ayıran tek şey o.
+        .replace(/\(?\s*\d+\s*(dakika\w*|dk|saat\w*)\s*\)?/g, ' ')
+        .replace(/[^a-z0-9+ ]+/g, ' ')
         .split(' ')
-        .filter(w => w.length >= 3 && !PRODUCT_NOISE.has(w));
+        .filter(w => (w.length >= 3 || /^\d+$/.test(w)) && !PRODUCT_NOISE.has(w))
+        .filter((w, i, a) => a.indexOf(w) === i);   // tekrarları say ma
 }
 
 function matchingProducts(products, text, limit = 3) {
@@ -159,22 +164,32 @@ function matchingProducts(products, text, limit = 3) {
     const tam = products.filter(p => t.includes(norm(p.name)));
     if (tam.length > 0) return tam.slice(0, limit).map(p => p.id);
 
-    // Yoksa adın kaç ayırt edici kelimesi metinde geçiyor
-    let best = 0;
+    // Yoksa KAPSAMA oranına bak: adın kelimelerinin kaçı metinde geçiyor.
+    // Ham eşleşme SAYISI kullanmak uzun paket adlarını kayırıyor —
+    // "10 Kontör Giriş + 10 Kese Köpük + 10 Sıcak Yağ Masajı" da tekil
+    // "Sıcak Yağ Masajı (40 Dakika)" da 3 kelime tutuyordu, berabere
+    // kalıp hiçbiri seçilemiyordu. Oran tekil ürünü net öne çıkarır:
+    // tekilde 3/3 = 1.00, pakette 3/9 = 0.33.
     const scored = products.map(p => {
         const words = productWords(p.name);
         const hit = words.filter(w => t.includes(w)).length;
-        if (hit > best) best = hit;
-        return { p, hit };
-    });
+        return { p, hit, words: words.length, cover: words.length ? hit / words.length : 0 };
+    }).filter(x => x.hit >= 2 && x.cover >= 0.6);
 
-    // Tek kelime eşleşmesi yetmez: "masaj" yazan müşteri bütün masajlara
-    // uyar, hiçbirini vakaya yazmamak doğru olur.
-    if (best < 2) return [];
+    if (scored.length === 0) return [];
 
-    const top = scored.filter(x => x.hit === best);
-    if (top.length > limit) return [];   // hâlâ belirsiz
-    return top.map(x => x.p.id);
+    const best = Math.max(...scored.map(x => x.cover));
+    // Kapsama eşitse DAHA ÇOK kelime tutan kazanır: müşteri "10 kontör
+    // giriş kese köpük" yazdıysa dört parçalı paket, iki parçalı olandan
+    // daha iyi eşleşme. Sonra da daha az kelimeli, yani daha spesifik olan.
+    const top = scored
+        .filter(x => x.cover === best)
+        .sort((a, b) => (b.hit - a.hit) || (a.words - b.words));
+
+    const enIyi = top[0];
+    const kesin = top.filter(x => x.hit === enIyi.hit && x.words === enIyi.words);
+    if (kesin.length > limit) return [];   // hâlâ belirsiz
+    return kesin.map(x => x.p.id);
 }
 
 /** Müşterinin son mesajlarını tek metinde toplar (en yenisi en sonda). */
