@@ -121,29 +121,42 @@ function formatPrice(v) {
  * Bu çalışma alanında sıralı akış çalışsın mı?
  *
  * catalogFlowEnabled:
- *   null  → otomatik (en az 1 şube VE en az 1 aktif ürün varsa açık)
+ *   null  → otomatik
  *   true  → her hâlükârda açık
  *   false → kapalı
+ *
+ * Otomatik kural KASITLI OLARAK dar tutulur; amaç kurulu olmayan veya
+ * bu akışı istemeyen çalışma alanlarının davranışını değiştirmemek:
+ *   - En az 2 şube olacak. Tek şubede sorulacak bir şey yok.
+ *   - En az 1 aktif ürün olacak. Sonunda gösterilecek bir şey yoksa
+ *     baştaki soru da sorulmaz.
+ *   - Randevu entegrasyonu (Probel) olan çalışma alanları HARİÇ. Onların
+ *     kendi kademeli akışı var ve "şube" kayıtları poliklinik anlamında
+ *     kullanılıyor; iki akış üst üste binmemeli.
+ * Bu koşulları sağlamayan yerlerde panelden elle açılabilir.
  */
 export async function getCatalogCapability(workspaceId) {
-    const [ws, branchCount, productCount, categoryCount] = await Promise.all([
+    const [ws, branchCount, productCount, categoryCount, healthApiCount] = await Promise.all([
         prisma.workspace.findUnique({
             where: { id: workspaceId },
             select: { catalogFlowEnabled: true, catalogPriceDisclosure: true }
         }),
         prisma.appointmentBranch.count({ where: { workspaceId, isActive: true } }),
         prisma.product.count({ where: { workspaceId, isActive: true, isGroup: false } }),
-        prisma.topicCategory.count({ where: { workspaceId, isActive: true } })
+        prisma.topicCategory.count({ where: { workspaceId, isActive: true } }),
+        prisma.apiIntegration.count({ where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true } })
     ]);
 
     const flag = ws?.catalogFlowEnabled;
-    const auto = branchCount >= 1 && productCount >= 1;
+    const hasHealthApi = healthApiCount > 0;
+    const auto = branchCount >= 2 && productCount >= 1 && !hasHealthApi;
     const enabled = flag === true ? true : flag === false ? false : auto;
 
     return {
         enabled,
         auto,
         flag: flag ?? null,
+        hasHealthApi,
         branchCount,
         productCount,
         categoryCount,

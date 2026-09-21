@@ -1590,7 +1590,9 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                                         <strong>Sıralı akış açık</strong>
                                         <em>
                                             {catalogFlow.flag === null
-                                                ? `Otomatik: ${catalogFlow.branchCount} şube, ${catalogFlow.productCount} ürün tanımlı olduğu için ${catalogFlow.auto ? 'açık' : 'kapalı'}.`
+                                                ? (catalogFlow.hasHealthApi
+                                                    ? 'Otomatik: randevu entegrasyonu olduğu için kapalı, randevu asistanının kendi akışı kullanılıyor.'
+                                                    : `Otomatik: ${catalogFlow.branchCount} şube, ${catalogFlow.productCount} ürün tanımlı olduğu için ${catalogFlow.auto ? 'açık' : 'kapalı'}. Otomatik açılması için en az 2 şube ve 1 ürün gerekir.`)
                                                 : 'Elle ayarlandı. Kapatılırsa bot serbest akışta çalışır.'}
                                         </em>
                                     </span>
