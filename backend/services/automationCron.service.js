@@ -258,6 +258,7 @@ async function processAppointmentReminders(workspaceId, activeRules, now) {
         where: {
             workspaceId,
             status: 'SCHEDULED',
+            reminderSent: false, // Zaten hatırlatma gönderilmişse tekrar gönderme (dedup)
             startTime: { gt: now, lte: futureLimit }
         },
         select: { id: true, contactId: true, startTime: true, type: true }

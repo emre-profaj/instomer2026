@@ -768,21 +768,56 @@ export async function checkAndSendReminders(workspaceId = null) {
         }
 
         const appointments = await prisma.appointment.findMany({
-            where: whereClause
+            where: whereClause,
+            orderBy: { startTime: 'asc' } // En erken randevudan başla
         });
 
         console.log(`🔔 [Reminder] ${appointments.length} randevu için hatırlatma gönderilecek${workspaceId ? ` (workspace: ${workspaceId.slice(0, 8)}...)` : ' (tüm workspace\'ler)'}`);
 
+        // ── DEDUP: Aynı kişiye (contactId veya conversationId) birden fazla randevu hatırlatması gitmesini önle ──
+        // Aynı kişiye aynı gün birden fazla randevu varsa, en detaylı olan (doktor bilgisi olan) tercih edilir
+        const contactAppointmentMap = new Map();
+        for (const appt of appointments) {
+            const key = appt.contactId || appt.conversationId || appt.id;
+            if (!contactAppointmentMap.has(key)) {
+                contactAppointmentMap.set(key, appt);
+            } else {
+                // Önceki kaydı ile karşılaştır — doktor bilgisi olan daha detaylı olanı tercih et
+                const existing = contactAppointmentMap.get(key);
+                const existingHasDoctor = !!existing.doctorName;
+                const currentHasDoctor = !!appt.doctorName;
+                if (!existingHasDoctor && currentHasDoctor) {
+                    contactAppointmentMap.set(key, appt); // Doktor bilgisi olanı al
+                }
+                console.warn(`⚠️ [Reminder] DEDUP: Aynı kişiye (${key.slice(0, 8)}...) birden fazla randevu tespit edildi. Hatırlatma sadece bir kez gönderilecek.`);
+                // Fazla appointment'ın da reminderSent'ini true yap ki tekrar denemesin
+                try {
+                    await prisma.appointment.update({
+                        where: { id: appt.id },
+                        data: { reminderSent: true }
+                    });
+                } catch (dedupErr) {
+                    console.error(`❌ [Reminder] DEDUP flag hatası:`, dedupErr.message);
+                }
+            }
+        }
+
+        // Dedup sonrası benzersiz randevular
+        const uniqueAppointments = Array.from(contactAppointmentMap.values());
+        if (uniqueAppointments.length < appointments.length) {
+            console.log(`🔔 [Reminder] DEDUP: ${appointments.length} randevu → ${uniqueAppointments.length} benzersiz kişi`);
+        }
+
         // Workspace başına şablon kontrolü (bir kere — tüm varsayılan şablonları oluşturur)
         const checkedWorkspaces = new Set();
-        for (const appt of appointments) {
+        for (const appt of uniqueAppointments) {
             if (appt.workspaceId && !checkedWorkspaces.has(appt.workspaceId)) {
                 await ensureDefaultWhatsAppTemplates(appt.workspaceId);
                 checkedWorkspaces.add(appt.workspaceId);
             }
         }
 
-        for (const appt of appointments) {
+        for (const appt of uniqueAppointments) {
             try {
                 const reminderTime = formatTime(new Date(appt.startTime));
 
@@ -807,7 +842,8 @@ export async function checkAndSendReminders(workspaceId = null) {
                     contactId = conv?.contactId;
                 }
 
-                // 2. WhatsApp şablon gönder (tel no varsa → her zaman WA'dan da gitsin)
+                // 2. WhatsApp şablon gönder (24 saat penceresi dışında da çalışır)
+                let waTemplateSent = false;
                 if (contactId && appt.workspaceId) {
                     try {
                         // Randevu tipi: procedure varsa onu kullan, yoksa genel "randevu"
@@ -819,7 +855,7 @@ export async function checkAndSendReminders(workspaceId = null) {
                         ].filter(Boolean).join(' | ') || '';
 
                         const { notifyAllChannels } = await import('./crossChannelNotifier.service.js');
-                        await notifyAllChannels(contactId, appt.workspaceId, 'APPOINTMENT_REMINDER', {
+                        const waResults = await notifyAllChannels(contactId, appt.workspaceId, 'APPOINTMENT_REMINDER', {
                             templateName: REMINDER_TEMPLATE_NAME,
                             templateParams: [
                                 appt.contactName || '',
@@ -828,13 +864,51 @@ export async function checkAndSendReminders(workspaceId = null) {
                                 extraInfo
                             ],
                         }, { channels: ['whatsapp'] });
-                        console.log(`📲 [Reminder] WhatsApp şablon gönderildi: ${appt.contactName} (${appt.contactPhone || 'tel yok'})`);
+                        waTemplateSent = waResults.some(r => r.status === 'sent' && r.sent);
+                        if (waTemplateSent) {
+                            console.log(`📲 [Reminder] WhatsApp ŞABLON gönderildi: ${appt.contactName} (${appt.contactPhone || 'tel yok'})`);
+                        } else {
+                            console.warn(`⚠️ [Reminder] WhatsApp şablon gönderilemedi/atlandı (template: ${REMINDER_TEMPLATE_NAME})`);
+                        }
                     } catch (waErr) {
-                        console.warn(`⚠️ [Reminder] WhatsApp gönderilemedi: ${waErr.message}`);
+                        console.warn(`⚠️ [Reminder] WhatsApp şablon hatası: ${waErr.message}`);
                     }
                 }
 
-                // 3. Konuşmada da kayıt bırak (geçmişte görünsün)
+                // 3. Template başarısızsa → konuşma üzerinden doğrudan WA mesajı göndermeyi dene
+                // (24 saat penceresi açıksa çalışır, kapalıysa Meta reddeder)
+                if (!waTemplateSent && appt.conversationId) {
+                    try {
+                        const conv = await prisma.conversation.findUnique({
+                            where: { id: appt.conversationId },
+                            select: { channelType: true, channelId: true }
+                        });
+                        if (conv?.channelType === 'whatsapp' && conv?.channelId) {
+                            const waPhone = await prisma.whatsAppPhoneNumber.findUnique({
+                                where: { id: conv.channelId },
+                                select: { phoneNumberId: true, accessToken: true }
+                            });
+                            const contact = await prisma.contact.findUnique({
+                                where: { id: contactId },
+                                select: { phone: true }
+                            });
+                            if (waPhone && contact?.phone) {
+                                const { sendWhatsappMessage } = await import('../controllers/whatsapp.controller.js');
+                                await sendWhatsappMessage(
+                                    waPhone.phoneNumberId,
+                                    waPhone.accessToken,
+                                    contact.phone,
+                                    `🔔 Randevu Hatırlatması\n\n${reminderMsg}`
+                                );
+                                console.log(`📲 [Reminder] WhatsApp doğrudan mesaj gönderildi (template fallback): ${appt.contactName}`);
+                            }
+                        }
+                    } catch (directWaErr) {
+                        console.warn(`⚠️ [Reminder] WhatsApp doğrudan mesaj da gönderilemedi: ${directWaErr.message}`);
+                    }
+                }
+
+                // 4. Konuşmada da kayıt bırak (geçmişte görünsün)
                 if (appt.conversationId) {
                     await prisma.message.create({
                         data: {
@@ -869,7 +943,7 @@ export async function checkAndSendReminders(workspaceId = null) {
             }
         }
 
-        return { sent: appointments.length };
+        return { sent: uniqueAppointments.length };
     } catch (err) {
         console.error('❌ [Reminder] checkAndSendReminders error:', err);
         return { sent: 0, error: err.message };
