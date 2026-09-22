@@ -977,7 +977,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                             <UserCircle size={16} /> Kaynaklar
                         </button>
                         <button className={`base-nav-item ${EKLEME_SEKMELERI.includes(activeTab) ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
-                            <FileText size={16} /> Bilgi Ekle
+                            <FileText size={16} /> Bilgi Bankası &amp; Detay Ekle
                         </button>
                         <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', margin: '8px 0' }} />
                         <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => handleSelectTab('list')}>

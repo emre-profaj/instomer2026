@@ -144,7 +144,7 @@ const SettingsNav = () => {
                             className={`settings-nav-item ${['text', 'files', 'url', 'feed'].some(t => isKbActive(t)) ? 'active' : ''}`}
                         >
                             <FileText size={15} />
-                            <span className="settings-item-label">Bilgi Ekle</span>
+                            <span className="settings-item-label">Bilgi Bankası &amp; Detay Ekle</span>
                         </Link>
 
                         <Link
