@@ -23,12 +23,6 @@ const WebForms = () => {
         caseTypeId: ''
     });
 
-    useEffect(() => {
-        if (currentWorkspace) {
-            loadData();
-        }
-    }, [currentWorkspace, activeTab]);
-
     const loadData = async () => {
         try {
             setLoading(true);
@@ -55,6 +49,12 @@ const WebForms = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (currentWorkspace) {
+            loadData();
+        }
+    }, [currentWorkspace, activeTab]);
 
     const handleCreate = async () => {
         try {

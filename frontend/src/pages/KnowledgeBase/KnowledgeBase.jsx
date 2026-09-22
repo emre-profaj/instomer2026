@@ -85,10 +85,12 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
     const [categories, setCategories] = useState([]);
     const [categoriesLoading, setCategoriesLoading] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
+    // Sorumlu Takım kaldırıldı — akış aşamalarından atanacak (Not: Kategori UI yönetimi Products.jsx bileşenindedir)
     const [newCategoryDefaultTeamId, setNewCategoryDefaultTeamId] = useState('');
     const [newCategoryDefaultFunnelId, setNewCategoryDefaultFunnelId] = useState('');
     const [editingCategory, setEditingCategory] = useState(null);
     const [editCategoryName, setEditCategoryName] = useState('');
+    // Sorumlu Takım kaldırıldı — akış aşamalarından atanacak (Not: Kategori UI yönetimi Products.jsx bileşenindedir)
     const [editCategoryDefaultTeamId, setEditCategoryDefaultTeamId] = useState('');
     const [editCategoryDefaultFunnelId, setEditCategoryDefaultFunnelId] = useState('');
 
@@ -391,6 +393,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         try {
             await createTopicCategory(currentWorkspace.id, {
                 name: newCategoryName,
+                // Sorumlu Takım kaldırıldı — akış aşamalarından atanacak
                 defaultTeamId: newCategoryDefaultTeamId || null,
                 defaultFunnelId: newCategoryDefaultFunnelId || null
             });
@@ -409,6 +412,7 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
         try {
             await updateTopicCategory(currentWorkspace.id, id, {
                 name: editCategoryName,
+                // Sorumlu Takım kaldırıldı — akış aşamalarından atanacak
                 defaultTeamId: editCategoryDefaultTeamId || null,
                 defaultFunnelId: editCategoryDefaultFunnelId || null
             });

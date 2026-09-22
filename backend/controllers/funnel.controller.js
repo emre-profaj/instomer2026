@@ -425,7 +425,12 @@ export const getFunnels = async (req, res) => {
             funnels = await prisma.funnel.findMany({
                 where: { workspaceId },
                 orderBy: { order: 'asc' },
-                include: { stages: { orderBy: { order: 'asc' } } }
+                include: {
+                    stages: { orderBy: { order: 'asc' } },
+                    caseTypes: { select: { id: true, name: true, icon: true, color: true } },
+                    categories: { select: { id: true, name: true, icon: true, color: true } },
+                    products: { where: { isGroup: true }, select: { id: true, name: true } }
+                }
             });
 
             // ── 0) Kaldırılması gereken funnel'ları sil (FUNNELS_TO_DELETE) ──
@@ -496,7 +501,12 @@ export const getFunnels = async (req, res) => {
                 funnels = await prisma.funnel.findMany({
                     where: { workspaceId },
                     orderBy: { order: 'asc' },
-                    include: { stages: { orderBy: { order: 'asc' } } }
+                    include: {
+                    stages: { orderBy: { order: 'asc' } },
+                    caseTypes: { select: { id: true, name: true, icon: true, color: true } },
+                    categories: { select: { id: true, name: true, icon: true, color: true } },
+                    products: { where: { isGroup: true }, select: { id: true, name: true } }
+                }
                 });
             }
 
@@ -516,7 +526,12 @@ export const getFunnels = async (req, res) => {
                 funnels = await prisma.funnel.findMany({
                     where: { workspaceId },
                     orderBy: { order: 'asc' },
-                    include: { stages: { orderBy: { order: 'asc' } } }
+                    include: {
+                    stages: { orderBy: { order: 'asc' } },
+                    caseTypes: { select: { id: true, name: true, icon: true, color: true } },
+                    categories: { select: { id: true, name: true, icon: true, color: true } },
+                    products: { where: { isGroup: true }, select: { id: true, name: true } }
+                }
                 });
             }
 

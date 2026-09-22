@@ -351,7 +351,19 @@ const ToastItem = ({ toast, onClose }) => {
 export const useToast = () => {
     const context = useContext(ToastContext);
     if (!context) {
-        throw new Error('useToast must be used within a ToastProvider');
+        return {
+            addToast: () => {},
+            removeToast: () => {},
+            showSuccess: (title, message) => console.log(title, message),
+            showError: (title, message) => alert(message || title),
+            showInfo: (title, message) => console.info(title, message),
+            showWarning: (title, message) => alert(message || title),
+            showAssignment: (title, message) => console.log(title, message),
+            success: (msg, title) => console.log(title, msg),
+            error: (msg, title) => alert(msg || title),
+            info: (msg, title) => console.info(title, msg),
+            warning: (msg, title) => alert(msg || title)
+        };
     }
     return context;
 };

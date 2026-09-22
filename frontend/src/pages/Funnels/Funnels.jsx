@@ -2,9 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI, appointmentConfigAPI, rulesAPI } from '../../services/api';
-import { getTopicCategories } from '../../services/topicCategory.api';
-import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Layers } from 'lucide-react';
+import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI, appointmentConfigAPI, rulesAPI, productAPI } from '../../services/api';
+import { getTopicCategories, updateTopicCategory } from '../../services/topicCategory.api';
+import { getCaseTypes, updateCaseType } from '../../services/caseType.api';
+import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Layers, Package } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import FunnelPipeline from '../../components/Funnels/FunnelPipeline';
@@ -71,6 +72,8 @@ const Funnels = () => {
     const [templates, setTemplates] = useState([]);
     const [automations, setAutomations] = useState([]);
     const [topicCategories, setTopicCategories] = useState([]);
+    const [productGroups, setProductGroups] = useState([]);
+    const [allCaseTypes, setAllCaseTypes] = useState([]);
 
     // Stage counts
     const [stageCounts, setStageCounts] = useState({});
@@ -164,6 +167,16 @@ const Funnels = () => {
                 const catRes = await getTopicCategories(currentWorkspace.id);
                 setTopicCategories(catRes.data || []);
             } catch { /* Kategori yoksa sorun değil */ }
+            // Ürün Grupları yükle
+            try {
+                const pgRes = await productAPI.getAll(currentWorkspace.id, { isGroup: true });
+                setProductGroups(pgRes.data?.products || pgRes.data || []);
+            } catch { /* Ürün yoksa sorun değil */ }
+            // CaseTypes yükle
+            try {
+                const ctRes = await getCaseTypes(currentWorkspace.id);
+                setAllCaseTypes(ctRes.data || []);
+            } catch { /* CaseType yoksa sorun değil */ }
         } catch (err) { console.error(err); }
     };
 
@@ -250,6 +263,39 @@ const Funnels = () => {
                     }
                 }
             }
+
+            // ── Bağlı Öğeleri Kaydet ──
+            const wId = currentWorkspace.id;
+
+            // CaseType bağlantıları: eklenenler funnelId = this funnel, kaldırılanlar funnelId = null
+            for (const ctId of (funnelPanel._addedCaseTypeIds || [])) {
+                try { await updateCaseType(wId, ctId, { funnelId: funnelPanel.id }); } catch (e) { console.error('CaseType link error:', e); }
+            }
+            for (const ctId of (funnelPanel._removedCaseTypeIds || [])) {
+                try { await updateCaseType(wId, ctId, { funnelId: null }); } catch (e) { console.error('CaseType unlink error:', e); }
+            }
+
+            // Kategori bağlantıları: defaultFunnelId
+            for (const catId of (funnelPanel._addedCategoryIds || [])) {
+                try { await updateTopicCategory(wId, catId, { defaultFunnelId: funnelPanel.id }); } catch (e) { console.error('Category link error:', e); }
+            }
+            for (const catId of (funnelPanel._removedCategoryIds || [])) {
+                try { await updateTopicCategory(wId, catId, { defaultFunnelId: null }); } catch (e) { console.error('Category unlink error:', e); }
+            }
+
+            // Ürün Grubu bağlantıları: funnelId
+            for (const pgId of (funnelPanel._addedProductIds || [])) {
+                try { await productAPI.update(wId, pgId, { funnelId: funnelPanel.id }); } catch (e) { console.error('Product link error:', e); }
+            }
+            for (const pgId of (funnelPanel._removedProductIds || [])) {
+                try { await productAPI.update(wId, pgId, { funnelId: null }); } catch (e) { console.error('Product unlink error:', e); }
+            }
+
+            // Funnels listesini yeniden yükle (bağlı öğeler güncellendiği için)
+            try {
+                const refreshRes = await funnelAPI.getAll(wId);
+                setFunnels(refreshRes.data.funnels || []);
+            } catch {}
 
             setFunnelPanel(null);
         } catch (err) { console.error(err); }
@@ -1564,6 +1610,160 @@ const Funnels = () => {
                                         })}
                                         {topicCategories.length === 0 && (
                                             <span style={{color: '#94a3b8', fontSize: '0.8rem'}}>Henüz kategori yok. Ayarlar → Konu Kategorileri'nden oluşturun.</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ═══════════════════════════════════════════════
+                                BAĞLI ÖĞELER BÖLÜMÜ
+                               ═══════════════════════════════════════════════ */}
+                            <div className="settings-section">
+                                <div className="settings-section-title" style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                    🔗 Bağlı Öğeler
+                                </div>
+
+                                {/* Bağlı Vaka Tipleri */}
+                                <div className="settings-field">
+                                    <label style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                        <Layers size={13} /> Bağlı Vaka Tipleri
+                                    </label>
+                                    <p className="settings-hint" style={{margin: '0 0 8px', fontSize: '0.75rem', color: '#64748b'}}>
+                                        Bu akışa otomatik yönlendirilen vaka tipleri
+                                    </p>
+                                    <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px'}}>
+                                        {(funnelPanel.caseTypes || []).map(ct => (
+                                            <span key={ct.id} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '3px 10px', borderRadius: '14px', fontSize: '0.78rem', fontWeight: 500,
+                                                background: `${ct.color || '#3b82f6'}15`, color: ct.color || '#3b82f6',
+                                                border: `1px solid ${ct.color || '#3b82f6'}40`
+                                            }}>
+                                                <span>{ct.icon || '📋'}</span> {ct.name}
+                                                <button type="button" onClick={() => {
+                                                    setFunnelPanel(p => ({ ...p, caseTypes: (p.caseTypes || []).filter(c => c.id !== ct.id), _removedCaseTypeIds: [...(p._removedCaseTypeIds || []), ct.id] }));
+                                                }} style={{background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.9rem', padding: 0, marginLeft: 2}}>×</button>
+                                            </span>
+                                        ))}
+                                        {/* Ekle dropdown */}
+                                        {(() => {
+                                            const linkedIds = (funnelPanel.caseTypes || []).map(c => c.id);
+                                            const available = allCaseTypes.filter(ct => !linkedIds.includes(ct.id));
+                                            if (available.length === 0) return null;
+                                            return (
+                                                <select
+                                                    value=""
+                                                    onChange={e => {
+                                                        const ct = allCaseTypes.find(c => c.id === e.target.value);
+                                                        if (ct) setFunnelPanel(p => ({ ...p, caseTypes: [...(p.caseTypes || []), ct], _addedCaseTypeIds: [...(p._addedCaseTypeIds || []), ct.id] }));
+                                                    }}
+                                                    style={{ padding: '3px 8px', borderRadius: '14px', fontSize: '0.78rem', border: '1px dashed #cbd5e1', background: '#fff', color: '#64748b', cursor: 'pointer' }}
+                                                >
+                                                    <option value="">+ Vaka Tipi Ekle</option>
+                                                    {available.map(ct => (
+                                                        <option key={ct.id} value={ct.id}>{ct.icon || '📋'} {ct.name}</option>
+                                                    ))}
+                                                </select>
+                                            );
+                                        })()}
+                                        {(funnelPanel.caseTypes || []).length === 0 && allCaseTypes.length === 0 && (
+                                            <span style={{color: '#94a3b8', fontSize: '0.78rem', fontStyle: 'italic'}}>Henüz vaka tipi tanımlanmamış</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Bağlı Kategoriler */}
+                                <div className="settings-field">
+                                    <label style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                        📋 Bağlı Kategoriler
+                                    </label>
+                                    <p className="settings-hint" style={{margin: '0 0 8px', fontSize: '0.75rem', color: '#64748b'}}>
+                                        Varsayılan akışı bu akış olan kategoriler
+                                    </p>
+                                    <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px'}}>
+                                        {(funnelPanel.categories || []).map(cat => (
+                                            <span key={cat.id} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '3px 10px', borderRadius: '14px', fontSize: '0.78rem', fontWeight: 500,
+                                                background: `${cat.color || '#6b7280'}15`, color: cat.color || '#6b7280',
+                                                border: `1px solid ${cat.color || '#6b7280'}40`
+                                            }}>
+                                                <span>{cat.icon || '📋'}</span> {cat.name}
+                                                <button type="button" onClick={() => {
+                                                    setFunnelPanel(p => ({ ...p, categories: (p.categories || []).filter(c => c.id !== cat.id), _removedCategoryIds: [...(p._removedCategoryIds || []), cat.id] }));
+                                                }} style={{background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.9rem', padding: 0, marginLeft: 2}}>×</button>
+                                            </span>
+                                        ))}
+                                        {(() => {
+                                            const linkedIds = (funnelPanel.categories || []).map(c => c.id);
+                                            const available = topicCategories.filter(cat => !linkedIds.includes(cat.id));
+                                            if (available.length === 0) return null;
+                                            return (
+                                                <select
+                                                    value=""
+                                                    onChange={e => {
+                                                        const cat = topicCategories.find(c => c.id === e.target.value);
+                                                        if (cat) setFunnelPanel(p => ({ ...p, categories: [...(p.categories || []), cat], _addedCategoryIds: [...(p._addedCategoryIds || []), cat.id] }));
+                                                    }}
+                                                    style={{ padding: '3px 8px', borderRadius: '14px', fontSize: '0.78rem', border: '1px dashed #cbd5e1', background: '#fff', color: '#64748b', cursor: 'pointer' }}
+                                                >
+                                                    <option value="">+ Kategori Ekle</option>
+                                                    {available.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.icon || '📋'} {cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            );
+                                        })()}
+                                        {(funnelPanel.categories || []).length === 0 && topicCategories.length === 0 && (
+                                            <span style={{color: '#94a3b8', fontSize: '0.78rem', fontStyle: 'italic'}}>Henüz kategori tanımlanmamış</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Bağlı Ürün Grupları */}
+                                <div className="settings-field">
+                                    <label style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                        <Package size={13} /> Bağlı Ürün / Hizmet Grupları
+                                    </label>
+                                    <p className="settings-hint" style={{margin: '0 0 8px', fontSize: '0.75rem', color: '#64748b'}}>
+                                        Bu akışa bağlı ürün ve hizmet grupları
+                                    </p>
+                                    <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px'}}>
+                                        {(funnelPanel.products || []).map(pg => (
+                                            <span key={pg.id} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '3px 10px', borderRadius: '14px', fontSize: '0.78rem', fontWeight: 500,
+                                                background: '#f0fdf4', color: '#166534',
+                                                border: '1px solid #bbf7d0'
+                                            }}>
+                                                📦 {pg.name}
+                                                <button type="button" onClick={() => {
+                                                    setFunnelPanel(p => ({ ...p, products: (p.products || []).filter(pr => pr.id !== pg.id), _removedProductIds: [...(p._removedProductIds || []), pg.id] }));
+                                                }} style={{background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '0.9rem', padding: 0, marginLeft: 2}}>×</button>
+                                            </span>
+                                        ))}
+                                        {(() => {
+                                            const linkedIds = (funnelPanel.products || []).map(p => p.id);
+                                            const available = productGroups.filter(pg => !linkedIds.includes(pg.id));
+                                            if (available.length === 0) return null;
+                                            return (
+                                                <select
+                                                    value=""
+                                                    onChange={e => {
+                                                        const pg = productGroups.find(p => p.id === e.target.value);
+                                                        if (pg) setFunnelPanel(p => ({ ...p, products: [...(p.products || []), pg], _addedProductIds: [...(p._addedProductIds || []), pg.id] }));
+                                                    }}
+                                                    style={{ padding: '3px 8px', borderRadius: '14px', fontSize: '0.78rem', border: '1px dashed #cbd5e1', background: '#fff', color: '#64748b', cursor: 'pointer' }}
+                                                >
+                                                    <option value="">+ Ürün Grubu Ekle</option>
+                                                    {available.map(pg => (
+                                                        <option key={pg.id} value={pg.id}>📦 {pg.name}</option>
+                                                    ))}
+                                                </select>
+                                            );
+                                        })()}
+                                        {(funnelPanel.products || []).length === 0 && productGroups.length === 0 && (
+                                            <span style={{color: '#94a3b8', fontSize: '0.78rem', fontStyle: 'italic'}}>Henüz ürün grubu tanımlanmamış</span>
                                         )}
                                     </div>
                                 </div>

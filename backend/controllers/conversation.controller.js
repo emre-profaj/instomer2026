@@ -1525,6 +1525,7 @@ export const assignConversation = async (req, res) => {
 
         // 🚀 Socket bildirimi gönder
         // Workspace'e genel bildirim (tüm kullanıcılar listelerini güncellesin)
+        const currentUserName = req.user?.name || 'Yönetici';
         emitToWorkspace(workspaceId, 'conversation_assigned', {
             conversationId,
             assignedToId: conversation.assignedToId,
@@ -1533,7 +1534,7 @@ export const assignConversation = async (req, res) => {
             botEnabled: conversation.botEnabled,
             teamIds: conversation.teamIds,
             contact: conversation.contact,
-            assignedBy: req.user.name
+            assignedBy: currentUserName
         });
         console.log(`📡 [Assign] Emitted conversation_assigned to workspace ${workspaceId}`);
 
@@ -1554,8 +1555,8 @@ export const assignConversation = async (req, res) => {
         }
 
         const eventTitle = assigneeName
-            ? `<b>${req.user?.name || 'Kullanıcı'}</b> konuşmayı <b>${assigneeName}</b> kullanıcısına atadı`
-            : `<b>${req.user?.name || 'Kullanıcı'}</b> konuşma atamasını kaldırdı`;
+            ? `<b>${currentUserName}</b> konuşmayı <b>${assigneeName}</b> kullanıcısına atadı`
+            : `<b>${currentUserName}</b> konuşma atamasını kaldırdı`;
 
         let assignEvent = null;
         try {
@@ -1572,17 +1573,17 @@ export const assignConversation = async (req, res) => {
         } catch (_) {}
 
         // Atanan kişiye özel bildirim (browser notification + in-app notification)
-        if (conversation.assignedToId && conversation.assignedToId !== req.user.id) {
+        if (conversation.assignedToId && conversation.assignedToId !== req.user?.id) {
             const contactName = conversation.contact?.name || conversation.contact?.fullName || 'Müşteri';
 
             emitToUser(conversation.assignedToId, 'conversation_assigned_to_you', {
                 conversationId,
                 workspaceId,
                 contact: conversation.contact,
-                assignedBy: req.user.name,
+                assignedBy: currentUserName,
                 message: atamaUyarisi
-                    ? `${req.user.name} size bir konuşma atadı: ${contactName} (Mesai dışı atama)`
-                    : `${req.user.name} size bir konuşma atadı: ${contactName}`,
+                    ? `${currentUserName} size bir konuşma atadı: ${contactName} (Mesai dışı atama)`
+                    : `${currentUserName} size bir konuşma atadı: ${contactName}`,
                 warning: atamaUyarisi
             });
 
@@ -1595,8 +1596,8 @@ export const assignConversation = async (req, res) => {
                     'CONVERSATION_ASSIGNED',
                     `${contactName} — konuşma atandı`,
                     atamaUyarisi
-                        ? `${req.user.name} tarafından size atandı (${atamaUyarisi}).`
-                        : `${req.user.name} tarafından size atandı.`,
+                        ? `${currentUserName} tarafından size atandı (${atamaUyarisi}).`
+                        : `${currentUserName} tarafından size atandı.`,
                     { conversationId }
                 );
             } catch (notifErr) {
@@ -1627,13 +1628,13 @@ export const assignConversation = async (req, res) => {
 
                 // Her takım üyesine bildirim gönder (atayan kişi hariç ve sadece gerçek kullanıcılar)
                 for (const member of teamMembers) {
-                    if (member.userId && member.userId !== req.user.id) {
+                    if (member.userId && member.userId !== req.user?.id) {
                         emitToUser(member.userId, 'conversation_assigned_to_you', {
                             conversationId,
                             workspaceId,
                             contact: conversation.contact,
-                            assignedBy: req.user.name,
-                            message: `${req.user.name} takımınıza bir konuşma atadı: ${contactName}`
+                            assignedBy: currentUserName,
+                            message: `${currentUserName} takımınıza bir konuşma atadı: ${contactName}`
                         });
 
                         // Create in-app notification
@@ -1644,7 +1645,7 @@ export const assignConversation = async (req, res) => {
                                 member.userId,
                                 'CONVERSATION_ASSIGNED',
                                 `${contactName} — takıma atandı`,
-                                `${req.user.name} tarafından ${teamName} takımına atandı.`,
+                                `${currentUserName} tarafından ${teamName} takımına atandı.`,
                                 { conversationId, teamId: tId }
                             );
                         } catch (notifErr) {

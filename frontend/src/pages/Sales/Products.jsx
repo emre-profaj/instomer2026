@@ -1303,7 +1303,8 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                             ? branches.filter(b => bIds.includes(b.id)).map(b => b.name)
                                             : [];
                                         const linkedProducts = c.products || [];
-                                        const teamName = c.defaultTeamId ? (teams.find(t => t.id === c.defaultTeamId)?.name || null) : null;
+                                        // Sorumlu Takım kaldırıldı — akış aşamalarından atanacak
+                                        // const teamName = c.defaultTeamId ? (teams.find(t => t.id === c.defaultTeamId)?.name || null) : null;
                                         const funnelName = c.defaultFunnelId ? (funnels.find(f => f.id === c.defaultFunnelId)?.name || null) : null;
                                         const isActive = c.isActive !== false;
 
@@ -1313,8 +1314,8 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                     <div>
                                                         <input
                                                             type="checkbox"
-                                                            className="ct-check"
                                                             aria-label={`${c.name} seç`}
+                                                            className="ct-check"
                                                             checked={isPicked}
                                                             onChange={() => toggleSelectCategory(c.id)}
                                                         />
@@ -1349,17 +1350,19 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                     {/* Sorumlu takım ve akış: satırı açmadan görünmeli,
                                                         kullanıcı seçimini listede doğrulayabilsin. */}
                                                     <div className="ct-route">
+                                                        {/* Sorumlu Takım kaldırıldı — akış aşamalarından atanacak
                                                         {teamName && (
                                                             <span className="ct-chip-team" title={`Sorumlu takım: ${teamName}`}>
                                                                 <Users size={11} />{teamName}
                                                             </span>
                                                         )}
+                                                        */}
                                                         {funnelName && (
                                                             <span className="ct-chip-funnel" title={`Varsayılan akış: ${funnelName}`}>
                                                                 <Layers size={11} />{funnelName}
                                                             </span>
                                                         )}
-                                                        {!teamName && !funnelName && <span className="ct-none">Atanmadı</span>}
+                                                        {!funnelName && <span className="ct-none">Atanmadı</span>}
                                                     </div>
                                                     <div className={`ct-status ${isActive ? 'on' : 'off'}`}>
                                                         <i></i>{isActive ? 'Aktif' : 'Pasif'}
@@ -1414,13 +1417,14 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                             <div className="ct-dnone">Bağlı kayıt yok.</div>
                                                         )}
 
-                                                        {(teamName || funnelName) && (
+                                                        {funnelName && (
                                                             <>
                                                                 <div className="ct-dsec">
                                                                     <span className="ct-dsec-name">Varsayılan yönlendirme</span>
                                                                     <span className="ct-dsec-rule"></span>
                                                                 </div>
                                                                 <div className="ct-routing">
+                                                                    {/* Sorumlu Takım kaldırıldı — akış aşamalarından atanacak
                                                                     {teamName && (
                                                                         <div>
                                                                             <Users size={14} />
@@ -1428,6 +1432,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                                             <span className="v">{teamName}</span>
                                                                         </div>
                                                                     )}
+                                                                    */}
                                                                     {funnelName && (
                                                                         <div>
                                                                             <Layers size={14} />
@@ -2394,6 +2399,8 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
 
                                 {/* Varsayılan yönlendirme — kategori eşleşince konuşma buraya gider */}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                    {/* Sorumlu Takım kaldırıldı — akış aşamalarından atanacak */}
+                                    {/*
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
                                             Sorumlu Takım
@@ -2416,6 +2423,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                             Müşteri bu kategoriyle ilgilenirse konuşma bu takıma atanır.
                                         </p>
                                     </div>
+                                    */}
                                     <div>
                                         <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
                                             Varsayılan Akış

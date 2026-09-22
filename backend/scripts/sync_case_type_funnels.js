@@ -1,3 +1,11 @@
+import path from 'path';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
 import prisma from '../lib/prisma.js';
 import { DEFAULT_CASE_TYPES, findMatchingFunnel } from '../controllers/caseType.controller.js';
 

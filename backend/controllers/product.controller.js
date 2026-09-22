@@ -47,7 +47,8 @@ export const getProducts = async (req, res) => {
                     productBranches: true,
                     // Satır detayı özellikleri de gösteriyor; listede yoksa
                     // her satır için ayrı istek atmak gerekirdi.
-                    features: true
+                    features: true,
+                    funnel: { select: { id: true, name: true, icon: true, color: true } }
                 },
                 skip,
                 take
@@ -86,7 +87,8 @@ export const getProduct = async (req, res) => {
                 children: true,
                 productBranches: true,
                 features: true,
-                media: true
+                media: true,
+                funnel: { select: { id: true, name: true, icon: true, color: true } }
             }
         });
 
@@ -127,7 +129,7 @@ export const createProduct = async (req, res) => {
             price, priceUSD, priceEUR, priceGBP,
             discountedPrice, tax1Type, tax1Rate,
             tax2Type, tax2Rate, isActive, aiContext, features,
-            parentId, isGroup, productBranches
+            parentId, isGroup, productBranches, funnelId
         } = req.body;
 
         if (!name) {
@@ -154,6 +156,7 @@ export const createProduct = async (req, res) => {
                 isActive: isActive !== undefined ? isActive : true,
                 parentId: parentId || null,
                 isGroup: isGroup === true || isGroup === 'true',
+                funnelId: funnelId || null,
                 aiContext: aiContext || null,
                 ...(features && Array.isArray(features) && features.length > 0 && {
                     features: {
@@ -190,6 +193,7 @@ export const createProduct = async (req, res) => {
 export const updateProduct = async (req, res) => {
     try {
         const { workspaceId, productId } = req.params;
+        const { funnelId } = req.body;
 
         // Ürünün varlığını kontrol et
         const existing = await prisma.product.findFirst({
@@ -201,6 +205,7 @@ export const updateProduct = async (req, res) => {
         }
 
         const updateData = {};
+        const data = updateData;
         const fields = [
             'name', 'description', 'groupName', 'categoryId', 'unit',
             'tax1Type', 'tax2Type', 'isActive', 'aiContext', 'parentId'
@@ -230,6 +235,7 @@ export const updateProduct = async (req, res) => {
             }
         });
         if (req.body.isGroup !== undefined) updateData.isGroup = req.body.isGroup === true || req.body.isGroup === 'true';
+        if (funnelId !== undefined) data.funnelId = funnelId || null;
 
         const product = await prisma.product.update({
             where: { id: productId },

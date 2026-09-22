@@ -49,18 +49,32 @@ export const ensureDefaultCaseTypes = async (workspaceId) => {
 
             if (!alreadyExists) {
                 const matchedFunnel = findMatchingFunnel(funnels, def.targetFunnelKeywords);
-                await prisma.caseType.create({
-                    data: {
-                        workspaceId,
-                        name: def.name,
-                        systemCode: def.systemCode,
-                        color: def.color,
-                        icon: def.icon,
-                        order: def.order,
-                        funnelId: matchedFunnel ? matchedFunnel.id : null
-                    }
-                });
-                console.log(`🌱 [CaseType] Created default case type "${def.name}" -> Funnel: "${matchedFunnel?.name || 'Yok'}"`);
+                try {
+                    await prisma.caseType.create({
+                        data: {
+                            workspaceId,
+                            name: def.name,
+                            systemCode: def.systemCode,
+                            color: def.color,
+                            icon: def.icon,
+                            order: def.order,
+                            funnelId: matchedFunnel ? matchedFunnel.id : null
+                        }
+                    });
+                    console.log(`🌱 [CaseType] Created default case type "${def.name}" -> Funnel: "${matchedFunnel?.name || 'Yok'}"`);
+                } catch {
+                    // Fallback without funnelId if column doesn't exist yet
+                    await prisma.caseType.create({
+                        data: {
+                            workspaceId,
+                            name: def.name,
+                            systemCode: def.systemCode,
+                            color: def.color,
+                            icon: def.icon,
+                            order: def.order
+                        }
+                    }).catch(() => {});
+                }
             }
         }
 
@@ -71,11 +85,13 @@ export const ensureDefaultCaseTypes = async (workspaceId) => {
                 if (def) {
                     const matchedFunnel = findMatchingFunnel(funnels, def.targetFunnelKeywords);
                     if (matchedFunnel) {
-                        await prisma.caseType.update({
-                            where: { id: ct.id },
-                            data: { funnelId: matchedFunnel.id }
-                        });
-                        console.log(`🔗 [CaseType] Linked existing case type "${ct.name}" -> Funnel: "${matchedFunnel.name}"`);
+                        try {
+                            await prisma.caseType.update({
+                                where: { id: ct.id },
+                                data: { funnelId: matchedFunnel.id }
+                            });
+                            console.log(`🔗 [CaseType] Linked existing case type "${ct.name}" -> Funnel: "${matchedFunnel.name}"`);
+                        } catch (_) {}
                     }
                 }
             }
@@ -93,15 +109,24 @@ export const getCaseTypes = async (req, res) => {
         // Auto-seed: workspace'te default case type'ları kontrol et ve eksikleri tamamla
         await ensureDefaultCaseTypes(workspaceId);
 
-        const caseTypes = await prisma.caseType.findMany({
-            where: { workspaceId },
-            include: {
-                funnel: {
-                    select: { id: true, name: true, color: true, icon: true }
-                }
-            },
-            orderBy: { order: 'asc' }
-        });
+        let caseTypes;
+        try {
+            caseTypes = await prisma.caseType.findMany({
+                where: { workspaceId },
+                include: {
+                    funnel: {
+                        select: { id: true, name: true, color: true, icon: true }
+                    }
+                },
+                orderBy: { order: 'asc' }
+            });
+        } catch (findErr) {
+            console.warn('⚠️ [CaseType] findMany with funnel relation failed, falling back:', findErr.message);
+            caseTypes = await prisma.caseType.findMany({
+                where: { workspaceId },
+                orderBy: { order: 'asc' }
+            });
+        }
 
         res.json({ success: true, data: caseTypes });
     } catch (error) {
@@ -116,23 +141,39 @@ export const createCaseType = async (req, res) => {
         const { workspaceId } = req.params;
         const { name, systemCode, color, icon, isActive, order, funnelId } = req.body;
 
-        const data = await prisma.caseType.create({
-            data: {
-                workspaceId,
-                name,
-                systemCode,
-                color: color || '#eab308',
-                icon,
-                isActive: isActive ?? true,
-                order: order || 0,
-                funnelId: funnelId || null
-            },
-            include: {
-                funnel: {
-                    select: { id: true, name: true, color: true, icon: true }
+        let data;
+        try {
+            data = await prisma.caseType.create({
+                data: {
+                    workspaceId,
+                    name,
+                    systemCode,
+                    color: color || '#eab308',
+                    icon,
+                    isActive: isActive ?? true,
+                    order: order || 0,
+                    funnelId: funnelId || null
+                },
+                include: {
+                    funnel: {
+                        select: { id: true, name: true, color: true, icon: true }
+                    }
                 }
-            }
-        });
+            });
+        } catch (createErr) {
+            console.warn('⚠️ [CaseType] create with funnelId failed, falling back:', createErr.message);
+            data = await prisma.caseType.create({
+                data: {
+                    workspaceId,
+                    name,
+                    systemCode,
+                    color: color || '#eab308',
+                    icon,
+                    isActive: isActive ?? true,
+                    order: order || 0
+                }
+            });
+        }
         res.json({ success: true, data });
     } catch (error) {
         console.error('Error in createCaseType:', error);
@@ -155,15 +196,25 @@ export const updateCaseType = async (req, res) => {
         if (order !== undefined) updatePayload.order = order;
         if (funnelId !== undefined) updatePayload.funnelId = funnelId || null;
 
-        const data = await prisma.caseType.update({
-            where: { id, workspaceId },
-            data: updatePayload,
-            include: {
-                funnel: {
-                    select: { id: true, name: true, color: true, icon: true }
+        let data;
+        try {
+            data = await prisma.caseType.update({
+                where: { id, workspaceId },
+                data: updatePayload,
+                include: {
+                    funnel: {
+                        select: { id: true, name: true, color: true, icon: true }
+                    }
                 }
-            }
-        });
+            });
+        } catch (updateErr) {
+            console.warn('⚠️ [CaseType] update with funnel relation failed, falling back:', updateErr.message);
+            delete updatePayload.funnelId;
+            data = await prisma.caseType.update({
+                where: { id, workspaceId },
+                data: updatePayload
+            });
+        }
         res.json({ success: true, data });
     } catch (error) {
         console.error('Error in updateCaseType:', error);

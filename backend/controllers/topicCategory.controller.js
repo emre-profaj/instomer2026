@@ -32,10 +32,12 @@ export const getCategories = async (req, res) => {
                     orderBy: [{ order: 'asc' }, { name: 'asc' }],
                     include: {
                         _count: { select: { conversations: true } },
-                        products: { where: { isActive: true }, select: { id: true, name: true, price: true } }
+                        products: { where: { isActive: true }, select: { id: true, name: true, price: true } },
+                        defaultFunnel: { select: { id: true, name: true, icon: true, color: true } }
                     }
                 },
-                products: { where: { isActive: true }, select: { id: true, name: true, price: true } }
+                products: { where: { isActive: true }, select: { id: true, name: true, price: true } },
+                defaultFunnel: { select: { id: true, name: true, icon: true, color: true } }
             }
         });
         res.json(categories);
@@ -63,8 +65,10 @@ export const createCategory = async (req, res) => {
                 caseTypeId: caseTypeId || null,
                 customFields: customFields ? JSON.stringify(customFields) : null,
                 defaultFunnelId: defaultFunnelId || null,
-                defaultTeamId: defaultTeamId || null,
                 branchIds: branchIds ? JSON.stringify(branchIds) : null
+            },
+            include: {
+                defaultFunnel: { select: { id: true, name: true, icon: true, color: true } }
             }
         });
         res.status(201).json(category);
@@ -90,12 +94,14 @@ export const updateCategory = async (req, res) => {
         if (caseTypeId !== undefined) data.caseTypeId = caseTypeId || null;
         if (customFields !== undefined) data.customFields = customFields ? JSON.stringify(customFields) : null;
         if (defaultFunnelId !== undefined) data.defaultFunnelId = defaultFunnelId || null;
-        if (defaultTeamId !== undefined) data.defaultTeamId = defaultTeamId || null;
         if (branchIds !== undefined) data.branchIds = branchIds ? JSON.stringify(branchIds) : null;
 
         const category = await prisma.topicCategory.update({
             where: { id: categoryId },
-            data
+            data,
+            include: {
+                defaultFunnel: { select: { id: true, name: true, icon: true, color: true } }
+            }
         });
         res.json(category);
     } catch (error) {

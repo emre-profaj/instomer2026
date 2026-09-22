@@ -18,25 +18,39 @@ export const getFormWebhooks = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        const webhooks = await prisma.formWebhook.findMany({
-            where: { workspaceId },
-            include: {
-                _count: {
-                    select: { submissions: true }
-                },
-                caseType: {
-                    select: {
-                        id: true,
-                        name: true,
-                        color: true,
-                        icon: true,
-                        funnelId: true,
-                        funnel: { select: { id: true, name: true } }
+        let webhooks;
+        try {
+            webhooks = await prisma.formWebhook.findMany({
+                where: { workspaceId },
+                include: {
+                    _count: {
+                        select: { submissions: true }
+                    },
+                    caseType: {
+                        select: {
+                            id: true,
+                            name: true,
+                            color: true,
+                            icon: true,
+                            funnelId: true,
+                            funnel: { select: { id: true, name: true } }
+                        }
                     }
-                }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+        } catch (findErr) {
+            console.warn('⚠️ [FormWebhook] findMany with caseType failed, falling back:', findErr.message);
+            webhooks = await prisma.formWebhook.findMany({
+                where: { workspaceId },
+                include: {
+                    _count: {
+                        select: { submissions: true }
+                    }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+        }
 
         res.json({ webhooks });
     } catch (error) {
@@ -64,29 +78,44 @@ export const createFormWebhook = async (req, res) => {
         const apiBaseUrl = process.env.API_URL || 'https://app.instomer.com';
         const webhookUrl = `${apiBaseUrl}/api/form-webhooks/submit/${urlSlug}`;
 
-        const webhook = await prisma.formWebhook.create({
-            data: {
-                workspaceId,
-                name,
-                siteUrl: cleanSiteUrl,
-                webhookUrl,
-                webhookToken: token,
-                fieldMapping: '{}',
-                caseTypeId: caseTypeId || null
-            },
-            include: {
-                caseType: {
-                    select: {
-                        id: true,
-                        name: true,
-                        color: true,
-                        icon: true,
-                        funnelId: true,
-                        funnel: { select: { id: true, name: true } }
+        let webhook;
+        try {
+            webhook = await prisma.formWebhook.create({
+                data: {
+                    workspaceId,
+                    name,
+                    siteUrl: cleanSiteUrl,
+                    webhookUrl,
+                    webhookToken: token,
+                    fieldMapping: '{}',
+                    caseTypeId: caseTypeId || null
+                },
+                include: {
+                    caseType: {
+                        select: {
+                            id: true,
+                            name: true,
+                            color: true,
+                            icon: true,
+                            funnelId: true,
+                            funnel: { select: { id: true, name: true } }
+                        }
                     }
                 }
-            }
-        });
+            });
+        } catch (createErr) {
+            console.warn('⚠️ [FormWebhook] create with caseTypeId failed, falling back:', createErr.message);
+            webhook = await prisma.formWebhook.create({
+                data: {
+                    workspaceId,
+                    name,
+                    siteUrl: cleanSiteUrl,
+                    webhookUrl,
+                    webhookToken: token,
+                    fieldMapping: '{}'
+                }
+            });
+        }
 
         res.json({ webhook });
     } catch (error) {
@@ -101,30 +130,46 @@ export const updateFormWebhook = async (req, res) => {
         const { workspaceId, webhookId } = req.params;
         const { name, siteUrl, isActive, caseTypeId } = req.body;
 
-        const webhook = await prisma.formWebhook.update({
-            where: {
-                id: webhookId,
-                workspaceId
-            },
-            data: {
-                ...(name && { name }),
-                ...(siteUrl !== undefined && { siteUrl }),
-                ...(typeof isActive === 'boolean' && { isActive }),
-                ...(caseTypeId !== undefined && { caseTypeId: caseTypeId || null })
-            },
-            include: {
-                caseType: {
-                    select: {
-                        id: true,
-                        name: true,
-                        color: true,
-                        icon: true,
-                        funnelId: true,
-                        funnel: { select: { id: true, name: true } }
+        let webhook;
+        try {
+            webhook = await prisma.formWebhook.update({
+                where: {
+                    id: webhookId,
+                    workspaceId
+                },
+                data: {
+                    ...(name && { name }),
+                    ...(siteUrl !== undefined && { siteUrl }),
+                    ...(typeof isActive === 'boolean' && { isActive }),
+                    ...(caseTypeId !== undefined && { caseTypeId: caseTypeId || null })
+                },
+                include: {
+                    caseType: {
+                        select: {
+                            id: true,
+                            name: true,
+                            color: true,
+                            icon: true,
+                            funnelId: true,
+                            funnel: { select: { id: true, name: true } }
+                        }
                     }
                 }
-            }
-        });
+            });
+        } catch (updateErr) {
+            console.warn('⚠️ [FormWebhook] update with caseTypeId failed, falling back:', updateErr.message);
+            webhook = await prisma.formWebhook.update({
+                where: {
+                    id: webhookId,
+                    workspaceId
+                },
+                data: {
+                    ...(name && { name }),
+                    ...(siteUrl !== undefined && { siteUrl }),
+                    ...(typeof isActive === 'boolean' && { isActive })
+                }
+            });
+        }
 
         res.json({ webhook });
     } catch (error) {

@@ -144,6 +144,26 @@ export async function executeUnifiedAICall({
             })
         ]);
 
+        // ── 2b. Bilgi bankası yüklenemezse bot uydurmasın, temsilciye aktarsın ──
+        if (!baseKnowledge?.text) {
+            console.warn('⚠️ [UnifiedAI] Bilgi bankası boş döndü — temsilciye aktarılıyor');
+            return {
+                classification: {
+                    classification: 'GENEL',
+                    confidence: 0.5,
+                    reasoning: 'Bilgi bankası yüklenemedi, temsilciye aktarılıyor.',
+                    extractedData: {},
+                    matchedFunnelId: null,
+                    topicCategoryId: null,
+                    matchedBranchId: null,
+                    matchedProductIds: [],
+                    isQualifiedLead: false,
+                },
+                chatResponse: '[HANDOFF] Şu an size en doğru bilgiyi verebilmem için sizi hemen bir çalışma arkadaşımla buluşturmak istiyorum. Kısa süre içinde size dönüş yapılacaktır.',
+                stageTransition: null,
+            };
+        }
+
         // ── 3. Konuşma geçmişini formatla ──
         const chatLog = recentMessages.map(m => {
             const role = (m.isFromContact || m.direction === 'IN') ? 'Müşteri' : 'Temsilci';
@@ -294,7 +314,19 @@ export async function executeUnifiedAICall({
         }
 
         // ── 7. Bot system prompt (kişilik + yasaklar) ──
-        const botPrompt = activeBot?.prompt || 'Müşteri temsilcisi olarak yardımcı ol.';
+        const botPrompt = activeBot?.prompt || '';
+
+        // ── 7b. Agent davranış blokları → otomatik prompt ──
+        let behaviorContext = '';
+        try {
+            const { buildBehaviorPrompt } = await import('./behaviorPrompt.service.js');
+            behaviorContext = buildBehaviorPrompt(activeBot, workspace, {
+                categories: topicCategories,
+                branches: branchList
+            });
+        } catch (bhErr) {
+            console.error('⚠️ [UnifiedAI] Davranış blokları hatası:', bhErr.message);
+        }
 
         // ── 8. Birleşik system prompt ──
         const now = new Date();
@@ -319,9 +351,14 @@ ${contact.name || contact.phone ? '🚫🚫🚫 ÖNEMLİ: Müşterinin bilgileri
 ${chatLog || '(İlk mesaj)'}
 ${activityLog ? `\n📝 TEMSİLCİ NOTLARI VE AKTİVİTELER:\n${activityLog}` : ''}
 
+${behaviorContext ? `═══════════════════════════════════════
+🧠 AGENT DAVRANIŞ TALİMATLARI (OTOMATİK ÜRETİLDİ):
+${behaviorContext}
+═══════════════════════════════════════` : ''}
+
 ═══════════════════════════════════════
-🤖 İŞLETME TALİMATLARI VE BOT PROMPT'U (EN YÜKSEK ÖNCELİK - KESİNLİKLE UYULACAK):
-${botPrompt || '(Özel prompt girilmemiş)'}
+🤖 EK TALİMATLAR (İŞLETME SAHİBİ TARAFINDAN YAZILDI):
+${botPrompt || '(Ek talimat girilmemiş)'}
 ═══════════════════════════════════════
 ${stageContext ? `
 ═══════════════════════════════════════

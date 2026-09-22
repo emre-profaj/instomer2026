@@ -379,6 +379,22 @@ model AIBot {
   // Bot ürün fiyatı söyleyebilir mi? null = workspace ayarını kullan
   catalogPriceDisclosure Boolean?
 
+  // ── Agent Davranış Blokları ──
+  // JSON: { greeting, collectName, collectPhone, classifyNeeds,
+  //         stageGoals, suggestProducts, shareLocation, admitUncertainty }
+  // null = varsayılan bloklar kullanılır (tümü açık, suggestProducts kapalı)
+  behaviorBlocks         Json?
+  // Üslup: FRIENDLY_PRO | FORMAL | CASUAL | CONCISE
+  tone                   String   @default("FRIENDLY_PRO")
+  // Mesaj uzunluğu: SHORT | NORMAL | DETAILED
+  messageLength          String   @default("NORMAL")
+  // Emoji kullanımı
+  emojiEnabled           Boolean  @default(true)
+  // Çok dilli yanıt: müşterinin dilinde yanıt ver
+  multilingualEnabled    Boolean  @default(false)
+  // Randevu modu: AUTO = kesin ver, REQUEST = talep al, null = kapalı
+  appointmentMode        String?
+
   @@index([workspaceId])
   @@map("ai_bots")
 }
@@ -1571,8 +1587,10 @@ model TopicCategory {
 
   // Sektöre özel alanlar: JSON [{key, type, options, unit, required}]
   customFields    String? @db.Text
-  // Varsayılan akış ve takım ataması
+  // Varsayılan akış ataması
   defaultFunnelId String?
+  defaultFunnel   Funnel? @relation("CategoryDefaultFunnel", fields: [defaultFunnelId], references: [id], onDelete: SetNull)
+  // Sorumlu takım artık akış aşamalarından geldiği için kullanılmıyor; sütun DB'de kalıyor
   defaultTeamId   String?
   // Legacy — alan veritabanında kalıyor, ilişki kaldırıldı
   caseTypeId      String?
@@ -1589,6 +1607,7 @@ model TopicCategory {
 
   @@index([workspaceId])
   @@index([parentId])
+  @@index([defaultFunnelId])
   @@map("topic_categories")
 }
 
@@ -1643,6 +1662,8 @@ model Funnel {
   stages                 FunnelStage[]
   channelRoutings        ChannelRouting[] @relation("FunnelChannelRoutings")
   caseTypes              CaseType[]       @relation("CaseTypeFunnel")
+  categories             TopicCategory[]  @relation("CategoryDefaultFunnel")
+  products               Product[]        @relation("ProductFunnel")
 
   @@index([workspaceId])
   @@index([parentId])
@@ -2185,8 +2206,12 @@ model Product {
   parentId String? // Üst ürün grubu
   isGroup  Boolean @default(false) // true ise bu bir ürün grubu
 
+  // Varsayılan akış ataması (ürün grubu seviyesinde)
+  funnelId String?
+
   workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   category         TopicCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  funnel           Funnel?           @relation("ProductFunnel", fields: [funnelId], references: [id], onDelete: SetNull)
   parent           Product?          @relation("ProductHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children         Product[]         @relation("ProductHierarchy")
   features         ProductFeature[]
@@ -2198,6 +2223,7 @@ model Product {
   @@index([workspaceId, groupName])
   @@index([categoryId])
   @@index([parentId])
+  @@index([funnelId])
   @@map("products")
 }
 

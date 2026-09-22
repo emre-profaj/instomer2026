@@ -318,6 +318,13 @@ export const generateResponse = async (req, res) => {
         ]);
         if (workspaceKnowledge) {
             documentContext += workspaceKnowledge;
+        } else {
+            // Bilgi bankası yüklenemezse bot uydurmasın, temsilciye aktarsın
+            console.warn('⚠️ [generateResponse] Bilgi bankası boş döndü — temsilciye aktarılıyor');
+            return res.json({
+                response: '[HANDOFF] Şu an size en doğru bilgiyi verebilmem için sizi hemen bir çalışma arkadaşımla buluşturmak istiyorum. Kısa süre içinde size dönüş yapılacaktır.',
+                knowledgeBaseFailed: true
+            });
         }
 
         // Determine effective Bot ID: Explicit params > Assigned Bot > Default

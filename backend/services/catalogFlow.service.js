@@ -246,16 +246,16 @@ export async function getCatalogCapability(workspaceId, botId = null) {
         prisma.workspace.findUnique({
             where: { id: workspaceId },
             select: { catalogFlowEnabled: true, catalogPriceDisclosure: true }
-        }),
-        prisma.appointmentBranch.count({ where: { workspaceId, isActive: true } }),
-        prisma.product.count({ where: { workspaceId, isActive: true, isGroup: false } }),
-        prisma.topicCategory.count({ where: { workspaceId, isActive: true } }),
-        prisma.apiIntegration.count({ where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true } }),
+        }).catch(() => null),
+        prisma.appointmentBranch.count({ where: { workspaceId, isActive: true } }).catch(() => 0),
+        prisma.product.count({ where: { workspaceId, isActive: true, isGroup: false } }).catch(() => 0),
+        prisma.topicCategory.count({ where: { workspaceId, isActive: true } }).catch(() => 0),
+        prisma.apiIntegration.count({ where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true } }).catch(() => 0),
         botId
             ? prisma.aIBot.findUnique({
                 where: { id: botId },
                 select: { catalogFlowEnabled: true, catalogPriceDisclosure: true }
-            })
+            }).catch(() => null)
             : null
     ]);
 

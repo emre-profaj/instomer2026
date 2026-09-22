@@ -284,14 +284,16 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
 
                 // FORM kanalı için formWebhook'tan caseTypeId al
                 if (!caseTypeId && conv.channel === 'FORM') {
-                    const latestSubmission = await prisma.formSubmission.findFirst({
-                        where: { conversationId },
-                        orderBy: { createdAt: 'desc' },
-                        include: { formWebhook: { select: { caseTypeId: true } } }
-                    });
-                    if (latestSubmission?.formWebhook?.caseTypeId) {
-                        caseTypeId = latestSubmission.formWebhook.caseTypeId;
-                    }
+                    try {
+                        const latestSubmission = await prisma.formSubmission.findFirst({
+                            where: { conversationId },
+                            orderBy: { createdAt: 'desc' },
+                            include: { formWebhook: { select: { caseTypeId: true } } }
+                        });
+                        if (latestSubmission?.formWebhook?.caseTypeId) {
+                            caseTypeId = latestSubmission.formWebhook.caseTypeId;
+                        }
+                    } catch (_) {}
                 }
 
                 // Vaka tipinin bağlı olduğu akışı otomatik çek (eğer konuşmada akış henüz atanmamışsa)
@@ -299,29 +301,33 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                 let targetFunnelStageId = conv.funnelStageId || null;
 
                 if (!targetFunnelType && caseTypeId) {
-                    const ct = await prisma.caseType.findUnique({
-                        where: { id: caseTypeId },
-                        include: {
-                            funnel: {
-                                include: {
-                                    stages: { orderBy: { order: 'asc' }, take: 1 }
+                    try {
+                        const ct = await prisma.caseType.findUnique({
+                            where: { id: caseTypeId },
+                            include: {
+                                funnel: {
+                                    include: {
+                                        stages: { orderBy: { order: 'asc' }, take: 1 }
+                                    }
                                 }
                             }
-                        }
-                    });
-                    if (ct?.funnelId) {
-                        targetFunnelType = ct.funnelId;
-                        targetFunnelStageId = ct.funnel?.stages?.[0]?.id || null;
+                        });
+                        if (ct?.funnelId) {
+                            targetFunnelType = ct.funnelId;
+                            targetFunnelStageId = ct.funnel?.stages?.[0]?.id || null;
 
-                        // Konuşmayı da bu akış ve aşamaya senkronize et
-                        await prisma.conversation.update({
-                            where: { id: conversationId },
-                            data: {
-                                funnelType: targetFunnelType,
-                                funnelStageId: targetFunnelStageId
-                            }
-                        }).catch(() => {});
-                        console.log(`🧭 [AutoCase] Resolved funnel "${ct.funnel?.name}" from CaseType "${ct.name}" for conv ${conversationId}`);
+                            // Konuşmayı da bu akış ve aşamaya senkronize et
+                            await prisma.conversation.update({
+                                where: { id: conversationId },
+                                data: {
+                                    funnelType: targetFunnelType,
+                                    funnelStageId: targetFunnelStageId
+                                }
+                            }).catch(() => {});
+                            console.log(`🧭 [AutoCase] Resolved funnel "${ct.funnel?.name}" from CaseType "${ct.name}" for conv ${conversationId}`);
+                        }
+                    } catch (ctErr) {
+                        console.warn('⚠️ [AutoCase] CaseType funnel lookup failed:', ctErr.message);
                     }
                 }
 
