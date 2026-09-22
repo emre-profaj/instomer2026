@@ -390,6 +390,13 @@ httpServer.listen(PORT, () => {
 // Graceful shutdown handler for zero-downtime reloads
 const gracefulShutdown = (signal) => {
   console.log(`🛑 [${signal}] Graceful shutdown initiated for ${instanceId}. Closing HTTP server...`);
+
+  // Bekleyen bot cevaplarını kaybetme: 8 saniyelik mesaj birleştirme
+  // penceresi bellekte duruyor, süreç kapanınca yok oluyordu.
+  import('./services/autoReplyDelay.service.js')
+    .then(m => m.flushPendingBatches?.(5000))
+    .catch(e => console.error('⚠️ [Shutdown] Bekleyen cevaplar işlenemedi:', e.message));
+
   httpServer.close(async () => {
     console.log('✅ [Shutdown] HTTP server closed gracefully.');
     try {

@@ -383,6 +383,51 @@ export const scheduleMessageBatch = (conversationId, workspaceId, channel, userM
 };
 
 /**
+ * Süreç kapanırken BEKLEYEN cevapları kurtar.
+ *
+ * Gelen mesaj 8 saniye bekletiliyor (arka arkaya yazan müşteriye tek
+ * cevap vermek için). Bu bekleme yalnızca BELLEKTE duruyor; süreç o
+ * pencerede yeniden başlarsa cevap hiç üretilmiyor ve bot susmuş
+ * görünüyordu. Gerçek vaka: 22.09.2026, mesaj 11:05:54'te alındı,
+ * süreç 11:05:57'de yeniden başladı, cevap kayboldu.
+ *
+ * Kapanma sinyalinde bekleyenleri hemen işliyoruz. Zaman bütçesi var:
+ * pm2 kapanmayı sonsuza kadar beklemez.
+ */
+export const flushPendingBatches = async (timeoutMs = 5000) => {
+    const ids = [...pendingBatchMessages.keys()];
+    if (ids.length === 0) return 0;
+
+    console.log(`💾 [MessageBatch] Kapanış: ${ids.length} bekleyen cevap hemen işleniyor`);
+
+    for (const conversationId of ids) {
+        const timerKey = `batch_${conversationId}`;
+        if (pendingBatchTimers.has(timerKey)) {
+            clearTimeout(pendingBatchTimers.get(timerKey));
+            pendingBatchTimers.delete(timerKey);
+        }
+    }
+
+    const isler = ids.map(async (conversationId) => {
+        try {
+            await processBatchedMessages(conversationId);
+        } catch (err) {
+            console.error(`❌ [MessageBatch] Kapanışta işlenemedi ${conversationId}:`, err.message);
+        } finally {
+            pendingBatchMessages.delete(conversationId);
+        }
+    });
+
+    await Promise.race([
+        Promise.allSettled(isler),
+        new Promise(resolve => setTimeout(resolve, timeoutMs))
+    ]);
+
+    console.log(`💾 [MessageBatch] Kapanış işlemi bitti (${ids.length} konuşma)`);
+    return ids.length;
+};
+
+/**
  * Cancel pending message batch (e.g. when a human agent replies)
  */
 export const cancelMessageBatch = (conversationId) => {
