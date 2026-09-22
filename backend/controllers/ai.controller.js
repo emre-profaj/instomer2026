@@ -444,6 +444,14 @@ ${systemPrompt}`;
                     // 1000 karakteri aşan mesajı REDDEDİYOR ve müşteriye HİÇBİR
                     // ŞEY ulaşmıyordu. ~700 token ≈ 2-4 paragraf, hedeflenen ton.
                     maxOutputTokens: 700,
+                    // ── DÜŞÜNME BÜTÇESİ ────────────────────────────────
+                    // gemini-2.5-flash varsayılan olarak "düşünüyor" ve bu
+                    // tokenlar da maxOutputTokens bütçesinden harcanıyor.
+                    // Ölçülen gerçek vaka: 700 bütçenin 668'i düşünmeye gitti,
+                    // cevaba 28 token kaldı → mesaj cümle ortasında kesildi
+                    // (finishReason: MAX_TOKENS). Müşteri yarım mesaj aldı.
+                    // Düşünmeyi sınırlamak cevaba en az 572 token bırakıyor.
+                    thinkingConfig: { thinkingBudget: 128 },
                 }
             });
             const chat = model.startChat({ history: historyParts });
@@ -645,6 +653,9 @@ export const updateConversationAnalysis = async (req, res) => {
             if (updated.caseId) {
                 emitToWorkspace(updated.workspaceId, 'case_updated', {
                     caseId: updated.caseId,
+                    // changes olmadan gönderiliyordu: dinleyici tarafta
+                    // korumasız okuma kişi kartını çökertiyordu.
+                    changes: { categoryId: updated.topicCategoryId },
                     categoryId: updated.topicCategoryId,
                     category: updated.topicCategory
                 });
@@ -2615,6 +2626,14 @@ ${systemPrompt}${appointmentContextPrompt}`;
                     // 1000 karakteri aşan mesajı REDDEDİYOR ve müşteriye HİÇBİR
                     // ŞEY ulaşmıyordu. ~700 token ≈ 2-4 paragraf, hedeflenen ton.
                     maxOutputTokens: 700, // Strict grounding, zero hallucination
+                    // ── DÜŞÜNME BÜTÇESİ ────────────────────────────────
+                    // gemini-2.5-flash varsayılan olarak "düşünüyor" ve bu
+                    // tokenlar da maxOutputTokens bütçesinden harcanıyor.
+                    // Ölçülen gerçek vaka: 700 bütçenin 668'i düşünmeye gitti,
+                    // cevaba 28 token kaldı → mesaj cümle ortasında kesildi
+                    // (finishReason: MAX_TOKENS). Müşteri yarım mesaj aldı.
+                    // Düşünmeyi sınırlamak cevaba en az 572 token bırakıyor.
+                    thinkingConfig: { thinkingBudget: 128 },
                 }
             };
 
@@ -2799,6 +2818,24 @@ ${systemPrompt}${appointmentContextPrompt}`;
         try {
             responseText = stripAiThinking(result.response.text());
             console.log(`✅ [AI] Final Response Text length: ${responseText.length}`);
+
+            // ── KESİK MESAJ GÜVENLİK AĞI ────────────────────────────────
+            // Token bütçesi dolduğunda Gemini cümleyi (hatta kelimeyi) ortada
+            // bırakıyor ve bu hâliyle müşteriye gidiyordu. Düşünme bütçesi
+            // artık sınırlı ama yine de olursa yarım kelime göndermeyelim:
+            // son tamamlanmış cümleye kadar kırpıyoruz.
+            if (result.response.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+                const u = result.response.usageMetadata || {};
+                console.warn(`⚠️ [AI] Yanıt token sınırına takıldı (düşünme: ${u.thoughtsTokenCount ?? '?'}, cevap: ${u.candidatesTokenCount ?? '?'}) — son cümleye kırpılıyor`);
+                const lastStop = Math.max(
+                    responseText.lastIndexOf('.'), responseText.lastIndexOf('!'),
+                    responseText.lastIndexOf('?'), responseText.lastIndexOf('\n')
+                );
+                if (lastStop > 40) {
+                    responseText = responseText.slice(0, lastStop + 1).trim();
+                    console.warn(`⚠️ [AI] Kırpıldı → ${responseText.length} karakter`);
+                }
+            }
             if (!responseText || responseText.trim() === '') {
                 console.warn(`⚠️ [AI] Response text is empty! Candidates:`, JSON.stringify(result.response.candidates));
                 

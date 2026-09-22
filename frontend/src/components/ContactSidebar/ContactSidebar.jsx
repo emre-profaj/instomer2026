@@ -887,17 +887,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setActiveCaseInfo(prev => {
                 if (!prev) return prev;
                 const updates = {};
-                if (changes.title !== undefined) updates.title = changes.title;
-                if (changes.status !== undefined) updates.status = changes.status;
-                if (changes.funnelType !== undefined) updates.funnelType = changes.funnelType;
-                if (changes.funnelStageId !== undefined) updates.funnelStageId = changes.funnelStageId;
-                if (changes.assignedToId !== undefined) updates.assignedToId = changes.assignedToId;
-                if (changes.assignedTeamId !== undefined) updates.assignedTeamId = changes.assignedTeamId;
-                if (changes.assignedTo !== undefined) updates.assignedTo = changes.assignedTo;
-                if (changes.branchId !== undefined) {
-                    updates.branchId = changes.branchId;
-                    updates.branch = changes.branch !== undefined ? changes.branch : (availableBranches.find(b => b.id === changes.branchId) || null);
+                // Bazı yayıncılar (kategori eşleşmesi) changes göndermeden
+                // yalnızca categoryId yolluyordu; korumasız okuma tüm kişi
+                // kartını hata ekranına düşürüyordu.
+                const d = changes || {};
+                if (d.title !== undefined) updates.title = d.title;
+                if (d.status !== undefined) updates.status = d.status;
+                if (d.funnelType !== undefined) updates.funnelType = d.funnelType;
+                if (d.funnelStageId !== undefined) updates.funnelStageId = d.funnelStageId;
+                if (d.assignedToId !== undefined) updates.assignedToId = d.assignedToId;
+                if (d.assignedTeamId !== undefined) updates.assignedTeamId = d.assignedTeamId;
+                if (d.assignedTo !== undefined) updates.assignedTo = d.assignedTo;
+                if (d.branchId !== undefined) {
+                    updates.branchId = d.branchId;
+                    updates.branch = d.branch !== undefined ? d.branch : (availableBranches.find(b => b.id === d.branchId) || null);
                 }
+                // Kategori olayın kökünde de gelebiliyor
+                const yeniKategoriId = d.categoryId !== undefined ? d.categoryId : e.detail?.categoryId;
+                if (yeniKategoriId !== undefined) updates.categoryId = yeniKategoriId;
                 return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
             });
         };

@@ -401,6 +401,9 @@ export const matchCategoryFromConversation = async (workspaceId, conversationId)
             if (targetCase?.id) {
                 emitToWorkspace(workspaceId, 'case_updated', {
                     caseId: targetCase.id,
+                    // Dinleyiciler changes bekliyor; bu yayıncı göndermeyince
+                    // açık kişi kartı çöküyordu.
+                    changes: { categoryId: match.categoryId },
                     categoryId: match.categoryId,
                     category: {
                         id: match.category.id,
