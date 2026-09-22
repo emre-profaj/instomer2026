@@ -4,12 +4,55 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI, appointmentConfigAPI, teamAPI, funnelAPI, productAPI, resourceAPI, aiSetupAPI } from '../../services/api';
 import { getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory } from '../../services/topicCategory.api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search, Wand2, Clock } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, MapPin, Layers, FolderTree, Package, UserCircle, Sparkles, HelpCircle, Search, Wand2, Clock, Check } from 'lucide-react';
 import Products from '../Sales/Products';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './KnowledgeBase.css';
 import './CompanyInfo.css';
 import './Branches.css';
+
+/**
+ * Bilgi ekleme yöntemleri.
+ *
+ * Dördü de aynı işi yapıyor: bota bilgi vermek. Menüde yan yana dört isim
+ * olarak duruyordu; hangisinin ne yaptığı ve ne sıklıkla tazelendiği ancak
+ * ekranı açınca görülüyordu. Kartlarda bu üç bilgi birden yazıyor.
+ *
+ * Kimlikler eski sekme adlarıyla aynı tutuldu: eski bağlantılar
+ * (?tab=feed gibi) çalışmaya devam ediyor.
+ */
+const EKLEME_YONTEMLERI = [
+    {
+        id: 'text',
+        ad: 'Metin / SSS',
+        ikon: FileText,
+        aciklama: 'Başlık ve içerik yazın: soru-cevap, iade koşulları, kampanya kuralları.',
+        meta: 'Hazır şablon var'
+    },
+    {
+        id: 'files',
+        ad: 'Dosya',
+        ikon: Upload,
+        aciklama: 'Hazır dokümanı yükleyin, metni otomatik çıkarılır.',
+        meta: 'PDF · DOCX · DOC · TXT'
+    },
+    {
+        id: 'url',
+        ad: 'Web sayfası',
+        ikon: Globe,
+        aciklama: 'Sayfadaki okunabilir metin alınır, sayfa değişince tazelenir.',
+        meta: 'Günlük / haftalık tazelenir'
+    },
+    {
+        id: 'feed',
+        ad: 'Dinamik feed',
+        ikon: Link,
+        aciklama: 'JSON verisi düz metne çevrilir: stok, fiyat, uzman listesi.',
+        meta: 'Saatlik tazelenir'
+    }
+];
+
+const EKLEME_SEKMELERI = EKLEME_YONTEMLERI.map(y => y.id);
 
 const branchInitials = (name) => {
     const words = (name || '').trim().split(/\s+/).filter(Boolean);
@@ -933,17 +976,8 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                         <button className={`base-nav-item ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => handleSelectTab('resources')}>
                             <UserCircle size={16} /> Kaynaklar
                         </button>
-                        <button className={`base-nav-item ${activeTab === 'text' ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
-                            <FileText size={16} /> Metin Ekle / SSS
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'files' ? 'active' : ''}`} onClick={() => handleSelectTab('files')}>
-                            <Upload size={16} /> Dosya Ekle
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'url' ? 'active' : ''}`} onClick={() => handleSelectTab('url')}>
-                            <Globe size={16} /> Web Sitesi Tara
-                        </button>
-                        <button className={`base-nav-item ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => handleSelectTab('feed')}>
-                            <Link size={16} /> Dinamik Feed
+                        <button className={`base-nav-item ${EKLEME_SEKMELERI.includes(activeTab) ? 'active' : ''}`} onClick={() => handleSelectTab('text')}>
+                            <FileText size={16} /> Bilgi Ekle
                         </button>
                         <div style={{ borderTop: '1px solid var(--border-color, #e5e7eb)', margin: '8px 0' }} />
                         <button className={`base-nav-item ${activeTab === 'list' ? 'active' : ''}`} onClick={() => handleSelectTab('list')}>
@@ -2268,6 +2302,40 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
             )}
 
             {/* Text Tab */}
+            {/* ── BİLGİ EKLE: dört yöntem tek ekranda ──────────────────
+                Metin, dosya, web sayfası ve feed ayrı menü kayıtlarıydı;
+                dördü de aynı işi yapıyor ve menüde yalnızca isimleri yazdığı
+                için hangisinin ne yaptığı ancak açınca anlaşılıyordu. Artık
+                önce yöntem seçiliyor, formu hemen altında açılıyor. */}
+            {EKLEME_SEKMELERI.includes(activeTab) && (
+            <div className="kb-add-surface">
+                <div className="kb-method-grid">
+                    {EKLEME_YONTEMLERI.map(yontem => {
+                        const Ikon = yontem.ikon;
+                        const secili = activeTab === yontem.id;
+                        return (
+                            <button
+                                key={yontem.id}
+                                type="button"
+                                aria-pressed={secili}
+                                className={`kb-method ${secili ? 'on' : ''}`}
+                                onClick={() => handleSelectTab(yontem.id)}
+                            >
+                                <div className="kb-method-top">
+                                    <span className="kb-method-icon"><Ikon size={18} /></span>
+                                    {secili && (
+                                        <span className="kb-method-check">
+                                            <Check size={13} /> Seçili
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="kb-method-name">{yontem.ad}</div>
+                                <div className="kb-method-desc">{yontem.aciklama}</div>
+                                <div className="kb-method-meta">{yontem.meta}</div>
+                            </button>
+                        );
+                    })}
+                </div>
             {activeTab === 'text' && (
                 <div className="card kb-add-form">
                     <div className="form-group" style={{ marginBottom: '16px' }}>
@@ -2509,50 +2577,11 @@ C: [Cevap 1]
                     </div>
                 </div>
             )}
-
-
-
-            {/* Feed Tab */}
-            {activeTab === 'feed' && (
-                <div className="card kb-add-form">
-                    <div className="form-group">
-                        <label>JSON API veya Feed URL'si</label>
-                        <input
-                            type="url"
-                            className="input"
-                            placeholder="https://api.hastane.com/doktorlar.json"
-                            value={newUrl}
-                            onChange={(e) => setNewUrl(e.target.value)}
-                        />
-                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                            * Girdiğiniz JSON verisi Yapay Zekanın anlayacağı düz metinlere dönüştürülüp eklenecektir. (Stok, Fiyat veya Doktor listeleri için idealdir)
-                        </p>
-                    </div>
-                    <div className="form-group" style={{ marginTop: '16px' }}>
-                        <label>Otomatik Güncelleme Sıklığı</label>
-                        <select
-                            className="input"
-                            value={urlSyncInterval}
-                            onChange={(e) => setUrlSyncInterval(e.target.value)}
-                        >
-                            <option value="">Sadece Bir Kez Çek</option>
-                            <option value="1">Her Saat</option>
-                            <option value="12">Günde 2 Kez (12 Saat)</option>
-                            <option value="24">Her Gün (24 Saat)</option>
-                        </select>
-                    </div>
-                    <div className="kb-form-actions">
-                        <button
-                            className="btn btn-primary"
-                            onClick={handleAddUrlEntry}
-                            disabled={scraping || !newUrl.trim()}
-                        >
-                            {scraping ? <RefreshCw className="spinning" size={16} /> : <Link size={16} />}
-                            {scraping ? 'Veri Çekiliyor...' : 'Feed Bağla ve Ekle'}
-                        </button>
-                    </div>
-                </div>
+            </div>
             )}
+
+
+
 
             {/* List Tab - Merkezi AI Belleği & Tüm Bilgiler */}
             {activeTab === 'list' && (

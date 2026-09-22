@@ -136,36 +136,15 @@ const SettingsNav = () => {
                             <span className="settings-item-label">Kaynaklar</span>
                         </Link>
 
+                        {/* Metin, dosya, web ve feed tek ekrana indi: dördü de
+                            aynı işi yapıyor (bota bilgi eklemek), menüde yan yana
+                            dört isim hangisini seçeceğini söylemiyordu. */}
                         <Link
                             to="/base?tab=text"
-                            className={`settings-nav-item ${isKbActive('text') ? 'active' : ''}`}
+                            className={`settings-nav-item ${['text', 'files', 'url', 'feed'].some(t => isKbActive(t)) ? 'active' : ''}`}
                         >
                             <FileText size={15} />
-                            <span className="settings-item-label">Metin Ekle / SSS</span>
-                        </Link>
-
-                        <Link
-                            to="/base?tab=files"
-                            className={`settings-nav-item ${isKbActive('files') ? 'active' : ''}`}
-                        >
-                            <Upload size={15} />
-                            <span className="settings-item-label">Dosya Ekle</span>
-                        </Link>
-
-                        <Link
-                            to="/base?tab=url"
-                            className={`settings-nav-item ${isKbActive('url') ? 'active' : ''}`}
-                        >
-                            <Globe size={15} />
-                            <span className="settings-item-label">Web Sitesi Tara</span>
-                        </Link>
-
-                        <Link
-                            to="/base?tab=feed"
-                            className={`settings-nav-item ${isKbActive('feed') ? 'active' : ''}`}
-                        >
-                            <LinkIcon size={15} />
-                            <span className="settings-item-label">Dinamik Feed</span>
+                            <span className="settings-item-label">Bilgi Ekle</span>
                         </Link>
 
                         <Link
