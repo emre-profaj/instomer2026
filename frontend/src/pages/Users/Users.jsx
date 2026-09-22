@@ -461,7 +461,7 @@ const ROLE_COLORS = {
 };
 
 // ─── Member Chip with hover popup ────────────────────────────
-const MemberChip = ({ member, roleInfo, isOnline, onRemove, email }) => {
+const MemberChip = ({ member, roleInfo, isOnline, onRemove, email, durum }) => {
     const { t } = useTranslation();
     const [popupPos, setPopupPos] = useState(null);
     const chipRef = useRef(null);
@@ -514,6 +514,13 @@ const MemberChip = ({ member, roleInfo, isOnline, onRemove, email }) => {
             )}
             <span className="ut-chip-avatar">{getInitials(member.user?.name)}</span>
             <span className="ut-chip-name">{member.user?.name || 'Bilinmiyor'}</span>
+            {/* Yük ve mesai durumu çipin üzerinde: takıma bakarken kimin
+                dolu, kimin kapalı olduğu tek bakışta görünsün. */}
+            {durum && (
+                durum.isWorkingNow
+                    ? <span className={`ut-chip-load ${durum.maxOpen && durum.openCount >= durum.maxOpen ? 'full' : ''}`}>{durum.openCount}</span>
+                    : <span className="ut-chip-off">mesai dışı</span>
+            )}
             <button className="ut-chip-remove" title={t('common.remove') || 'Remove'} onClick={onRemove}>
                 <X size={10} />
             </button>
@@ -1116,6 +1123,7 @@ const UsersTeams = () => {
                                     roleInfo={roleInfo}
                                     isOnline={isOnline}
                                     email={email}
+                                    durum={uyeDurumu(m.userId)}
                                     onRemove={() => handleRemoveFromTeam(team.id, m.userId)}
                                 />
                             );
@@ -1305,7 +1313,7 @@ const UsersTeams = () => {
                             <>
                                 {/* ── Kullanıcılar ── */}
                                 {members.length > 0 && (
-                                    <div className="ut-panel-section-label"><UserCircle2 size={12} /> Users</div>
+                                    <div className="ut-panel-section-label"><UserCircle2 size={12} /> Kişiler</div>
                                 )}
                                 {members.filter(uyeGecer).map(member => {
                                     const roleInfo = ROLE_COLORS[member.role] || ROLE_COLORS.AGENT;
@@ -1396,7 +1404,7 @@ const UsersTeams = () => {
 
                                 {/* ── AI Asistanlar ── */}
                                 {bots.length > 0 && (
-                                    <div className="ut-panel-section-label ut-panel-section-bot"><Bot size={12} /> AI Assistants</div>
+                                    <div className="ut-panel-section-label ut-panel-section-bot"><Bot size={12} /> AI asistanlar</div>
                                 )}
                                 {bots.map(bot => (
                                     <div
@@ -1416,10 +1424,14 @@ const UsersTeams = () => {
                                         </div>
                                         <div className="ut-user-info">
                                             <span className="ut-user-name">{bot.name}</span>
-                                            <span className="ut-user-email">{bot.role || 'AI Asistan'}</span>
+                                            <span className="ut-user-email">{bot.role || 'Sohbet botu'}</span>
                                         </div>
                                         <div className="ut-user-actions">
-                                            <span className="ut-role-badge" style={{ background: '#ede9fe', color: '#6d28d9' }}>AI Bot</span>
+                                            {/* Rozet yerine durum: botun açık olup olmadığı
+                                                "AI Bot" etiketinden daha çok merak ediliyor. */}
+                                            <span className={`ut-state ${bot.isActive === false ? 'off' : 'ok'}`}>
+                                                {bot.isActive === false ? 'Pasif' : 'Aktif'}
+                                            </span>
                                         </div>
                                     </div>
                                 ))}
@@ -1427,7 +1439,7 @@ const UsersTeams = () => {
                                 {/* ── AI Call Agents ── */}
                                 {retellAgents.length > 0 && (
                                     <div className="ut-call-section-header">
-                                        <div className="ut-panel-section-label" style={{ color: '#0d9488', borderColor: '#ccfbf1', margin: 0 }}><Phone size={12} /> AI Call Agents</div>
+                                        <div className="ut-panel-section-label" style={{ color: '#0d9488', borderColor: '#ccfbf1', margin: 0 }}><Phone size={12} /> AI arama asistanları</div>
                                     </div>
                                 )}
                                 {retellAgents.map(agent => {
