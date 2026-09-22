@@ -43,6 +43,26 @@ const DEFAULT_WORKING_HOURS = {
     sunday: { enabled: false, start: '08:00', end: '18:00' }
 };
 
+// Açılır listedeki seçim → dağıtım motorunun GERÇEKTEN okuduğu alanlar.
+// distributionMode/Method motorun kullandığı alanlar; assignmentRule legacy
+// olduğu için tek başına yazılınca seçim hiç işlemiyordu.
+const DAGITIM_PATCH = {
+    POOL: { distributionMode: 'POOL' },
+    ROUND_ROBIN: { distributionMode: 'DISTRIBUTE', distributionMethod: 'ROUND_ROBIN', triggerOnPhone: false },
+    LEAST_BUSY: { distributionMode: 'DISTRIBUTE', distributionMethod: 'LEAST_BUSY', triggerOnPhone: false },
+    ONLINE_ONLY: { distributionMode: 'DISTRIBUTE', distributionMethod: 'ONLINE_ONLY', triggerOnPhone: false },
+    // Telefon gelince dağıt: motordaki CONDITIONAL + triggerOnPhone karşılığı
+    PHONE_ONLY: { distributionMode: 'CONDITIONAL', distributionMethod: 'ROUND_ROBIN', triggerOnPhone: true }
+};
+
+// Takımın mevcut ayarına göre listede hangi seçenek görünmeli
+const dagitimSecimi = (team) => {
+    const mode = team?.distributionMode || 'POOL';
+    if (mode === 'POOL') return 'POOL';
+    if (mode === 'CONDITIONAL') return team?.triggerOnPhone ? 'PHONE_ONLY' : 'ROUND_ROBIN';
+    return team?.distributionMethod || 'ROUND_ROBIN';
+};
+
 const DAY_LABELS = {
     monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday',
     thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday'
@@ -1004,13 +1024,17 @@ const UsersTeams = () => {
                             Havuzdakilere ne yapılsın?
                         </span>
                         <select
-                            value={team.assignmentRule || 'POOL'}
+                            value={dagitimSecimi(team)}
                             onChange={async (e) => {
-                                const newRule = e.target.value;
+                                const secim = e.target.value;
+                                // Eskiden yalnızca assignmentRule yazılıyordu; dağıtım
+                                // motoru o alanı OKUMUYOR (şemada "legacy"). Seçim
+                                // etkisiz kalıyor, konuşmalar havuzda bekliyordu.
+                                const patch = DAGITIM_PATCH[secim] || DAGITIM_PATCH.POOL;
                                 try {
-                                    await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: newRule });
+                                    await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: secim, ...patch });
                                     const updateNested = (list) => list.map(t => {
-                                        if (t.id === team.id) return { ...t, assignmentRule: newRule };
+                                        if (t.id === team.id) return { ...t, assignmentRule: secim, ...patch };
                                         if (t.children) return { ...t, children: updateNested(t.children) };
                                         return t;
                                     });
@@ -1030,7 +1054,7 @@ const UsersTeams = () => {
                             <option value="ROUND_ROBIN">🔄 Sırayla Dağıt (Round Robin)</option>
                             <option value="LEAST_BUSY">📊 En Az Görüşmesi Olana Dağıt</option>
                             <option value="ONLINE_ONLY">🟢 Sadece Online Olanlara Dağıt</option>
-                            <option value="PHONE_ONLY">📞 Telefon Numarası Olanları Dağıt</option>
+                            <option value="PHONE_ONLY">📞 Telefonu Olanları Sırayla Dağıt</option>
                         </select>
                     </div>
                 </div>

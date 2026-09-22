@@ -1576,7 +1576,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             if (userId !== undefined) payload.userId = userId || null;
 
             // Always use conversationAPI.assign with full payload to ensure both teamId and userId are sent
-            await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
+            const assignRes = await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
+
+            // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
+            if (assignRes?.data?.warning) {
+                alert(`⚠️ ${assignRes.data.warning}`);
+            }
 
             // Notify parent callbacks for any additional side-effects (e.g. list refresh)
             if (userId !== undefined && onAssignUser) {

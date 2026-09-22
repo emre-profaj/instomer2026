@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { cascadeAssignment } from './cascadeAssignment.service.js';
+import { isWorkingAt, unavailabilityReason } from '../utils/workingHours.js';
 
 /**
  * Dağıtım metoduna göre uygun üyeyi seç ve ata
@@ -17,18 +18,48 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         }
     }
 
-    const humanMembers = team.members.filter(m => m.userId && m.user);
-    if (humanMembers.length === 0) return null;
+    // Sıra KARARLI olmalı: members sorgusu sıralama vermiyordu, dolayısıyla
+    // artan indeks her seferinde farklı diziye uygulanıyor, aynı kişi üst üste
+    // seçilebiliyordu. Üyelik oluşma sırasına göre sabitliyoruz.
+    const allHumanMembers = team.members
+        .filter(m => m.userId && m.user)
+        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0) || String(a.id).localeCompare(String(b.id)));
+    if (allHumanMembers.length === 0) return null;
+
+    // Mesai dışındaki temsilciye konuşma atanmasın. Saati girilmemiş
+    // kişilerde kısıt yok sayılır (isWorkingAt true döner).
+    const humanMembers = allHumanMembers.filter(m => isWorkingAt(m.user?.workingHours));
+    if (humanMembers.length === 0) {
+        const kapali = allHumanMembers
+            .map(m => `${m.user?.name}: ${unavailabilityReason(m.user?.workingHours) || 'uygun değil'}`)
+            .join(', ');
+        console.log(`🕒 [Distribute] "${team.name}" → şu an çalışan üye yok, havuzda bekliyor (${kapali})`);
+        return null;
+    }
+    if (humanMembers.length < allHumanMembers.length) {
+        const atlanan = allHumanMembers
+            .filter(m => !humanMembers.includes(m))
+            .map(m => m.user?.name)
+            .join(', ');
+        console.log(`🕒 [Distribute] "${team.name}" → mesai dışı atlandı: ${atlanan}`);
+    }
 
     let assignedUserId = null;
     const effectiveMethod = method || team.distributionMethod || 'ROUND_ROBIN';
 
     switch (effectiveMethod) {
         case 'ROUND_ROBIN': {
-            const idx = (team.roundRobinIndex || 0) % humanMembers.length;
+            // İndeksi ÖNCE atomik artır, sonra dönen değeri kullan. Eski hâlde
+            // iki mesaj aynı anda gelince ikisi de aynı indeksi okuyup aynı
+            // kişiye atanıyordu.
+            const guncel = await prisma.team.update({
+                where: { id: team.id },
+                data: { roundRobinIndex: { increment: 1 } },
+                select: { roundRobinIndex: true }
+            });
+            const idx = ((guncel.roundRobinIndex || 1) - 1) % humanMembers.length;
             assignedUserId = humanMembers[idx].userId;
-            await prisma.team.update({ where: { id: team.id }, data: { roundRobinIndex: (team.roundRobinIndex || 0) + 1 } });
-            console.log(`🔄 [Distribute] "${team.name}" → ROUND ROBIN → ${humanMembers[idx].user.name}`);
+            console.log(`🔄 [Distribute] "${team.name}" → ROUND ROBIN → ${humanMembers[idx].user.name} (sıra ${idx + 1}/${humanMembers.length})`);
             break;
         }
         case 'LEAST_BUSY': {
@@ -44,9 +75,13 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         case 'ONLINE_ONLY': {
             const online = humanMembers.filter(m => m.user?.isOnline);
             if (online.length > 0) {
-                const idx = (team.roundRobinIndex || 0) % online.length;
+                const guncel = await prisma.team.update({
+                    where: { id: team.id },
+                    data: { roundRobinIndex: { increment: 1 } },
+                    select: { roundRobinIndex: true }
+                });
+                const idx = ((guncel.roundRobinIndex || 1) - 1) % online.length;
                 assignedUserId = online[idx].userId;
-                await prisma.team.update({ where: { id: team.id }, data: { roundRobinIndex: (team.roundRobinIndex || 0) + 1 } });
                 console.log(`🟢 [Distribute] "${team.name}" → ONLINE → ${online[idx].user.name}`);
             } else {
                 console.log(`🟢 [Distribute] "${team.name}" → kimse online değil, havuzda`);

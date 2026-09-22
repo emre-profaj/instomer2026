@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import { logEvent } from '../services/conversationEvent.service.js';
 import crypto from 'crypto';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { unavailabilityReason } from '../utils/workingHours.js';
 import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
@@ -1422,6 +1423,7 @@ export const assignConversation = async (req, res) => {
         }
 
         const updateData = {};
+        let atamaUyarisi = null;   // mesai dışı atamada kullanıcıya dönecek not
 
         // Handle User Assignment
         if (userId !== undefined) {
@@ -1430,10 +1432,18 @@ export const assignConversation = async (req, res) => {
             } else {
                 // Verify member
                 const member = await prisma.workspaceMember.findUnique({
-                    where: { userId_workspaceId: { userId, workspaceId } }
+                    where: { userId_workspaceId: { userId, workspaceId } },
+                    include: { user: { select: { name: true, workingHours: true } } }
                 });
                 if (!member) {
                     return res.status(400).json({ error: 'Seçilen kişi bu çalışma alanının üyesi değil.' });
+                }
+                // Mesai dışı atama engellenmiyor ama UYARILIYOR: yönetici
+                // bilerek atayabilir, sessiz kalmak yanlış olur.
+                const mesaiNotu = unavailabilityReason(member.user?.workingHours);
+                if (mesaiNotu) {
+                    atamaUyarisi = `${member.user?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapıldı, ancak yanıt gecikebilir.`;
+                    console.log(`🕒 [Assign] Mesai dışı atama: ${atamaUyarisi}`);
                 }
                 updateData.assignedToId = userId;
                 // 🟡 Agent atandığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
@@ -1727,6 +1737,7 @@ export const assignConversation = async (req, res) => {
 
         res.json({
             conversation,
+            warning: atamaUyarisi,
             event: assignEvent ? {
                 id: assignEvent.id,
                 createdAt: assignEvent.createdAt,
