@@ -118,23 +118,96 @@ const getContactSourceLabel = (contact) => {
     return KAYNAK_ETIKETLERI[key] || raw || '';
 };
 
+// Türkçe harfleri sadeleştirip karşılaştırmaya hazırlar
+const sadeMetin = (v) => String(v || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i').replace(/İ/g, 'i')
+    .replace(/ş/g, 's').replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// Lead formunda projeyi taşıyan alan adları. Form adları işletmeden
+// işletmeye değişiyor, o yüzden tam eşleşme değil ipucu arıyoruz.
+const PROJE_ALAN_IPUCLARI = [
+    'konut tipi', 'daire tipi', 'villa tipi', 'ev tipi',
+    'proje', 'tercih etti', 'ilgilendiginiz'
+];
+
+/**
+ * Lead formu mesajını alan/değer çiftlerine çevirir.
+ *
+ * İki biçim var:
+ *   Eski:  "👤 İsim | Semih Tunç"
+ *   Yeni:  "▸  Tercih EttiğIniz Konut Tipi?: Mia Life Plus 3+1"
+ * Ayrıca "📋  Mia Life Plus Leads-2" satırı formun ADIDIR.
+ */
+const parseLeadFormMessage = (content) => {
+    const alanlar = [];
+    let formAdi = '';
+    for (const rawLine of String(content || '').split('\n')) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        // Ayraç satırları
+        if (/^[━─=_-]{6,}$/.test(line)) continue;
+
+        if (line.startsWith('📋')) {
+            const ad = line.replace(/^📋\s*/, '').replace(/\*\*/g, '').trim();
+            if (ad && !formAdi) formAdi = ad;
+            continue;
+        }
+
+        // Etiket ayracı: önce "|", yoksa ilk ":"
+        const temiz = line.replace(/^[▸•*\-\s]+/, '');
+        let idx = temiz.indexOf('|');
+        let sep = 1;
+        if (idx === -1) { idx = temiz.indexOf(':'); sep = 1; }
+        if (idx <= 0) continue;
+
+        const label = temiz.slice(0, idx).replace(/[^\p{L}\p{N}\s?]/gu, '').trim();
+        const value = temiz.slice(idx + sep).trim();
+        if (label && value) alanlar.push({ label, value });
+    }
+    return { formAdi, alanlar };
+};
+
 /**
  * Kişinin projesi / şubesi.
  *
- * Gayrimenkulde şube kaydı PROJE anlamına geliyor (sektör etiketleri:
- * "Şube / Proje"). Önce en güncel vakanın şubesi, yoksa son konuşmanın
- * şubesi kullanılır.
+ * Sırayla:
+ *   1. Şube kaydı — gayrimenkulde şube = PROJE (sektör etiketi "Şube / Proje")
+ *   2. Lead formundaki proje / konut tipi alanı (ör. "Mia Life Plus 3+1")
+ *   3. Lead formunun adı (ör. "Mia Park Bornova")
  */
 const getContactBranchName = (contact) => {
     if (!contact) return '';
+
+    // 1) Şube
     const cases = [...(contact.cases || [])]
         .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
     const fromCase = cases.find(c => c?.branch?.name)?.branch?.name;
     if (fromCase) return fromCase;
 
     const convs = [...(contact.conversations || [])]
-        .sort((a, b) => new Date(b.lastMessageAt || b.createdAt || 0) - new Date(a.lastMessageAt || a.createdAt || 0));
-    return convs.find(c => c?.branch?.name)?.branch?.name || '';
+        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    const fromConv = [...convs].reverse().find(c => c?.branch?.name)?.branch?.name;
+    if (fromConv) return fromConv;
+
+    // 2-3) Lead formu: en eski konuşmadan başla, ilk dolu değeri al
+    let formAdiYedek = '';
+    for (const conv of convs) {
+        const content = conv?.messages?.[0]?.content;
+        if (!content) continue;
+        const { formAdi, alanlar } = parseLeadFormMessage(content);
+        if (formAdi && !formAdiYedek) formAdiYedek = formAdi;
+
+        const eslesen = alanlar.find(a => {
+            const l = sadeMetin(a.label);
+            return PROJE_ALAN_IPUCLARI.some(ip => l.includes(ip));
+        });
+        if (eslesen?.value) return eslesen.value;
+    }
+    return formAdiYedek;
 };
 
 export const getContactPrimaryPhone = (contact) => {
