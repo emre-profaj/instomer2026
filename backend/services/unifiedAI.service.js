@@ -513,6 +513,14 @@ YANIT FORMATI (JSON):
  * Birleşik AI daima aktif — classifier + chat tek çağrıda.
  * Toggle bağımlılığı kaldırıldı (maliyet optimizasyonu).
  */
-export async function isUnifiedAIEnabled(workspaceId) {
+export async function isUnifiedAIEnabled(workspaceId, options = {}) {
+    // Randevu araçları olan bot fonksiyon çağırmak ZORUNDA: doktor listesi,
+    // uygun saatler ve randevu oluşturma Probel'e/CRM'e bu araçlarla soruluyor.
+    // Birleşik çağrı yalnızca metin üretiyor, araç çalıştırmıyor; bu yüzden
+    // randevu botu "sizi arayacağız" demekten öteye gidemiyordu. Bu botlarda
+    // araç destekli eski yol kullanılır.
+    if (Array.isArray(options.activeBot?._appointmentTools) && options.activeBot._appointmentTools.length > 0) {
+        return false;
+    }
     return true;
 }

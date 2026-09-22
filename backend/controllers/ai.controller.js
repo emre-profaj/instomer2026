@@ -1383,9 +1383,16 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 const shouldClassify = hasPhoneInMessage || !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
 
                 if (shouldClassify) {
-                    // Feature Flag: Birleşik AI modu açıksa ayrı classifier çağrısını atla
+                    // Feature Flag: Birleşik AI modu açıksa ayrı classifier çağrısını atla.
+                    // Randevu araçları olan çalışma alanları birleşik yolu KULLANMIYOR
+                    // (araç çalıştıramıyor); orada sınıflandırma ayrıca yapılmalı,
+                    // yoksa konuşma hiç sınıflandırılmadan kalır.
                     const { isUnifiedAIEnabled } = await import('../services/unifiedAI.service.js');
-                    const unifiedMode = await isUnifiedAIEnabled(workspaceId);
+                    const randevuApisiVar = await prisma.apiIntegration.findFirst({
+                        where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true },
+                        select: { id: true }
+                    });
+                    const unifiedMode = randevuApisiVar ? false : await isUnifiedAIEnabled(workspaceId);
                     
                     if (unifiedMode) {
                         console.log('🧠 [UnifiedAI] Birleşik mod aktif — ayrı classifier çağrısı atlanıyor');
@@ -1812,7 +1819,10 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         if (type === 'CHATS' && conversationId) {
             try {
                 const { isUnifiedAIEnabled, executeUnifiedAICall } = await import('../services/unifiedAI.service.js');
-                const unifiedMode = await isUnifiedAIEnabled(workspaceId);
+                const unifiedMode = await isUnifiedAIEnabled(workspaceId, { activeBot });
+                if (!unifiedMode) {
+                    console.log('🏥 [UnifiedAI] Randevu araçları var — araç destekli yola geçiliyor');
+                }
 
                 if (unifiedMode) {
                     console.log('🧠 [UnifiedAI] Birleşik AI çağrısı başlatılıyor...');
