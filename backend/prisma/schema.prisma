@@ -173,6 +173,7 @@ model Workspace {
   automationLogs       AutomationLog[]
   userGoogleCalendars  UserGoogleCalendar[]
   aiUsageLogs          AIUsageLog[]
+  caseAttributions     CaseAttribution[]
 
   // Google Calendar Integration (Workspace level credentials)
   googleClientId     String?
@@ -2050,6 +2051,69 @@ model ContactAttribution {
   @@map("contact_attributions")
 }
 
+// ─── Case-Level Attribution ─────────────────────────────────────────
+// Her başvurunun kendi reklam/kampanya detayı. ContactAttribution kişi
+// bazlı çalışır (ilk temas ve sonraki dokunuşlar), CaseAttribution ise
+// O BAŞVURUYA ait somut reklam bilgisini tutar. Sipariş (Deal) ve
+// randevu bağlı olduğu Case'in attribution'ını devralır.
+model CaseAttribution {
+  id          String @id @default(uuid())
+  caseId      String
+  workspaceId String
+
+  // ─── UTM Parametreleri ─────────────────────────────────────────
+  utm_source   String? // google, facebook, instagram, email
+  utm_medium   String? // cpc, social, email, organic
+  utm_campaign String? // yaz_kampanyasi_2026
+  utm_content  String? // banner_v2, video_ad
+  utm_term     String? // diş implant fiyat
+
+  // ─── Google ────────────────────────────────────────────────────
+  gclid String? // Google Ads Click ID
+
+  // ─── Meta (Facebook/Instagram) ─────────────────────────────────
+  fbclid           String? // Facebook Click ID
+  fb_ad_id         String? // Reklam ID
+  fb_adset_id      String? // AdSet ID
+  fb_campaign_id   String? // Kampanya ID
+  fb_ad_name       String? // Reklam adı
+  fb_campaign_name String? // Kampanya adı
+
+  // ─── WhatsApp Reklam ───────────────────────────────────────────
+  wa_referral_headline    String? // Click-to-WhatsApp reklam başlığı
+  wa_referral_body        String? // Reklam gövdesi
+  wa_referral_source_id   String? // Kaynak ID (ad_id)
+  wa_referral_source_type String? // ad, post, organic
+  wa_ctwa_clid            String? // Click-to-WhatsApp Click ID
+
+  // ─── Meta Lead Gen Form ────────────────────────────────────────
+  meta_lead_form_id   String? // Meta Lead Ads form ID
+  meta_lead_form_name String? // Form adı
+
+  // ─── Web Form ──────────────────────────────────────────────────
+  form_id   String? // Elementor/WordPress form ID
+  form_name String? // Form adı
+
+  // ─── Genel ─────────────────────────────────────────────────────
+  landing_page String? // İlk giriş sayfası URL'si
+  referrer     String? // Yönlendiren site (google.com, instagram.com)
+  channel      String? // WHATSAPP, FACEBOOK, INSTAGRAM, FORM, EMAIL, WEB_WIDGET
+  raw_data     String? @db.Text // Tüm ham kaynak verisi (JSON)
+
+  createdAt DateTime @default(now())
+
+  case      Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([workspaceId])
+  @@index([channel])
+  @@index([utm_source])
+  @@index([fb_campaign_id])
+  @@index([gclid])
+  @@map("case_attributions")
+}
+
 // Global Flow Templates for Super Admin
 model FlowTemplate {
   id          String   @id @default(uuid())
@@ -2171,6 +2235,9 @@ model Case {
   // (FACEBOOK_LEAD, WHATSAPP, WEB_FORM...), elle açılanda kullanıcı seçer.
   leadSource       String? // FACEBOOK, INSTAGRAM, WHATSAPP, WEB_FORM, REFERRAL, INBOUND, WALK_IN...
   leadSourceDetail String? // Serbest metin: "Instagram reklamı", "Ahmet Bey referansı"
+
+  // Case-level attribution: her başvurunun kendi reklam/kampanya detayı
+  attributions CaseAttribution[]
 
   @@index([workspaceId])
   @@index([contactId])

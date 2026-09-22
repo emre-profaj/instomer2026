@@ -101,7 +101,25 @@ export const getDeals = async (req, res) => {
                         select: { id: true, name: true, avatar: true }
                     },
                     case: {
-                        select: { id: true, source: true, campaign: { select: { id: true, name: true } } }
+                        select: {
+                            id: true,
+                            caseNumber: true,
+                            source: true,
+                            leadSource: true,
+                            leadSourceDetail: true,
+                            campaign: { select: { id: true, name: true } },
+                            attributions: {
+                                select: {
+                                    utm_source: true, utm_medium: true, utm_campaign: true,
+                                    fb_ad_name: true, fb_campaign_name: true,
+                                    wa_referral_headline: true,
+                                    meta_lead_form_name: true, form_name: true,
+                                    channel: true, gclid: true
+                                },
+                                orderBy: { createdAt: 'desc' },
+                                take: 1
+                            }
+                        }
                     }
                 },
                 orderBy: { createdAt: 'desc' },
@@ -146,7 +164,25 @@ export const getDeal = async (req, res) => {
                     select: { id: true, channel: true, status: true, lastMessageAt: true }
                 },
                 case: {
-                    select: { id: true, source: true, campaign: { select: { id: true, name: true } } }
+                    select: {
+                        id: true,
+                        caseNumber: true,
+                        source: true,
+                        leadSource: true,
+                        leadSourceDetail: true,
+                        campaign: { select: { id: true, name: true } },
+                        attributions: {
+                            select: {
+                                utm_source: true, utm_medium: true, utm_campaign: true,
+                                fb_ad_name: true, fb_campaign_name: true,
+                                wa_referral_headline: true,
+                                meta_lead_form_name: true, form_name: true,
+                                channel: true, gclid: true
+                            },
+                            orderBy: { createdAt: 'desc' },
+                            take: 1
+                        }
+                    }
                 }
             }
         });
@@ -259,43 +295,39 @@ export const createDeal = async (req, res) => {
 
         // ── KAYNAK DEVRALMA ─────────────────────────────────────────────
         // Siparişin kaynağı = bağlı olduğu BAŞVURUNUN (case) kaynağı.
-        // Önceden channel/sourceNote hiç doldurulmuyordu (416 kayıtta 0) ve
-        // sipariş detayındaki "Kaynak" alanı hiç görünmüyordu.
-        // Case yoksa kişinin ilk kaynağına düşer ve devralındığı işaretlenir.
-        if (!dealData.channel) {
-            try {
-                let inherited = null;
-                if (dealData.caseId) {
-                    const c = await prisma.case.findUnique({
-                        where: { id: dealData.caseId },
-                        select: { leadSource: true, leadSourceDetail: true }
-                    });
-                    if (c?.leadSource) {
-                        inherited = { src: c.leadSource, detail: c.leadSourceDetail, from: 'case' };
-                    }
+        // Kullanıcı siparişte kaynak SEÇEMEZz — her zaman case'den
+        // veya kişiden otomatik devralınır.
+        // Öncelik: 1) Case.leadSource  2) Contact.leadSource
+        try {
+            let inherited = null;
+            if (dealData.caseId) {
+                const c = await prisma.case.findUnique({
+                    where: { id: dealData.caseId },
+                    select: { leadSource: true, leadSourceDetail: true }
+                });
+                if (c?.leadSource) {
+                    inherited = { src: c.leadSource, detail: c.leadSourceDetail, from: 'case' };
                 }
-                if (!inherited && contactId) {
-                    const ct = await prisma.contact.findUnique({
-                        where: { id: contactId },
-                        select: { leadSource: true, source: true, leadSourceDetail: true }
-                    });
-                    const src = ct?.leadSource || ct?.source;
-                    const { isMeaningfulSource } = await import('../utils/leadSource.js');
-                    if (isMeaningfulSource(src)) {
-                        inherited = { src, detail: ct?.leadSourceDetail, from: 'contact' };
-                    }
-                }
-                if (inherited) {
-                    dealData.channel = inherited.src;
-                    if (!dealData.sourceNote) {
-                        dealData.sourceNote = inherited.from === 'case'
-                            ? (inherited.detail || null)
-                            : `${inherited.detail ? inherited.detail + ' — ' : ''}kişiden devralındı`;
-                    }
-                }
-            } catch (e) {
-                console.error('[Deal] Kaynak devralma hatası:', e.message);
             }
+            if (!inherited && contactId) {
+                const ct = await prisma.contact.findUnique({
+                    where: { id: contactId },
+                    select: { leadSource: true, source: true, leadSourceDetail: true }
+                });
+                const src = ct?.leadSource || ct?.source;
+                const { isMeaningfulSource } = await import('../utils/leadSource.js');
+                if (isMeaningfulSource(src)) {
+                    inherited = { src, detail: ct?.leadSourceDetail, from: 'contact' };
+                }
+            }
+            if (inherited) {
+                dealData.channel = inherited.src;
+                dealData.sourceNote = inherited.from === 'case'
+                    ? (inherited.detail || null)
+                    : `${inherited.detail ? inherited.detail + ' — ' : ''}kişiden devralındı`;
+            }
+        } catch (e) {
+            console.error('[Deal] Kaynak devralma hatası:', e.message);
         }
 
         // assignedToId varsa atayan bilgisini ekle
@@ -441,11 +473,42 @@ export const updateDeal = async (req, res) => {
             }
         }
         if (notes !== undefined) updateData.notes = notes;
-        // Kaynak: sipariş detayındaki seçim kutusundan gelir.
-        // Teklif → Sipariş → Fatura aynı kayıt olduğu için bir kez seçilir,
-        // üç ekranda da aynı değeri gösterir.
-        if (channel !== undefined) updateData.channel = channel || null;
-        if (sourceNote !== undefined) updateData.sourceNote = sourceNote;
+        // Kaynak: artık manuel seçilemez — Case'den otomatik devralınır.
+        // caseId değiştiğinde kaynak yeniden hesaplanır.
+        if (caseId !== undefined && caseId !== existing.caseId) {
+            try {
+                let inherited = null;
+                if (caseId) {
+                    const c = await prisma.case.findUnique({
+                        where: { id: caseId },
+                        select: { leadSource: true, leadSourceDetail: true }
+                    });
+                    if (c?.leadSource) {
+                        inherited = { src: c.leadSource, detail: c.leadSourceDetail, from: 'case' };
+                    }
+                }
+                if (!inherited) {
+                    const ct = await prisma.contact.findUnique({
+                        where: { id: existing.contactId },
+                        select: { leadSource: true, source: true, leadSourceDetail: true }
+                    });
+                    const src = ct?.leadSource || ct?.source;
+                    const { isMeaningfulSource } = await import('../utils/leadSource.js');
+                    if (isMeaningfulSource(src)) {
+                        inherited = { src, detail: ct?.leadSourceDetail, from: 'contact' };
+                    }
+                }
+                if (inherited) {
+                    updateData.channel = inherited.src;
+                    updateData.sourceNote = inherited.from === 'case'
+                        ? (inherited.detail || null)
+                        : `${inherited.detail ? inherited.detail + ' — ' : ''}kişiden devralındı`;
+                }
+            } catch (e) {
+                console.error('[Deal] Kaynak yeniden devralma hatası:', e.message);
+            }
+        }
+        // channel ve sourceNote artık doğrudan güncellenemez (case'den devralınır)
         if (protocolNo !== undefined) updateData.protocolNo = protocolNo || null;
         if (quoteNumber !== undefined) updateData.quoteNumber = quoteNumber;
         if (orderNumber !== undefined) updateData.orderNumber = orderNumber;

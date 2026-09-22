@@ -26,18 +26,50 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0) || String(a.id).localeCompare(String(b.id)));
     if (allHumanMembers.length === 0) return null;
 
+    // ── ŞUBE FİLTRESİ ──
+    // Konuşmanın şubesi varsa, sadece o şubeye atanmış üyeleri tercih et.
+    // branchIds null veya [] olan üyeler "tüm şubeler" yetkili kabul edilir.
+    // Şube eşleşen kimse yoksa → tüm takıma aç (havuzda beklesin).
+    let branchFilteredMembers = allHumanMembers;
+    const conv = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { branchId: true }
+    });
+    if (conv?.branchId) {
+        const branchMatched = [];
+        for (const m of allHumanMembers) {
+            const wsMember = await prisma.workspaceMember.findFirst({
+                where: { userId: m.userId, workspaceId: team.workspaceId },
+                select: { branchIds: true }
+            });
+            const memberBranchIds = (() => {
+                try { return JSON.parse(wsMember?.branchIds || '[]'); } catch { return []; }
+            })();
+            // null, [] veya boş = tüm şubeler yetkili
+            if (!memberBranchIds || memberBranchIds.length === 0 || memberBranchIds.includes(conv.branchId)) {
+                branchMatched.push(m);
+            }
+        }
+        if (branchMatched.length > 0) {
+            branchFilteredMembers = branchMatched;
+            console.log(`📍 [Distribute] Şube filtresi: ${conv.branchId} → ${branchMatched.length}/${allHumanMembers.length} üye eşleşti`);
+        } else {
+            console.log(`📍 [Distribute] Şube ${conv.branchId} için eşleşen üye yok → tüm takıma açık`);
+        }
+    }
+
     // Mesai dışındaki temsilciye konuşma atanmasın. Saati girilmemiş
     // kişilerde kısıt yok sayılır (isWorkingAt true döner).
-    const humanMembers = allHumanMembers.filter(m => isWorkingAt(m.user?.workingHours));
+    const humanMembers = branchFilteredMembers.filter(m => isWorkingAt(m.user?.workingHours));
     if (humanMembers.length === 0) {
-        const kapali = allHumanMembers
+        const kapali = branchFilteredMembers
             .map(m => `${m.user?.name}: ${unavailabilityReason(m.user?.workingHours) || 'uygun değil'}`)
             .join(', ');
         console.log(`🕒 [Distribute] "${team.name}" → şu an çalışan üye yok, havuzda bekliyor (${kapali})`);
         return null;
     }
-    if (humanMembers.length < allHumanMembers.length) {
-        const atlanan = allHumanMembers
+    if (humanMembers.length < branchFilteredMembers.length) {
+        const atlanan = branchFilteredMembers
             .filter(m => !humanMembers.includes(m))
             .map(m => m.user?.name)
             .join(', ');

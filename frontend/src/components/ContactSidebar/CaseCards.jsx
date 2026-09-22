@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { caseAPI, funnelAPI, conversationAPI, contactAPI, productAPI, appointmentConfigAPI } from '../../services/api';
 import { Briefcase, Plus, ChevronDown, ChevronRight, User, Users, Loader, X, Check, AlertTriangle, Building2 } from 'lucide-react';
+import { PICKABLE_SOURCES } from '../../utils/leadSource';
 
 const STATUS_LABELS = {
     ACTIVE: { label: 'Aktif', color: '#3b82f6', bg: '#eff6ff' },
@@ -52,6 +53,8 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [creating, setCreating] = useState(false);
     const [newTitle, setNewTitle] = useState('');
+    const [newLeadSource, setNewLeadSource] = useState('');
+    const [newLeadSourceDetail, setNewLeadSourceDetail] = useState('');
     const [funnels, setFunnels] = useState([]);
     const [editingCaseId, setEditingCaseId] = useState(null);
     const [assigningCaseId, setAssigningCaseId] = useState(null);
@@ -266,9 +269,13 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         try {
             await caseAPI.create(workspaceId, contactId, {
                 title: newTitle.trim(),
-                conversationId: conversationId || null
+                conversationId: conversationId || null,
+                leadSource: newLeadSource || null,
+                leadSourceDetail: newLeadSourceDetail || null
             });
             setNewTitle('');
+            setNewLeadSource('');
+            setNewLeadSourceDetail('');
             setShowCreateForm(false);
             fetchCases();
         } catch (err) {
@@ -285,9 +292,13 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         try {
             await caseAPI.create(workspaceId, contactId, {
                 title: inlineNewTitle.trim(),
-                conversationId: conversationId || null
+                conversationId: conversationId || null,
+                leadSource: newLeadSource || null,
+                leadSourceDetail: newLeadSourceDetail || null
             });
             setInlineNewTitle('');
+            setNewLeadSource('');
+            setNewLeadSourceDetail('');
             setShowInlineCreate(false);
             fetchCases();
             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
@@ -881,7 +892,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
 
                         {/* Yeni Case Form */}
                         {showInlineCreate && (
-                            <div style={{ padding: showOnly === 'actions' ? '4px 0' : '0 12px 6px', display: 'flex', gap: 6 }}>
+                            <div style={{ padding: showOnly === 'actions' ? '4px 0' : '0 12px 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 <input
                                     type="text"
                                     value={inlineNewTitle}
@@ -892,26 +903,68 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         } else if (e.key === 'Escape') {
                                             setShowInlineCreate(false);
                                             setInlineNewTitle('');
+                                            setNewLeadSource('');
+                                            setNewLeadSourceDetail('');
                                         }
                                     }}
                                     placeholder="Case başlığı..."
                                     autoFocus
                                     style={{
-                                        flex: 1, fontSize: '0.74rem', padding: '4px 8px',
+                                        width: '100%', boxSizing: 'border-box', fontSize: '0.74rem', padding: '6px 8px',
                                         border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none'
                                     }}
                                 />
-                                <button
-                                    onClick={() => handleInlineCreate()}
-                                    disabled={inlineCreating || !inlineNewTitle.trim()}
-                                    style={{
-                                        background: '#8b5cf6', color: '#fff', border: 'none',
-                                        borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
-                                        fontSize: '0.72rem', fontWeight: 600, opacity: inlineCreating ? 0.6 : 1
-                                    }}
-                                >
-                                    {inlineCreating ? '...' : 'Oluştur'}
-                                </button>
+                                <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.74rem' }}>
+                                    <option value="">Kaynak seçin (opsiyonel)</option>
+                                    <optgroup label="Manuel">
+                                        <option value="INBOUND">📞 Telefon</option>
+                                        <option value="WALK_IN">🚶 Yüz Yüze</option>
+                                        <option value="REFERRAL">🤝 Referans</option>
+                                    </optgroup>
+                                    <optgroup label="Dijital">
+                                        <option value="GOOGLE">🔍 Google</option>
+                                        <option value="FACEBOOK">📘 Facebook</option>
+                                        <option value="INSTAGRAM">📸 Instagram</option>
+                                        <option value="WHATSAPP">📱 WhatsApp</option>
+                                        <option value="SMS">✉️ SMS</option>
+                                        <option value="EMAIL">📧 E-posta</option>
+                                        <option value="WEB_FORM">📝 Web Formu</option>
+                                        <option value="WEBSITE">🌐 Web Sitesi</option>
+                                    </optgroup>
+                                    <optgroup label="Diğer">
+                                        <option value="EVENT">🎪 Etkinlik/Fuar</option>
+                                        <option value="OTHER">📍 Diğer</option>
+                                    </optgroup>
+                                </select>
+                                {newLeadSource && (
+                                    <input
+                                        type="text"
+                                        placeholder="Detay: hangi reklam, kim referans etti..."
+                                        value={newLeadSourceDetail}
+                                        onChange={e => setNewLeadSourceDetail(e.target.value)}
+                                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.74rem' }}
+                                    />
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                                    <button
+                                        onClick={() => { setShowInlineCreate(false); setInlineNewTitle(''); setNewLeadSource(''); setNewLeadSourceDetail(''); }}
+                                        style={{
+                                            background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb',
+                                            borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.72rem'
+                                        }}
+                                    >İptal</button>
+                                    <button
+                                        onClick={() => handleInlineCreate()}
+                                        disabled={inlineCreating || !inlineNewTitle.trim()}
+                                        style={{
+                                            background: '#8b5cf6', color: '#fff', border: 'none',
+                                            borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+                                            fontSize: '0.72rem', fontWeight: 600, opacity: inlineCreating ? 0.6 : 1
+                                        }}
+                                    >
+                                        {inlineCreating ? '...' : 'Oluştur'}
+                                    </button>
+                                </div>
                             </div>
                         )}
 
@@ -1030,9 +1083,40 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 style={{
                                     width: '100%', padding: '8px 12px', border: '1px solid #d8b4fe',
                                     borderRadius: 8, fontSize: '0.85rem', outline: 'none',
-                                    boxSizing: 'border-box', background: '#fff'
+                                    boxSizing: 'border-box', background: '#fff', marginBottom: 8
                                 }}
                             />
+                            <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', marginBottom: newLeadSource ? 8 : 0, boxSizing: 'border-box' }}>
+                                <option value="">Kaynak seçin (opsiyonel)</option>
+                                <optgroup label="Manuel">
+                                    <option value="INBOUND">📞 Telefon</option>
+                                    <option value="WALK_IN">🚶 Yüz Yüze</option>
+                                    <option value="REFERRAL">🤝 Referans</option>
+                                </optgroup>
+                                <optgroup label="Dijital">
+                                    <option value="GOOGLE">🔍 Google</option>
+                                    <option value="FACEBOOK">📘 Facebook</option>
+                                    <option value="INSTAGRAM">📸 Instagram</option>
+                                    <option value="WHATSAPP">📱 WhatsApp</option>
+                                    <option value="SMS">✉️ SMS</option>
+                                    <option value="EMAIL">📧 E-posta</option>
+                                    <option value="WEB_FORM">📝 Web Formu</option>
+                                    <option value="WEBSITE">🌐 Web Sitesi</option>
+                                </optgroup>
+                                <optgroup label="Diğer">
+                                    <option value="EVENT">🎪 Etkinlik/Fuar</option>
+                                    <option value="OTHER">📍 Diğer</option>
+                                </optgroup>
+                            </select>
+                            {newLeadSource && (
+                                <input
+                                    type="text"
+                                    placeholder="Detay: hangi reklam, kim referans etti..."
+                                    value={newLeadSourceDetail}
+                                    onChange={e => setNewLeadSourceDetail(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', boxSizing: 'border-box' }}
+                                />
+                            )}
                             <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
                                 <button
                                     onClick={() => { setShowCreateForm(false); setNewTitle(''); }}

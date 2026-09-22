@@ -362,6 +362,27 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                     }).catch(e => console.error('[Case] Kişi ilk kaynağı yazılamadı:', e.message));
                 }
 
+                // Case-level attribution: kişinin en son ContactAttribution kaydını kopyala
+                try {
+                    const latestAttr = await prisma.contactAttribution.findFirst({
+                        where: { contactId: conv.contactId, workspaceId },
+                        orderBy: { createdAt: 'desc' }
+                    });
+                    if (latestAttr) {
+                        const { id: _id, contactId: _cid, createdAt: _ca, ...attrData } = latestAttr;
+                        await prisma.caseAttribution.create({
+                            data: {
+                                ...attrData,
+                                caseId: newCase.id,
+                                workspaceId
+                            }
+                        });
+                        console.log(`📊 [AutoCase] CaseAttribution created for case ${caseNumber} from ContactAttribution`);
+                    }
+                } catch (attrErr) {
+                    console.error('[AutoCase] CaseAttribution oluşturulamadı:', attrErr.message);
+                }
+
                 await prisma.conversation.update({
                     where: { id: conversationId },
                     data: { caseId: newCase.id }
@@ -880,6 +901,29 @@ export const createCase = async (req, res) => {
                     ...(leadSourceDetail ? { leadSourceDetail } : {})
                 }
             }).catch(e => console.error('[Case] Kişi ilk kaynağı yazılamadı:', e.message));
+        }
+
+        // Case-level attribution: if no explicit source, copy contact's attribution
+        if (!leadSource && !leadSourceDetail) {
+            try {
+                const latestAttr = await prisma.contactAttribution.findFirst({
+                    where: { contactId, workspaceId },
+                    orderBy: { createdAt: 'desc' }
+                });
+                if (latestAttr) {
+                    const { id: _id, contactId: _cid, createdAt: _ca, ...attrData } = latestAttr;
+                    await prisma.caseAttribution.create({
+                        data: {
+                            ...attrData,
+                            caseId: newCase.id,
+                            workspaceId
+                        }
+                    });
+                    console.log(`📊 [CaseCreate] CaseAttribution created for case ${caseNumber} from ContactAttribution`);
+                }
+            } catch (attrErr) {
+                console.error('[CaseCreate] CaseAttribution oluşturulamadı:', attrErr.message);
+            }
         }
 
         // Eğer conversationId verilmişse, conversation'ı case'e bağla

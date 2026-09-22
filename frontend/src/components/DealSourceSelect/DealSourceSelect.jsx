@@ -1,72 +1,65 @@
-import { useState } from 'react';
-import { dealAPI } from '../../services/api';
-import { PICKABLE_SOURCES, sourceLabel, sourceIcon, isAutoSource } from '../../utils/leadSource';
+import { sourceLabel, sourceIcon, formatAttribution } from '../../utils/leadSource';
 
 /**
- * Satışın kaynağını gösteren ve değiştiren seçim kutusu.
+ * Satışın kaynağını SADECE GÖSTEREN bileşen (read-only).
  *
- * Teklif → Sipariş → Fatura tek bir kayıttır (stage değişir), bu yüzden
- * kaynak bir kez seçilir ve üç ekranda da aynı değer görünür.
+ * Kaynak bilgisi Case'den veya kişiden otomatik devralınır,
+ * kullanıcı tarafından değiştirilemez.
  *
- * Değer `deal.channel` alanında tutulur. Sohbetten gelen siparişlerde bu
- * alan otomatik dolabilir (WHATSAPP, WIDGET...). O kodlar listede seçilebilir
- * değildir ama kayıtta duruyorsa listeye eklenir — yoksa kutu boş görünür ve
- * ilk dokunuşta otomatik gelen bilgi silinir.
- *
- * @param {string}   workspaceId
- * @param {object}   deal         - En az { id, channel }
- * @param {function} onChange     - Kaydedildikten SONRA yeni kod ile çağrılır
+ * @param {object}  deal  - En az { channel, sourceNote, case }
  */
-export default function DealSourceSelect({ workspaceId, deal, onChange }) {
-    const [saving, setSaving] = useState(false);
-    const [failed, setFailed] = useState(false);
+export default function DealSourceSelect({ deal }) {
+    const channel = deal?.channel;
+    const caseData = deal?.case;
+    const attrText = formatAttribution(caseData?.attributions?.[0]);
 
-    const value = deal?.channel || '';
-    const showAutoOption = value && isAutoSource(value);
+    // Kaynak bilgisi yoksa
+    if (!channel && !caseData?.leadSource) {
+        return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#94a3b8', fontSize: '0.85rem' }}>
+                <span style={{ fontSize: '1rem', opacity: 0.35 }}>📋</span>
+                <span>Kaynak bilgisi yok</span>
+            </span>
+        );
+    }
 
-    const handleChange = async (e) => {
-        const next = e.target.value;
-        if (next === value) return;
-        setSaving(true);
-        setFailed(false);
-        try {
-            await dealAPI.update(workspaceId, deal.id, { channel: next || null });
-            onChange?.(next || null);
-        } catch (error) {
-            // Kaydedilemediyse kutu eski değerinde kalır — üst bileşenin
-            // durumu yalnızca başarılı yanıtta güncelleniyor.
-            console.error('Kaynak güncellenemedi:', error);
-            setFailed(true);
-        } finally {
-            setSaving(false);
-        }
-    };
+    const displaySource = caseData?.leadSource || channel;
+    const isFromCase = !!caseData?.leadSource;
+    const isFromContact = !isFromCase && !!channel;
 
     return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {failed && (
-                <span style={{ fontSize: 11, color: '#dc2626' }} title="Tekrar deneyin">
-                    kaydedilemedi
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '1rem' }}>{sourceIcon(displaySource)}</span>
+            <span style={{ fontWeight: 500, fontSize: '0.88rem' }}>
+                {sourceLabel(displaySource)}
+            </span>
+            {/* Devralma bilgisi */}
+            <span style={{
+                fontSize: '0.72rem',
+                color: '#94a3b8',
+                background: '#f1f5f9',
+                padding: '1px 6px',
+                borderRadius: 4,
+                whiteSpace: 'nowrap'
+            }}>
+                {isFromCase ? `Case'den` : isFromContact ? 'Kişiden' : ''}
+            </span>
+            {/* Attribution detayı */}
+            {attrText && (
+                <span
+                    style={{
+                        fontSize: '0.72rem',
+                        color: '#64748b',
+                        maxWidth: 200,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                    }}
+                    title={attrText}
+                >
+                    {attrText}
                 </span>
             )}
-            <span style={{ fontSize: '1rem', opacity: value ? 1 : 0.35 }}>
-                {sourceIcon(value)}
-            </span>
-            <select
-                className="status-select"
-                value={value}
-                disabled={saving}
-                onChange={handleChange}
-                title="Bu satış nereden geldi?"
-            >
-                <option value="">Seçilmedi</option>
-                {showAutoOption && (
-                    <option value={value}>{sourceLabel(value)} (otomatik)</option>
-                )}
-                {PICKABLE_SOURCES.map(s => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-            </select>
         </span>
     );
 }

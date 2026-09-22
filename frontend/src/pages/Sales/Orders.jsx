@@ -6,6 +6,7 @@ import { dealAPI, contactAPI, productAPI } from '../../services/api';
 import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User, Calendar } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import DealSourceSelect from '../../components/DealSourceSelect/DealSourceSelect';
+import { sourceLabel, sourceIcon } from '../../utils/leadSource';
 import './Sales.css';
 
 // Helper: compute date range from preset
@@ -619,33 +620,23 @@ const Orders = () => {
                                     <span className="label">Tarih:</span>
                                     <span className="value">{new Date(selectedDeal.orderCreatedAt || selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
                                 </div>
-                                {/* Kaynak: eskiden yalnızca dolu olduğunda gösteriliyordu ve
-                                    hiçbir zaman dolmadığı için hiç görünmüyordu. Artık her
-                                    zaman görünür ve buradan seçilir. */}
+                                {/* Kaynak: Case'den veya kişiden otomatik devralınır — değiştirilemez */}
                                 <div className="info-row">
                                     <span className="label">Kaynak:</span>
-                                    <DealSourceSelect
-                                        workspaceId={currentWorkspace.id}
-                                        deal={selectedDeal}
-                                        onChange={(channel) => {
-                                            setSelectedDeal(prev => ({ ...prev, channel }));
-                                            setDeals(prev => prev.map(d => d.id === selectedDeal.id ? { ...d, channel } : d));
-                                        }}
-                                    />
+                                    <DealSourceSelect deal={selectedDeal} />
                                 </div>
                                 {selectedDeal.sourceNote && (
                                     <div className="info-row">
-                                        <span className="label">Kaynak Notu:</span>
-                                        <span className="value">{selectedDeal.sourceNote}</span>
+                                        <span className="label">Kaynak Detayı:</span>
+                                        <span className="value" style={{ fontSize: '0.82rem', color: '#64748b' }}>{selectedDeal.sourceNote}</span>
                                     </div>
                                 )}
-                                {/* Case kaynağı — ilişki üzerinden */}
-                                {selectedDeal.case?.source && (
-                                    <div className="info-row" style={{ opacity: 0.6 }}>
-                                        <span className="label">Case Kaynağı:</span>
-                                        <span className="value" style={{ fontSize: '0.82rem', color: '#64748b' }}>
-                                            {{ GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', WHATSAPP_AD: 'WhatsApp Reklam', FORM: 'Form', CAMPAIGN: 'Kampanya', COLD_CALL: 'Cold Call', REFERRAL: 'Referans', ORGANIC: 'Organik', MANUAL: 'Manuel' }[selectedDeal.case.source] || selectedDeal.case.source}
-                                            {selectedDeal.case.campaign?.name && ` • ${selectedDeal.case.campaign.name}`}
+                                {/* Kişinin ilk kaynağı — her zaman gösterilir */}
+                                {selectedDeal.contact?.source && (
+                                    <div className="info-row" style={{ opacity: 0.55 }}>
+                                        <span className="label">Kişi İlk Kaynağı:</span>
+                                        <span className="value" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                                            {sourceIcon(selectedDeal.contact.source)} {sourceLabel(selectedDeal.contact.source)}
                                         </span>
                                     </div>
                                 )}

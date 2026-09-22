@@ -5798,6 +5798,24 @@ export const getSalesReport = async (req, res) => {
                         source: true
                     }
                 },
+                caseId: true,
+                case: {
+                    select: {
+                        id: true,
+                        caseNumber: true,
+                        leadSource: true,
+                        leadSourceDetail: true,
+                        attributions: {
+                            select: {
+                                utm_campaign: true, fb_campaign_name: true,
+                                fb_ad_name: true, wa_referral_headline: true,
+                                channel: true
+                            },
+                            orderBy: { createdAt: 'desc' },
+                            take: 1
+                        }
+                    }
+                },
                 conversationId: true,
                 conversation: {
                     select: {
@@ -5932,7 +5950,19 @@ export const getSalesReport = async (req, res) => {
                 contactName: d.contact?.name || 'Bilinmeyen',
                 contactPhone: d.contact?.phone || '',
                 contactEmail: d.contact?.email || '',
-                source: d.contact?.source ? formatSourceName(d.contact.source) : null,
+                // Case-bazlı kaynak (birincil) → Kişi kaynağı (yedek)
+                source: d.case?.leadSource
+                    ? formatSourceName(d.case.leadSource)
+                    : (d.contact?.source ? formatSourceName(d.contact.source) : null),
+                caseLeadSource: d.case?.leadSource || null,
+                caseLeadSourceDetail: d.case?.leadSourceDetail || null,
+                contactFirstSource: d.contact?.source ? formatSourceName(d.contact.source) : null,
+                campaignName: d.case?.attributions?.[0]?.fb_campaign_name
+                    || d.case?.attributions?.[0]?.utm_campaign
+                    || null,
+                adName: d.case?.attributions?.[0]?.fb_ad_name
+                    || d.case?.attributions?.[0]?.wa_referral_headline
+                    || null,
                 categoryId: topicCat?.id || null,
                 categoryName: topicCat?.name || 'Kategorisiz',
                 categoryIcon: topicCat?.icon || null,
@@ -6085,6 +6115,8 @@ export const getRequestReport = async (req, res) => {
                 assignedToId: true, assignedTo: { select: { id: true, name: true } },
                 contactId: true,
                 contact: { select: { id: true, phone: true, source: true } },
+                caseId: true,
+                case: { select: { leadSource: true } },
                 conversationId: true,
                 conversation: {
                     select: {
@@ -6338,7 +6370,7 @@ export const getRequestReport = async (req, res) => {
             }
             const g = byTopic[catName];
             g.count++;
-            const dealSource = formatSourceName(d.contact?.source);
+            const dealSource = formatSourceName(d.case?.leadSource || d.contact?.source);
             if (!g.sources[dealSource]) g.sources[dealSource] = { name: dealSource, count: 0, wonCount: 0, wonAmount: 0 };
             g.sources[dealSource].count++;
             if (d.status === 'WON') {
@@ -6383,7 +6415,7 @@ export const getRequestReport = async (req, res) => {
         // Kaynak Bazlı Talep Analizi
         const bySource = {};
         for (const c of cases) {
-            const src = formatSourceName(c.contact?.source);
+            const src = formatSourceName(c.leadSource || c.contact?.source);
             if (!bySource[src]) {
                 bySource[src] = { name: src, count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0, wonCount: 0, wonAmount: 0 };
             }
@@ -6398,7 +6430,7 @@ export const getRequestReport = async (req, res) => {
             if (c.status === 'WON') sg.wonCount++;
         }
         for (const d of deals) {
-            const src = formatSourceName(d.contact?.source);
+            const src = formatSourceName(d.case?.leadSource || d.contact?.source);
             if (!bySource[src]) {
                 bySource[src] = { name: src, count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0, wonCount: 0, wonAmount: 0 };
             }
@@ -6471,58 +6503,168 @@ export const getContactAttributions = async (req, res) => {
 export const getAttributionReport = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        
-        // Kaynak bazlı lead sayıları
-        const attributions = await prisma.contactAttribution.groupBy({
-            by: ['channel', 'utm_source', 'utm_medium', 'utm_campaign'],
-            where: { workspaceId },
-            _count: { id: true },
-            orderBy: { _count: { id: 'desc' } }
-        });
-        
-        // Her kaynak için deal/sipariş dönüşümü
-        const report = [];
-        for (const attr of attributions) {
-            const contacts = await prisma.contactAttribution.findMany({
-                where: {
-                    workspaceId,
-                    channel: attr.channel,
-                    utm_source: attr.utm_source
-                },
-                select: { contactId: true }
-            });
-            const contactIds = contacts.map(c => c.contactId).filter(Boolean);
-            
-            const deals = contactIds.length > 0 ? await prisma.deal.count({
-                where: {
-                    workspaceId,
-                    contactId: { in: contactIds },
-                    stage: { in: ['ORDER', 'INVOICE'] }
-                }
-            }) : 0;
-            
-            const totalRevenue = contactIds.length > 0 ? await prisma.deal.aggregate({
-                where: {
-                    workspaceId,
-                    contactId: { in: contactIds },
-                    stage: { in: ['ORDER', 'INVOICE'] }
-                },
-                _sum: { amount: true }
-            }) : { _sum: { amount: 0 } };
-            
-            report.push({
-                channel: attr.channel,
-                utm_source: attr.utm_source,
-                utm_medium: attr.utm_medium,
-                utm_campaign: attr.utm_campaign,
-                leadCount: attr._count.id,
-                dealCount: deals,
-                totalRevenue: totalRevenue._sum?.amount || 0,
-                conversionRate: contactIds.length > 0 ? ((deals / contactIds.length) * 100).toFixed(1) : 0
-            });
+        const { startDate, endDate } = req.query;
+
+        let dateFilter = {};
+        if (startDate || endDate) {
+            dateFilter.createdAt = {};
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
-        
-        res.json({ report });
+
+        // ── 1. Case-bazlı attribution verisi ──
+        const cases = await prisma.case.findMany({
+            where: { workspaceId, ...dateFilter },
+            select: {
+                id: true,
+                leadSource: true,
+                leadSourceDetail: true,
+                status: true,
+                contactId: true,
+                attributions: {
+                    select: {
+                        utm_source: true, utm_medium: true, utm_campaign: true,
+                        fb_ad_name: true, fb_campaign_name: true, fb_campaign_id: true,
+                        wa_referral_headline: true,
+                        meta_lead_form_name: true, form_name: true,
+                        channel: true, gclid: true
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 1
+                },
+                deals: {
+                    select: {
+                        id: true, stage: true, status: true, amount: true
+                    }
+                }
+            }
+        });
+
+        // ── 2. Kaynak bazlı gruplama ──
+        const bySource = {};
+        const uniqueContacts = {};
+
+        for (const c of cases) {
+            const src = formatSourceName(c.leadSource) || 'Bilinmeyen';
+            const attr = c.attributions?.[0];
+            const campaignKey = attr?.fb_campaign_name || attr?.utm_campaign || 'Doğrudan';
+
+            if (!bySource[src]) {
+                bySource[src] = {
+                    name: src,
+                    caseCount: 0,
+                    contactIds: new Set(),
+                    wonCount: 0,
+                    dealCount: 0,
+                    orderCount: 0,
+                    totalRevenue: 0,
+                    campaigns: {}
+                };
+            }
+            const sg = bySource[src];
+            sg.caseCount++;
+            sg.contactIds.add(c.contactId);
+            if (c.status === 'WON') sg.wonCount++;
+
+            // Deal metrikleri
+            for (const deal of (c.deals || [])) {
+                sg.dealCount++;
+                if (deal.stage === 'ORDER' || deal.stage === 'INVOICE') sg.orderCount++;
+                if (deal.status === 'WON') sg.totalRevenue += (deal.amount || 0);
+            }
+
+            // Kampanya alt grubu
+            if (!sg.campaigns[campaignKey]) {
+                sg.campaigns[campaignKey] = {
+                    name: campaignKey,
+                    adName: attr?.fb_ad_name || attr?.wa_referral_headline || null,
+                    caseCount: 0,
+                    contactIds: new Set(),
+                    orderCount: 0,
+                    totalRevenue: 0
+                };
+            }
+            const cg = sg.campaigns[campaignKey];
+            cg.caseCount++;
+            cg.contactIds.add(c.contactId);
+            for (const deal of (c.deals || [])) {
+                if (deal.stage === 'ORDER' || deal.stage === 'INVOICE') cg.orderCount++;
+                if (deal.status === 'WON') cg.totalRevenue += (deal.amount || 0);
+            }
+
+            // Toplam unique contact tracking
+            uniqueContacts[c.contactId] = true;
+        }
+
+        // ── 3. Sonuçları formatla ──
+        const sourceGroups = Object.values(bySource)
+            .map(sg => ({
+                name: sg.name,
+                caseCount: sg.caseCount,
+                contactCount: sg.contactIds.size,
+                wonCount: sg.wonCount,
+                dealCount: sg.dealCount,
+                orderCount: sg.orderCount,
+                totalRevenue: sg.totalRevenue,
+                conversionRate: sg.caseCount > 0 ? Math.round((sg.wonCount / sg.caseCount) * 1000) / 10 : 0,
+                campaigns: Object.values(sg.campaigns)
+                    .map(cg => ({
+                        name: cg.name,
+                        adName: cg.adName,
+                        caseCount: cg.caseCount,
+                        contactCount: cg.contactIds.size,
+                        orderCount: cg.orderCount,
+                        totalRevenue: cg.totalRevenue
+                    }))
+                    .sort((a, b) => b.totalRevenue - a.totalRevenue || b.caseCount - a.caseCount)
+            }))
+            .sort((a, b) => b.totalRevenue - a.totalRevenue || b.caseCount - a.caseCount);
+
+        // ── 4. Toplam KPI ──
+        const totalCases = cases.length;
+        const totalContacts = Object.keys(uniqueContacts).length;
+        const totalRevenue = sourceGroups.reduce((s, g) => s + g.totalRevenue, 0);
+        const totalOrders = sourceGroups.reduce((s, g) => s + g.orderCount, 0);
+
+        // ── 5. First-touch vs Last-touch analizi ──
+        // Her contact'ın ilk ve son case'ini bul
+        const contactCases = {};
+        for (const c of cases) {
+            if (!contactCases[c.contactId]) contactCases[c.contactId] = [];
+            contactCases[c.contactId].push(c);
+        }
+
+        const firstTouchSources = {};
+        const lastTouchSources = {};
+        for (const [contactId, cList] of Object.entries(contactCases)) {
+            const hasWonDeal = cList.some(c => c.deals?.some(d => d.status === 'WON'));
+            if (!hasWonDeal) continue;
+
+            const first = cList[cList.length - 1]; // oldest (query is desc by default)
+            const last = cList[0]; // newest
+            const firstSrc = formatSourceName(first.leadSource) || 'Bilinmeyen';
+            const lastSrc = formatSourceName(last.leadSource) || 'Bilinmeyen';
+
+            if (!firstTouchSources[firstSrc]) firstTouchSources[firstSrc] = { name: firstSrc, count: 0, revenue: 0 };
+            firstTouchSources[firstSrc].count++;
+
+            if (!lastTouchSources[lastSrc]) lastTouchSources[lastSrc] = { name: lastSrc, count: 0, revenue: 0 };
+            lastTouchSources[lastSrc].count++;
+
+            const revenue = cList.reduce((s, c) => s + (c.deals || []).reduce((ds, d) => ds + (d.status === 'WON' ? (d.amount || 0) : 0), 0), 0);
+            firstTouchSources[firstSrc].revenue += revenue;
+            lastTouchSources[lastSrc].revenue += revenue;
+        }
+
+        res.json({
+            totalCases,
+            totalContacts,
+            totalRevenue,
+            totalOrders,
+            sourceGroups,
+            firstTouchAttribution: Object.values(firstTouchSources).sort((a, b) => b.revenue - a.revenue),
+            lastTouchAttribution: Object.values(lastTouchSources).sort((a, b) => b.revenue - a.revenue)
+        });
     } catch (error) {
         console.error('Attribution report error:', error);
         res.status(500).json({ error: 'Rapor oluşturulamadı' });

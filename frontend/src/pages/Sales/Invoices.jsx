@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import DealSourceSelect from '../../components/DealSourceSelect/DealSourceSelect';
+import { sourceLabel, sourceIcon } from '../../utils/leadSource';
 import './Sales.css';
 
 // Helper: compute date range from preset
@@ -931,27 +932,23 @@ const Invoices = () => {
                                     <option value="LOST">İptal</option>
                                 </select>
                             </div>
-                            {/* Kaynak — fatura, siparişin devamı olan aynı kayıt. Buraya da
-                                konuldu, yoksa faturaya dönüşen bir satışın kaynağı bir daha
-                                hiçbir ekrandan düzeltilemiyordu. */}
+                            {/* Kaynak: Case'den veya kişiden otomatik devralınır — değiştirilemez */}
                             <div className="info-row">
                                 <span className="label">Kaynak:</span>
-                                <DealSourceSelect
-                                    workspaceId={currentWorkspace.id}
-                                    deal={selectedDeal}
-                                    onChange={(channel) => {
-                                        setSelectedDeal(prev => ({ ...prev, channel }));
-                                        setDeals(prev => prev.map(d => d.id === selectedDeal.id ? { ...d, channel } : d));
-                                    }}
-                                />
+                                <DealSourceSelect deal={selectedDeal} />
                             </div>
-                            {/* Case kaynağı — ilişki üzerinden */}
-                            {selectedDeal.case?.source && (
-                                <div className="info-row" style={{ opacity: 0.6 }}>
-                                    <span className="label">Case Kaynağı:</span>
-                                    <span className="value" style={{ fontSize: '0.82rem', color: '#64748b' }}>
-                                        {{ GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', WHATSAPP_AD: 'WhatsApp Reklam', FORM: 'Form', CAMPAIGN: 'Kampanya', COLD_CALL: 'Cold Call', REFERRAL: 'Referans', ORGANIC: 'Organik', MANUAL: 'Manuel' }[selectedDeal.case.source] || selectedDeal.case.source}
-                                        {selectedDeal.case.campaign?.name && ` • ${selectedDeal.case.campaign.name}`}
+                            {selectedDeal.sourceNote && (
+                                <div className="info-row">
+                                    <span className="label">Kaynak Detayı:</span>
+                                    <span className="value" style={{ fontSize: '0.82rem', color: '#64748b' }}>{selectedDeal.sourceNote}</span>
+                                </div>
+                            )}
+                            {/* Kişinin ilk kaynağı — her zaman gösterilir */}
+                            {selectedDeal.contact?.source && (
+                                <div className="info-row" style={{ opacity: 0.55 }}>
+                                    <span className="label">Kişi İlk Kaynağı:</span>
+                                    <span className="value" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                                        {sourceIcon(selectedDeal.contact.source)} {sourceLabel(selectedDeal.contact.source)}
                                     </span>
                                 </div>
                             )}

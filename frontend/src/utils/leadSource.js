@@ -75,4 +75,21 @@ export function isAutoSource(code) {
     return !PICKABLE_MAP[key];
 }
 
-export default { PICKABLE_SOURCES, sourceLabel, sourceIcon, isAutoSource };
+/**
+ * CaseAttribution verisinden okunabilir metin üretir.
+ * Örn: "Meta Ads • Yaz Kampanyası • Banner V2"
+ */
+export function formatAttribution(attr) {
+    if (!attr) return null;
+    const parts = [];
+    if (attr.fb_campaign_name) parts.push(attr.fb_campaign_name);
+    else if (attr.utm_campaign) parts.push(attr.utm_campaign);
+    if (attr.fb_ad_name) parts.push(attr.fb_ad_name);
+    else if (attr.wa_referral_headline) parts.push(attr.wa_referral_headline);
+    if (attr.meta_lead_form_name) parts.push(`Form: ${attr.meta_lead_form_name}`);
+    else if (attr.form_name) parts.push(`Form: ${attr.form_name}`);
+    if (attr.gclid) parts.push('Google Ads');
+    return parts.length > 0 ? parts.join(' • ') : null;
+}
+
+export default { PICKABLE_SOURCES, sourceLabel, sourceIcon, isAutoSource, formatAttribution };

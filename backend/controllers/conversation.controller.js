@@ -225,6 +225,11 @@ export const getConversations = async (req, res) => {
             where.teamIds = { contains: `"${teamId}"` };
         }
 
+        // ── ŞUBE FİLTRESİ (tüm roller için query param) ──
+        if (req.query.branchId) {
+            where.branchId = req.query.branchId;
+        }
+
         // Role-based visibility and explicit assignment filtering
         if (role === 'AGENT') {
             // Agents see conversations assigned to them OR their teams (but NOT assigned to someone else)
@@ -234,6 +239,26 @@ export const getConversations = async (req, res) => {
                 select: { teamId: true }
             });
             const myTeamIds = userTeams.map(t => t.teamId).filter(Boolean);
+
+            // ── AGENT ŞUBE GÖRÜNÜRLÜk FİLTRESİ ──
+            // Agent'ın branchIds'i doluysa sadece o şubelere ait konuşmaları göster.
+            // branchIds null veya [] = tüm şubeler (filtre yok, ör. çağrı merkezi).
+            if (!req.query.branchId) { // Kullanıcı zaten elle filtre seçmediyse
+                const agentMember = await prisma.workspaceMember.findFirst({
+                    where: { userId: req.user.id, workspaceId },
+                    select: { branchIds: true }
+                });
+                const agentBranchIds = (() => {
+                    try { return JSON.parse(agentMember?.branchIds || '[]'); } catch { return []; }
+                })();
+                if (agentBranchIds.length > 0) {
+                    where.OR = [
+                        { branchId: { in: agentBranchIds } },
+                        { branchId: null } // Şubesi belirlenmemiş konuşmalar da görünsün
+                    ];
+                    console.log(`📍 [Inbox] Agent şube filtresi: ${agentBranchIds.length} şube`);
+                }
+            }
 
             // Sorumlu olunan akışlar: Agent veya takımlarının sorumlu olduğu akışlar + alt akışları
             const allowedFunnelKeys = await getAllowedFunnelKeysForAgent(workspaceId, req.user.id, myTeamIds);

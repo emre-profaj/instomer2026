@@ -3078,6 +3078,14 @@ async function handleCallStarted(call) {
                         if (tempRec) {
                             const existingReal = await prisma.retellCall.findUnique({ where: { callId: realCallId } });
                             if (existingReal) {
+                                // Temp kayıttaki conversationId/contactId'yi gerçek kayda aktar (kaybolmaması için)
+                                const transferData = {};
+                                if (tempRec.conversationId && !existingReal.conversationId) transferData.conversationId = tempRec.conversationId;
+                                if (tempRec.contactId && !existingReal.contactId) transferData.contactId = tempRec.contactId;
+                                if (Object.keys(transferData).length > 0) {
+                                    await prisma.retellCall.update({ where: { id: existingReal.id }, data: transferData });
+                                    console.log(`📞 [Watcher] Transferred ${Object.keys(transferData).join(', ')} from temp to real record`);
+                                }
                                 await prisma.retellCall.delete({ where: { id: tempRec.id } });
                                 console.log(`📞 [Watcher] Webhook already created real call ${realCallId}. Deleted temp record.`);
                             } else {
@@ -3130,12 +3138,8 @@ async function handleCallStarted(call) {
                                                 }
                                             });
 
-                                            // Özet ve kaydı Tamamlandı mesajına ekle (webhook kaçırmış olabilir)
-                                            if (analyzed.call_analysis?.call_summary || analyzed.recording_url) {
-                                                await handleCallAnalyzed(analyzed);
-                                            }
-
-                                            // Sadece transcript varsa chat ekranına uzun uzun mesajları at
+                                            // ÖNCELİK: Transcript'i önce enjekte et — conversationId'yi retellCall'a
+                                            // yazması gerekiyor, handleCallAnalyzed bu bilgiye ihtiyaç duyar.
                                             if (analyzed.transcript) {
                                                 await injectTranscriptToChat(
                                                     { ...rec, conversationId: convId },
@@ -3144,6 +3148,11 @@ async function handleCallStarted(call) {
                                                 );
                                                 emitToWorkspace(workspaceId, 'new_message', { workspaceId, conversationId: convId, message: { type: 'transcript_ready' } });
                                                 console.log(`📞 [Watcher] Transcript injected for ${convId}`);
+                                            }
+
+                                            // Özet ve kaydı Tamamlandı mesajına ekle (artık conversationId mevcut)
+                                            if (analyzed.call_analysis?.call_summary || analyzed.recording_url) {
+                                                await handleCallAnalyzed(analyzed);
                                             }
                                         } catch (te) { console.error('📞 [Watcher] Transcript inject error:', te.message); }
                                     }, 30000);
@@ -3968,10 +3977,27 @@ async function handleCallAnalyzed(call) {
         if (analysis.call_summary || call.recording_url) {
             try {
                 const analyzedCallRec = await prisma.retellCall.findUnique({ where: { callId: call.call_id } });
-                if (analyzedCallRec?.conversationId) {
+                // conversationId yoksa kişinin en son yazışmasından bul (race condition fallback)
+                let targetConversationId = analyzedCallRec?.conversationId;
+                if (!targetConversationId && analyzedCallRec?.contactId && analyzedCallRec?.workspaceId) {
+                    const fallbackConv = await prisma.conversation.findFirst({
+                        where: { contactId: analyzedCallRec.contactId, workspaceId: analyzedCallRec.workspaceId },
+                        orderBy: { lastMessageAt: 'desc' },
+                        select: { id: true }
+                    });
+                    if (fallbackConv) {
+                        targetConversationId = fallbackConv.id;
+                        await prisma.retellCall.update({
+                            where: { id: analyzedCallRec.id },
+                            data: { conversationId: targetConversationId }
+                        });
+                        console.log(`📞 [Retell] handleCallAnalyzed: conversationId fallback → ${targetConversationId}`);
+                    }
+                }
+                if (targetConversationId) {
                     const callMsg = await prisma.message.findFirst({
                         where: {
-                            conversationId: analyzedCallRec.conversationId,
+                            conversationId: targetConversationId,
                             messageType: 'CALL_TRANSCRIPT',
                             OR: [
                                 { content: { contains: 'Arama Tamamlandı' } },
@@ -4001,7 +4027,7 @@ async function handleCallAnalyzed(call) {
                         }
                         emitToWorkspace(analyzedCallRec.workspaceId, 'new_message', {
                             workspaceId: analyzedCallRec.workspaceId,
-                            conversationId: analyzedCallRec.conversationId,
+                            conversationId: targetConversationId,
                             message: { type: 'call_analyzed' }
                         });
                     }

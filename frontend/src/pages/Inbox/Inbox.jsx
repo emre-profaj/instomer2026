@@ -6253,19 +6253,8 @@ const Inbox = () => {
                                             })()}
                                         </div>
 
-                                        {/* Right Group: Phone & Channel Badge */}
+                                        {/* Right Group: Channel Badge only (Phone removed) */}
                                         <div className="assignment-right-group">
-                                            {selectedItem.contact?.phone && (
-                                                <a
-                                                    href={`tel:${selectedItem.contact.phone}`}
-                                                    className="apple-workflow-meta-item phone"
-                                                    title="Müşteri Telefonu"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    <Phone size={11} />
-                                                    <span>{selectedItem.contact.phone}</span>
-                                                </a>
-                                            )}
                                             {(() => {
                                                 const channel = selectedItem.channel || 'WHATSAPP';
                                                 const channelConfig = {
