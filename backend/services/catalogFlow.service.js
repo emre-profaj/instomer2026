@@ -156,7 +156,7 @@ function productWords(name) {
         .filter((w, i, a) => a.indexOf(w) === i);   // tekrarları say ma
 }
 
-function matchingProducts(products, text, limit = 3) {
+export function matchingProducts(products, text, limit = 3) {
     const t = norm(text);
     if (!t) return [];
 
@@ -193,7 +193,7 @@ function matchingProducts(products, text, limit = 3) {
 }
 
 /** Müşterinin son mesajlarını tek metinde toplar (en yenisi en sonda). */
-function customerText(recentMessages = [], limit = 4) {
+export function customerText(recentMessages = [], limit = 4) {
     return recentMessages
         .filter(m => m.isFromContact || m.direction === 'IN')
         .slice(-limit)
@@ -489,4 +489,4 @@ ${priceRule}
     }
 }
 
-export default { getCatalogCapability, buildCatalogStep };
+export default { getCatalogCapability, buildCatalogStep, matchingProducts, customerText };

@@ -395,7 +395,7 @@ ${stageAIConfig.transitionCriteria?.description ? `\n⚠️ GEÇİŞ KRİTERİ: 
 ALAN KURALLARI:
 - topicCategoryId: KONU KATEGORİLERİ listesindeki köşeli parantez içindeki kimlik. Yoksa null.
 - matchedBranchId: ŞUBELER listesindeki kimlik. YALNIZCA müşteri o şubeyi açıkça söylediyse yaz; semt adı iki şubeye de uyuyorsa (ör. yalnızca "Bornova") null yaz.
-- matchedProductIds: Müşterinin adını andığı ürünlerin köşeli parantez içindeki kimlikleri. Emin değilsen boş dizi.
+- matchedProductIds: YALNIZCA müşterinin kendi mesajında adını andığı ürünlerin köşeli parantez içindeki kimlikleri. Senin cevabında listelediğin ürünleri BURAYA YAZMA. Müşteri "masaj hakkında bilgi almak istiyorum" gibi genel konuştuysa boş dizi döndür.
 
 YANIT FORMATI (JSON):
 {
@@ -460,6 +460,31 @@ YANIT FORMATI (JSON):
             shouldTransition: parsed.stageTransition?.shouldTransition
         }));
 
+        // ── Ürün eşleşmesini müşterinin kendi sözüne göre doğrula ──
+        // Bot şubedeki hizmetleri listeleyince model, LİSTELEDİKLERİNİ
+        // "müşterinin andığı ürünler" diye bildiriyordu: "masaj için bilgi
+        // almak istiyorum" diyen kişinin vakasına üç masaj birden yazılıyordu.
+        // Sıralı akış zaten yalnızca müşteri metninde geçen adları döndürüyor;
+        // modelin önerisi de aynı ölçüye vuruluyor.
+        let urunIdleri = (catalogResolved?.productIds?.length ? catalogResolved.productIds : []);
+        if (urunIdleri.length === 0 && Array.isArray(parsed.matchedProductIds) && parsed.matchedProductIds.length > 0) {
+            try {
+                const { matchingProducts, customerText } = await import('./catalogFlow.service.js');
+                const musteriMetni = `${customerText(recentMessages)} \n ${userMessage || ''}`;
+                const adaylar = await prisma.product.findMany({
+                    where: { id: { in: parsed.matchedProductIds }, workspaceId },
+                    select: { id: true, name: true }
+                });
+                urunIdleri = matchingProducts(adaylar, musteriMetni, adaylar.length || 3);
+                if (urunIdleri.length < parsed.matchedProductIds.length) {
+                    console.log(`🧺 [UnifiedAI] Ürün eşleşmesi süzüldü: model ${parsed.matchedProductIds.length} önerdi, müşteri metninde ${urunIdleri.length} tanesi geçiyor`);
+                }
+            } catch (urunErr) {
+                console.error('⚠️ [UnifiedAI] Ürün doğrulama hatası:', urunErr.message);
+                urunIdleri = [];
+            }
+        }
+
         return {
             classification: {
                 classification: parsed.classification?.category || 'GENEL',
@@ -472,7 +497,7 @@ YANIT FORMATI (JSON):
                 // kullanılır, yoksa modelin çıkardığı değere düşülür.
                 topicCategoryId: catalogResolved?.categoryId || parsed.topicCategoryId || null,
                 matchedBranchId: catalogResolved?.branchId || parsed.matchedBranchId || null,
-                matchedProductIds: (catalogResolved?.productIds?.length ? catalogResolved.productIds : parsed.matchedProductIds) || [],
+                matchedProductIds: urunIdleri,
                 isQualifiedLead: parsed.isQualifiedLead || false,
             },
             chatResponse: (parsed.response || '').replace(/\[HANDOFF\]/gi, '').trim(),
