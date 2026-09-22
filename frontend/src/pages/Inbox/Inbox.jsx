@@ -1522,7 +1522,12 @@ const Inbox = () => {
         const socketUrl = API_URL.replace('/api', '');
 
         const socket = io(socketUrl, {
-            transports: ['polling', 'websocket'],
+            // Backend pm2'de 2 kopya cluster olarak çalışıyor ve long-polling
+            // oturumu isteğe göre başka kopyaya düşüyor: el sıkışmadan sonraki
+            // ilk istek "Session ID unknown" (400) alıyor, bağlantı hiç
+            // kurulamıyor. Tek TCP bağlantısı olan websocket bu sorunu
+            // yaşamıyor; uygulamanın diğer ekranları da böyle bağlanıyor.
+            transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 1000

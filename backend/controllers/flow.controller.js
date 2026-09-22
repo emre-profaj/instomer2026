@@ -1059,7 +1059,9 @@ async function executeSendMessage(workspaceId, step, context) {
 
         try {
             const { emitToWorkspace } = await import('../socket.js');
-            emitToWorkspace(workspaceId, 'new_message', { conversationId, message });
+            // workspaceId olmadan gönderiliyordu; arayüz olayı kendi
+            // workspace'iyle karşılaştırıp yok sayıyordu.
+            emitToWorkspace(workspaceId, 'new_message', { workspaceId, conversationId, message });
         } catch (e) {}
 
         console.log(`  ✅ [FLOW STEP] SEND_MESSAGE: "${messageContent.substring(0, 30)}..."`);
