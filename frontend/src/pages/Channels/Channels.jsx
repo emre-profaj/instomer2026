@@ -1208,6 +1208,25 @@ const Channels = () => {
         }
     };
 
+    /**
+     * Yorum alımını sayfa başına açar/kapatır.
+     *
+     * Bu satırlar ayrı bir bağlantı değil, Facebook sayfasından türetiliyor;
+     * silmek sayfayı koparmak olurdu (Messenger ve DM de giderdi). Zaten
+     * silme düğmesi bu tipleri tanımadığı için hiçbir şey yapmıyordu.
+     */
+    const handleToggleComments = async (channel) => {
+        const yeniDurum = !channel.commentsOn;
+        const tur = channel.type === 'instagram-comment' ? 'instagram_comment' : 'comment';
+        try {
+            await facebookAPI.setPageComments(channel.rawId, tur, yeniDurum);
+            await loadAllChannels();
+        } catch (err) {
+            console.error('Yorum ayarı güncellenemedi:', err);
+            alert('Yorum ayarı güncellenemedi.');
+        }
+    };
+
     const handleDeleteChannel = (channel) => {
         if (channel.type === 'facebook') {
             handleDisconnectPage(channel.rawId, 'facebook');
@@ -1453,6 +1472,7 @@ const Channels = () => {
             name: `${p.pageName}`,
             groupLabel: 'Facebook Yorumlar',
             group: 'comments',
+            commentsOn: p.commentsEnabled !== false,
             icon: MessageSquare, color: '#42b883'
         });
         if (p.instagramBusinessId) {
@@ -1461,6 +1481,7 @@ const Channels = () => {
                 name: `@${p.instagramUsername || 'Instagram'}`,
                 groupLabel: 'Instagram Yorumlar',
                 group: 'comments',
+                commentsOn: p.instagramCommentsEnabled !== false,
                 icon: Instagram, color: '#E4405F'
             });
         }
@@ -1658,13 +1679,26 @@ const Channels = () => {
                                                         >
                                                             <Settings size={16} />
                                                         </button>
-                                                        <button
-                                                            className="action-btn delete"
-                                                            onClick={(e) => { e.stopPropagation(); handleDeleteChannel(ch); }}
-                                                            title="Kanalı sil"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                        {ch.group === 'comments' ? (
+                                                            <button
+                                                                type="button"
+                                                                role="switch"
+                                                                aria-checked={ch.commentsOn}
+                                                                className={`comments-switch ${ch.commentsOn ? 'on' : ''}`}
+                                                                onClick={(e) => { e.stopPropagation(); handleToggleComments(ch); }}
+                                                                title={ch.commentsOn ? 'Yorumlar geliyor — kapatmak için tıklayın' : 'Yorumlar kapalı — açmak için tıklayın'}
+                                                            >
+                                                                <i></i>
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                className="action-btn delete"
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteChannel(ch); }}
+                                                                title="Kanalı sil"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
 

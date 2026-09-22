@@ -205,6 +205,7 @@ export const facebookAPI = {
     getPages: (workspaceId) => api.get(`/facebook/pages/${workspaceId}`),
     getAvailablePages: () => api.get('/facebook/pages/available'),
     disconnectPage: (pageId, channelType) => api.delete(`/facebook/pages/${pageId}`, { params: { channelType } }),
+    setPageComments: (pageId, type, enabled) => api.patch(`/facebook/pages/${pageId}/comments`, { type, enabled }),
     getContactProfile: (conversationId) => api.get(`/facebook/contact-profile/${conversationId}`),
     addContactTag: (conversationId, tag) => api.post(`/facebook/contact-profile/${conversationId}/tags`, { tag }),
     removeContactTag: (conversationId, tag) => api.delete(`/facebook/contact-profile/${conversationId}/tags`, { data: { tag } }),

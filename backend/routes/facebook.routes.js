@@ -14,6 +14,7 @@ import {
     addContactTag,
     removeContactTag,
     updatePageBot,
+    updatePageComments,
     checkPageHealth,
     resubscribeWebhook,
     syncHistoricalConversations
@@ -80,6 +81,7 @@ router.post('/pages/:pageId/resubscribe', resubscribeWebhook);
 
 // Update assigned bot
 router.patch('/pages/:id/bot', updatePageBot);
+router.patch('/pages/:id/comments', updatePageComments);
 
 // Contact Profile
 router.get('/contact-profile/:conversationId', getContactProfile);

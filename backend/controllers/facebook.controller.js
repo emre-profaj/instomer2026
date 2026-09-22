@@ -220,6 +220,8 @@ export const getPages = async (req, res) => {
                 instagramBotId: true,
                 commentBotId: true,
                 instagramCommentBotId: true,
+                commentsEnabled: true,
+                instagramCommentsEnabled: true,
                 createdAt: true,
                 _count: {
                     select: {
@@ -607,6 +609,30 @@ export const disconnectPage = async (req, res) => {
     }
 };
 
+/**
+ * Sayfa başına yorum alımını açar/kapatır.
+ * Kapalıyken webhook yorumu hiç işlemiyor (kişi/konuşma oluşmuyor).
+ */
+export const updatePageComments = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { type, enabled } = req.body;   // type: 'comment' | 'instagram_comment'
+
+        const alan = type === 'instagram_comment' ? 'instagramCommentsEnabled' : 'commentsEnabled';
+        const page = await prisma.facebookPage.update({
+            where: { id },
+            data: { [alan]: Boolean(enabled) },
+            select: { id: true, pageName: true, commentsEnabled: true, instagramCommentsEnabled: true }
+        });
+
+        console.log(`🔔 [COMMENTS] ${page.pageName} → ${alan} = ${Boolean(enabled)}`);
+        res.json({ success: true, page });
+    } catch (error) {
+        console.error('updatePageComments error:', error);
+        res.status(500).json({ error: 'Yorum ayarı güncellenemedi' });
+    }
+};
+
 export const updatePageBot = async (req, res) => {
     try {
         const { id } = req.params;
@@ -898,6 +924,18 @@ async function processWebhookAsync(body) {
                     console.log(`🔄 [COMMENTS] Processing for workspace: ${facebookPage.workspaceId}`);
 
                     const isInstagram = pageIdFromEntry === facebookPage.instagramBusinessId || body.object === 'instagram';
+
+                    // Bu çalışma alanı yorum almayı kapattıysa hiç işleme:
+                    // kişi de konuşma da oluşturulmuyor. Yorum botu atamamak
+                    // yalnızca otomatik cevabı durduruyordu, yorum yine gelen
+                    // kutusuna düşüyordu.
+                    const yorumAcik = isInstagram
+                        ? facebookPage.instagramCommentsEnabled !== false
+                        : facebookPage.commentsEnabled !== false;
+                    if (!yorumAcik) {
+                        console.log(`🔕 [COMMENTS] ${isInstagram ? 'Instagram' : 'Facebook'} yorumları kapalı (workspace: ${facebookPage.workspaceId}) — atlanıyor`);
+                        continue;
+                    }
 
                     // Instagram comments have different structure than Facebook
                     // Instagram: { id, text, from: { id, username }, media: { id } }

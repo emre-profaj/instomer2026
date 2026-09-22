@@ -425,6 +425,11 @@ model FacebookPage {
   commentBot            AIBot?         @relation("CommentBot", fields: [commentBotId], references: [id])
   instagramCommentBotId String?
   instagramCommentBot   AIBot?         @relation("InstagramCommentBot", fields: [instagramCommentBotId], references: [id])
+  // Yorum alımı sayfa başına kapatılabiliyor. Kapalıyken webhook yorumu hiç
+  // işlemiyor: kişi de konuşma da oluşmuyor. Bot atamamak yalnızca otomatik
+  // cevabı durduruyordu, yorum yine gelen kutusuna düşüyordu.
+  commentsEnabled          Boolean        @default(true)
+  instagramCommentsEnabled Boolean        @default(true)
   conversations         Conversation[]
   leads                 FacebookLead[]
   workspace             Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -2116,12 +2121,21 @@ model Case {
   branchId String?
   branch   AppointmentBranch? @relation("CaseBranch", fields: [branchId], references: [id], onDelete: SetNull)
 
+  // ─── Kaynak: BU BAŞVURUNUN kaynağı ────────────────────────────────
+  // Kişideki source/leadSource "ilk temas"ı tutar ve değişmez.
+  // Buradaki alan her başvurunun kendi kaynağı; sipariş ve randevu bunu
+  // devralır. Otomatik açılan case'lerde kanaldan doldurulur
+  // (FACEBOOK_LEAD, WHATSAPP, WEB_FORM...), elle açılanda kullanıcı seçer.
+  leadSource       String? // FACEBOOK, INSTAGRAM, WHATSAPP, WEB_FORM, REFERRAL, INBOUND, WALK_IN...
+  leadSourceDetail String? // Serbest metin: "Instagram reklamı", "Ahmet Bey referansı"
+
   @@index([workspaceId])
   @@index([contactId])
   @@index([workspaceId, contactId, status])
   @@index([workspaceId, status])
   @@index([caseNumber])
   @@index([branchId])
+  @@index([workspaceId, leadSource])
   @@map("cases")
 }
 
