@@ -23,6 +23,16 @@ export const getFormWebhooks = async (req, res) => {
             include: {
                 _count: {
                     select: { submissions: true }
+                },
+                caseType: {
+                    select: {
+                        id: true,
+                        name: true,
+                        color: true,
+                        icon: true,
+                        funnelId: true,
+                        funnel: { select: { id: true, name: true } }
+                    }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -39,7 +49,7 @@ export const getFormWebhooks = async (req, res) => {
 export const createFormWebhook = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, siteUrl } = req.body;
+        const { name, siteUrl, caseTypeId } = req.body;
 
         if (!siteUrl) {
             return res.status(400).json({ error: 'Site URL gereklidir' });
@@ -61,7 +71,20 @@ export const createFormWebhook = async (req, res) => {
                 siteUrl: cleanSiteUrl,
                 webhookUrl,
                 webhookToken: token,
-                fieldMapping: '{}'
+                fieldMapping: '{}',
+                caseTypeId: caseTypeId || null
+            },
+            include: {
+                caseType: {
+                    select: {
+                        id: true,
+                        name: true,
+                        color: true,
+                        icon: true,
+                        funnelId: true,
+                        funnel: { select: { id: true, name: true } }
+                    }
+                }
             }
         });
 
@@ -76,7 +99,7 @@ export const createFormWebhook = async (req, res) => {
 export const updateFormWebhook = async (req, res) => {
     try {
         const { workspaceId, webhookId } = req.params;
-        const { name, siteUrl, isActive } = req.body;
+        const { name, siteUrl, isActive, caseTypeId } = req.body;
 
         const webhook = await prisma.formWebhook.update({
             where: {
@@ -86,7 +109,20 @@ export const updateFormWebhook = async (req, res) => {
             data: {
                 ...(name && { name }),
                 ...(siteUrl !== undefined && { siteUrl }),
-                ...(typeof isActive === 'boolean' && { isActive })
+                ...(typeof isActive === 'boolean' && { isActive }),
+                ...(caseTypeId !== undefined && { caseTypeId: caseTypeId || null })
+            },
+            include: {
+                caseType: {
+                    select: {
+                        id: true,
+                        name: true,
+                        color: true,
+                        icon: true,
+                        funnelId: true,
+                        funnel: { select: { id: true, name: true } }
+                    }
+                }
             }
         });
 
@@ -402,19 +438,51 @@ export const handleFormSubmission = async (req, res) => {
                 }
             });
 
-            // Kanal yönlendirme kurallarını uygula (akış + takım ataması)
-            try {
-                const routingResult = await applyChannelRouting(
-                    webhook.workspaceId,
-                    conversation.id,
-                    'FORM',
-                    true // isNewConversation
-                );
-                console.log(`📡 [FormWebhook] Channel routing applied:`, routingResult);
-            } catch (routingErr) {
-                console.error('⚠️ [FormWebhook] Channel routing error:', routingErr.message);
-                // Routing başarısız olursa yine de default funnel'ı ata
-                assignDefaultFunnel(webhook.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Form error:', e.message));
+            // 1. Önce Formun bağlı olduğu Vaka Tipinin (CaseType) akışını kontrol et
+            let assignedByCaseType = false;
+            if (webhook.caseTypeId) {
+                try {
+                    const ct = await prisma.caseType.findUnique({
+                        where: { id: webhook.caseTypeId },
+                        include: {
+                            funnel: {
+                                include: {
+                                    stages: { orderBy: { order: 'asc' }, take: 1 }
+                                }
+                            }
+                        }
+                    });
+                    if (ct?.funnelId) {
+                        await prisma.conversation.update({
+                            where: { id: conversation.id },
+                            data: {
+                                funnelType: ct.funnelId,
+                                funnelStageId: ct.funnel?.stages?.[0]?.id || null
+                            }
+                        });
+                        assignedByCaseType = true;
+                        console.log(`📡 [FormWebhook] Assigned to funnel "${ct.funnel?.name}" from CaseType "${ct.name}"`);
+                    }
+                } catch (ctErr) {
+                    console.error('⚠️ [FormWebhook] CaseType funnel routing error:', ctErr.message);
+                }
+            }
+
+            // 2. Eğer Vaka Tipinden akış gelmediyse genel kanal yönlendirme kurallarını uygula
+            if (!assignedByCaseType) {
+                try {
+                    const routingResult = await applyChannelRouting(
+                        webhook.workspaceId,
+                        conversation.id,
+                        'FORM',
+                        true // isNewConversation
+                    );
+                    console.log(`📡 [FormWebhook] Channel routing applied:`, routingResult);
+                } catch (routingErr) {
+                    console.error('⚠️ [FormWebhook] Channel routing error:', routingErr.message);
+                    // Routing başarısız olursa yine de default funnel'ı ata
+                    assignDefaultFunnel(webhook.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Form error:', e.message));
+                }
             }
             isNewConversation = true;
         }

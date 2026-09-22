@@ -274,7 +274,8 @@ export async function executeUnifiedAICall({
             const catalogStep = await buildCatalogStep(workspaceId, {
                 conversationId,
                 recentMessages,
-                userMessage
+                userMessage,
+                botId: activeBot?.id || null
             });
             if (catalogStep) {
                 catalogContext = catalogStep.text;

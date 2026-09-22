@@ -185,7 +185,7 @@ export const workspaceAPI = {
     // AI Usage
     getAiUsage: (workspaceId) => api.get(`/workspaces/${workspaceId}/ai-usage`),
     // Sıralı katalog akışı (Şube → Kategori → Grup → Ürün)
-    getCatalogFlow: (workspaceId) => api.get(`/workspaces/${workspaceId}/catalog-flow`),
+    getCatalogFlow: (workspaceId, botId) => api.get(`/workspaces/${workspaceId}/catalog-flow${botId ? `?botId=${botId}` : ''}`),
     updateCatalogFlow: (workspaceId, data) => api.patch(`/workspaces/${workspaceId}/catalog-flow`, data),
     updateDisaoCrmSettings: (workspaceId, data) => api.patch(`/workspaces/${workspaceId}/disao-crm`, data),
     testDisaoCrmConnection: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/disao-crm/test`, data),

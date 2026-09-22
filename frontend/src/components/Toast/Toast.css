@@ -99,6 +99,16 @@
     background: #fef3c7;
 }
 
+.toast-item.toast-warning {
+    border-left-color: #f59e0b;
+    background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.toast-item.toast-warning .toast-icon {
+    color: #d97706;
+    background: #fef3c7;
+}
+
 /* Toast Icon */
 .toast-icon {
     display: flex;

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { formWebhookAPI } from '../../services/api';
+import { getCaseTypes } from '../../services/caseType.api';
 import { useAuth } from '../../context/AuthContext';
 import { Plus, Trash2, Copy, Check, AlertCircle, ExternalLink, Sparkles, X } from 'lucide-react';
 import './WebForms.css';
@@ -10,6 +11,7 @@ const WebForms = () => {
     const { currentWorkspace } = useAuth();
     const [webhooks, setWebhooks] = useState([]);
     const [submissions, setSubmissions] = useState([]);
+    const [caseTypes, setCaseTypes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [copiedId, setCopiedId] = useState(null);
@@ -17,7 +19,8 @@ const WebForms = () => {
 
     const [formData, setFormData] = useState({
         name: '',
-        siteUrl: ''
+        siteUrl: '',
+        caseTypeId: ''
     });
 
     useEffect(() => {
@@ -29,12 +32,22 @@ const WebForms = () => {
     const loadData = async () => {
         try {
             setLoading(true);
+            const ctPromise = getCaseTypes(currentWorkspace.id).catch(() => ({ data: [] }));
+
             if (activeTab === 'webhooks') {
-                const webhooksRes = await formWebhookAPI.getWebhooks(currentWorkspace.id);
+                const [webhooksRes, ctRes] = await Promise.all([
+                    formWebhookAPI.getWebhooks(currentWorkspace.id),
+                    ctPromise
+                ]);
                 setWebhooks(webhooksRes.data.webhooks || []);
+                setCaseTypes(ctRes.data || []);
             } else {
-                const submissionsRes = await formWebhookAPI.getSubmissions(currentWorkspace.id, { limit: 100 });
+                const [submissionsRes, ctRes] = await Promise.all([
+                    formWebhookAPI.getSubmissions(currentWorkspace.id, { limit: 100 }),
+                    ctPromise
+                ]);
                 setSubmissions(submissionsRes.data.submissions || []);
+                setCaseTypes(ctRes.data || []);
             }
         } catch (error) {
             console.error('Load data error:', error);
@@ -47,10 +60,11 @@ const WebForms = () => {
         try {
             await formWebhookAPI.createWebhook(currentWorkspace.id, {
                 name: formData.name,
-                siteUrl: formData.siteUrl
+                siteUrl: formData.siteUrl,
+                caseTypeId: formData.caseTypeId || null
             });
             setShowModal(false);
-            setFormData({ name: '', siteUrl: '' });
+            setFormData({ name: '', siteUrl: '', caseTypeId: '' });
             loadData();
         } catch (error) {
             console.error('Create error:', error);
@@ -203,10 +217,29 @@ ${webhook.webhookUrl}
                                             </div>
                                         </div>
 
-                                        <span className="status-badge success">
-                                            <Check size={14} />
-                                            Auto field detection active
-                                        </span>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                            <span className="status-badge success">
+                                                <Check size={14} />
+                                                Auto field detection active
+                                            </span>
+                                            {webhook.caseType && (
+                                                <span
+                                                    className="status-badge"
+                                                    style={{
+                                                        backgroundColor: `${webhook.caseType.color || '#6366f1'}15`,
+                                                        color: webhook.caseType.color || '#6366f1',
+                                                        border: `1px solid ${webhook.caseType.color || '#6366f1'}40`
+                                                    }}
+                                                >
+                                                    {webhook.caseType.icon || '🏷️'} {webhook.caseType.name}
+                                                    {webhook.caseType.funnel && (
+                                                        <span style={{ opacity: 0.8, marginLeft: '5px', fontSize: '11px', fontWeight: 600 }}>
+                                                            ➔ {webhook.caseType.funnel.name}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            )}
+                                        </div>
 
                                         <div className="webhook-url">
                                             <label>Webhook URL</label>
@@ -371,6 +404,31 @@ ${webhook.webhookUrl}
                             />
                             <small style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
                                 📌 Formun bulunduğu web sitesinin tam adresi (Örnek: https://egeproktoloji.com)
+                            </small>
+                        </div>
+                        <div className="form-group">
+                            <label>Varsayılan Vaka Tipi & Akış</label>
+                            <select
+                                value={formData.caseTypeId}
+                                onChange={e => setFormData({ ...formData, caseTypeId: e.target.value })}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #d1d5db',
+                                    fontSize: '14px',
+                                    backgroundColor: '#ffffff'
+                                }}
+                            >
+                                <option value="">Otomatik / Belirtilmemiş (Kanal Varsayılanı)</option>
+                                {caseTypes.map(ct => (
+                                    <option key={ct.id} value={ct.id}>
+                                        {ct.icon || '🏷️'} {ct.name} {ct.funnel ? `(➔ ${ct.funnel.name})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <small style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                                Bu form doldurulduğunda otomatik bu vaka tipi ve bağlı olduğu akışa atanır.
                             </small>
                         </div>
                         <div className="modal-actions">

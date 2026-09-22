@@ -1438,12 +1438,12 @@ export const assignConversation = async (req, res) => {
                 if (!member) {
                     return res.status(400).json({ error: 'Seçilen kişi bu çalışma alanının üyesi değil.' });
                 }
-                // Mesai dışındaki temsilciye atama YAPILMAZ.
+                // Mesai dışı atama engellenmiyor ama UYARILIYOR: yönetici
+                // bilerek atayabilir, bildirim verilir.
                 const mesaiNotu = unavailabilityReason(member.user?.workingHours);
                 if (mesaiNotu) {
-                    const mesaj = `${member.user?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapılmadı.`;
-                    console.log(`🚫 [Assign] Mesai dışı — atama reddedildi: ${mesaj}`);
-                    return res.status(409).json({ error: mesaj, code: 'AGENT_OFF_HOURS' });
+                    atamaUyarisi = `${member.user?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapıldı, ancak yanıt gecikebilir.`;
+                    console.log(`🕒 [Assign] Mesai dışı atama: ${atamaUyarisi}`);
                 }
                 updateData.assignedToId = userId;
                 // 🟡 Agent atandığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
@@ -1564,9 +1564,10 @@ export const assignConversation = async (req, res) => {
                 contactId: conversation.contact?.id,
                 workspaceId,
                 eventType: 'ASSIGNED',
-                title: eventTitle,
+                title: atamaUyarisi ? `${eventTitle} <span style="font-size:11px;color:#d97706;">(Mesai Dışı)</span>` : eventTitle,
                 actorId: req.user?.id,
-                actorType: 'USER'
+                actorType: 'USER',
+                details: atamaUyarisi ? { warning: atamaUyarisi } : undefined
             });
         } catch (_) {}
 
@@ -1579,7 +1580,10 @@ export const assignConversation = async (req, res) => {
                 workspaceId,
                 contact: conversation.contact,
                 assignedBy: req.user.name,
-                message: `${req.user.name} size bir konuşma atadı: ${contactName}`
+                message: atamaUyarisi
+                    ? `${req.user.name} size bir konuşma atadı: ${contactName} (Mesai dışı atama)`
+                    : `${req.user.name} size bir konuşma atadı: ${contactName}`,
+                warning: atamaUyarisi
             });
 
             // Create in-app notification
@@ -1590,7 +1594,9 @@ export const assignConversation = async (req, res) => {
                     conversation.assignedToId,
                     'CONVERSATION_ASSIGNED',
                     `${contactName} — konuşma atandı`,
-                    `${req.user.name} tarafından size atandı.`,
+                    atamaUyarisi
+                        ? `${req.user.name} tarafından size atandı (${atamaUyarisi}).`
+                        : `${req.user.name} tarafından size atandı.`,
                     { conversationId }
                 );
             } catch (notifErr) {
@@ -3667,25 +3673,27 @@ export const smartAssignConversation = async (req, res) => {
         const { teamId, agentId } = req.body;
 
         const conversation = await prisma.conversation.findFirst({
-            where: { id: conversationId, workspaceId }
+            where: { id: conversationId, workspaceId },
+            include: { contact: true }
         });
         if (!conversation) return res.status(404).json({ error: 'Konuşma bulunamadı' });
 
         let resolvedAgentId = agentId || null;
         let atamaUyarisi = null;   // mesai dışı atamada kullanıcıya dönecek not
 
-        // Kişi ELLE seçildiyse ve mesai dışındaysa ATAMA YAPILMAZ.
+        // Kişi ELLE seçildiyse: engellemiyoruz ama mesai dışıysa uyarıyoruz.
         if (agentId) {
-            const secilen = await prisma.user.findUnique({
-                where: { id: agentId },
-                select: { name: true, workingHours: true }
-            });
-            const mesaiNotu = unavailabilityReason(secilen?.workingHours);
-            if (mesaiNotu) {
-                const mesaj = `${secilen?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapılmadı.`;
-                console.log(`🚫 [SmartAssign] Mesai dışı — atama reddedildi: ${mesaj}`);
-                return res.status(409).json({ error: mesaj, code: 'AGENT_OFF_HOURS' });
-            }
+            try {
+                const secilen = await prisma.user.findUnique({
+                    where: { id: agentId },
+                    select: { name: true, workingHours: true }
+                });
+                const mesaiNotu = unavailabilityReason(secilen?.workingHours);
+                if (mesaiNotu) {
+                    atamaUyarisi = `${secilen?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapıldı, ancak yanıt gecikebilir.`;
+                    console.log(`🕒 [SmartAssign] Mesai dışı atama: ${atamaUyarisi}`);
+                }
+            } catch (_) {}
         }
 
         // Takım ID'si verilmişse ve kişi belirtilmemişse → atama kuralını uygula
@@ -3846,13 +3854,47 @@ export const smartAssignConversation = async (req, res) => {
                 contactId: conversation.contactId,
                 workspaceId,
                 eventType: 'ASSIGNED',
-                title,
-                details: { teamId: teamId || null, agentId: resolvedAgentId || null, teamName, agentName },
+                title: atamaUyarisi ? `${title} <span style="font-size:11px;color:#d97706;">(Mesai Dışı)</span>` : title,
+                details: { teamId: teamId || null, agentId: resolvedAgentId || null, teamName, agentName, warning: atamaUyarisi || null },
                 actorId: req.user?.id,
                 actorType: 'USER'
             });
         } catch (eventErr) {
             console.error('Error logging assign event:', eventErr.message);
+        }
+
+        // Atanan kişiye özel bildirim (browser notification + in-app notification)
+        if (resolvedAgentId && resolvedAgentId !== req.user?.id) {
+            try {
+                const contactName = conversation.contact?.name || conversation.contact?.fullName || 'Müşteri';
+                const notifMessage = atamaUyarisi
+                    ? `${req.user?.name || 'Yönetici'} size bir konuşma atadı: ${contactName} (Mesai dışı atama)`
+                    : `${req.user?.name || 'Yönetici'} size bir konuşma atadı: ${contactName}`;
+
+                emitToUser(resolvedAgentId, 'conversation_assigned_to_you', {
+                    conversationId,
+                    workspaceId,
+                    contact: conversation.contact,
+                    assignedBy: req.user?.name || 'Yönetici',
+                    message: notifMessage,
+                    warning: atamaUyarisi
+                });
+
+                const { createNotification } = await import('./notification.controller.js');
+                await createNotification(
+                    workspaceId,
+                    resolvedAgentId,
+                    'CONVERSATION_ASSIGNED',
+                    `${contactName} — konuşma atandı`,
+                    atamaUyarisi
+                        ? `${req.user?.name || 'Yönetici'} tarafından size atandı (${atamaUyarisi}).`
+                        : `${req.user?.name || 'Yönetici'} tarafından size atandı.`,
+                    { conversationId }
+                );
+                console.log(`📬 [SmartAssign] Notification sent to user ${resolvedAgentId}`);
+            } catch (notifErr) {
+                console.error('Notification error in smartAssign:', notifErr);
+            }
         }
 
         res.json({

@@ -1,179 +1,235 @@
+/* CaseTypesAndTopics — Modern Master-Detail Layout */
+
 .case-types-container {
     display: flex;
-    height: calc(100vh - 140px);
-    min-height: 560px;
+    height: calc(100vh - 160px);
+    min-height: 600px;
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* ========================================================= */
+/* SOL PANEL: Vaka Tipleri Listesi                          */
+/* ========================================================= */
+
 .case-types-sidebar {
-    width: 320px;
-    min-width: 300px;
+    width: 340px;
+    min-width: 320px;
     border-right: 1px solid #e2e8f0;
-    background-color: #ffffff;
+    background-color: #f8fafc;
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
 .ct-sidebar-header {
-    padding: 16px 20px;
+    padding: 16px 18px;
+    background-color: #ffffff;
     border-bottom: 1px solid #e2e8f0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #ffffff;
 }
 
 .ct-sidebar-header h2 {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: #0f172a;
     margin: 0;
 }
 
-.btn-add-ct {
-    background: #2563eb;
+.ct-header-count {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 2px;
+    display: block;
+}
+
+.btn-add-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: #2563eb;
     color: #ffffff;
     border: none;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    font-size: 1.1rem;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-add-primary:hover {
+    background-color: #1d4ed8;
+}
+
+.btn-add-primary.active {
+    background-color: #059669;
+}
+
+/* Arama Kutusu */
+.ct-search-box {
+    padding: 10px 14px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
 }
 
-.btn-add-ct:hover {
-    background: #1d4ed8;
-    transform: scale(1.05);
+.ct-search-icon {
+    position: absolute;
+    left: 24px;
+    color: #94a3b8;
+    pointer-events: none;
 }
 
-.ct-add-form {
-    padding: 16px;
-    background: #eff6ff;
-    border-bottom: 1px solid #bfdbfe;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.ct-input {
+.ct-search-input {
     width: 100%;
-    padding: 8px 12px;
+    padding: 8px 12px 8px 32px;
     border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    box-sizing: border-box;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    outline: none;
+    background-color: #f8fafc;
+    transition: border-color 0.15s;
 }
 
-.ct-form-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
+.ct-search-input:focus {
+    border-color: #3b82f6;
+    background-color: #ffffff;
 }
 
-.ct-input-icon {
-    width: 48px;
-    text-align: center;
-    padding: 8px 4px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-}
-
-.ct-input-color {
-    width: 40px;
-    height: 36px;
-    padding: 2px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    cursor: pointer;
-}
-
-.btn-submit-ct {
-    flex: 1;
-    background: #2563eb;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
+/* Liste Öğeleri */
 .ct-list {
     flex: 1;
     overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .ct-item {
-    padding: 14px 20px;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 10px 12px;
+    border-radius: 8px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    transition: background-color 0.15s ease;
-    border-left: 4px solid transparent;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    background: #ffffff;
 }
 
 .ct-item:hover {
-    background-color: #f8fafc;
+    background-color: #f1f5f9;
 }
 
 .ct-item.active {
     background-color: #eff6ff;
-    border-left-color: #2563eb;
+    border-color: #bfdbfe;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.05);
 }
 
 .ct-item-content {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    width: 100%;
 }
 
 .ct-icon-badge {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
-    font-size: 0.9rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-size: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.ct-item-info {
+    flex: 1;
+    overflow: hidden;
+}
+
+.ct-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: space-between;
 }
 
 .ct-title {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.ct-subtitle {
-    font-size: 0.75rem;
-    color: #94a3b8;
+.ct-system-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    background-color: #f1f5f9;
+    color: #64748b;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
 }
 
-.ct-actions {
+.ct-meta-row {
     display: flex;
-    gap: 6px;
-    opacity: 0;
-    transition: opacity 0.15s ease;
+    align-items: center;
+    margin-top: 3px;
 }
 
-.ct-item:hover .ct-actions {
-    opacity: 1;
+.ct-funnel-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    background-color: #e0f2fe;
+    color: #0369a1;
+    padding: 1px 7px;
+    border-radius: 4px;
+    border: 1px solid #bae6fd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
+.ct-funnel-icon {
+    font-size: 0.75rem;
+}
+
+.ct-funnel-none {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.ct-empty-search {
+    padding: 30px 20px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+/* ========================================================= */
+/* SAĞ PANEL: Detay & Düzenleme Ekranı                      */
+/* ========================================================= */
 
 .ct-main-content {
     flex: 1;
@@ -182,11 +238,374 @@
     overflow-y: auto;
 }
 
-.ct-empty-selection {
+.ct-edit-panel {
+    padding: 28px 36px;
+    max-width: 680px;
+}
+
+.ct-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 24px;
+}
+
+.ct-panel-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.ct-header-icon-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
+    font-size: 1.4rem;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.ct-panel-header-left h3 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 4px 0;
+}
+
+.ct-header-sub {
+    font-size: 0.82rem;
+    color: #64748b;
+    margin: 0;
+}
+
+.btn-delete-case-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-delete-case-type:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+/* Bildirimler */
+.ct-alert {
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.ct-alert.success {
+    background-color: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.ct-alert.error {
+    background-color: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+/* Form */
+.ct-form-body {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.ct-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ct-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.ct-label .req {
+    color: #dc2626;
+}
+
+.ct-hint {
+    font-size: 0.76rem;
+    color: #64748b;
+    line-height: 1.35;
+}
+
+.ct-input-primary {
+    padding: 10px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #0f172a;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ct-input-primary:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Highlighted Group: Funnel Seçimi */
+.ct-highlight-group {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    padding: 16px;
+    border-radius: 10px;
+}
+
+.ct-highlight-group .ct-label {
+    color: #166534;
+}
+
+.ct-funnel-select-wrapper {
+    position: relative;
+}
+
+.ct-select-primary {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #0f172a;
+    background-color: #ffffff;
+    cursor: pointer;
+    outline: none;
+}
+
+.ct-select-primary:focus {
+    border-color: #16a34a;
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+/* Emoji Seçici */
+.ct-emoji-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ct-input-emoji {
+    width: 52px;
+    height: 42px;
+    font-size: 1.3rem;
+    text-align: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    outline: none;
+}
+
+.ct-quick-emojis {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.btn-emoji-choice {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.12s;
+}
+
+.btn-emoji-choice:hover {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    transform: scale(1.1);
+}
+
+.btn-emoji-choice.active {
+    background: #dbeafe;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* Renk Seçici */
+.ct-color-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ct-color-picker {
+    width: 44px;
+    height: 40px;
+    padding: 2px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.ct-quick-colors {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-color-choice {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    cursor: pointer;
+    box-shadow: 0 0 0 1px #cbd5e1;
+    transition: transform 0.12s;
+}
+
+.btn-color-choice:hover {
+    transform: scale(1.15);
+}
+
+.btn-color-choice.active {
+    box-shadow: 0 0 0 2px #0f172a;
+}
+
+.ct-color-hex {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-family: monospace;
+}
+
+/* Canlı Önizleme Kartı */
+.ct-preview-card {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ct-preview-label {
+    font-size: 0.72rem;
+    font-weight: 600;
     color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ct-preview-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border-width: 1.5px;
+    border-style: solid;
+    width: fit-content;
+}
+
+.ct-preview-icon {
+    font-size: 1.1rem;
+}
+
+.ct-preview-name {
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.ct-preview-target {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #475569;
+    padding-left: 8px;
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Aksiyon Butonları */
+.ct-form-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 18px;
+    border-top: 1px solid #f1f5f9;
+}
+
+.btn-save-case-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-save-case-type:hover:not(:disabled) {
+    background-color: #1d4ed8;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.btn-save-case-type:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-cancel-case-type {
+    background: transparent;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+
+.btn-cancel-case-type:hover {
+    background: #f1f5f9;
+}
+
+.ct-loading-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    color: #64748b;
     font-size: 0.95rem;
 }

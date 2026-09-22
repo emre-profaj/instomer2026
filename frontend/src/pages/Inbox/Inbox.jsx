@@ -379,7 +379,7 @@ const Inbox = () => {
     const { t } = useTranslation();
     const [searchParams, setSearchParams] = useSearchParams();
 
-    const { showAssignment } = useToast();
+    const { showAssignment, showWarning } = useToast();
 
     // Filter states - All channels selected by default (uncheck to hide)
     const allFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'marketing', 'notes', 'fb_comments', 'ig_comments'];
@@ -3059,6 +3059,10 @@ const Inbox = () => {
             console.log('🔄 [handleAssignUser] conversationId:', conversationId, 'userId:', userId, 'type:', typeof userId);
             const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { userId: userId || null });
 
+            if (response.data?.warning) {
+                showWarning ? showWarning('Mesai Dışı Atama', response.data.warning) : alert(`⚠️ ${response.data.warning}`);
+            }
+
             // Update local state instead of reloading
             setInboxItems(prev => prev.map(item =>
                 item.id === conversationId
@@ -3221,11 +3225,16 @@ const Inbox = () => {
 
         try {
             setBulkAssigning(true);
-            await Promise.all(
+            const responses = await Promise.all(
                 selectedItems.map(convId =>
                     conversationAPI.assign(currentWorkspace.id, convId, { userId: userId || null })
                 )
             );
+
+            const warnMsg = responses?.find(r => r?.data?.warning)?.data?.warning;
+            if (warnMsg) {
+                showWarning ? showWarning('Mesai Dışı Atama', warnMsg) : alert(`⚠️ ${warnMsg}`);
+            }
 
             // Update local state for all assigned conversations
             const assignedUser = members.find(m => m.userId === userId);
@@ -3576,7 +3585,9 @@ const Inbox = () => {
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, selectedItem.id, { teamId, agentId });
             // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
-            if (res?.data?.warning) alert(`⚠️ ${res.data.warning}`);
+            if (res?.data?.warning) {
+                showWarning ? showWarning('Mesai Dışı Atama', res.data.warning) : alert(`⚠️ ${res.data.warning}`);
+            }
             const conv = res.data.conversation;
             const agentName = conv.assignedTo?.name || members.find(m => (m.user?.id || m.userId || m.id) === agentId)?.user?.name || null;
             const updateFn = item => item.id === selectedItem.id
@@ -7806,6 +7817,9 @@ const Inbox = () => {
                         onAssignUser={async (convId, userId) => {
                             try {
                                 const res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { userId: userId || null });
+                                if (res?.data?.warning) {
+                                    showWarning ? showWarning('Mesai Dışı Atama', res.data.warning) : alert(`⚠️ ${res.data.warning}`);
+                                }
                                 const assignedMember = userId ? members.find(m => m.id === userId) : null;
                                 const assignedTo = assignedMember ? { id: assignedMember.id, name: assignedMember.name, avatar: assignedMember.avatar } : null;
                                 const newTeamIds = res?.data?.conversation?.teamIds || selectedItem.teamIds;

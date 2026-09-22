@@ -372,6 +372,13 @@ model AIBot {
   funnels         Funnel[]         @relation("FunnelBot")
   funnelStages    FunnelStage[]    @relation("FunnelStageBot")
 
+  // Sıralı Katalog Akışı — bot bazlı override
+  // null = workspace ayarını kullan (geriye uyumluluk)
+  // true = bu bot için zorla açık, false = kapalı
+  catalogFlowEnabled     Boolean?
+  // Bot ürün fiyatı söyleyebilir mi? null = workspace ayarını kullan
+  catalogPriceDisclosure Boolean?
+
   @@index([workspaceId])
   @@map("ai_bots")
 }
@@ -1284,6 +1291,8 @@ model FormWebhook {
   webhookToken String           @unique
   isActive     Boolean          @default(true)
   fieldMapping String           @default("{}")
+  caseTypeId   String?
+  caseType     CaseType?        @relation(fields: [caseTypeId], references: [id], onDelete: SetNull)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1291,6 +1300,7 @@ model FormWebhook {
 
   @@index([workspaceId])
   @@index([webhookToken])
+  @@index([caseTypeId])
   @@map("form_webhooks")
 }
 
@@ -1593,13 +1603,19 @@ model CaseType {
   isActive    Boolean @default(true)
   order       Int     @default(0)
 
+  // Bağlı Varsayılan Akış
+  funnelId    String?
+  funnel      Funnel?   @relation("CaseTypeFunnel", fields: [funnelId], references: [id], onDelete: SetNull)
+
   cases Case[]
+  formWebhooks FormWebhook[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([funnelId])
   @@map("case_types")
 }
 
@@ -1626,6 +1642,7 @@ model Funnel {
   workspace              Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages                 FunnelStage[]
   channelRoutings        ChannelRouting[] @relation("FunnelChannelRoutings")
+  caseTypes              CaseType[]       @relation("CaseTypeFunnel")
 
   @@index([workspaceId])
   @@index([parentId])

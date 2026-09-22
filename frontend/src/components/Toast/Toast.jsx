@@ -68,6 +68,13 @@ export const ToastProvider = ({ children }) => {
         return addToast({ type: 'info', title, message, ...options });
     }, [addToast]);
 
+    const showWarning = useCallback((title, message, options = {}) => {
+        if (typeof title === 'string' && !message) {
+            return addToast({ type: 'warning', title: 'Mesai Dışı Atama', message: title, duration: 7000, ...options });
+        }
+        return addToast({ type: 'warning', title, message, duration: 7000, ...options });
+    }, [addToast]);
+
     const showAssignment = useCallback((title, message, options = {}) => {
         return addToast({ type: 'assignment', title, message, duration: 8000, ...options });
     }, [addToast]);
@@ -254,7 +261,19 @@ export const ToastProvider = ({ children }) => {
     }, []);
 
     return (
-        <ToastContext.Provider value={{ addToast, removeToast, showSuccess, showError, showInfo, showAssignment }}>
+        <ToastContext.Provider value={{
+            addToast,
+            removeToast,
+            showSuccess,
+            showError,
+            showInfo,
+            showWarning,
+            showAssignment,
+            success: (msg, title) => showSuccess(title || 'Başarılı', msg || title),
+            error: (msg, title) => showError(title || 'Hata', msg || title),
+            info: (msg, title) => showInfo(title || 'Bilgi', msg || title),
+            warning: (msg, title) => showWarning(title || 'Mesai Dışı Atama', msg || title)
+        }}>
             {children}
             <ToastContainer toasts={toasts} removeToast={removeToast} />
         </ToastContext.Provider>
@@ -295,6 +314,8 @@ const ToastItem = ({ toast, onClose }) => {
             case 'success':
                 return <CheckCircle size={20} />;
             case 'error':
+                return <AlertCircle size={20} />;
+            case 'warning':
                 return <AlertCircle size={20} />;
             case 'assignment':
                 return <UserPlus size={20} />;

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../components/Toast/Toast';
 import { conversationAPI, workspaceAPI, aiAPI, teamAPI } from '../../services/api';
 import { Send, User, UserPlus, Users, Bot, Trash2, SendHorizontal, MessageCircle, Facebook, Instagram, Mail, ArrowRight, ArrowLeftRight, StickyNote, ExternalLink, Check, CheckCheck, AlertCircle } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
@@ -10,6 +11,7 @@ import './Conversations.css';
 const Conversations = () => {
     const { t } = useTranslation();
     const { currentWorkspace, user, refreshWorkspace, setUnreadCount } = useAuth();
+    const toast = useToast();
     const [conversations, setConversations] = useState([]);
     const [selectedConversation, setSelectedConversation] = useState(null);
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
@@ -223,6 +225,13 @@ const Conversations = () => {
     const handleAssignUser = async (conversationId, userId) => {
         try {
             const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { userId: userId || null });
+            if (response.data?.warning) {
+                if (toast?.showWarning) {
+                    toast.showWarning('Mesai Dışı Atama', response.data.warning);
+                } else {
+                    alert(`⚠️ ${response.data.warning}`);
+                }
+            }
             setConversations(prev => prev.map(conv =>
                 conv.id === conversationId ? { ...conv, assignedToId: response.data.conversation.assignedToId, assignedTo: response.data.conversation.assignedTo } : conv
             ));

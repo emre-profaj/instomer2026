@@ -241,8 +241,8 @@ function formatPrice(v) {
  *     kullanılıyor; iki akış üst üste binmemeli.
  * Bu koşulları sağlamayan yerlerde panelden elle açılabilir.
  */
-export async function getCatalogCapability(workspaceId) {
-    const [ws, branchCount, productCount, categoryCount, healthApiCount] = await Promise.all([
+export async function getCatalogCapability(workspaceId, botId = null) {
+    const [ws, branchCount, productCount, categoryCount, healthApiCount, bot] = await Promise.all([
         prisma.workspace.findUnique({
             where: { id: workspaceId },
             select: { catalogFlowEnabled: true, catalogPriceDisclosure: true }
@@ -250,10 +250,21 @@ export async function getCatalogCapability(workspaceId) {
         prisma.appointmentBranch.count({ where: { workspaceId, isActive: true } }),
         prisma.product.count({ where: { workspaceId, isActive: true, isGroup: false } }),
         prisma.topicCategory.count({ where: { workspaceId, isActive: true } }),
-        prisma.apiIntegration.count({ where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true } })
+        prisma.apiIntegration.count({ where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true } }),
+        botId
+            ? prisma.aIBot.findUnique({
+                where: { id: botId },
+                select: { catalogFlowEnabled: true, catalogPriceDisclosure: true }
+            })
+            : null
     ]);
 
-    const flag = ws?.catalogFlowEnabled;
+    // Bot bazlı override: bot'ta null değilse bot'un ayarı esas alınır,
+    // null ise workspace'ten devralınır (geriye uyumluluk).
+    const effectiveFlowFlag = bot?.catalogFlowEnabled ?? ws?.catalogFlowEnabled ?? null;
+    const effectivePriceFlag = bot?.catalogPriceDisclosure ?? ws?.catalogPriceDisclosure ?? false;
+
+    const flag = effectiveFlowFlag;
     const hasHealthApi = healthApiCount > 0;
     const auto = branchCount >= 2 && productCount >= 1 && !hasHealthApi;
     const enabled = flag === true ? true : flag === false ? false : auto;
@@ -266,7 +277,10 @@ export async function getCatalogCapability(workspaceId) {
         branchCount,
         productCount,
         categoryCount,
-        priceDisclosure: ws?.catalogPriceDisclosure === true
+        priceDisclosure: effectivePriceFlag === true,
+        // Bot bazlı ham değerler (UI'da gösterilecek)
+        botFlowFlag: bot?.catalogFlowEnabled ?? null,
+        botPriceFlag: bot?.catalogPriceDisclosure ?? null
     };
 }
 
@@ -278,9 +292,9 @@ export async function getCatalogCapability(workspaceId) {
  * @returns {Promise<{ step: string, text: string, branchId: string|null, categoryId: string|null }|null>}
  *          null → zincir devrede değil, bot bugünkü gibi davranır.
  */
-export async function buildCatalogStep(workspaceId, { conversationId = null, recentMessages = [], userMessage = '' } = {}) {
+export async function buildCatalogStep(workspaceId, { conversationId = null, recentMessages = [], userMessage = '', botId = null } = {}) {
     try {
-        const cap = await getCatalogCapability(workspaceId);
+        const cap = await getCatalogCapability(workspaceId, botId);
         if (!cap.enabled) return null;
 
         // Gelen mesaj henüz kaydedilmemiş olabilir; metne mutlaka dahil et

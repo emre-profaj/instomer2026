@@ -1059,8 +1059,9 @@ export const toggleSalesModuleWS = async (req, res) => {
 export const getCatalogFlowSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
+        const botId = req.query.botId || null;
         const { getCatalogCapability } = await import('../services/catalogFlow.service.js');
-        const capability = await getCatalogCapability(workspaceId);
+        const capability = await getCatalogCapability(workspaceId, botId);
         res.json({ success: true, capability });
     } catch (error) {
         console.error('getCatalogFlowSettings error:', error);
@@ -1071,7 +1072,7 @@ export const getCatalogFlowSettings = async (req, res) => {
 export const updateCatalogFlowSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { catalogFlowEnabled, catalogPriceDisclosure } = req.body;
+        const { catalogFlowEnabled, catalogPriceDisclosure, botId } = req.body;
 
         const data = {};
         if (catalogFlowEnabled !== undefined) {
@@ -1081,8 +1082,8 @@ export const updateCatalogFlowSettings = async (req, res) => {
             data.catalogFlowEnabled = catalogFlowEnabled;
         }
         if (catalogPriceDisclosure !== undefined) {
-            if (typeof catalogPriceDisclosure !== 'boolean') {
-                return res.status(400).json({ error: 'catalogPriceDisclosure boolean olmalıdır.' });
+            if (catalogPriceDisclosure !== null && typeof catalogPriceDisclosure !== 'boolean') {
+                return res.status(400).json({ error: 'catalogPriceDisclosure boolean veya null olmalıdır.' });
             }
             data.catalogPriceDisclosure = catalogPriceDisclosure;
         }
@@ -1090,10 +1091,20 @@ export const updateCatalogFlowSettings = async (req, res) => {
             return res.status(400).json({ error: 'Güncellenecek alan bulunamadı.' });
         }
 
-        await prisma.workspace.update({ where: { id: workspaceId }, data });
+        // Bot bazlı: botId verilmişse AIBot tablosunu güncelle
+        if (botId) {
+            const existing = await prisma.aIBot.findFirst({ where: { id: botId, workspaceId } });
+            if (!existing) {
+                return res.status(404).json({ error: 'Bot bulunamadı.' });
+            }
+            await prisma.aIBot.update({ where: { id: botId }, data });
+        } else {
+            // Geriye uyumluluk: botId yoksa workspace güncellenir
+            await prisma.workspace.update({ where: { id: workspaceId }, data });
+        }
 
         const { getCatalogCapability } = await import('../services/catalogFlow.service.js');
-        const capability = await getCatalogCapability(workspaceId);
+        const capability = await getCatalogCapability(workspaceId, botId || null);
         res.json({ success: true, capability });
     } catch (error) {
         console.error('updateCatalogFlowSettings error:', error);

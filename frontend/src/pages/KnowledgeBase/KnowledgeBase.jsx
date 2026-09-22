@@ -1600,60 +1600,6 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                         <p>{labels.branchesDesc || 'Şubelerinizi ve lokasyonlarınızı yönetin.'}</p>
                     </div>
 
-                    {catalogFlow && (
-                        <div className="br-surface br-flow">
-                            <div className="br-flow-head">
-                                <div>
-                                    <h2>Bot sıralı akışı</h2>
-                                    <p>Bot müşteriyi sırayla daraltır: şube → kategori → ürün grubu → ürün.</p>
-                                </div>
-                                <span className={`br-flow-state ${catalogFlow.enabled ? 'on' : 'off'}`}>
-                                    {catalogFlow.enabled ? 'Çalışıyor' : 'Devre dışı'}
-                                </span>
-                            </div>
-
-                            <div className="br-flow-rows">
-                                <label className="br-flow-row">
-                                    <input
-                                        type="checkbox"
-                                        disabled={catalogSaving}
-                                        checked={catalogFlow.flag === null ? catalogFlow.auto : catalogFlow.flag}
-                                        onChange={e => saveCatalogFlow({ catalogFlowEnabled: e.target.checked })}
-                                    />
-                                    <span>
-                                        <strong>Sıralı akış açık</strong>
-                                        <em>
-                                            {catalogFlow.flag === null
-                                                ? (catalogFlow.hasHealthApi
-                                                    ? 'Otomatik: randevu entegrasyonu olduğu için kapalı, randevu asistanının kendi akışı kullanılıyor.'
-                                                    : `Otomatik: ${catalogFlow.branchCount} şube, ${catalogFlow.productCount} ürün tanımlı olduğu için ${catalogFlow.auto ? 'açık' : 'kapalı'}. Otomatik açılması için en az 2 şube ve 1 ürün gerekir.`)
-                                                : 'Elle ayarlandı. Kapatılırsa bot serbest akışta çalışır.'}
-                                        </em>
-                                    </span>
-                                </label>
-
-                                <label className="br-flow-row">
-                                    <input
-                                        type="checkbox"
-                                        disabled={catalogSaving || !catalogFlow.enabled}
-                                        checked={catalogFlow.priceDisclosure}
-                                        onChange={e => saveCatalogFlow({ catalogPriceDisclosure: e.target.checked })}
-                                    />
-                                    <span>
-                                        <strong>Bot fiyat söyleyebilsin</strong>
-                                        <em>Kapalıyken bot rakam vermez, fiyat sorusunu yetkiliye aktarır. Açıkken şubeye tanımlı fiyatı yazar.</em>
-                                    </span>
-                                </label>
-                            </div>
-
-                            {catalogFlow.enabled && catalogFlow.categoryCount === 0 && (
-                                <div className="br-flow-warn">
-                                    Kategori tanımlı değil; bot şubeyi sorup doğrudan ürünleri sunar.
-                                </div>
-                            )}
-                        </div>
-                    )}
-
                     <div className="br-cols">
                         <div className="br-surface">
                             <div className="br-list-head">

@@ -9,6 +9,7 @@ import TransferModal from '../TransferModal/TransferModal';
 import ChatPopup from '../ChatPopup/ChatPopup';
 import './ContactSidebar.css';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../Toast/Toast';
 import { useNavigate } from 'react-router-dom';
 import { detectCallIntent } from '../../utils/callIntentDetector';
 import ErrorBoundary from '../ErrorBoundary/ErrorBoundary';
@@ -292,6 +293,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
 
 const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null, onOpenConversationPopup = null, onConversationStatusChange = null, funnelOptions = [], initialAction = null }) => {
     const { currentWorkspace, onlineUsers, user } = useAuth();
+    const toast = useToast();
     const navigate = useNavigate();
 
     // Safe helper to check online status without crashing if onlineUsers is not a Map
@@ -1587,7 +1589,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
             // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
             if (assignRes?.data?.warning) {
-                alert(`⚠️ ${assignRes.data.warning}`);
+                if (toast?.showWarning) {
+                    toast.showWarning('Mesai Dışı Atama', assignRes.data.warning);
+                } else {
+                    alert(`⚠️ ${assignRes.data.warning}`);
+                }
             }
 
             // Notify parent callbacks for any additional side-effects (e.g. list refresh)

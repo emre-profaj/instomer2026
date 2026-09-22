@@ -220,7 +220,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
         };
         const loadCatalogFlow = async () => {
             try {
-                const res = await workspaceAPI.getCatalogFlow(workspaceId);
+                const res = await workspaceAPI.getCatalogFlow(workspaceId, bot.id);
                 setCatalogFlow(res.data?.capability || null);
             } catch (err) {
                 console.error('Failed to load catalog flow:', err);
@@ -233,7 +233,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
     const handleCatalogFlowToggle = async (next) => {
         setCatalogSaving(true);
         try {
-            const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogFlowEnabled: next });
+            const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogFlowEnabled: next, botId: bot.id });
             setCatalogFlow(res.data?.capability || null);
         } catch (err) {
             console.error('Catalog flow toggle error:', err);
@@ -698,10 +698,38 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                                                         ? 'Elle açıldı. Kapatırsanız bot anında eski davranışına döner.'
                                                         : 'Elle kapatıldı. Bot serbest akışta, yani eski haliyle çalışıyor.'}
                                             </p>
-                                            <p className="bm-hint" style={{ margin: 0 }}>
-                                                Bu ayar çalışma alanının tamamı için geçerlidir, tek bota özel değildir.
-                                            </p>
                                         </div>
+
+                                        {/* Bot fiyat söyleyebilsin toggle */}
+                                        {catalogFlowOn && (
+                                            <div className="bm-rule-body" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '6px' }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={catalogFlow.priceDisclosure || false}
+                                                        disabled={catalogSaving}
+                                                        onChange={async (e) => {
+                                                            setCatalogSaving(true);
+                                                            try {
+                                                                const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogPriceDisclosure: e.target.checked, botId: bot.id });
+                                                                setCatalogFlow(res.data?.capability || null);
+                                                            } catch (err) {
+                                                                console.error('Price disclosure toggle error:', err);
+                                                            } finally {
+                                                                setCatalogSaving(false);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span style={{ fontSize: '0.82rem' }}>
+                                                        <strong>Bot fiyat söyleyebilsin</strong>
+                                                        <br />
+                                                        <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                                                            Kapalıyken bot rakam vermez, fiyat sorusunu yetkiliye aktarır. Açıkken şubeye tanımlı fiyatı yazar.
+                                                        </span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

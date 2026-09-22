@@ -261,8 +261,8 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                     } catch (_) {}
                 }
 
-                let caseTypeId = null;
-                if (topicCategoryId) {
+                let caseTypeId = options.initialCaseTypeId || null;
+                if (!caseTypeId && topicCategoryId) {
                     const tc = await prisma.topicCategory.findUnique({
                         where: { id: topicCategoryId },
                         select: { caseTypeId: true }
@@ -282,6 +282,49 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                     contactSource: contactForSource?.leadSource || contactForSource?.source
                 });
 
+                // FORM kanalı için formWebhook'tan caseTypeId al
+                if (!caseTypeId && conv.channel === 'FORM') {
+                    const latestSubmission = await prisma.formSubmission.findFirst({
+                        where: { conversationId },
+                        orderBy: { createdAt: 'desc' },
+                        include: { formWebhook: { select: { caseTypeId: true } } }
+                    });
+                    if (latestSubmission?.formWebhook?.caseTypeId) {
+                        caseTypeId = latestSubmission.formWebhook.caseTypeId;
+                    }
+                }
+
+                // Vaka tipinin bağlı olduğu akışı otomatik çek (eğer konuşmada akış henüz atanmamışsa)
+                let targetFunnelType = conv.funnelType || null;
+                let targetFunnelStageId = conv.funnelStageId || null;
+
+                if (!targetFunnelType && caseTypeId) {
+                    const ct = await prisma.caseType.findUnique({
+                        where: { id: caseTypeId },
+                        include: {
+                            funnel: {
+                                include: {
+                                    stages: { orderBy: { order: 'asc' }, take: 1 }
+                                }
+                            }
+                        }
+                    });
+                    if (ct?.funnelId) {
+                        targetFunnelType = ct.funnelId;
+                        targetFunnelStageId = ct.funnel?.stages?.[0]?.id || null;
+
+                        // Konuşmayı da bu akış ve aşamaya senkronize et
+                        await prisma.conversation.update({
+                            where: { id: conversationId },
+                            data: {
+                                funnelType: targetFunnelType,
+                                funnelStageId: targetFunnelStageId
+                            }
+                        }).catch(() => {});
+                        console.log(`🧭 [AutoCase] Resolved funnel "${ct.funnel?.name}" from CaseType "${ct.name}" for conv ${conversationId}`);
+                    }
+                }
+
                 const newCase = await prisma.case.create({
                     data: {
                         workspaceId,
@@ -290,8 +333,8 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                         title,
                         assignedToId: conv.assignedToId || null,
                         assignedTeamId: conv.assignedTeamId || null,
-                        funnelType: conv.funnelType || null,
-                        funnelStageId: conv.funnelStageId || null,
+                        funnelType: targetFunnelType,
+                        funnelStageId: targetFunnelStageId,
                         categoryId: topicCategoryId || null,
                         caseTypeId,
                         campaignId: conv.campaignId || null,
@@ -781,6 +824,26 @@ export const createCase = async (req, res) => {
             contactSource: contactSrc?.leadSource || contactSrc?.source
         });
 
+        let finalFunnelType = funnelType || null;
+        let finalFunnelStageId = funnelStageId || null;
+
+        if (!finalFunnelType && caseTypeId) {
+            const ct = await prisma.caseType.findUnique({
+                where: { id: caseTypeId },
+                include: {
+                    funnel: {
+                        include: {
+                            stages: { orderBy: { order: 'asc' }, take: 1 }
+                        }
+                    }
+                }
+            });
+            if (ct?.funnelId) {
+                finalFunnelType = ct.funnelId;
+                finalFunnelStageId = finalFunnelStageId || ct.funnel?.stages?.[0]?.id || null;
+            }
+        }
+
         const newCase = await prisma.case.create({
             data: {
                 workspaceId,
@@ -788,8 +851,8 @@ export const createCase = async (req, res) => {
                 caseNumber,
                 title: title.trim(),
                 description: description || null,
-                funnelType: funnelType || null,
-                funnelStageId: funnelStageId || null,
+                funnelType: finalFunnelType,
+                funnelStageId: finalFunnelStageId,
                 assignedToId: assignedToId || null,
                 assignedTeamId: assignedTeamId || null,
                 priority: priority || 'NORMAL',

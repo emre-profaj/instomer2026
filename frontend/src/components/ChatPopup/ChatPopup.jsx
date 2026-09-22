@@ -5,6 +5,7 @@ import { X, Loader, Send, ExternalLink, User, Check, CheckCheck, StickyNote, Use
 import { conversationAPI, funnelAPI, workspaceAPI, teamAPI, contactAPI, caseAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../Toast/Toast';
 import './ChatPopup.css';
 
 const CUSTOMER_STATUS_OPTIONS = [
@@ -91,6 +92,7 @@ const getChannelName = (ch) => {
 
 const ChatPopup = ({ conversationId, onClose }) => {
     const { currentWorkspace, user } = useAuth();
+    const toast = useToast();
     const navigate = useNavigate();
     const [conversation, setConversation] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -415,7 +417,13 @@ const ChatPopup = ({ conversationId, onClose }) => {
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, conversation.id, { teamId, agentId });
             // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
-            if (res?.data?.warning) alert(`⚠️ ${res.data.warning}`);
+            if (res?.data?.warning) {
+                if (toast?.showWarning) {
+                    toast.showWarning('Mesai Dışı Atama', res.data.warning);
+                } else {
+                    alert(`⚠️ ${res.data.warning}`);
+                }
+            }
             const conv = res.data.conversation || res.data;
             setConversation(prev => ({ 
                 ...prev, 
