@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { channelRuleMatches } from '../utils/channelRuleMatch.js';
 
 /**
  * Runs Classifier Rules on an incoming message or form submission.
@@ -16,13 +17,32 @@ export async function evaluateClassifierRules(workspaceId, channel, options = {}
 
         if (!rules || rules.length === 0) return null;
 
+        // Kanal kuralları hesap kimliğiyle yazılıyor; eşleştirme için
+        // konuşmanın kanal kayıtları gerekiyor.
+        let convForMatch = { channel };
+        if (options.conversationId) {
+            try {
+                const c = await prisma.conversation.findUnique({
+                    where: { id: options.conversationId },
+                    select: {
+                        channel: true, whatsappPhoneNumberId: true, facebookPageId: true,
+                        instagramBusinessId: true, emailChannelId: true
+                    }
+                });
+                if (c) convForMatch = { ...c, channel: c.channel || channel };
+            } catch (_) {}
+        }
+        if (options.pageId && !convForMatch.facebookPageId) convForMatch.facebookPageId = options.pageId;
+
         for (const rule of rules) {
             const conditions = JSON.parse(rule.conditions || '{}');
             
             switch (rule.conditionType) {
                 case 'CHANNEL':
-                    // conditions.channels = ["WHATSAPP", "FACEBOOK", "FACEBOOK_COMMENT", ...]
-                    if (conditions.channels && conditions.channels.includes(channel)) {
+                    // Kural değerleri "wa-<id>", "widget-<id>" biçiminde;
+                    // düz tür karşılaştırması hiçbir zaman tutmuyordu.
+                    if (channelRuleMatches(conditions.channels, convForMatch, channel)) {
+                        console.log(`📡 [Classifier] CHANNEL eşleşti: ${rule.name}`);
                         return rule;
                     }
                     break;

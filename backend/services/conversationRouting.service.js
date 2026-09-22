@@ -109,7 +109,7 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
 
         // 1. Önce Classifier Kurallarını kontrol et (Sadece yeni konuşmalarda çalıştır - Faz 1)
         if (isNewConversation) {
-            const matchedRule = await evaluateClassifierRules(workspaceId, channel, { ...options, pageId });
+            const matchedRule = await evaluateClassifierRules(workspaceId, channel, { ...options, pageId, conversationId });
             
             if (matchedRule) {
                 console.log(`📡 [Classifier] Rule matched: ${matchedRule.name}`);
