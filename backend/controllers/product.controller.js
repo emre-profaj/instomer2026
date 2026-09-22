@@ -207,8 +207,19 @@ export const updateProduct = async (req, res) => {
             'discountedPrice', 'tax1Rate', 'tax2Rate'
         ];
 
+        // İlişki alanları: arayüz "Grupsuz" / "Kategorisiz" seçiminde boş
+        // metin gönderiyor. Boş metin geçerli bir kayıt kimliği olmadığı
+        // için Prisma foreign key hatası veriyordu (P2003) ve kaydetme
+        // "Kayıt sırasında bir hata oluştu" ile düşüyordu. Oluşturma
+        // tarafında zaten null'a çevriliyor; güncelleme de aynı olmalı.
+        const ILISKI_ALANLARI = new Set(['parentId', 'categoryId']);
+
         fields.forEach(field => {
-            if (req.body[field] !== undefined) updateData[field] = req.body[field];
+            if (req.body[field] === undefined) return;
+            const deger = req.body[field];
+            updateData[field] = (ILISKI_ALANLARI.has(field) && (deger === '' || deger === 'NONE'))
+                ? null
+                : deger;
         });
         floatFields.forEach(field => {
             if (req.body[field] !== undefined) {
