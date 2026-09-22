@@ -3224,6 +3224,57 @@ const Inbox = () => {
         }
     };
 
+    /**
+     * Toplu TAKIM ataması.
+     *
+     * assignNew ucunu kullanıyoruz; o uç takımın "Havuzdakilere ne
+     * yapılsın?" ayarını uyguluyor (havuzda beklet / sırayla dağıt /
+     * en az meşgul / online). Mesai dışı temsilciler atlanıyor.
+     * İstekler küçük gruplar hâlinde gönderiliyor: sıra bozulmasın ve
+     * 100 kayıtta sunucu boğulmasın.
+     */
+    const handleBulkAssignTeam = async (teamId) => {
+        if (selectedItems.length === 0 || !teamId) return;
+        try {
+            setBulkAssigning(true);
+            const hedefler = [...selectedItems];
+            const sonuclar = [];
+            for (let i = 0; i < hedefler.length; i += 5) {
+                const grup = hedefler.slice(i, i + 5);
+                const cevaplar = await Promise.all(
+                    grup.map(convId =>
+                        conversationAPI.assignNew(currentWorkspace.id, convId, { teamId })
+                            .then(r => r?.data)
+                            .catch(() => null)
+                    )
+                );
+                sonuclar.push(...cevaplar);
+            }
+
+            const takim = teams.find(t => t.id === teamId);
+            const atananSayisi = sonuclar.filter(r => r?.resolvedAgentId).length;
+            const havuzSayisi = sonuclar.filter(r => r && !r.resolvedAgentId).length;
+            const hataSayisi = sonuclar.filter(r => !r).length;
+
+            setInboxItems(prev => prev.map(item =>
+                selectedItems.includes(item.id) ? { ...item, assignedTeamId: teamId } : item
+            ));
+            setSelectedItems([]);
+            setBulkSelectMode(false);
+            loadInboxItemsRef.current?.(false);
+
+            let mesaj = `${takim?.name || 'Takım'}: ${atananSayisi} konuşma temsilcilere dağıtıldı`;
+            if (havuzSayisi > 0) mesaj += `, ${havuzSayisi} tanesi havuzda bekliyor`;
+            if (hataSayisi > 0) mesaj += `, ${hataSayisi} tanesi atanamadı`;
+            alert(mesaj + '.');
+        } catch (error) {
+            console.error('Bulk team assign error:', error);
+            alert('Toplu takım ataması sırasında hata oluştu.');
+        } finally {
+            setBulkAssigning(false);
+        }
+    };
+
     const handleBulkResolve = async () => {
         if (selectedItems.length === 0) return;
         try {
@@ -4321,6 +4372,20 @@ const Inbox = () => {
                                                         <option key={m.userId} value={m.userId}>
                                                             {(onlineUsers.get(m.userId)?.isOnline || m.user?.isOnline) ? '🟢' : '⚪'} {m.user?.name || m.user?.email}
                                                         </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="bdp-row">
+                                                <select
+                                                    className="bdp-assign-select"
+                                                    onChange={(e) => handleBulkAssignTeam(e.target.value)}
+                                                    disabled={bulkAssigning}
+                                                    value=""
+                                                    title="Takımın dağıtım ayarına göre atanır"
+                                                >
+                                                    <option value="">👥 Takıma ata...</option>
+                                                    {teams.map(t => (
+                                                        <option key={t.id} value={t.id}>{t.name}</option>
                                                     ))}
                                                 </select>
                                             </div>
