@@ -71,6 +71,53 @@ import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import PipelineView from '../Pipeline/Pipeline';
 import NewConversationModal from '../../components/NewConversationModal/NewConversationModal';
 
+// Kişinin nereden geldiğini okunur etikete çevirir.
+// Kanal kodları (conversations.channel) ile kişi kaynağı (contacts.source)
+// aynı şeyi farklı adlarla yazıyor: kanalda LEAD, kaynakta FACEBOOK_LEAD;
+// kanalda WIDGET, kaynakta WEB_WIDGET. İkisini tek tabloda topluyoruz.
+const KAYNAK_ETIKETLERI = {
+    WHATSAPP: 'WhatsApp',
+    FACEBOOK: 'Facebook',
+    INSTAGRAM: 'Instagram',
+    LEAD: 'Facebook Lead',
+    FACEBOOK_LEAD: 'Facebook Lead',
+    WIDGET: 'Web Widget',
+    WEB_WIDGET: 'Web Widget',
+    FORM: 'Form',
+    WEB_FORM: 'Form',
+    FACEBOOK_COMMENT: 'Facebook Yorum',
+    INSTAGRAM_COMMENT: 'Instagram Yorum',
+    EMAIL: 'E-posta',
+    PHONE: 'Telefon',
+    INBOUND: 'Gelen Arama',
+    RETELL_CALL: 'AI Arama',
+    AI_CALL: 'AI Arama',
+    SMS: 'SMS',
+    GOOGLE: 'Google',
+    SOCIAL_MEDIA: 'Sosyal Medya',
+    REFERRAL: 'Referans',
+    WALK_IN: 'Yüz Yüze',
+    EVENT: 'Etkinlik',
+    MANUAL: 'Elle Eklendi',
+    IMPORT: 'İçe Aktarım',
+    SYSTEM: 'Sistem',
+    INTERNAL: 'Sistem',
+    INTERNAL_CHAT: 'Sistem',
+    INTERNAL_SYSTEM: 'Sistem',
+    OTHER: 'Diğer'
+};
+
+const getContactSourceLabel = (contact) => {
+    if (!contact) return '';
+    // Önce İLK konuşmanın kanalı: "nereden yazdı" sorusunun doğrudan cevabı.
+    const convs = (contact.conversations || [])
+        .filter(c => c?.channel)
+        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    const raw = convs[0]?.channel || contact.leadSource || contact.source || '';
+    const key = String(raw).toUpperCase();
+    return KAYNAK_ETIKETLERI[key] || raw || '';
+};
+
 export const getContactPrimaryPhone = (contact) => {
     if (!contact) return null;
     const isValid = (num) => {
@@ -1082,7 +1129,7 @@ const Customers = () => {
             });
 
             // Create CSV content
-            const headers = ['İsim', 'Telefon', 'E-posta', 'İlk Yazma Tarihi', 'Durum', 'Kime Atandığı', 'Son Not'];
+            const headers = ['İsim', 'Telefon', 'E-posta', 'Kaynak', 'İlk Yazma Tarihi', 'Durum', 'Kime Atandığı', 'Son Not'];
 
             const rows = filteredContacts.map(contact => {
                 // Get last note from notes
@@ -1131,6 +1178,7 @@ const Customers = () => {
                     contact.name || '',
                     contact.phone || '',
                     contact.email || '',
+                    getContactSourceLabel(contact),
                     contact.firstMessageAt ? new Date(contact.firstMessageAt).toLocaleDateString('tr-TR') : '',
                     displayLabel,
                     assignedTo,
@@ -1145,6 +1193,7 @@ const Customers = () => {
                 { wch: 25 }, // İsim
                 { wch: 18 }, // Telefon
                 { wch: 28 }, // E-posta
+                { wch: 16 }, // Kaynak
                 { wch: 18 }, // Tarih
                 { wch: 15 }, // Durum
                 { wch: 20 }, // Atanan
@@ -1237,6 +1286,7 @@ const Customers = () => {
                 'İsim',
                 'Telefon',
                 'E-posta',
+                'Kaynak',
                 'Firma',
                 'Konu',
                 'Skor',
@@ -1307,6 +1357,7 @@ const Customers = () => {
                     contact.name || '',
                     contact.phone || '',
                     contact.email || '',
+                    getContactSourceLabel(contact),
                     contact.company || '',
                     topic,
                     contact.leadScore != null ? contact.leadScore : '',
@@ -1325,6 +1376,7 @@ const Customers = () => {
                 { wch: 25 }, // İsim
                 { wch: 18 }, // Telefon
                 { wch: 28 }, // E-posta
+                { wch: 16 }, // Kaynak
                 { wch: 20 }, // Firma
                 { wch: 22 }, // Konu
                 { wch: 10 }, // Skor
