@@ -202,7 +202,9 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const fetchCases = async () => {
         try {
             const res = await caseAPI.getByContact(workspaceId, contactId);
-            const fetched = res.data || [];
+            // Boş ya da kimliksiz kayıt gelirse aşağıdaki listeler c.title
+            // okurken çöküyor ve tüm kişi kartı hata ekranına düşüyordu.
+            const fetched = (Array.isArray(res.data) ? res.data : []).filter(c => c && c.id);
             setCases(fetched);
             if (onCasesLoaded) onCasesLoaded(fetched);
             // Re-fetch sonrası linked case bilgisini parent'a ilet
@@ -942,7 +944,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     >
                                         <Briefcase size={11} style={{ color: '#8b5cf6', flexShrink: 0 }} />
                                         <span style={{ fontSize: '0.6rem', color: '#a1a1aa', fontFamily: 'monospace' }}>{c?.caseNumber}</span>
-                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c?.title}</span>
                                     </button>
                                 ))}
                                 {cases.filter(c => c.id !== displayCase?.id && c.status === 'ACTIVE').length === 0 && (
@@ -1119,7 +1121,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
 
                                 {/* Title */}
                                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 6 }}>
-                                    {c.title}
+                                    {c?.title}
                                 </div>
                                 {/* Kategori Badge */}
                                 {c.categoryId && categories?.find(cat => cat.id === c.categoryId) && (
@@ -1525,7 +1527,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         </div>
                                     </div>
                                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 6 }}>
-                                        {c.title}
+                                        {c?.title}
                                     </div>
                                     {/* Kategori Badge */}
                                     {c.categoryId && categories?.find(cat => cat.id === c.categoryId) && (
@@ -1614,7 +1616,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                             </select>
                                         </div>
                                         <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
-                                            {c.title}
+                                            {c?.title}
                                         </div>
                                         {/* Kategori Badge */}
                                         {c.categoryId && categories?.find(cat => cat.id === c.categoryId) && (

@@ -99,6 +99,38 @@ class ErrorBoundary extends React.Component {
                         </div>
                     )}
 
+                    {/* Hatanın hangi bileşende olduğu yalnızca konsolda kalıyordu;
+                        kullanıcıdan konsol açmasını istemek gerekiyordu. Artık
+                        ekrandan okunabiliyor ve kopyalanabiliyor. */}
+                    {this.state.errorInfo?.componentStack && (
+                        <details style={{ width: '100%', textAlign: 'left', marginBottom: '20px' }}>
+                            <summary style={{
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                color: '#64748b',
+                                marginBottom: '8px'
+                            }}>
+                                Teknik ayrıntı (destek için kopyalayın)
+                            </summary>
+                            <pre style={{
+                                margin: 0,
+                                padding: '10px 14px',
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                fontSize: '0.68rem',
+                                color: '#475569',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                maxHeight: '220px',
+                                overflowY: 'auto'
+                            }}>
+                                {this.state.errorInfo.componentStack.trim()}
+                            </pre>
+                        </details>
+                    )}
+
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <button
                             type="button"

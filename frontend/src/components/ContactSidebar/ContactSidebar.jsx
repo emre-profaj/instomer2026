@@ -2898,12 +2898,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        {distinctCases.map(cc => {
+                                                        {distinctCases.filter(Boolean).map(cc => {
                                                             const statusInfo = { ACTIVE: '🟢', CLOSED: '🔴', WON: '🏆', LOST: '❌' };
-                                                            const isActiveCase = cc.id === (activeCaseInfo?.caseId || conversationData?.caseId || c.id);
+                                                            const isActiveCase = cc?.id === (activeCaseInfo?.caseId || conversationData?.caseId || c?.id);
                                                             return (
                                                                 <div
-                                                                    key={cc.id}
+                                                                    key={cc?.id}
                                                                     onClick={async () => {
                                                                         try {
                                                                             const { default: api } = await import('../../services/api');
@@ -2931,9 +2931,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     onMouseEnter={e => { if (!isActiveCase) e.currentTarget.style.background = '#fafafa'; }}
                                                                     onMouseLeave={e => { e.currentTarget.style.background = isActiveCase ? '#f5f3ff' : 'transparent'; }}
                                                                 >
-                                                                    <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{statusInfo[cc.status] || '⚪'}</span>
+                                                                    <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{statusInfo[cc?.status] || '⚪'}</span>
                                                                     <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#6366f1', fontWeight: 600, flexShrink: 0 }}>#{cc?.caseNumber}</span>
-                                                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cc.title || '—'}</span>
+                                                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cc?.title || '—'}</span>
                                                                     {isActiveCase && <span style={{ fontSize: '0.65rem', color: '#7c3aed', marginLeft: 'auto', fontWeight: 700 }}>✓ Aktif</span>}
                                                                 </div>
                                                             );
@@ -5629,9 +5629,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     style={{ borderColor: !activityForm.caseId ? '#fca5a5' : '#e5e7eb', marginBottom: '4px' }}
                                                 >
                                                     <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                                    {(Array.isArray(distinctCases) ? distinctCases : []).map(c => (
+                                                    {(Array.isArray(distinctCases) ? distinctCases : []).filter(Boolean).map(c => (
                                                         <option key={c.id} value={c.id}>
-                                                            {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                                            {c?.caseNumber} {c?.title ? `- ${c.title}` : ''}
                                                         </option>
                                                     ))}
                                                 </select>
@@ -5865,9 +5865,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         onChange={e => setInternalNoteCaseId(e.target.value)}
                                                         style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.8rem' }}
                                                     >
-                                                        {distinctCases.map(c => (
+                                                        {distinctCases.filter(Boolean).map(c => (
                                                             <option key={c.id} value={c.id}>
-                                                                {c.caseNumber ? `#${c.caseNumber} - ` : ''}{c.title || 'Case'}
+                                                                {c?.caseNumber ? `#${c.caseNumber} - ` : ''}{c?.title || 'Case'}
                                                             </option>
                                                         ))}
                                                     </select>
@@ -6779,9 +6779,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !quoteFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                                     >
                                         <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                        {distinctCases.map(c => (
+                                        {distinctCases.filter(Boolean).map(c => (
                                             <option key={c.id} value={c.id}>
-                                                {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                                {c?.caseNumber} {c?.title ? `- ${c.title}` : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -6924,9 +6924,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <select value={orderFormData.caseId}
                                         onChange={e => setOrderFormData(prev => ({ ...prev, caseId: e.target.value }))}>
                                         <option value="">Case seçiniz (opsiyonel)</option>
-                                        {distinctCases.map(c => (
+                                        {distinctCases.filter(Boolean).map(c => (
                                             <option key={c.id} value={c.id}>
-                                                {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                                {c?.caseNumber} {c?.title ? `- ${c.title}` : ''}
                                             </option>
                                         ))}
                                     </select>
@@ -7152,9 +7152,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !invoiceFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
                                     >
                                         <option value="">📁 Lütfen bir Case seçiniz...</option>
-                                        {distinctCases.map(c => (
+                                        {distinctCases.filter(Boolean).map(c => (
                                             <option key={c.id} value={c.id}>
-                                                {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                                {c?.caseNumber} {c?.title ? `- ${c.title}` : ''}
                                             </option>
                                         ))}
                                     </select>
