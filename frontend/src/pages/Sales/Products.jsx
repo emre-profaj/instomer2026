@@ -1164,6 +1164,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                         <span>{labels.categorySingle}</span>
                                         <span>{labels.branchSingle || 'Şube'}</span>
                                         <span>Anahtar kelimeler</span>
+                                        <span>Yönlendirme</span>
                                         <span>Durum</span>
                                         <span></span>
                                     </div>
@@ -1219,6 +1220,21 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                                         ) : (
                                                             <span className="ct-none">Kelime tanımlı değil</span>
                                                         )}
+                                                    </div>
+                                                    {/* Sorumlu takım ve akış: satırı açmadan görünmeli,
+                                                        kullanıcı seçimini listede doğrulayabilsin. */}
+                                                    <div className="ct-route">
+                                                        {teamName && (
+                                                            <span className="ct-chip-team" title={`Sorumlu takım: ${teamName}`}>
+                                                                <Users size={11} />{teamName}
+                                                            </span>
+                                                        )}
+                                                        {funnelName && (
+                                                            <span className="ct-chip-funnel" title={`Varsayılan akış: ${funnelName}`}>
+                                                                <Layers size={11} />{funnelName}
+                                                            </span>
+                                                        )}
+                                                        {!teamName && !funnelName && <span className="ct-none">Atanmadı</span>}
                                                     </div>
                                                     <div className={`ct-status ${isActive ? 'on' : 'off'}`}>
                                                         <i></i>{isActive ? 'Aktif' : 'Pasif'}
