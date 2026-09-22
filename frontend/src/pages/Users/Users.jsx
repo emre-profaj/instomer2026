@@ -1022,10 +1022,26 @@ const UsersTeams = () => {
                                         </span>
                                     ) : null}
                                 </div>
+                                {durum && (
+                                    <div className="ut-team-sum">
+                                        {durum.memberCount} üye
+                                        {durum.memberCount > 0 && <> · şu an <strong className={durum.availableNow > 0 ? 'ok' : 'bad'}>{durum.availableNow} müsait</strong></>}
+                                        {durum.offHours > 0 && `, ${durum.offHours} mesai dışı`}
+                                        {durum.offline > 0 && `, ${durum.offline} çevrimdışı`}
+                                    </div>
+                                )}
                                 {team.description && <div className="ut-team-desc" style={{ marginTop: 2 }}>{team.description}</div>}
                             </div>
                         </div>
                         <div className="ut-team-card-right">
+                            {/* Havuzda bekleyen sayısı en görünür bilgi: asıl
+                                sorun orada birikiyor. Önizlemede de sağ üstteydi. */}
+                            {durum && durum.pooledCount > 0 && (
+                                <span className="ut-pool">
+                                    <strong>{durum.pooledCount}</strong>
+                                    <em>havuzda</em>
+                                </span>
+                            )}
                             <span className="ut-team-member-count">
                                 <UsersIcon size={12} /> {memberCount}
                             </span>

@@ -1545,3 +1545,89 @@
     color: #6b7480;
     margin-bottom: 6px;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ÖNİZLEMEYE HİZALAMA
+   ═══════════════════════════════════════════════════════════════
+   İlk geçişte takımlar iki kolona düşüyor, kartlar farklı boylarda
+   kalıyor ve satırlar düğme kalabalığından okunmuyordu. Önizlemedeki
+   sakin düzen: tek kolon, sağ üstte havuz sayısı, satırda yalnızca
+   gereken bilgi; düzenleme düğmeleri üstüne gelince çıkıyor.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Takımlar tek kolon — kart içeriği geniş, yan yana sıkışmıyor */
+.ut-teams-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+}
+
+/* ── Takım kartı ────────────────────────────────────────── */
+.ut-team-card { padding: 0; }
+.ut-team-card-header { padding: 15px 18px 12px; align-items: flex-start; }
+.ut-team-card-right { align-items: center; gap: 6px; }
+
+.ut-pool {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.1;
+    margin-right: 4px;
+}
+.ut-pool strong {
+    font-size: 15px;
+    font-weight: 700;
+    color: #b45309;
+    font-variant-numeric: tabular-nums;
+}
+.ut-pool em {
+    font-style: normal;
+    font-size: 10.5px;
+    color: #a8b0bb;
+}
+
+.ut-team-sum {
+    margin-top: 5px;
+    font-size: 12.5px;
+    color: #6b7480;
+}
+.ut-team-sum strong { font-weight: 600; }
+.ut-team-sum strong.ok { color: #15803d; }
+.ut-team-sum strong.bad { color: #b91c1c; }
+
+/* Kart düğmeleri sakinleşsin: üstüne gelince görünür */
+.ut-team-card-right .ut-icon-btn { opacity: 0; transition: opacity .14s; }
+.ut-team-card:hover .ut-team-card-right .ut-icon-btn { opacity: 1; }
+
+/* Üye çipleri küçüldü */
+.ut-team-members { padding: 0 18px 12px; gap: 6px; }
+.ut-team-member-chip { font-size: 11.5px; padding: 3px 8px 3px 3px; }
+
+/* Dağıtım şeridi kartın altına oturuyor */
+.ut-dist {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: #fbfafa;
+    box-shadow: inset 0 1px 0 #f0eced;
+    padding: 12px 18px 14px;
+}
+.ut-dist-seg { background: #eef1f5; }
+.ut-dist-btn { white-space: nowrap; }
+
+/* ── Temsilci satırı: kalabalığı azalt ──────────────────── */
+.ut-users-panel { width: 380px; }
+.ut-user-info { min-width: 0; }
+.ut-user-name,
+.ut-user-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 190px;
+}
+/* Rol açılır kutusu ve düğmeler yalnızca üstüne gelince */
+.ut-user-btns { opacity: 0; transition: opacity .14s; }
+.ut-user-card:hover .ut-user-btns { opacity: 1; }
+.ut-role-select { font-size: 11px; padding: 2px 4px; }
+
+/* Şube rozeti satırı daralsın */
+.ut-user-info > span[title] { margin-top: 2px; }
