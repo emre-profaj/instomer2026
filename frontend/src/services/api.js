@@ -730,6 +730,7 @@ export const productAPI = {
     bulkDelete: (workspaceId, productIds) => api.post(`/workspaces/${workspaceId}/products/bulk-delete`, { productIds }),
     bulkUpdate: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/products/bulk-update`, data),
     getGroups: (workspaceId) => api.get(`/workspaces/${workspaceId}/products/groups`),
+    getSummary: (workspaceId) => api.get(`/workspaces/${workspaceId}/products/summary`),
     addMedia: (workspaceId, productId, data) => api.post(`/workspaces/${workspaceId}/products/${productId}/media`, data),
     deleteMedia: (workspaceId, productId, mediaId) => api.delete(`/workspaces/${workspaceId}/products/${productId}/media/${mediaId}`)
 };

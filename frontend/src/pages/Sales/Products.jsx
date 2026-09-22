@@ -9,6 +9,7 @@ import { importFromExcel, getTopicCategories, createTopicCategory, updateTopicCa
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './Sales.css';
 import './Categories.css';
+import './Catalog.css';
 
 const catInitials = (name) => {
     const words = (name || '').trim().split(/\s+/).filter(Boolean);
@@ -94,6 +95,8 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     const [teams, setTeams] = useState([]);
     const [branches, setBranches] = useState([]);
     const [branchFilter, setBranchFilter] = useState('');
+    const [expandedProductId, setExpandedProductId] = useState(null);
+    const [summary, setSummary] = useState(null);
     
     // Category Modal State
     const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -165,6 +168,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             fetchTeams();
             fetchBranches();
             fetchWooConfig();
+            fetchSummary();
         }
     }, [currentWorkspace?.id, search, groupFilter, categoryFilter, page, activeTab]);
 
@@ -234,6 +238,18 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             setCategoriesLoading(false);
         }
     };
+
+    // Liste sayfalı geldiği için üstteki sayaçlar sunucudan, tüm katalog
+    // üzerinden geliyor; sayfadaki 50 kayıttan hesaplanırsa yanıltır.
+    async function fetchSummary() {
+        if (!currentWorkspace?.id) return;
+        try {
+            const res = await productAPI.getSummary(currentWorkspace.id);
+            if (res.data?.success) setSummary(res.data.summary);
+        } catch (err) {
+            console.error('Failed to fetch product summary:', err);
+        }
+    }
 
     async function fetchProducts() {
         try {
@@ -596,6 +612,33 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
         }
     };
 
+    /**
+     * Seçili hizmetleri bir şubede toptan kapatır ya da açar. Ürünün hiç
+     * şube kaydı yoksa sunucu diğer şubeleri açık yazıyor; yoksa kapatma
+     * işlemi ürünü her yerde yok ederdi.
+     */
+    const handleBulkBranchAvailability = async (branchId, isAvailable) => {
+        if (!selectedProductIds.length || !branchId) return;
+        const sube = branches.find(b => b.id === branchId);
+        try {
+            setBulkActionLoading(true);
+            const adet = selectedProductIds.length;
+            await productAPI.bulkUpdate(currentWorkspace.id, {
+                productIds: selectedProductIds,
+                branchAvailability: { branchId, isAvailable }
+            });
+            showToast(`${adet} hizmet ${sube?.name || 'şubede'} ${isAvailable ? 'açıldı' : 'kapatıldı'}.`);
+            setSelectedProductIds([]);
+            fetchProducts();
+            fetchSummary();
+        } catch (err) {
+            console.error('Failed to bulk update branch availability:', err);
+            showToast(err.response?.data?.error || 'Şube durumu güncellenemedi.', 'error');
+        } finally {
+            setBulkActionLoading(false);
+        }
+    };
+
     const handleBulkUpdateCategory = async (targetCategoryId) => {
         if (!selectedProductIds.length) return;
         try {
@@ -761,6 +804,59 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     };
 
     const totalPages = Math.ceil(total / pageSize);
+
+    // Şube filtresi sunucuda değil burada uygulanıyor: ürünün şube kayıtları
+    // listeyle birlikte geliyor, ayrı istek gerekmiyor.
+    const displayedProducts = products.filter(p => {
+        if (!branchFilter) return true;
+        const rows = p.productBranches || [];
+        if (rows.length === 0) return true;
+        return rows.some(pb => pb.branchId === branchFilter && pb.isAvailable !== false);
+    });
+
+    /** "Kafa Masajı (40 Dakika)" → ad + soluk gösterilecek parantez içi. */
+    const urunAdiParcala = (ad) => {
+        const m = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(ad || '');
+        return m ? { main: m[1], note: m[2] } : { main: ad || '', note: null };
+    };
+
+    /**
+     * Ürünün şube durumu. Hiç şube kaydı yoksa "tüm şubelerde var" demektir;
+     * kayıt varsa yalnızca isAvailable olanlar sunuluyor sayılır.
+     */
+    const urunSubeDurumu = (p) => {
+        const rows = p.productBranches || [];
+        const toplam = branches.length || rows.length || 0;
+        if (rows.length === 0) {
+            return { tumu: true, hicbiri: false, acikSayisi: toplam, toplam, acikAdlar: [], kapaliAdlar: [], ozelFiyatSayisi: 0 };
+        }
+        const subeAdi = (id) => branches.find(b => b.id === id)?.name || null;
+        const acikKayit = rows.filter(r => r.isAvailable !== false);
+        const acikAdlar = acikKayit.map(r => subeAdi(r.branchId)).filter(Boolean);
+        const kapaliAdlar = rows.filter(r => r.isAvailable === false).map(r => subeAdi(r.branchId)).filter(Boolean);
+        return {
+            tumu: toplam > 0 && acikKayit.length >= toplam,
+            hicbiri: acikKayit.length === 0,
+            acikSayisi: acikKayit.length,
+            toplam: toplam || acikKayit.length,
+            acikAdlar,
+            kapaliAdlar,
+            ozelFiyatSayisi: acikKayit.filter(r => r.price !== null && r.price !== undefined).length
+        };
+    };
+
+    /** Şubeye özel fiyat varsa alt satırda gösterilecek aralık. */
+    const subeFiyatAraligi = (p, durum) => {
+        if (!durum || durum.ozelFiyatSayisi === 0) return null;
+        const fiyatlar = (p.productBranches || [])
+            .filter(r => r.isAvailable !== false && r.price !== null && r.price !== undefined)
+            .map(r => Number(r.price));
+        if (fiyatlar.length === 0) return null;
+        const min = Math.min(...fiyatlar);
+        const max = Math.max(...fiyatlar);
+        if (min === max && min === Number(p.price)) return null;
+        return min === max ? formatCurrency(min) : `${formatCurrency(min)} – ${formatCurrency(max)}`;
+    };
 
     const formatCurrency = (val, symbol = '₺') => {
         if (!val && val !== 0) return '—';
@@ -1554,448 +1650,431 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             )}
 
             {activeTab === 'products' && (
-                <>
-            {/* Filters Bar */}
-            <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
-                padding: '12px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '280px', flexWrap: 'wrap' }}>
-                    <div style={{ position: 'relative', width: '220px' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                        <input
-                            type="text"
-                            placeholder={labels.searchPlaceholder}
-                            value={search}
-                            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                            style={{
-                                width: '100%', padding: '8px 12px 8px 34px',
-                                border: '1px solid #e2e8f0', borderRadius: '8px',
-                                fontSize: '0.82rem', outline: 'none', background: '#fff'
-                            }}
-                        />
-                    </div>
-                    <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-                        <option value="">{labels.allCategories}</option>
-                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}{getCategoryBranchLabel(c)}</option>)}
-                    </select>
-                    <select value={groupFilter} onChange={e => { setGroupFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-                        <option value="">{labels.allGroups}</option>
-                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                    <select value={branchFilter} onChange={e => { setBranchFilter(e.target.value); setPage(1); }} style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', outline: 'none', background: '#fff', color: '#334155', cursor: 'pointer' }}>
-                        <option value="">{labels.allBranches || 'Tüm Şubeler'}</option>
-                        {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                    {(search || groupFilter || categoryFilter || branchFilter) && (
-                        <button
-                            onClick={() => { setSearch(''); setGroupFilter(''); setCategoryFilter(''); setBranchFilter(''); setPage(1); }}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '6px 10px', borderRadius: '6px',
-                                border: '1px solid #fecaca', background: '#fef2f2',
-                                fontSize: '0.72rem', fontWeight: 600, color: '#dc2626',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <X size={12} /> Temizle
-                        </button>
-                    )}
-                </div>
+                <div className="pr-wrap">
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
-                    <button
-                        onClick={() => setShowWooModal(true)}
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 14px', borderRadius: '8px',
-                            border: '1px solid #ddd6fe', background: '#faf5ff',
-                            fontSize: '0.8rem', fontWeight: 600, color: '#7c3aed',
-                            cursor: 'pointer', transition: 'all 0.2s',
-                            boxShadow: '0 1px 2px rgba(124, 58, 237, 0.05)'
-                        }}
-                        title="WooCommerce REST API Entegrasyonu"
-                    >
-                        <ShoppingCart size={15} /> WooCommerce
-                        {wooConfig?.isConfigured && (
-                            <span
-                                style={{
-                                    width: '7px', height: '7px', borderRadius: '50%',
-                                    background: wooConfig.isActive ? '#22c55e' : '#94a3b8',
-                                    display: 'inline-block', marginLeft: '2px'
-                                }}
-                                title={wooConfig.isActive ? 'WooCommerce Bağlı & Aktif' : 'WooCommerce Devre Dışı'}
-                            />
+                    {/* Katalog sayaçları: liste sayfalı geldiği için sunucudan
+                        tüm katalog üzerinden hesaplanıyor. */}
+                    <div className="pr-stats">
+                        <div className="pr-stat">
+                            <div className="pr-stat-k">Toplam {labels.productSingle.toLowerCase()}</div>
+                            <div className="pr-stat-v">{summary ? summary.toplam : total}</div>
+                        </div>
+                        <div className="pr-stat">
+                            <div className="pr-stat-k">{labels.branchSingle || 'Şube'}ye özel</div>
+                            <div className="pr-stat-v">{summary ? summary.subeyeOzel : '—'}</div>
+                        </div>
+                        <div className="pr-stat">
+                            <div className="pr-stat-k">{labels.categorySingle}siz</div>
+                            <div className={`pr-stat-v ${summary?.kategorisiz > 0 ? 'warn' : ''}`}>
+                                {summary ? summary.kategorisiz : '—'}
+                            </div>
+                        </div>
+                        <div className="pr-stat">
+                            <div className="pr-stat-k">Hiçbir {(labels.branchSingle || 'şube').toLowerCase()}de yok</div>
+                            <div className={`pr-stat-v ${summary?.hicbirSubede > 0 ? 'bad' : ''}`}>
+                                {summary ? summary.hicbirSubede : '—'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pr-surface">
+
+                        {/* Araç çubuğu */}
+                        <div className="pr-bar">
+                            <div className="pr-search">
+                                <Search size={15} />
+                                <input
+                                    type="search"
+                                    aria-label={labels.searchPlaceholder}
+                                    placeholder={labels.searchPlaceholder}
+                                    value={search}
+                                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                                />
+                            </div>
+                            <select
+                                className="pr-select"
+                                aria-label={labels.categorySingle}
+                                value={categoryFilter}
+                                onChange={e => { setCategoryFilter(e.target.value); setPage(1); }}
+                            >
+                                <option value="">{labels.allCategories}</option>
+                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}{getCategoryBranchLabel(c)}</option>)}
+                            </select>
+                            <select
+                                className="pr-select"
+                                aria-label={labels.groupSingle}
+                                value={groupFilter}
+                                onChange={e => { setGroupFilter(e.target.value); setPage(1); }}
+                            >
+                                <option value="">{labels.allGroups}</option>
+                                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                            </select>
+                            <select
+                                className="pr-select"
+                                aria-label={labels.branchSingle || 'Şube'}
+                                value={branchFilter}
+                                onChange={e => { setBranchFilter(e.target.value); setPage(1); }}
+                            >
+                                <option value="">{labels.allBranches || 'Tüm Şubeler'}</option>
+                                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            </select>
+                            {(search || groupFilter || categoryFilter || branchFilter) && (
+                                <button
+                                    type="button"
+                                    className="pr-clear"
+                                    onClick={() => { setSearch(''); setGroupFilter(''); setCategoryFilter(''); setBranchFilter(''); setPage(1); }}
+                                >
+                                    <X size={12} /> Temizle
+                                </button>
+                            )}
+                            <span className="pr-spacer"></span>
+                            {embedded && (
+                                <>
+                                    <input
+                                        type="file"
+                                        accept=".xlsx, .xls"
+                                        style={{ display: 'none' }}
+                                        ref={fileInputRef}
+                                        onChange={handleExcelImport}
+                                    />
+                                    <button type="button" className="pr-page" onClick={() => setShowWooModal(true)}>
+                                        <ShoppingCart size={13} style={{ verticalAlign: '-2px', marginRight: '5px' }} />
+                                        WooCommerce
+                                    </button>
+                                    <button type="button" className="pr-page" onClick={handleExportCSV}>
+                                        <Download size={13} style={{ verticalAlign: '-2px', marginRight: '5px' }} />
+                                        Dışa aktar
+                                    </button>
+                                    <button type="button" className="pr-page" onClick={() => fileInputRef.current?.click()}>
+                                        <Upload size={13} style={{ verticalAlign: '-2px', marginRight: '5px' }} />
+                                        İçe aktar
+                                    </button>
+                                    <button type="button" className="pr-page on" onClick={openAddModal}>
+                                        <Plus size={13} style={{ verticalAlign: '-2px', marginRight: '5px' }} />
+                                        {labels.newProduct}
+                                    </button>
+                                </>
+                            )}
+                            <span className="pr-bar-count">{total} kayıttan <strong>{displayedProducts.length}</strong>'ı</span>
+                        </div>
+
+                        {/* Toplu işlemler */}
+                        {selectedProductIds.length > 0 && (
+                            <div className="pr-bulk">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                    <span className="pr-bulk-count">
+                                        <Check size={14} /> {selectedProductIds.length} {labels.productSingle.toLowerCase()} seçildi
+                                    </span>
+                                    <button type="button" className="pr-bulk-clear" onClick={() => setSelectedProductIds([])}>
+                                        Seçimi temizle
+                                    </button>
+                                </div>
+                                <div className="pr-bulk-acts">
+                                    <label htmlFor="pr-bulk-cat">{labels.categorySingle} ata</label>
+                                    <select
+                                        id="pr-bulk-cat"
+                                        className="pr-bulk-select"
+                                        value=""
+                                        disabled={bulkActionLoading}
+                                        onChange={(e) => { if (e.target.value) handleBulkUpdateCategory(e.target.value); }}
+                                    >
+                                        <option value="">{labels.selectCategory}</option>
+                                        <option value="NONE">— {labels.uncategorized} yap —</option>
+                                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+
+                                    <label htmlFor="pr-bulk-grp">{labels.groupSingle} ata</label>
+                                    <select
+                                        id="pr-bulk-grp"
+                                        className="pr-bulk-select"
+                                        value=""
+                                        disabled={bulkActionLoading}
+                                        onChange={(e) => { if (e.target.value) handleBulkUpdateGroup(e.target.value); }}
+                                    >
+                                        <option value="">{labels.selectGroup}</option>
+                                        <option value="NONE">— {labels.ungrouped} yap —</option>
+                                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                    </select>
+
+                                    {branches.length > 0 && (
+                                        <>
+                                            <label htmlFor="pr-bulk-branch">{labels.branchSingle || 'Şube'} durumu</label>
+                                            <select
+                                                id="pr-bulk-branch"
+                                                className="pr-bulk-select"
+                                                value=""
+                                                disabled={bulkActionLoading}
+                                                onChange={(e) => {
+                                                    const v = e.target.value;
+                                                    if (!v) return;
+                                                    const [durum, branchId] = v.split('|');
+                                                    handleBulkBranchAvailability(branchId, durum === 'ac');
+                                                }}
+                                            >
+                                                <option value="">Seçiniz…</option>
+                                                <optgroup label="Bu şubede kapat">
+                                                    {branches.map(b => <option key={`k-${b.id}`} value={`kapat|${b.id}`}>{b.name}</option>)}
+                                                </optgroup>
+                                                <optgroup label="Bu şubede aç">
+                                                    {branches.map(b => <option key={`a-${b.id}`} value={`ac|${b.id}`}>{b.name}</option>)}
+                                                </optgroup>
+                                            </select>
+                                        </>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        className="pr-bulk-del"
+                                        disabled={bulkActionLoading}
+                                        onClick={() => setDeleteConfirm('bulk')}
+                                    >
+                                        <Trash2 size={13} /> Sil ({selectedProductIds.length})
+                                    </button>
+                                </div>
+                            </div>
                         )}
-                    </button>
-                    <button
-                        onClick={handleExportCSV}
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 12px', borderRadius: '8px',
-                            border: '1px solid #e2e8f0', background: '#fff',
-                            fontSize: '0.8rem', fontWeight: 600, color: '#475569',
-                            cursor: 'pointer', transition: 'all 0.2s'
-                        }}
-                    >
-                        <Download size={14} /> Dışa Aktar
-                    </button>
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 12px', borderRadius: '8px',
-                            border: '1px solid #e2e8f0', background: '#fff',
-                            fontSize: '0.8rem', fontWeight: 600, color: '#475569',
-                            cursor: 'pointer', transition: 'all 0.2s'
-                        }}
-                    >
-                        <Upload size={14} /> İçe Aktar
-                    </button>
-                    <button
-                        onClick={openAddModal}
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 16px', borderRadius: '8px',
-                            border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                            fontSize: '0.8rem', fontWeight: 600, color: '#fff',
-                            cursor: 'pointer', transition: 'all 0.2s',
-                            boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
-                        }}
-                    >
-                        <Plus size={16} /> {labels.newProduct}
-                    </button>
-                </div>
-            </div>
 
-            {/* Bulk Actions Bar */}
-            {selectedProductIds.length > 0 && (
-                <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
-                    gap: '12px', padding: '10px 24px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe'
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            background: '#2563eb', color: '#fff', fontSize: '0.78rem', fontWeight: 600,
-                            padding: '4px 12px', borderRadius: '20px'
-                        }}>
-                            <Check size={14} /> {selectedProductIds.length} {labels.productSingle.toLowerCase()} seçildi
-                        </span>
-                        <button
-                            onClick={() => setSelectedProductIds([])}
-                            style={{
-                                background: 'transparent', border: 'none', color: '#2563eb',
-                                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'
-                            }}
-                        >
-                            Seçimi Temizle
-                        </button>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        {/* Kategori Değiştir */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: 600 }}>{labels.categorySingle} Ata:</span>
-                            <select
-                                defaultValue=""
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        handleBulkUpdateCategory(e.target.value);
-                                        e.target.value = '';
-                                    }
-                                }}
-                                disabled={bulkActionLoading}
-                                style={{
-                                    padding: '5px 10px', borderRadius: '6px', border: '1px solid #bfdbfe',
-                                    background: '#fff', fontSize: '0.78rem', color: '#334155', cursor: 'pointer'
-                                }}
-                            >
-                                <option value="" disabled>{labels.selectCategory}</option>
-                                <option value="NONE">— {labels.uncategorized} Yap —</option>
-                                {categories.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </select>
+                        {/* Kolon başlıkları */}
+                        <div className="pr-cols">
+                            <input
+                                type="checkbox"
+                                className="pr-check"
+                                aria-label="Tümünü seç"
+                                checked={displayedProducts.length > 0 && displayedProducts.every(p => selectedProductIds.includes(p.id))}
+                                onChange={() => toggleSelectAll(displayedProducts)}
+                            />
+                            <span></span>
+                            <span>{labels.productName}</span>
+                            <span>{labels.categorySingle}</span>
+                            <span>{labels.groupSingle}</span>
+                            <span>{labels.branchSingle || 'Şube'} bulunurluğu</span>
+                            <span className="r">Fiyat</span>
+                            <span></span>
                         </div>
 
-                        {/* Grup Değiştir */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: 600 }}>{labels.groupSingle} Ata:</span>
-                            <select
-                                defaultValue=""
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        handleBulkUpdateGroup(e.target.value);
-                                        e.target.value = '';
-                                    }
-                                }}
-                                disabled={bulkActionLoading}
-                                style={{
-                                    padding: '5px 10px', borderRadius: '6px', border: '1px solid #bfdbfe',
-                                    background: '#fff', fontSize: '0.78rem', color: '#334155', cursor: 'pointer'
-                                }}
-                            >
-                                <option value="" disabled>{labels.selectGroup}</option>
-                                <option value="NONE">— {labels.ungrouped} Yap —</option>
-                                {groups.map(g => (
-                                    <option key={g.id} value={g.id}>{g.name}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Seçilenleri Sil */}
-                        <button
-                            onClick={() => setDeleteConfirm('bulk')}
-                            disabled={bulkActionLoading}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '6px 14px', borderRadius: '6px',
-                                border: 'none', background: '#dc2626', color: '#fff',
-                                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                                transition: 'background 0.15s'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#b91c1c'}
-                            onMouseLeave={e => e.currentTarget.style.background = '#dc2626'}
-                        >
-                            <Trash2 size={13} />
-                            Seçilenleri Sil ({selectedProductIds.length})
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Table */}
-            {(() => {
-                const displayedProducts = products.filter(p => {
-                    if (!branchFilter) return true;
-                    if (p.allBranches) return true;
-                    return p.productBranches && p.productBranches.some(pb => pb.branchId === branchFilter && pb.isAvailable);
-                });
-
-                return (
-                    <div style={{ overflow: 'auto', flex: 1 }}>
                         {loading ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', color: '#64748b' }}>
-                                <div className="loader" style={{ marginRight: '10px' }}></div> Yükleniyor...
+                            <div className="pr-empty">
+                                <div className="loader" style={{ display: 'inline-block', marginRight: '10px' }}></div> Yükleniyor…
                             </div>
                         ) : displayedProducts.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
-                                <Package size={48} style={{ marginBottom: '12px', opacity: 0.4 }} />
-                                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#64748b' }}>{labels.emptyProductsTitle}</h3>
-                                <p style={{ fontSize: '0.82rem' }}>{labels.emptyProductsDesc}</p>
-                                <button onClick={openAddModal} style={{
-                                    marginTop: '12px', padding: '8px 20px', borderRadius: '8px',
-                                    border: 'none', background: '#6366f1', color: '#fff',
-                                    fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer'
-                                }}>
-                                    <Plus size={14} style={{ marginRight: '4px' }} /> {labels.newProduct}
-                                </button>
+                            <div className="pr-empty">
+                                <Package size={44} style={{ opacity: .35 }} />
+                                <h3>{labels.emptyProductsTitle}</h3>
+                                <p>{labels.emptyProductsDesc}</p>
                             </div>
-                        ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                        <th style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={displayedProducts.length > 0 && displayedProducts.every(p => selectedProductIds.includes(p.id))}
-                                                onChange={() => toggleSelectAll(displayedProducts)}
-                                                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
-                                                title="Tümünü Seç / Kaldır"
-                                            />
-                                        </th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.productName}</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.categorySingle}</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Açıklama</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.groupSingle}</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Birim</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{labels.branchSingle || 'Şube'}</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fiyat</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İndirimli</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 1</th>
-                                        <th style={{ padding: '10px 8px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vergi 2</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>İşlem</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {displayedProducts.map((p, idx) => (
-                                <tr key={p.id} style={{
-                                    borderBottom: '1px solid #f1f5f9',
-                                    background: selectedProductIds.includes(p.id) ? '#eff6ff' : (idx % 2 === 0 ? '#fff' : '#fafbfc'),
-                                    transition: 'background 0.15s'
-                                }}
-                                    onMouseEnter={(e) => {
-                                        if (!selectedProductIds.includes(p.id)) e.currentTarget.style.background = '#f0f4ff';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (!selectedProductIds.includes(p.id)) e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#fafbfc';
-                                    }}
-                                >
-                                    <td style={{ width: '56px', padding: '10px 16px 10px 24px', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+                        ) : displayedProducts.map(p => {
+                            const acik = urunSubeDurumu(p);
+                            const isOpen = expandedProductId === p.id;
+                            const isPicked = selectedProductIds.includes(p.id);
+                            const ad = urunAdiParcala(p.name);
+                            const kategori = p.category?.name || categories.find(c => c.id === p.categoryId)?.name || null;
+                            const grup = groups.find(g => g.id === p.parentId)?.name || null;
+                            const aralik = subeFiyatAraligi(p, acik);
+
+                            return (
+                                <div key={p.id}>
+                                    <div className={`pr-row ${isOpen ? 'open' : ''} ${isPicked ? 'picked' : ''}`}>
                                         <input
                                             type="checkbox"
-                                            checked={selectedProductIds.includes(p.id)}
+                                            className="pr-check"
+                                            aria-label={`${p.name} seç`}
+                                            checked={isPicked}
                                             onChange={() => toggleSelectProduct(p.id)}
-                                            style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#6366f1', verticalAlign: 'middle' }}
                                         />
-                                    </td>
-                                    <td style={{ padding: '10px 16px' }}>
-                                        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.82rem' }}>{p.name}</div>
-                                    </td>
-                                    <td style={{ padding: '10px 8px' }}>
-                                        <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                                            {categories.find(c => c.id === p.categoryId)?.name || '—'}
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '10px 8px', maxWidth: '200px' }}>
-                                        <div style={{ fontSize: '0.78rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {p.description || '—'}
-                                        </div>
-                                    </td>
-                                    <td style={{ padding: '10px 8px' }}>
-                                        {(groups.find(g => g.id === p.parentId)?.name) ? (
-                                            <span style={{
-                                                display: 'inline-block', padding: '2px 8px',
-                                                background: '#ede9fe', color: '#7c3aed',
-                                                borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600
-                                            }}>
-                                                {(groups.find(g => g.id === p.parentId)?.name)}
-                                            </span>
-                                        ) : <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: '10px 8px', fontSize: '0.78rem', color: '#475569' }}>
-                                        {p.unit || '—'}
-                                    </td>
-                                    <td style={{ padding: '10px 8px' }}>
-                                        {(() => {
-                                            if (!p.productBranches || p.productBranches.length === 0) {
-                                                return (
-                                                    <span style={{ fontSize: '0.72rem', color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
-                                                        {labels.allBranches || 'Tüm Şubeler'}
-                                                    </span>
-                                                );
-                                            }
-                                            const available = p.productBranches.filter(pb => pb.isAvailable);
-                                            if (available.length === 0) {
-                                                return (
-                                                    <span style={{ fontSize: '0.72rem', color: '#ef4444', background: '#fef2f2', padding: '2px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>
-                                                        {labels.branchSingle ? `${labels.branchSingle} Yok` : 'Şube Yok'}
-                                                    </span>
-                                                );
-                                            }
-                                            const names = available.map(pb => pb.branch?.name || branches.find(b => b.id === pb.branchId)?.name || (labels.branchSingle || 'Şube')).join(', ');
-                                            const hasCustomPrice = available.some(pb => pb.price !== null && pb.price !== undefined);
-                                            return (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                    <span style={{
-                                                        fontSize: '0.72rem', color: '#0369a1', background: '#e0f2fe',
-                                                        padding: '2px 8px', borderRadius: '6px', fontWeight: 500,
-                                                        maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                                                    }} title={names}>
-                                                        {names}
-                                                    </span>
-                                                    {hasCustomPrice && (
-                                                        <span style={{ fontSize: '0.65rem', color: '#059669', fontWeight: 600 }}>
-                                                            Özel Fiyatlı
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-                                    </td>
-                                    <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', fontFamily: 'monospace' }}>
-                                        {formatCurrency(p.price)}
-                                    </td>
-                                    <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: '0.78rem', color: p.discountedPrice ? '#16a34a' : '#cbd5e1', fontFamily: 'monospace' }}>
-                                        {p.discountedPrice ? formatCurrency(p.discountedPrice) : '—'}
-                                    </td>
-                                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                                        {p.tax1Type ? (
-                                            <span style={{
-                                                display: 'inline-block', padding: '2px 6px',
-                                                background: '#fef3c7', color: '#b45309',
-                                                borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600
-                                            }}>
-                                                {getTaxLabel(p.tax1Type)}
-                                            </span>
-                                        ) : <span style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                                        {p.tax2Type ? (
-                                            <span style={{
-                                                display: 'inline-block', padding: '2px 6px',
-                                                background: '#fce7f3', color: '#be185d',
-                                                borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600
-                                            }}>
-                                                {getTaxLabel(p.tax2Type)}
-                                            </span>
-                                        ) : <span style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                        <div className={`pr-av ${acik.hicbiri ? 'off' : (kategori ? '' : 'alt')}`}>{catInitials(p.name)}</div>
+                                        <div style={{ minWidth: 0 }}>
                                             <button
-                                                onClick={() => openEditModal(p)}
-                                                title="Düzenle"
-                                                style={{
-                                                    width: '28px', height: '28px', borderRadius: '6px',
-                                                    border: '1px solid #e2e8f0', background: '#fff',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    cursor: 'pointer', transition: 'all 0.15s', color: '#64748b'
-                                                }}
+                                                type="button"
+                                                className="pr-name"
+                                                aria-expanded={isOpen}
+                                                onClick={() => setExpandedProductId(isOpen ? null : p.id)}
                                             >
-                                                <Edit2 size={13} />
+                                                {ad.main}{ad.note && <span className="dim"> · {ad.note}</span>}
                                             </button>
-                                            <button
-                                                onClick={() => setDeleteConfirm(p.id)}
-                                                title="Sil"
-                                                style={{
-                                                    width: '28px', height: '28px', borderRadius: '6px',
-                                                    border: '1px solid #fecaca', background: '#fef2f2',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    cursor: 'pointer', transition: 'all 0.15s', color: '#dc2626'
-                                                }}
-                                            >
-                                                <Trash2 size={13} />
+                                            <div className={`pr-sub ${p.description ? '' : 'empty'}`}>
+                                                {p.description || 'Açıklama girilmemiş'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            {kategori
+                                                ? <span className="pr-chip cat" title={kategori}>{kategori}</span>
+                                                : <span className="pr-dash">—</span>}
+                                        </div>
+                                        <div>
+                                            {grup
+                                                ? <span className="pr-chip grp" title={grup}>{grup}</span>
+                                                : <span className="pr-dash">—</span>}
+                                        </div>
+                                        <div className="pr-branch">
+                                            <div className="pr-branch-line">
+                                                <span className={`pr-ratio ${acik.hicbiri ? 'zero' : (acik.tumu ? 'all' : 'some')}`}>
+                                                    {acik.acikSayisi}/{acik.toplam}
+                                                </span>
+                                                {acik.tumu ? (
+                                                    <span className="pr-chip branch">{labels.allBranches || 'Tüm Şubeler'}</span>
+                                                ) : acik.hicbiri ? (
+                                                    <span className="pr-chip none">Hiçbir {(labels.branchSingle || 'şube').toLowerCase()}de yok</span>
+                                                ) : (
+                                                    acik.acikAdlar.map(n => <span key={n} className="pr-chip branch">{n}</span>)
+                                                )}
+                                            </div>
+                                            {acik.kapaliAdlar.length > 0 && !acik.hicbiri && (
+                                                <span className="pr-branch-note">{acik.kapaliAdlar.join(', ')} kapalı</span>
+                                            )}
+                                            {aralik && <span className="pr-branch-note price">{acik.ozelFiyatSayisi} {(labels.branchSingle || 'şube').toLowerCase()}de farklı fiyat</span>}
+                                        </div>
+                                        <div className="pr-price">
+                                            <div className="pr-price-v">{formatCurrency(p.price)}</div>
+                                            {aralik
+                                                ? <div className="pr-price-u range">{aralik}</div>
+                                                : <div className="pr-price-u">{p.unit || '—'}</div>}
+                                        </div>
+                                        <div className="pr-acts">
+                                            <button type="button" className="pr-ico" aria-label={`${p.name} düzenle`} onClick={() => openEditModal(p)}>
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button type="button" className="pr-ico danger" aria-label={`${p.name} sil`} onClick={() => setDeleteConfirm(p.id)}>
+                                                <Trash2 size={14} />
                                             </button>
                                         </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                        )}
-                    </div>
-                );
-            })()}
+                                    </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-                <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: '6px', padding: '14px 24px', borderTop: '1px solid #e2e8f0'
-                }}>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).slice(
-                        Math.max(0, page - 3), Math.min(totalPages, page + 2)
-                    ).map(p => (
-                        <button
-                            key={p}
-                            onClick={() => setPage(p)}
-                            style={{
-                                width: '32px', height: '32px', borderRadius: '6px',
-                                border: p === page ? 'none' : '1px solid #e2e8f0',
-                                background: p === page ? '#6366f1' : '#fff',
-                                color: p === page ? '#fff' : '#475569',
-                                fontWeight: 600, fontSize: '0.78rem',
-                                cursor: 'pointer', transition: 'all 0.15s'
-                            }}
-                        >
-                            {p}
-                        </button>
-                    ))}
+                                    {isOpen && (
+                                        <div className="pr-detail">
+                                            <div className="pr-cards">
+                                                <div className="pr-card">
+                                                    <div className="pr-card-k">Birim</div>
+                                                    <div className={`pr-card-v ${p.unit ? '' : 'dim'}`}>{p.unit || 'Tanımsız'}</div>
+                                                </div>
+                                                <div className="pr-card">
+                                                    <div className="pr-card-k">İndirimli fiyat</div>
+                                                    <div className={`pr-card-v ${p.discountedPrice ? '' : 'dim'}`}>
+                                                        {p.discountedPrice ? formatCurrency(p.discountedPrice) : 'Yok'}
+                                                    </div>
+                                                </div>
+                                                <div className="pr-card">
+                                                    <div className="pr-card-k">Vergi 1</div>
+                                                    <div className={`pr-card-v ${p.tax1Type ? '' : 'dim'}`}>
+                                                        {p.tax1Type ? getTaxLabel(p.tax1Type) : 'Vergi yok'}
+                                                    </div>
+                                                </div>
+                                                <div className="pr-card">
+                                                    <div className="pr-card-k">Vergi 2</div>
+                                                    <div className={`pr-card-v ${p.tax2Type ? '' : 'dim'}`}>
+                                                        {p.tax2Type ? getTaxLabel(p.tax2Type) : 'Vergi yok'}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="pr-cards n3">
+                                                <div className="pr-card row">
+                                                    <div className="pr-card-k">USD fiyat</div>
+                                                    <div className={`pr-card-v ${p.priceUSD ? '' : 'dim'}`}>{p.priceUSD ? `$${p.priceUSD}` : 'Girilmemiş'}</div>
+                                                </div>
+                                                <div className="pr-card row">
+                                                    <div className="pr-card-k">EUR fiyat</div>
+                                                    <div className={`pr-card-v ${p.priceEUR ? '' : 'dim'}`}>{p.priceEUR ? `€${p.priceEUR}` : 'Girilmemiş'}</div>
+                                                </div>
+                                                <div className="pr-card row">
+                                                    <div className="pr-card-k">GBP fiyat</div>
+                                                    <div className={`pr-card-v ${p.priceGBP ? '' : 'dim'}`}>{p.priceGBP ? `£${p.priceGBP}` : 'Girilmemiş'}</div>
+                                                </div>
+                                            </div>
+
+                                            {branches.length > 0 && (
+                                                <div>
+                                                    <div className="pr-dsec">
+                                                        <span className="pr-dsec-name">{labels.branchSingle || 'Şube'} bulunurluğu ve fiyat</span>
+                                                        <span className="pr-dsec-rule"></span>
+                                                        <button type="button" className="pr-page" onClick={() => openEditModal(p)}>
+                                                            {labels.branchPlural || 'Şubeleri'} düzenle
+                                                        </button>
+                                                    </div>
+                                                    <div className="pr-cards">
+                                                        {branches.map(b => {
+                                                            const kayit = (p.productBranches || []).find(pb => pb.branchId === b.id);
+                                                            const varMi = (p.productBranches || []).length === 0 || (kayit && kayit.isAvailable !== false);
+                                                            return (
+                                                                <div key={b.id} className={`pr-bcard ${varMi ? '' : 'off'}`}>
+                                                                    <div>
+                                                                        <div className="pr-bcard-n">{b.name}</div>
+                                                                        <div className="pr-bcard-s">
+                                                                            {varMi ? 'Sunuluyor' : `Bu ${(labels.branchSingle || 'şube').toLowerCase()}de yok`}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="pr-bcard-p">
+                                                                        {varMi ? formatCurrency(kayit?.price ?? p.price) : '—'}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {(p.features || []).length > 0 && (
+                                                <div>
+                                                    <div className="pr-dsec">
+                                                        <span className="pr-dsec-name">Özellikler</span>
+                                                        <span className="pr-dsec-rule"></span>
+                                                        <span className="pr-dsec-count">{p.features.length} özellik</span>
+                                                    </div>
+                                                    <div className="pr-cards">
+                                                        {p.features.map((f, i) => (
+                                                            <div key={f.id || i} className="pr-card">
+                                                                <div style={{ fontSize: '11.5px', color: '#6b7480' }}>{f.featureKey}</div>
+                                                                <div className="pr-card-v">{f.featureValue}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div>
+                                                <div className="pr-dsec">
+                                                    <span className="pr-dsec-name">Bota verilen satış notu</span>
+                                                    <span className="pr-dsec-rule"></span>
+                                                </div>
+                                                <div className={`pr-note ${p.aiContext ? '' : 'empty'}`}>
+                                                    {p.aiContext || 'Satış notu girilmemiş — bot yalnızca ad ve açıklamayı biliyor.'}
+                                                    <div className="pr-note-warn">
+                                                        <AlertTriangle size={13} style={{ color: '#b45309' }} />
+                                                        Fiyat bilgisi bota gönderilmez; müşteri fiyat sorarsa temsilciye aktarılır.
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        {totalPages > 1 && (
+                            <div className="pr-foot">
+                                <span className="pr-bar-count">
+                                    {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} / {total} kayıt
+                                </span>
+                                <div className="pr-pages">
+                                    <button type="button" className="pr-page" disabled={page === 1} onClick={() => setPage(page - 1)}>Önceki</button>
+                                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                        .slice(Math.max(0, page - 3), Math.min(totalPages, page + 2))
+                                        .map(n => (
+                                            <button
+                                                key={n}
+                                                type="button"
+                                                className={`pr-page ${n === page ? 'on' : ''}`}
+                                                onClick={() => setPage(n)}
+                                            >
+                                                {n}
+                                            </button>
+                                        ))}
+                                    <button type="button" className="pr-page" disabled={page === totalPages} onClick={() => setPage(page + 1)}>Sonraki</button>
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
                 </div>
-            )}
-                </>
             )}
 
 

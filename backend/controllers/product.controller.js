@@ -44,7 +44,10 @@ export const getProducts = async (req, res) => {
                     category: true,
                     parent: true,
                     children: true,
-                    productBranches: true
+                    productBranches: true,
+                    // Satır detayı özellikleri de gösteriyor; listede yoksa
+                    // her satır için ayrı istek atmak gerekirdi.
+                    features: true
                 },
                 skip,
                 take
@@ -339,10 +342,59 @@ export const bulkDeleteProducts = async (req, res) => {
 export const bulkUpdateProducts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { productIds, categoryId, parentId, isActive } = req.body;
+        const { productIds, categoryId, parentId, isActive, branchAvailability } = req.body;
 
         if (!Array.isArray(productIds) || productIds.length === 0) {
             return res.status(400).json({ success: false, error: 'Güncellenecek ürünler belirtilmedi' });
+        }
+
+        // Toplu şube bulunurluğu: bir hizmeti tek tek açmadan bir şubede
+        // kapatmak (ya da tekrar açmak) için. Ürünün hiç şube kaydı yoksa
+        // "tüm şubelerde var" demektir; o durumda diğer şubeleri açık
+        // yazmazsak kapatma işlemi ürünü her yerde yok eder.
+        if (branchAvailability && branchAvailability.branchId) {
+            const { branchId, isAvailable } = branchAvailability;
+            const sube = await prisma.appointmentBranch.findFirst({
+                where: { id: branchId, workspaceId },
+                select: { id: true }
+            });
+            if (!sube) {
+                return res.status(400).json({ success: false, error: 'Şube bulunamadı' });
+            }
+
+            const tumSubeler = await prisma.appointmentBranch.findMany({
+                where: { workspaceId },
+                select: { id: true }
+            });
+            const urunler = await prisma.product.findMany({
+                where: { id: { in: productIds }, workspaceId },
+                select: { id: true, productBranches: { select: { branchId: true } } }
+            });
+
+            for (const urun of urunler) {
+                if (urun.productBranches.length === 0) {
+                    await prisma.productBranch.createMany({
+                        data: tumSubeler.map(b => ({
+                            productId: urun.id,
+                            branchId: b.id,
+                            isAvailable: b.id === branchId ? Boolean(isAvailable) : true
+                        })),
+                        skipDuplicates: true
+                    });
+                } else {
+                    await prisma.productBranch.upsert({
+                        where: { productId_branchId: { productId: urun.id, branchId } },
+                        create: { productId: urun.id, branchId, isAvailable: Boolean(isAvailable) },
+                        update: { isAvailable: Boolean(isAvailable) }
+                    });
+                }
+            }
+
+            return res.json({
+                success: true,
+                message: `${urunler.length} hizmet bu şubede ${isAvailable ? 'açıldı' : 'kapatıldı'}`,
+                count: urunler.length
+            });
         }
 
         const updateData = {};
@@ -493,5 +545,31 @@ export const deleteProductMedia = async (req, res) => {
     } catch (error) {
         console.error('deleteProductMedia error:', error);
         res.status(500).json({ success: false, error: 'Ürün medyası silinirken hata oluştu' });
+    }
+};
+
+/**
+ * KATALOG ÖZETİ
+ * Liste sayfalı geldiği için üstteki sayaçlar yalnızca o sayfayı sayarsa
+ * yanıltıyor; bu uç tüm katalog üzerinden sayıyor.
+ */
+export const getProductSummary = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const temel = { workspaceId, isGroup: false };
+
+        const [toplam, kategorisiz, subeyeOzel, hicbirSubede] = await Promise.all([
+            prisma.product.count({ where: temel }),
+            prisma.product.count({ where: { ...temel, categoryId: null } }),
+            prisma.product.count({ where: { ...temel, productBranches: { some: {} } } }),
+            prisma.product.count({
+                where: { ...temel, productBranches: { some: {}, none: { isAvailable: true } } }
+            })
+        ]);
+
+        res.json({ success: true, summary: { toplam, kategorisiz, subeyeOzel, hicbirSubede } });
+    } catch (error) {
+        console.error('getProductSummary error:', error);
+        res.status(500).json({ success: false, error: 'Özet alınamadı' });
     }
 };

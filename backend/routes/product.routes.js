@@ -10,6 +10,7 @@ import {
     bulkUpdateProducts,
     getProductGroups,
     getProductsByBranch,
+    getProductSummary,
     addProductMedia,
     deleteProductMedia
 } from '../controllers/product.controller.js';
@@ -22,6 +23,7 @@ router.use(authenticateJWT);
 // Workspace bazlı ürün route'ları
 router.get('/:workspaceId/products', requireWorkspaceAccess, getProducts);
 router.get('/:workspaceId/products/groups', requireWorkspaceAccess, getProductGroups);
+router.get('/:workspaceId/products/summary', requireWorkspaceAccess, getProductSummary);
 router.get('/:workspaceId/products/branch/:branchId', requireWorkspaceAccess, getProductsByBranch);
 router.post('/:workspaceId/products/bulk-delete', requireWorkspaceAccess, bulkDeleteProducts);
 router.post('/:workspaceId/products/bulk-update', requireWorkspaceAccess, bulkUpdateProducts);
