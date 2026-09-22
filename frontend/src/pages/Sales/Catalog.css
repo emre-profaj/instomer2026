@@ -428,3 +428,342 @@
     .pr-cards,
     .pr-cards.n3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ÜRÜN DÜZENLEME MODALI — SOL RAYLI
+   ═══════════════════════════════════════════════════════════════
+
+   On iki alan tek bir kaydırmada alt alta diziliydi: Kaydet düğmesini
+   görmek için sona inmek, şube kutularını dar bir sütunda okumak
+   gerekiyordu. Bölümler sola ayrıldı, başlık ve alt şerit sabitlendi;
+   raydaki rozetler eksik kalan yeri (şube sayısı, boş satış notu)
+   modal açılır açılmaz söylüyor.
+
+   Sınıf öneki: pm- (product modal)
+   ═══════════════════════════════════════════════════════════════ */
+
+.pm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: rgba(11, 18, 32, .45);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+}
+.pm-modal {
+    --ink: #0b1220;
+    --ink-2: #475569;
+    --ink-3: #64748b;
+    --line: #f0eced;
+    --accent: #ef4444;
+    --accent-soft: #fef2f2;
+
+    width: 100%;
+    max-width: 1060px;
+    height: min(840px, 92vh);
+    background: #ffffff;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 40px 80px -30px rgba(11, 18, 32, .55);
+    color: var(--ink);
+    font-size: 14px;
+}
+.pm-shell { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+
+/* ── Başlık ─────────────────────────────────────────────── */
+.pm-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 15px 22px;
+    box-shadow: inset 0 -1px 0 var(--line);
+    flex: none;
+}
+.pm-head-av {
+    width: 40px; height: 40px; flex: none;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    color: #dc2626;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+}
+.pm-head-id { flex-grow: 1; min-width: 0; }
+.pm-head-row { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.pm-head-name {
+    font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pm-head-badge {
+    flex: none;
+    font-size: 11px; font-weight: 600; color: var(--ink-2);
+    background: #f4f5f7; padding: 2px 9px; border-radius: 999px;
+}
+.pm-head-sub { margin-top: 3px; font-size: 12.5px; color: var(--ink-3); }
+.pm-head-acts { display: flex; align-items: center; gap: 10px; flex: none; }
+.pm-head-sep { width: 1px; height: 22px; background: #eceef1; }
+.pm-state { font-size: 12.5px; font-weight: 600; }
+.pm-state.on { color: #15803d; }
+.pm-state.off { color: #94a3b8; }
+.pm-switch {
+    width: 40px; height: 23px; border-radius: 999px; border: none;
+    background: #cbd5e1; position: relative; cursor: pointer; padding: 0;
+    transition: background .15s;
+}
+.pm-switch.on { background: #16a34a; }
+.pm-switch i {
+    position: absolute; top: 3px; left: 3px;
+    width: 17px; height: 17px; border-radius: 999px; background: #ffffff;
+    transition: left .15s;
+}
+.pm-switch.on i { left: 20px; }
+.pm-x {
+    width: 34px; height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 10px; border: none; background: #f4f5f7;
+    color: var(--ink-2); cursor: pointer;
+}
+.pm-x:hover { background: #eceef1; }
+
+/* ── Gövde: ray + içerik ────────────────────────────────── */
+.pm-body { flex: 1; display: flex; min-height: 0; }
+.pm-rail {
+    width: 226px; flex: none;
+    box-sizing: border-box;
+    padding: 16px 12px;
+    background: #fafafb;
+    box-shadow: inset -1px 0 0 var(--line);
+    display: flex; flex-direction: column; gap: 3px;
+    overflow-y: auto;
+}
+.pm-rail-eyebrow {
+    padding: 0 10px 9px;
+    font-size: 10px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--accent);
+}
+.pm-rail-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px;
+    border: none; background: transparent;
+    border-radius: 10px;
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--ink-2); text-align: left; cursor: pointer;
+    width: 100%;
+}
+.pm-rail-item:hover { background: #f2f3f5; }
+.pm-rail-item.on {
+    background: #ffffff;
+    box-shadow: 0 0 0 1px var(--line);
+    color: var(--ink);
+}
+.pm-rail-item svg { flex: none; }
+.pm-rail-item.on svg { color: #dc2626; }
+.pm-rail-item span { flex-grow: 1; min-width: 0; }
+.pm-rail-badge {
+    flex: none;
+    font-size: 10.5px; font-weight: 700;
+    padding: 2px 7px; border-radius: 999px;
+    background: #fffbeb; color: #b45309;
+}
+.pm-rail-badge.bad { background: var(--accent-soft); color: #b91c1c; }
+.pm-rail-badge.ok { background: #f0fdf4; color: #15803d; }
+.pm-rail-hint {
+    margin: 12px 6px 0;
+    padding: 11px 12px;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 0 0 1px var(--line);
+}
+.pm-rail-hint b { display: block; font-size: 11px; font-weight: 700; color: #b45309; }
+.pm-rail-hint span { display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+
+.pm-pane {
+    flex-grow: 1; min-width: 0;
+    box-sizing: border-box;
+    padding: 20px 26px 28px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 22px;
+}
+
+/* ── Bölümler ve alanlar ────────────────────────────────── */
+.pm-sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.pm-sec-name {
+    font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: #6b7480;
+}
+.pm-sec-rule { flex-grow: 1; height: 1px; background: var(--line); }
+.pm-sec-note { font-size: 11.5px; color: #6b7480; }
+
+.pm-fields { display: flex; flex-direction: column; gap: 14px; }
+.pm-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pm-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+
+.pm-label {
+    display: block;
+    font-size: 12.5px; font-weight: 600; color: #334155;
+    margin-bottom: 6px;
+}
+.pm-label em { font-style: normal; font-weight: 500; color: #94a3b8; }
+.pm-label .req { color: var(--accent); }
+.pm-input,
+.pm-area,
+.pm-pick {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 13px;
+    border: 1px solid #ece8e9;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 13.5px;
+    outline: none;
+    background: #ffffff;
+    color: var(--ink);
+}
+.pm-input:focus,
+.pm-area:focus,
+.pm-pick:focus { border-color: #f3b9b9; }
+.pm-input.num { font-variant-numeric: tabular-nums; }
+.pm-input.soft { background: #fbfafa; }
+.pm-area { resize: vertical; min-height: 64px; }
+.pm-pick { cursor: pointer; }
+.pm-hintchips { margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pm-hintchips b { font-size: 11.5px; font-weight: 500; color: #6b7480; }
+.pm-hintchips span {
+    padding: 2px 8px; border-radius: 999px;
+    background: #f1f2f5; color: var(--ink-2);
+    font-size: 11px; font-weight: 600;
+}
+
+/* ── Şubeler ────────────────────────────────────────────── */
+.pm-segment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.pm-seg {
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #ece8e9;
+    background: #ffffff;
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--ink-2); cursor: pointer;
+}
+.pm-seg.on {
+    border: 2px solid var(--accent);
+    background: var(--accent-soft);
+    color: #b91c1c;
+    font-weight: 700;
+}
+.pm-branches { display: flex; flex-direction: column; gap: 8px; }
+.pm-branch {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 0 0 1px var(--line);
+}
+.pm-branch.off { background: #fbfafa; }
+.pm-branch-n { flex-grow: 1; font-size: 13.5px; font-weight: 600; cursor: pointer; margin: 0; }
+.pm-branch.off .pm-branch-n { font-weight: 500; color: #94a3b8; text-decoration: line-through; }
+.pm-branch-l { font-size: 12px; color: #6b7480; }
+.pm-branch-p {
+    width: 150px;
+    box-sizing: border-box;
+    padding: 7px 11px;
+    border: 1px solid #ece8e9;
+    border-radius: 9px;
+    font: inherit; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    outline: none;
+}
+.pm-branch-p.set { border-color: #f3b9b9; }
+.pm-branch-off {
+    font-size: 11.5px; font-weight: 600;
+    color: #b91c1c; background: var(--accent-soft);
+    padding: 3px 10px; border-radius: 999px;
+}
+.pm-empty {
+    padding: 14px;
+    border-radius: 12px;
+    background: #fbfafa;
+    box-shadow: inset 0 0 0 1px var(--line);
+    font-size: 12.5px;
+    color: var(--ink-3);
+    text-align: center;
+}
+
+/* ── Özellikler ─────────────────────────────────────────── */
+.pm-feat { display: flex; align-items: center; gap: 10px; }
+.pm-feat .k { width: 220px; flex: none; }
+.pm-feat .v { flex-grow: 1; }
+.pm-feat input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border: 1px solid #ece8e9;
+    border-radius: 9px;
+    font: inherit; font-size: 13px;
+    outline: none;
+}
+.pm-mini {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 11px;
+    border-radius: 9px;
+    border: 1px solid #ece8e9;
+    background: #ffffff;
+    font: inherit; font-size: 12px; font-weight: 600;
+    color: var(--ink-2); cursor: pointer;
+}
+.pm-mini.danger {
+    width: 32px; height: 32px; flex: none;
+    justify-content: center; padding: 0;
+    border-color: #fecaca; background: var(--accent-soft); color: #b91c1c;
+}
+
+/* ── Alt şerit ──────────────────────────────────────────── */
+.pm-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px;
+    padding: 13px 22px;
+    box-shadow: inset 0 1px 0 var(--line);
+    background: #fcfcfd;
+    flex: none;
+}
+.pm-foot-note { font-size: 12.5px; color: #6b7480; }
+.pm-foot-note.dirty {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-weight: 600; color: #b45309;
+}
+.pm-foot-note.dirty i { width: 7px; height: 7px; border-radius: 999px; background: #f59e0b; }
+.pm-btn {
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid #ece8e9;
+    background: #ffffff;
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--ink-2); cursor: pointer;
+}
+.pm-btn.primary {
+    padding: 10px 22px;
+    border: none;
+    background: var(--accent);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 6px 16px -8px rgba(239, 68, 68, .9);
+}
+.pm-btn.primary:disabled { background: #f3b9b9; box-shadow: none; cursor: default; }
+
+@media (max-width: 900px) {
+    .pm-body { flex-direction: column; }
+    .pm-rail {
+        width: auto;
+        flex-direction: row;
+        overflow-x: auto;
+        box-shadow: inset 0 -1px 0 var(--line);
+    }
+    .pm-rail-eyebrow,
+    .pm-rail-hint { display: none; }
+    .pm-rail-item { width: auto; white-space: nowrap; }
+    .pm-grid2,
+    .pm-grid3 { grid-template-columns: minmax(0, 1fr); }
+    .pm-feat .k { width: 130px; }
+}

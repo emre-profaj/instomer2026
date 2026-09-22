@@ -96,6 +96,8 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     const [branches, setBranches] = useState([]);
     const [branchFilter, setBranchFilter] = useState('');
     const [expandedProductId, setExpandedProductId] = useState(null);
+    const [modalSection, setModalSection] = useState('temel');
+    const [initialForm, setInitialForm] = useState(null);
     const [summary, setSummary] = useState(null);
     
     // Category Modal State
@@ -148,6 +150,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
         tax2Rate: 0,
         aiContext: '',
         features: [],
+        isActive: true,
         allBranches: true,
         productBranches: [],
     });
@@ -286,11 +289,11 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
     };
 
     const resetForm = () => {
-        setFormData({
+        const bos = {
             name: '', description: '', parentId: '', categoryId: '', unit: 'Adet',
             price: '', priceUSD: '', priceEUR: '', priceGBP: '',
             discountedPrice: '', tax1Type: '', tax1Rate: 0, tax2Type: '', tax2Rate: 0,
-            aiContext: '', features: [],
+            aiContext: '', features: [], isActive: true,
             allBranches: true,
             productBranches: branches.map(b => ({
                 branchId: b.id,
@@ -298,7 +301,10 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                 isAvailable: true,
                 price: ''
             }))
-        });
+        };
+        setFormData(bos);
+        setInitialForm(bos);
+        setModalSection('temel');
         setEditingProduct(null);
     };
 
@@ -489,7 +495,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             };
         });
 
-        setFormData({
+        const mevcut = {
             name: product.name || '',
             description: product.description || '',
             parentId: product.parentId || '',
@@ -506,9 +512,13 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             tax2Rate: product.tax2Rate || 0,
             aiContext: product.aiContext || '',
             features: product.features || [],
+            isActive: product.isActive !== false,
             allBranches: !hasSpecificBranches,
             productBranches: pbList
-        });
+        };
+        setFormData(mevcut);
+        setInitialForm(mevcut);
+        setModalSection('temel');
         setShowModal(true);
     };
 
@@ -776,6 +786,25 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
         } finally {
             setBulkActionLoading(false);
         }
+    };
+
+    /**
+     * Alt şeritteki "kaç alan değişti" göstergesi. Modal açıldığında alınan
+     * anlık görüntüyle karşılaştırır; şube listesi ve özellikler tek alan
+     * sayılır, yoksa bir onay kutusu 4 değişiklik gibi görünürdü.
+     */
+    const degisenAlanSayisi = () => {
+        if (!initialForm) return 0;
+        const alanlar = [
+            'name', 'description', 'parentId', 'categoryId', 'unit',
+            'price', 'priceUSD', 'priceEUR', 'priceGBP', 'discountedPrice',
+            'tax1Type', 'tax2Type', 'aiContext', 'isActive'
+        ];
+        let adet = alanlar.filter(k => String(formData[k] ?? '') !== String(initialForm[k] ?? '')).length;
+        if (JSON.stringify(formData.features || []) !== JSON.stringify(initialForm.features || [])) adet++;
+        if (formData.allBranches !== initialForm.allBranches
+            || JSON.stringify(formData.productBranches || []) !== JSON.stringify(initialForm.productBranches || [])) adet++;
+        return adet;
     };
 
     const handleTaxChange = (field, value) => {
@@ -2654,464 +2683,496 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
             )}
 
             {/* Add/Edit Modal */}
-            {showModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.4)', zIndex: 9998,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    backdropFilter: 'blur(2px)'
-                }}
-                    onClick={() => { setShowModal(false); resetForm(); }}
-                >
-                    <div style={{
-                        background: '#fff', borderRadius: '16px', padding: '0',
-                        maxWidth: '560px', width: '100%', maxHeight: '90vh', overflow: 'auto',
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
-                    }}
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {/* Modal Header */}
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '18px 24px', borderBottom: '1px solid #e2e8f0'
-                        }}>
-                            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>
-                                {editingProduct ? `${labels.productSingle} Düzenle` : labels.newProduct}
-                            </h2>
-                            <button
-                                onClick={() => { setShowModal(false); resetForm(); }}
-                                style={{
-                                    width: '32px', height: '32px', borderRadius: '8px',
-                                    border: 'none', background: '#f1f5f9', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    color: '#64748b'
-                                }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+            {showModal && (() => {
+                const kapat = () => { setShowModal(false); resetForm(); };
+                const acikSubeler = formData.allBranches
+                    ? branches.length
+                    : formData.productBranches.filter(pb => pb.isAvailable).length;
+                const degisen = degisenAlanSayisi();
+                const kategoriAdi = categories.find(c => c.id === formData.categoryId)?.name || null;
+                const bolumler = [
+                    { id: 'temel', ad: 'Temel bilgiler', ikon: <Layers size={15} /> },
+                    { id: 'sinif', ad: 'Sınıflandırma', ikon: <Folder size={15} /> },
+                    { id: 'fiyat', ad: 'Fiyatlandırma', ikon: <Tag size={15} /> },
+                    {
+                        id: 'sube',
+                        ad: `${labels.branchPlural || 'Şubeler'} ve fiyat`,
+                        ikon: <Package size={15} />,
+                        rozet: branches.length === 0
+                            ? null
+                            : (formData.allBranches
+                                ? { metin: 'tümü', sinif: 'ok' }
+                                : { metin: `${acikSubeler}/${branches.length}`, sinif: acikSubeler === 0 ? 'bad' : '' })
+                    },
+                    {
+                        id: 'bot',
+                        ad: 'Bota özel',
+                        ikon: <Sparkles size={15} />,
+                        rozet: formData.aiContext ? null : { metin: 'boş', sinif: 'bad' }
+                    }
+                ];
 
-                        {/* Modal Body */}
-                        <form onSubmit={handleSubmit} style={{ padding: '20px 24px' }}>
-                            {/* Ürün Adı */}
-                            <div style={{ marginBottom: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                    {labels.productName} <span style={{ color: '#ef4444' }}>*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder={`${labels.productSingle} adı...`}
-                                    style={{
-                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                        transition: 'border 0.2s', boxSizing: 'border-box'
-                                    }}
-                                    autoFocus
-                                />
-                            </div>
+                return (
+                    <div className="pm-overlay" onClick={kapat}>
+                        <div className="pm-modal" onClick={e => e.stopPropagation()}>
+                            <form onSubmit={handleSubmit} className="pm-shell">
 
-                            {/* Açıklama */}
-                            <div style={{ marginBottom: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                    Açıklama
-                                </label>
-                                <textarea
-                                    value={formData.description}
-                                    onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                                    placeholder={`${labels.productSingle} açıklaması...`}
-                                    rows={2}
-                                    style={{
-                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                        resize: 'vertical', boxSizing: 'border-box'
-                                    }}
-                                />
-                            </div>
-
-                            {/* AI Satış Notları */}
-                            <div style={{ marginBottom: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                    🤖 AI Satış Notları <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Botlara özel bilgiler)</span>
-                                </label>
-                                <textarea
-                                    value={formData.aiContext}
-                                    onChange={e => setFormData(prev => ({ ...prev, aiContext: e.target.value }))}
-                                    placeholder="Yapay zekanın bu ürünü/hizmeti sunarken bilmesi gereken kilit özellikler, itiraz karşılama taktikleri veya teknik detaylar..."
-                                    rows={3}
-                                    style={{
-                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                        resize: 'vertical', boxSizing: 'border-box',
-                                        background: '#f8fafc'
-                                    }}
-                                />
-                            </div>
-
-                            {/* Kategori */}
-                            <div style={{ marginBottom: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                    📁 {labels.categorySingle} <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Raporlarda gruplanır)</span>
-                                </label>
-                                <select
-                                    value={formData.categoryId}
-                                    onChange={e => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
-                                    style={{
-                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                        background: '#fff', cursor: 'pointer', boxSizing: 'border-box'
-                                    }}
-                                >
-                                    <option value="">{labels.selectCategory}...</option>
-                                    {categories.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}{getCategoryBranchLabel(c)}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Grup & Birim */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                        {labels.groupSingle}
-                                    </label>
-                                    <select value={formData.parentId} onChange={e => setFormData(prev => ({ ...prev, parentId: e.target.value }))} style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
-                                        <option value="">— {labels.ungrouped} —</option>
-                                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                        Birim
-                                    </label>
-                                    <select
-                                        value={formData.unit}
-                                        onChange={e => setFormData(prev => ({ ...prev, unit: e.target.value }))}
-                                        style={{
-                                            width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                            border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                            background: '#fff', cursor: 'pointer', boxSizing: 'border-box'
-                                        }}
-                                    >
-                                        {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Fiyatlar */}
-                            <div style={{ marginBottom: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                    Fiyat (TL) <span style={{ color: '#ef4444' }}>*</span>
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={formData.price}
-                                    onChange={e => setFormData(prev => ({ ...prev, price: e.target.value }))}
-                                    placeholder="0.00"
-                                    style={{
-                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                        boxSizing: 'border-box'
-                                    }}
-                                />
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>USD</label>
-                                    <input type="number" step="0.01" value={formData.priceUSD} onChange={e => setFormData(prev => ({ ...prev, priceUSD: e.target.value }))} placeholder="—" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }} />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>EUR</label>
-                                    <input type="number" step="0.01" value={formData.priceEUR} onChange={e => setFormData(prev => ({ ...prev, priceEUR: e.target.value }))} placeholder="—" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }} />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginBottom: '4px' }}>GBP</label>
-                                    <input type="number" step="0.01" value={formData.priceGBP} onChange={e => setFormData(prev => ({ ...prev, priceGBP: e.target.value }))} placeholder="—" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }} />
-                                </div>
-                            </div>
-
-                            {/* İndirimli Fiyat */}
-                            <div style={{ marginBottom: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                    İndirimli Fiyat (TL)
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={formData.discountedPrice}
-                                    onChange={e => setFormData(prev => ({ ...prev, discountedPrice: e.target.value }))}
-                                    placeholder="Opsiyonel..."
-                                    style={{
-                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                        boxSizing: 'border-box'
-                                    }}
-                                />
-                            </div>
-
-                            {/* Vergiler */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                        Vergi 1
-                                    </label>
-                                    <select
-                                        value={formData.tax1Type}
-                                        onChange={e => handleTaxChange('tax1Type', e.target.value)}
-                                        style={{
-                                            width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                            border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                            background: '#fff', cursor: 'pointer', boxSizing: 'border-box'
-                                        }}
-                                    >
-                                        {TAX_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
-                                        Vergi 2
-                                    </label>
-                                    <select
-                                        value={formData.tax2Type}
-                                        onChange={e => handleTaxChange('tax2Type', e.target.value)}
-                                        style={{
-                                            width: '100%', padding: '9px 12px', borderRadius: '8px',
-                                            border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-                                            background: '#fff', cursor: 'pointer', boxSizing: 'border-box'
-                                        }}
-                                    >
-                                        {TAX_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Şube Bulunurluğu & Fiyat Yönetimi */}
-                            <div style={{ marginBottom: '20px', padding: '14px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: '2px' }}>
-                                        {labels.branchSingle || 'Şube'} Bulunurluğu & Fiyat Yönetimi
-                                    </label>
-                                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                        {labels.productSingle || 'Ürün'}ün hangi {labels.branchesTab?.toLowerCase() || 'şubelerde'} sunulacağını ve {labels.branchSingle?.toLowerCase() || 'şubeye'} özel fiyatını belirleyin
-                                    </span>
+                                <div className="pm-head">
+                                    <div className="pm-head-av">{catInitials(formData.name || '?')}</div>
+                                    <div className="pm-head-id">
+                                        <div className="pm-head-row">
+                                            <span className="pm-head-name">
+                                                {formData.name || (editingProduct ? labels.productSingle : labels.newProduct)}
+                                            </span>
+                                            {kategoriAdi && <span className="pm-head-badge">{kategoriAdi}</span>}
+                                        </div>
+                                        <div className="pm-head-sub">
+                                            {formData.unit || 'Birimsiz'}
+                                            {formData.price !== '' && ` · ${formatCurrency(formData.price)}`}
+                                            {branches.length > 0 && ` · ${branches.length} ${(labels.branchSingle || 'şube').toLowerCase()}den ${acikSubeler} tanesinde sunuluyor`}
+                                        </div>
+                                    </div>
+                                    <div className="pm-head-acts">
+                                        <span className={`pm-state ${formData.isActive === false ? 'off' : 'on'}`}>
+                                            {formData.isActive === false ? 'Pasif' : 'Aktif'}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            role="switch"
+                                            aria-checked={formData.isActive !== false}
+                                            aria-label="Hizmet aktif"
+                                            className={`pm-switch ${formData.isActive === false ? '' : 'on'}`}
+                                            onClick={() => setFormData(prev => ({ ...prev, isActive: prev.isActive === false }))}
+                                        >
+                                            <i></i>
+                                        </button>
+                                        <span className="pm-head-sep"></span>
+                                        <button type="button" className="pm-x" aria-label="Kapat" onClick={kapat}>
+                                            <X size={17} />
+                                        </button>
+                                    </div>
                                 </div>
 
-                                {/* Seçenek Butonları: Tüm Şubeler vs Şubeye Özel */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormData(prev => ({ ...prev, allBranches: true }))}
-                                        style={{
-                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 600,
-                                            border: formData.allBranches ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                                            background: formData.allBranches ? '#eff6ff' : '#fff',
-                                            color: formData.allBranches ? '#4338ca' : '#64748b',
-                                            cursor: 'pointer', textAlign: 'center'
-                                        }}
-                                    >
-                                        {labels.allBranches || 'Tüm Şubeler'}de Geçerli
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setFormData(prev => {
-                                                const currentPB = (prev.productBranches && prev.productBranches.length > 0)
-                                                    ? prev.productBranches
-                                                    : branches.map(b => ({
-                                                        branchId: b.id,
-                                                        branchName: b.name,
-                                                        isAvailable: true,
-                                                        price: ''
-                                                    }));
-                                                return { ...prev, allBranches: false, productBranches: currentPB };
-                                            });
-                                        }}
-                                        style={{
-                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 600,
-                                            border: !formData.allBranches ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                                            background: !formData.allBranches ? '#eff6ff' : '#fff',
-                                            color: !formData.allBranches ? '#4338ca' : '#64748b',
-                                            cursor: 'pointer', textAlign: 'center'
-                                        }}
-                                    >
-                                        {labels.branchSingle || 'Şube'}ye Göre Özelleştir
-                                    </button>
-                                </div>
-
-                                {!formData.allBranches && (
-                                    <div style={{ marginTop: '10px' }}>
-                                        {branches.length === 0 ? (
-                                            <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic', padding: '8px 0' }}>
-                                                Tanımlı {labels.branchSingle?.toLowerCase() || 'şube'} bulunmuyor (Bilgi Bankası &gt; {labels.branchesTab || 'Şubeler'} sekmesinden ekleyebilirsiniz).
-                                            </div>
-                                        ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                {formData.productBranches.map((pb, idx) => (
-                                                    <div key={pb.branchId || idx} style={{
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                        padding: '8px 12px', background: pb.isAvailable ? '#fff' : '#f1f5f9',
-                                                        borderRadius: '8px', border: '1px solid #e2e8f0'
-                                                    }}>
-                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1, margin: 0 }}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={pb.isAvailable}
-                                                                onChange={e => {
-                                                                    const checked = e.target.checked;
-                                                                    setFormData(prev => {
-                                                                        const updated = [...prev.productBranches];
-                                                                        updated[idx] = { ...updated[idx], isAvailable: checked };
-                                                                        return { ...prev, productBranches: updated };
-                                                                    });
-                                                                }}
-                                                                style={{ width: '15px', height: '15px', accentColor: '#6366f1', cursor: 'pointer' }}
-                                                            />
-                                                            <span style={{
-                                                                fontSize: '0.8rem', fontWeight: pb.isAvailable ? 600 : 400,
-                                                                color: pb.isAvailable ? '#1e293b' : '#94a3b8',
-                                                                textDecoration: pb.isAvailable ? 'none' : 'line-through'
-                                                            }}>
-                                                                {pb.branchName || branches.find(b => b.id === pb.branchId)?.name || (labels.branchSingle || 'Şube')}
-                                                            </span>
-                                                        </label>
-
-                                                        {pb.isAvailable ? (
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Özel Fiyat:</span>
-                                                                <input
-                                                                    type="number"
-                                                                    step="0.01"
-                                                                    placeholder={`Genel (${formData.price || '0'} ₺)`}
-                                                                    value={pb.price}
-                                                                    onChange={e => {
-                                                                        const val = e.target.value;
-                                                                        setFormData(prev => {
-                                                                            const updated = [...prev.productBranches];
-                                                                            updated[idx] = { ...updated[idx], price: val };
-                                                                            return { ...prev, productBranches: updated };
-                                                                        });
-                                                                    }}
-                                                                    style={{
-                                                                        width: '130px', padding: '6px 8px', borderRadius: '6px',
-                                                                        border: '1px solid #cbd5e1', fontSize: '0.78rem', outline: 'none',
-                                                                        textAlign: 'right'
-                                                                    }}
-                                                                />
-                                                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>₺</span>
-                                                            </div>
-                                                        ) : (
-                                                            <span style={{ fontSize: '0.72rem', color: '#ef4444', background: '#fef2f2', padding: '2px 8px', borderRadius: '4px' }}>
-                                                                Bu {labels.branchSingle?.toLowerCase() || 'şube'}de yok
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>
-                                                    * Özel fiyat boş bırakılırsa ürünün genel fiyatı ({formData.price || '0'} ₺) geçerli olur.
-                                                </div>
+                                <div className="pm-body">
+                                    <div className="pm-rail">
+                                        <div className="pm-rail-eyebrow">Bölümler</div>
+                                        {bolumler.map(b => (
+                                            <button
+                                                key={b.id}
+                                                type="button"
+                                                className={`pm-rail-item ${modalSection === b.id ? 'on' : ''}`}
+                                                onClick={() => setModalSection(b.id)}
+                                            >
+                                                {b.ikon}
+                                                <span>{b.ad}</span>
+                                                {b.rozet && <span className={`pm-rail-badge ${b.rozet.sinif}`}>{b.rozet.metin}</span>}
+                                            </button>
+                                        ))}
+                                        {(!formData.description && !formData.aiContext) && (
+                                            <div className="pm-rail-hint">
+                                                <b>Bot bu hizmeti tanımıyor</b>
+                                                <span>Açıklama ve satış notu boş. Müşteri sorduğunda bot yalnızca adı biliyor.</span>
                                             </div>
                                         )}
                                     </div>
-                                )}
-                            </div>
 
-                            {/* Özellikler */}
-                            <div style={{ marginBottom: '24px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151' }}>
-                                        Dinamik Özellikler
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={addFeature}
-                                        style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                            padding: '4px 8px', borderRadius: '6px',
-                                            border: '1px solid #e2e8f0', background: '#fff',
-                                            fontSize: '0.72rem', fontWeight: 600, color: '#6366f1',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        <Plus size={12} /> Özellik Ekle
-                                    </button>
+                                    <div className="pm-pane">
+
+                                        {modalSection === 'temel' && (
+                                            <div>
+                                                <div className="pm-sec-head">
+                                                    <span className="pm-sec-name">Temel bilgiler</span>
+                                                    <span className="pm-sec-rule"></span>
+                                                </div>
+                                                <div className="pm-fields">
+                                                    <div>
+                                                        <label className="pm-label" htmlFor="pm-ad">
+                                                            {labels.productName} <span className="req">*</span>
+                                                        </label>
+                                                        <input
+                                                            id="pm-ad"
+                                                            type="text"
+                                                            className="pm-input"
+                                                            value={formData.name}
+                                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                                            placeholder={`${labels.productSingle} adı`}
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="pm-label" htmlFor="pm-acik">
+                                                            Açıklama <em>— müşteriye anlatılan metin, bota da gider</em>
+                                                        </label>
+                                                        <textarea
+                                                            id="pm-acik"
+                                                            className="pm-area"
+                                                            rows={3}
+                                                            value={formData.description}
+                                                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                                            placeholder={`${labels.productSingle} / hizmet açıklaması…`}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {modalSection === 'sinif' && (
+                                            <div>
+                                                <div className="pm-sec-head">
+                                                    <span className="pm-sec-name">Sınıflandırma</span>
+                                                    <span className="pm-sec-rule"></span>
+                                                    <span className="pm-sec-note">{labels.categorySingle}, sohbeti hangi takıma düşüreceğini belirler</span>
+                                                </div>
+                                                <div className="pm-fields">
+                                                    <div>
+                                                        <label className="pm-label" htmlFor="pm-kat">{labels.categorySingle}</label>
+                                                        <select
+                                                            id="pm-kat"
+                                                            className="pm-pick"
+                                                            value={formData.categoryId}
+                                                            onChange={e => setFormData({ ...formData, categoryId: e.target.value })}
+                                                        >
+                                                            <option value="">— {labels.uncategorized} —</option>
+                                                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                        </select>
+                                                        {(() => {
+                                                            const kat = categories.find(c => c.id === formData.categoryId);
+                                                            const ids = kat ? parseJsonList(kat.branchIds) : [];
+                                                            const adlar = ids.length > 0
+                                                                ? branches.filter(b => ids.includes(b.id)).map(b => b.name)
+                                                                : [];
+                                                            if (!kat || adlar.length === 0) return null;
+                                                            return (
+                                                                <div className="pm-hintchips">
+                                                                    <b>Bu {labels.categorySingle.toLowerCase()}nin {(labels.branchPlural || 'şubeleri').toLowerCase()}:</b>
+                                                                    {adlar.map(n => <span key={n}>{n}</span>)}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                    <div className="pm-grid2">
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-grp">{labels.groupSingle}</label>
+                                                            <select
+                                                                id="pm-grp"
+                                                                className="pm-pick"
+                                                                value={formData.parentId}
+                                                                onChange={e => setFormData({ ...formData, parentId: e.target.value })}
+                                                            >
+                                                                <option value="">— {labels.ungrouped} —</option>
+                                                                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-brm">Birim</label>
+                                                            <select
+                                                                id="pm-brm"
+                                                                className="pm-pick"
+                                                                value={formData.unit}
+                                                                onChange={e => setFormData({ ...formData, unit: e.target.value })}
+                                                            >
+                                                                {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {modalSection === 'fiyat' && (
+                                            <div>
+                                                <div className="pm-sec-head">
+                                                    <span className="pm-sec-name">Fiyatlandırma</span>
+                                                    <span className="pm-sec-rule"></span>
+                                                    <span className="pm-sec-note">Fiyat bota gönderilmez</span>
+                                                </div>
+                                                <div className="pm-fields">
+                                                    <div className="pm-grid2">
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-fyt">
+                                                                Fiyat (TL) <span className="req">*</span>
+                                                            </label>
+                                                            <input
+                                                                id="pm-fyt"
+                                                                type="number"
+                                                                step="0.01"
+                                                                className="pm-input num"
+                                                                value={formData.price}
+                                                                onChange={e => setFormData({ ...formData, price: e.target.value })}
+                                                                required
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-ind">İndirimli fiyat (TL)</label>
+                                                            <input
+                                                                id="pm-ind"
+                                                                type="number"
+                                                                step="0.01"
+                                                                className="pm-input num"
+                                                                value={formData.discountedPrice}
+                                                                onChange={e => setFormData({ ...formData, discountedPrice: e.target.value })}
+                                                                placeholder="Opsiyonel"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="pm-grid3">
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-usd">USD</label>
+                                                            <input
+                                                                id="pm-usd"
+                                                                type="number"
+                                                                step="0.01"
+                                                                className="pm-input num soft"
+                                                                value={formData.priceUSD}
+                                                                onChange={e => setFormData({ ...formData, priceUSD: e.target.value })}
+                                                                placeholder="—"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-eur">EUR</label>
+                                                            <input
+                                                                id="pm-eur"
+                                                                type="number"
+                                                                step="0.01"
+                                                                className="pm-input num soft"
+                                                                value={formData.priceEUR}
+                                                                onChange={e => setFormData({ ...formData, priceEUR: e.target.value })}
+                                                                placeholder="—"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-gbp">GBP</label>
+                                                            <input
+                                                                id="pm-gbp"
+                                                                type="number"
+                                                                step="0.01"
+                                                                className="pm-input num soft"
+                                                                value={formData.priceGBP}
+                                                                onChange={e => setFormData({ ...formData, priceGBP: e.target.value })}
+                                                                placeholder="—"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="pm-grid2">
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-v1">Vergi 1</label>
+                                                            <select
+                                                                id="pm-v1"
+                                                                className="pm-pick"
+                                                                value={formData.tax1Type}
+                                                                onChange={e => handleTaxChange('tax1Type', e.target.value)}
+                                                            >
+                                                                {TAX_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="pm-label" htmlFor="pm-v2">Vergi 2</label>
+                                                            <select
+                                                                id="pm-v2"
+                                                                className="pm-pick"
+                                                                value={formData.tax2Type}
+                                                                onChange={e => handleTaxChange('tax2Type', e.target.value)}
+                                                            >
+                                                                {TAX_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {modalSection === 'sube' && (
+                                            <div>
+                                                <div className="pm-sec-head">
+                                                    <span className="pm-sec-name">{labels.branchPlural || 'Şubeler'} ve fiyat</span>
+                                                    <span className="pm-sec-rule"></span>
+                                                    <span className="pm-sec-note">Kapalı {(labels.branchSingle || 'şube').toLowerCase()}de bot bu hizmeti sunmaz</span>
+                                                </div>
+
+                                                {branches.length === 0 ? (
+                                                    <div className="pm-empty">
+                                                        Tanımlı {(labels.branchSingle || 'şube').toLowerCase()} bulunmuyor. Bilgi Bankası &gt; {labels.branchesTab || 'Şubeler'} sekmesinden ekleyebilirsiniz.
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div className="pm-segment">
+                                                            <button
+                                                                type="button"
+                                                                className={`pm-seg ${formData.allBranches ? 'on' : ''}`}
+                                                                onClick={() => setFormData(prev => ({ ...prev, allBranches: true }))}
+                                                            >
+                                                                {labels.allBranches || 'Tüm şubelerde'} geçerli
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className={`pm-seg ${formData.allBranches ? '' : 'on'}`}
+                                                                onClick={() => setFormData(prev => ({
+                                                                    ...prev,
+                                                                    allBranches: false,
+                                                                    productBranches: (prev.productBranches && prev.productBranches.length > 0)
+                                                                        ? prev.productBranches
+                                                                        : branches.map(b => ({ branchId: b.id, branchName: b.name, isAvailable: true, price: '' }))
+                                                                }))}
+                                                            >
+                                                                {labels.branchSingle || 'Şube'}ye göre özelleştir
+                                                            </button>
+                                                        </div>
+
+                                                        {!formData.allBranches && (
+                                                            <div className="pm-branches">
+                                                                {formData.productBranches.map((pb, idx) => (
+                                                                    <div key={pb.branchId || idx} className={`pm-branch ${pb.isAvailable ? '' : 'off'}`}>
+                                                                        <input
+                                                                            id={`pm-sb-${pb.branchId || idx}`}
+                                                                            type="checkbox"
+                                                                            className="pr-check"
+                                                                            checked={pb.isAvailable}
+                                                                            onChange={e => {
+                                                                                const checked = e.target.checked;
+                                                                                setFormData(prev => {
+                                                                                    const kopya = [...prev.productBranches];
+                                                                                    kopya[idx] = { ...kopya[idx], isAvailable: checked };
+                                                                                    return { ...prev, productBranches: kopya };
+                                                                                });
+                                                                            }}
+                                                                        />
+                                                                        <label className="pm-branch-n" htmlFor={`pm-sb-${pb.branchId || idx}`}>
+                                                                            {pb.branchName || branches.find(b => b.id === pb.branchId)?.name || (labels.branchSingle || 'Şube')}
+                                                                        </label>
+                                                                        {pb.isAvailable ? (
+                                                                            <>
+                                                                                <label className="pm-branch-l" htmlFor={`pm-sp-${pb.branchId || idx}`}>
+                                                                                    {labels.branchSingle || 'Şube'} fiyatı
+                                                                                </label>
+                                                                                <input
+                                                                                    id={`pm-sp-${pb.branchId || idx}`}
+                                                                                    type="number"
+                                                                                    step="0.01"
+                                                                                    className={`pm-branch-p ${pb.price !== '' ? 'set' : ''}`}
+                                                                                    placeholder={`Genel (${formatCurrency(formData.price || 0)})`}
+                                                                                    value={pb.price}
+                                                                                    onChange={e => {
+                                                                                        const val = e.target.value;
+                                                                                        setFormData(prev => {
+                                                                                            const kopya = [...prev.productBranches];
+                                                                                            kopya[idx] = { ...kopya[idx], price: val };
+                                                                                            return { ...prev, productBranches: kopya };
+                                                                                        });
+                                                                                    }}
+                                                                                />
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="pm-branch-off">
+                                                                                Bu {(labels.branchSingle || 'şube').toLowerCase()}de yok
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                                <div className="pm-sec-note" style={{ marginTop: '2px' }}>
+                                                                    Fiyat boş bırakılırsa genel fiyat ({formatCurrency(formData.price || 0)}) geçerli olur.
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {modalSection === 'bot' && (
+                                            <div>
+                                                <div className="pm-sec-head">
+                                                    <span className="pm-sec-name">Bota özel</span>
+                                                    <span className="pm-sec-rule"></span>
+                                                </div>
+
+                                                <div className="pm-fields">
+                                                    <div>
+                                                        <label className="pm-label" htmlFor="pm-ai">
+                                                            Satış notu <em>— yalnızca bot görür, müşteriye gösterilmez</em>
+                                                        </label>
+                                                        <textarea
+                                                            id="pm-ai"
+                                                            className="pm-area soft"
+                                                            rows={4}
+                                                            value={formData.aiContext}
+                                                            onChange={e => setFormData({ ...formData, aiContext: e.target.value })}
+                                                            placeholder="Yapay zekanın bu hizmeti sunarken bilmesi gereken kilit özellikler, itiraz karşılama taktikleri veya teknik detaylar…"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="pm-sec-head">
+                                                            <span className="pm-sec-name">Özellikler</span>
+                                                            <span className="pm-sec-rule"></span>
+                                                            <button type="button" className="pm-mini" onClick={addFeature}>
+                                                                <Plus size={12} /> Özellik ekle
+                                                            </button>
+                                                        </div>
+                                                        {formData.features.length === 0 ? (
+                                                            <div className="pm-empty">
+                                                                Sektöre özel özellikler ekleyebilirsiniz (örn. Süre, Terapist, Beden).
+                                                            </div>
+                                                        ) : (
+                                                            <div className="pm-fields">
+                                                                {formData.features.map((f, index) => (
+                                                                    <div key={index} className="pm-feat">
+                                                                        <div className="k">
+                                                                            <input
+                                                                                type="text"
+                                                                                aria-label="Özellik adı"
+                                                                                placeholder="Özellik"
+                                                                                value={f.featureKey}
+                                                                                onChange={e => updateFeature(index, 'featureKey', e.target.value)}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="v">
+                                                                            <input
+                                                                                type="text"
+                                                                                aria-label="Özellik değeri"
+                                                                                placeholder="Değer"
+                                                                                value={f.featureValue}
+                                                                                onChange={e => updateFeature(index, 'featureValue', e.target.value)}
+                                                                            />
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="pm-mini danger"
+                                                                            aria-label="Özelliği sil"
+                                                                            onClick={() => removeFeature(index)}
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                    </div>
                                 </div>
-                                
-                                {formData.features.map((feature, index) => (
-                                    <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                                        <input
-                                            type="text"
-                                            value={feature.featureKey}
-                                            onChange={e => updateFeature(index, 'featureKey', e.target.value)}
-                                            placeholder="Örn: Renk, Beden, Çözünürlük"
-                                            style={{
-                                                flex: 1, padding: '8px 10px', borderRadius: '6px',
-                                                border: '1px solid #d1d5db', fontSize: '0.8rem', outline: 'none'
-                                            }}
-                                        />
-                                        <input
-                                            type="text"
-                                            value={feature.featureValue}
-                                            onChange={e => updateFeature(index, 'featureValue', e.target.value)}
-                                            placeholder="Örn: Kırmızı, L, 4K"
-                                            style={{
-                                                flex: 1, padding: '8px 10px', borderRadius: '6px',
-                                                border: '1px solid #d1d5db', fontSize: '0.8rem', outline: 'none'
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => removeFeature(index)}
-                                            style={{
-                                                width: '32px', height: '32px', borderRadius: '6px',
-                                                border: '1px solid #fecaca', background: '#fef2f2',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                cursor: 'pointer', color: '#dc2626', flexShrink: 0
-                                            }}
-                                        >
-                                            <X size={14} />
+
+                                <div className="pm-foot">
+                                    {degisen > 0 ? (
+                                        <span className="pm-foot-note dirty"><i></i>{degisen} alan değişti — kaydedilmedi</span>
+                                    ) : (
+                                        <span className="pm-foot-note">Kaydedilmemiş değişiklik yok</span>
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                                        <button type="button" className="pm-btn" onClick={kapat}>İptal</button>
+                                        <button type="submit" className="pm-btn primary" disabled={saving}>
+                                            {saving ? 'Kaydediliyor…' : (editingProduct ? 'Güncelle' : 'Kaydet')}
                                         </button>
                                     </div>
-                                ))}
-                                {formData.features.length === 0 && (
-                                    <div style={{ textAlign: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', fontSize: '0.78rem', color: '#64748b' }}>
-                                        Bu ürün için sektöre özel özellikler ekleyebilirsiniz. (Örn: İnşaat için: <em>Ağırlık</em>, Giyim için: <em>Beden</em>)
-                                    </div>
-                                )}
-                            </div>
+                                </div>
 
-                            {/* Submit */}
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => { setShowModal(false); resetForm(); }}
-                                    style={{
-                                        padding: '10px 18px', borderRadius: '8px',
-                                        border: '1px solid #e2e8f0', background: '#fff',
-                                        fontSize: '0.85rem', fontWeight: 600, color: '#64748b', cursor: 'pointer'
-                                    }}
-                                >
-                                    İptal
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={saving}
-                                    style={{
-                                        padding: '10px 22px', borderRadius: '8px',
-                                        border: 'none', background: saving ? '#a5b4fc' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                                        fontSize: '0.85rem', fontWeight: 600, color: '#fff', cursor: saving ? 'not-allowed' : 'pointer',
-                                        boxShadow: '0 2px 8px rgba(99,102,241,0.3)'
-                                    }}
-                                >
-                                    {saving ? 'Kaydediliyor...' : (editingProduct ? 'Güncelle' : 'Kaydet')}
-                                </button>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* WooCommerce Modal */}
             <WooCommerceModal
