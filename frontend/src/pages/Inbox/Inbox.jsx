@@ -3485,6 +3485,8 @@ const Inbox = () => {
         setAssignMegaMenuOpen(false); // Her durumda kapat
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, selectedItem.id, { teamId, agentId });
+            // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
+            if (res?.data?.warning) alert(`⚠️ ${res.data.warning}`);
             const conv = res.data.conversation;
             const agentName = conv.assignedTo?.name || members.find(m => (m.user?.id || m.userId || m.id) === agentId)?.user?.name || null;
             const updateFn = item => item.id === selectedItem.id

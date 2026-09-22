@@ -414,6 +414,8 @@ const ChatPopup = ({ conversationId, onClose }) => {
         setAssignMegaMenuOpen(false);
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, conversation.id, { teamId, agentId });
+            // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
+            if (res?.data?.warning) alert(`⚠️ ${res.data.warning}`);
             const conv = res.data.conversation || res.data;
             setConversation(prev => ({ 
                 ...prev, 

@@ -3,7 +3,7 @@ import prisma from '../lib/prisma.js';
 import { logEvent } from '../services/conversationEvent.service.js';
 import crypto from 'crypto';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
-import { unavailabilityReason } from '../utils/workingHours.js';
+import { isWorkingAt, unavailabilityReason } from '../utils/workingHours.js';
 import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
@@ -3655,6 +3655,22 @@ export const smartAssignConversation = async (req, res) => {
         if (!conversation) return res.status(404).json({ error: 'Konuşma bulunamadı' });
 
         let resolvedAgentId = agentId || null;
+        let atamaUyarisi = null;   // mesai dışı atamada kullanıcıya dönecek not
+
+        // Kişi ELLE seçildiyse: engellemiyoruz ama mesai dışıysa uyarıyoruz.
+        if (agentId) {
+            try {
+                const secilen = await prisma.user.findUnique({
+                    where: { id: agentId },
+                    select: { name: true, workingHours: true }
+                });
+                const mesaiNotu = unavailabilityReason(secilen?.workingHours);
+                if (mesaiNotu) {
+                    atamaUyarisi = `${secilen?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapıldı, ancak yanıt gecikebilir.`;
+                    console.log(`🕒 [SmartAssign] Mesai dışı atama: ${atamaUyarisi}`);
+                }
+            } catch (_) {}
+        }
 
         // Takım ID'si verilmişse ve kişi belirtilmemişse → atama kuralını uygula
         if (teamId && !agentId) {
@@ -3663,42 +3679,75 @@ export const smartAssignConversation = async (req, res) => {
                     where: { id: teamId, workspaceId },
                     include: {
                         members: {
-                            include: { user: { select: { id: true, isOnline: true } } }
+                            include: { user: { select: { id: true, name: true, isOnline: true, workingHours: true } } }
                         }
                     }
                 });
 
                 if (team) {
-                    // Bot memberları filtrele (userId null olanlar)
-                    const allMembers = team.members.filter(m => m.user && m.userId).map(m => m.user);
-                    const rule = team.assignmentRule || 'POOL';
+                    // Sıra KARARLI olmalı: sıralama verilmediğinde artan indeks
+                    // her çağrıda farklı diziye uygulanıyordu.
+                    const allMembers = team.members
+                        .filter(m => m.user && m.userId)
+                        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0) || String(a.id).localeCompare(String(b.id)))
+                        .map(m => m.user);
+
+                    // Mesai dışındaki temsilciye dağıtma. Saati girilmemişte kısıt yok.
+                    const uygunMembers = allMembers.filter(m => isWorkingAt(m.workingHours));
+                    if (uygunMembers.length < allMembers.length) {
+                        const atlanan = allMembers
+                            .filter(m => !uygunMembers.includes(m))
+                            .map(m => `${m.name} (${unavailabilityReason(m.workingHours) || 'uygun değil'})`)
+                            .join(', ');
+                        console.log(`🕒 [SmartAssign] "${team.name}" → mesai dışı atlandı: ${atlanan}`);
+                    }
+
+                    // Motorun okuduğu alanlar distributionMode/Method; assignmentRule
+                    // legacy. Eski kayıtlar bozulmasın diye ikisi de destekleniyor.
+                    const mode = team.distributionMode || 'POOL';
+                    let rule;
+                    if (mode === 'POOL') {
+                        rule = (team.assignmentRule && team.assignmentRule !== 'POOL')
+                            ? team.assignmentRule           // eski kayıt: yalnız assignmentRule yazılmış
+                            : 'POOL';
+                    } else {
+                        rule = team.distributionMethod || 'ROUND_ROBIN';
+                    }
+
+                    const sirayla = async (havuz) => {
+                        if (havuz.length === 0) return null;
+                        // İndeksi atomik artır: iki eşzamanlı atama aynı kişiye gitmesin
+                        const guncel = await prisma.team.update({
+                            where: { id: teamId },
+                            data: { roundRobinIndex: { increment: 1 } },
+                            select: { roundRobinIndex: true }
+                        });
+                        const idx = ((guncel.roundRobinIndex || 1) - 1) % havuz.length;
+                        console.log(`🔄 [SmartAssign] "${team.name}" → ${havuz[idx].name} (sıra ${idx + 1}/${havuz.length})`);
+                        return havuz[idx].id;
+                    };
 
                     if (rule === 'POOL' || rule === 'MANUAL') {
                         resolvedAgentId = null;
+                    } else if (uygunMembers.length === 0) {
+                        resolvedAgentId = null;
+                        atamaUyarisi = `${team.name} takımında şu anda çalışan temsilci yok. Konuşma havuzda bekliyor.`;
+                        console.log(`🕒 [SmartAssign] "${team.name}" → çalışan üye yok, havuzda`);
                     } else if (rule === 'ROUND_ROBIN') {
-                        if (allMembers.length > 0) {
-                            const nextIdx = (team.roundRobinIndex || 0) % allMembers.length;
-                            resolvedAgentId = allMembers[nextIdx].id;
-                            await prisma.team.update({ where: { id: teamId }, data: { roundRobinIndex: nextIdx + 1 } });
-                        }
+                        resolvedAgentId = await sirayla(uygunMembers);
                     } else if (rule === 'LEAST_BUSY') {
-                        if (allMembers.length > 0) {
-                            const counts = await Promise.all(
-                                allMembers.map(async m => ({
-                                    id: m.id,
-                                    count: await prisma.conversation.count({ where: { assignedToId: m.id, status: 'OPEN' } })
-                                }))
-                            );
-                            counts.sort((a, b) => a.count - b.count);
-                            resolvedAgentId = counts[0].id;
-                        }
+                        const counts = await Promise.all(
+                            uygunMembers.map(async m => ({
+                                id: m.id,
+                                count: await prisma.conversation.count({ where: { assignedToId: m.id, status: 'OPEN' } })
+                            }))
+                        );
+                        counts.sort((a, b) => a.count - b.count);
+                        resolvedAgentId = counts[0].id;
                     } else if (rule === 'ONLINE_ONLY') {
-                        const onlineMembers = allMembers.filter(m => m.isOnline);
-                        const pool = onlineMembers.length > 0 ? onlineMembers : [];
-                        if (pool.length > 0) {
-                            const nextIdx = (team.roundRobinIndex || 0) % pool.length;
-                            resolvedAgentId = pool[nextIdx].id;
-                            await prisma.team.update({ where: { id: teamId }, data: { roundRobinIndex: nextIdx + 1 } });
+                        const online = uygunMembers.filter(m => m.isOnline);
+                        if (online.length > 0) {
+                            resolvedAgentId = await sirayla(online);
                         } else {
                             resolvedAgentId = null; // Kimse online değil, havuzda kal
                         }
@@ -3794,6 +3843,7 @@ export const smartAssignConversation = async (req, res) => {
             success: true,
             conversation: { ...updated, assignedTo },
             resolvedAgentId,
+            warning: atamaUyarisi,
             event: createdEvent ? {
                 id: createdEvent.id,
                 createdAt: createdEvent.createdAt,
