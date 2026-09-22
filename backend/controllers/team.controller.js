@@ -317,3 +317,112 @@ export const deleteTeam = async (req, res) => {
         res.status(500).json({ error: 'Failed to delete team' });
     }
 };
+
+/**
+ * TAKIM VE TEMSİLCİ CANLI DURUMU
+ *
+ * Ekran şimdiye kadar yalnızca "kim hangi takımda" gösteriyordu. Asıl
+ * merak edilen — iş kime gidiyor, şu an kim müsait, havuzda ne birikti —
+ * hiçbir yerde yoktu. Mesai saatleri veritabanında duruyordu ama arayüze
+ * çıkmıyordu; bu yüzden mesai dışı birine elle atama yapılıp hata alınıyordu.
+ */
+export const getTeamOverview = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { isWorkingAt, unavailabilityReason } = await import('../utils/workingHours.js');
+        const simdi = new Date();
+
+        const [uyeler, takimlar, acikSayilari, havuzSayilari] = await Promise.all([
+            prisma.workspaceMember.findMany({
+                where: { workspaceId },
+                select: {
+                    id: true, userId: true, role: true, branchIds: true,
+                    maxOpenConversations: true,
+                    // workingHours User üzerinde tutuluyor, üyelikte değil.
+                    user: { select: { id: true, name: true, email: true, avatar: true, isOnline: true, workingHours: true } }
+                }
+            }),
+            prisma.team.findMany({
+                where: { workspaceId },
+                select: {
+                    id: true, name: true, parentId: true,
+                    distributionMode: true, distributionMethod: true,
+                    members: { select: { userId: true } }
+                }
+            }),
+            // Kişi başına açık sohbet
+            prisma.conversation.groupBy({
+                by: ['assignedToId'],
+                where: { workspaceId, status: 'OPEN', assignedToId: { not: null } },
+                _count: { _all: true }
+            }),
+            // Takım havuzunda bekleyen: takıma atanmış ama kimseye verilmemiş
+            prisma.conversation.groupBy({
+                by: ['assignedTeamId'],
+                where: { workspaceId, status: 'OPEN', assignedToId: null, assignedTeamId: { not: null } },
+                _count: { _all: true }
+            })
+        ]);
+
+        const acik = new Map(acikSayilari.map(r => [r.assignedToId, r._count._all]));
+        const havuz = new Map(havuzSayilari.map(r => [r.assignedTeamId, r._count._all]));
+
+        const uyeDurumu = uyeler.map(m => {
+            const mesaide = isWorkingAt(m.user?.workingHours, simdi);
+            const neden = mesaide ? null : unavailabilityReason(m.user?.workingHours, simdi);
+            const yuk = acik.get(m.userId) || 0;
+            const limit = m.maxOpenConversations || null;
+            return {
+                memberId: m.id,
+                userId: m.userId,
+                name: m.user?.name || '—',
+                email: m.user?.email || null,
+                avatar: m.user?.avatar || null,
+                role: m.role,
+                branchIds: m.branchIds,
+                isOnline: !!m.user?.isOnline,
+                isWorkingNow: mesaide,
+                offHoursReason: neden,
+                openCount: yuk,
+                maxOpen: limit,
+                // "Müsait" = mesaide ve kapasitesi dolmamış. Çevrimiçi olmak
+                // şart değil: dağıtım yalnızca ONLINE_ONLY modunda buna bakıyor.
+                isAvailable: mesaide && (!limit || yuk < limit)
+            };
+        });
+
+        const uyeHaritasi = new Map(uyeDurumu.map(u => [u.userId, u]));
+
+        const takimDurumu = takimlar.map(t => {
+            const durumlar = t.members.map(tm => uyeHaritasi.get(tm.userId)).filter(Boolean);
+            return {
+                teamId: t.id,
+                name: t.name,
+                parentId: t.parentId,
+                distributionMode: t.distributionMode,
+                distributionMethod: t.distributionMethod,
+                memberCount: t.members.length,
+                availableNow: durumlar.filter(u => u.isAvailable).length,
+                offHours: durumlar.filter(u => !u.isWorkingNow).length,
+                offline: durumlar.filter(u => u.isWorkingNow && !u.isOnline).length,
+                pooledCount: havuz.get(t.id) || 0
+            };
+        });
+
+        res.json({
+            now: simdi.toISOString(),
+            members: uyeDurumu,
+            teams: takimDurumu,
+            totals: {
+                memberCount: uyeDurumu.length,
+                availableNow: uyeDurumu.filter(u => u.isAvailable).length,
+                teamCount: takimDurumu.length,
+                pooledTotal: takimDurumu.reduce((t, x) => t + x.pooledCount, 0),
+                poolOnlyTeams: takimDurumu.filter(x => (x.distributionMode || 'POOL') === 'POOL').length
+            }
+        });
+    } catch (error) {
+        console.error('getTeamOverview error:', error);
+        res.status(500).json({ error: 'Takım durumu alınamadı' });
+    }
+};

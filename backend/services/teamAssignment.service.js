@@ -44,6 +44,30 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         console.log(`🕒 [Distribute] "${team.name}" → mesai dışı atlandı: ${atlanan}`);
     }
 
+    // Kapasitesi dolmuş temsilciye yeni iş verilmez. Sınır tanımlı değilse
+    // (null) kısıt yok. Herkes doluysa konuşma havuzda bekler — birine
+    // zorla yığmaktansa görünür şekilde beklemesi daha iyi.
+    const musaitUyeler = [];
+    for (const m of humanMembers) {
+        const uyelik = await prisma.workspaceMember.findFirst({
+            where: { userId: m.userId, workspaceId: team.workspaceId },
+            select: { maxOpenConversations: true }
+        });
+        const limit = uyelik?.maxOpenConversations || null;
+        if (!limit) { musaitUyeler.push(m); continue; }
+        const acik = await prisma.conversation.count({
+            where: { assignedToId: m.userId, status: 'OPEN' }
+        });
+        if (acik < limit) musaitUyeler.push(m);
+        else console.log(`📦 [Distribute] ${m.user?.name} kapasitesi dolu (${acik}/${limit}) — atlandı`);
+    }
+    if (musaitUyeler.length === 0) {
+        console.log(`📦 [Distribute] "${team.name}" → herkesin kapasitesi dolu, havuzda bekliyor`);
+        return null;
+    }
+    humanMembers.length = 0;
+    humanMembers.push(...musaitUyeler);
+
     let assignedUserId = null;
     const effectiveMethod = method || team.distributionMethod || 'ROUND_ROBIN';
 

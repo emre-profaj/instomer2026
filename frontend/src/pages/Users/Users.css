@@ -1213,3 +1213,147 @@
 .ut-user-card.ut-agent-inactive:hover {
     opacity: 0.7;
 }
+/* ═══════════════════════════════════════════════════════════════
+   CANLI DURUM — KİM MÜSAİT, İŞ KİME GİDİYOR
+   ═══════════════════════════════════════════════════════════════
+
+   Ekran yalnızca "kim hangi takımda" gösteriyordu. Mesai saatleri ve
+   dağıtım ayarı veritabanında duruyor ama görünmüyordu; canlı veride
+   yedi takımın da POOL modunda kaldığı, yani hiçbir sohbetin kimseye
+   atanmadığı ancak sorguyla fark edildi. Artık ekranda yazıyor.
+   ═══════════════════════════════════════════════════════════════ */
+
+.ut-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.ut-stat {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 12px 16px;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, .05), 0 8px 20px -18px rgba(15, 23, 42, .5);
+}
+.ut-stat-k {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.ut-stat-v {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 4px;
+}
+.ut-stat-v strong { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; color: #0f172a; }
+.ut-stat-v strong.ok { color: #15803d; }
+.ut-stat-v strong.warn { color: #b45309; }
+.ut-stat-v strong.bad { color: #b91c1c; }
+.ut-stat-v em { font-style: normal; font-size: 12.5px; color: #64748b; }
+
+.ut-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    border-radius: 12px;
+    background: #fff7f7;
+    box-shadow: inset 0 0 0 1px #fbdada;
+    font-size: 13px;
+    color: #7f1d1d;
+    line-height: 1.5;
+}
+.ut-alert svg { flex: none; color: #b91c1c; }
+
+/* ── Temsilci satırındaki durum ─────────────────────────── */
+.ut-user-state {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 3px;
+    flex-wrap: wrap;
+}
+.ut-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+}
+.ut-state.ok { color: #15803d; }
+.ut-state.warn { color: #b45309; }
+.ut-state.off { color: #94a3b8; }
+.ut-load {
+    font-size: 10.5px;
+    color: #64748b;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Takım kartında dağıtım ─────────────────────────────── */
+.ut-dist {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+.ut-dist-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.ut-dist-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #334155;
+}
+.ut-dist-cover { font-size: 11.5px; color: #64748b; }
+.ut-dist-cover strong { font-weight: 600; }
+.ut-dist-cover strong.ok { color: #15803d; }
+.ut-dist-cover strong.bad { color: #b91c1c; }
+
+.ut-dist-seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 9px;
+    background: #eef1f5;
+}
+.ut-dist-btn {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    transition: background .14s, color .14s;
+}
+.ut-dist-btn:hover { color: #334155; }
+.ut-dist-btn.on {
+    background: #ffffff;
+    color: #0f172a;
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .1);
+}
+
+.ut-dist-note {
+    margin-top: 7px;
+    font-size: 11.5px;
+    color: #64748b;
+    line-height: 1.45;
+}
+.ut-dist-note.warn { color: #92400e; font-weight: 500; }
+
+@media (max-width: 1100px) {
+    .ut-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

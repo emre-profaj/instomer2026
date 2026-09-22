@@ -28,7 +28,9 @@ import {
     ToggleRight,
     ToggleLeft,
     Power,
-    MapPin
+    MapPin,
+    AlertTriangle,
+    Clock
 } from 'lucide-react';
 import './Users.css';
 
@@ -54,6 +56,19 @@ const DAGITIM_PATCH = {
     // Telefon gelince dağıt: motordaki CONDITIONAL + triggerOnPhone karşılığı
     PHONE_ONLY: { distributionMode: 'CONDITIONAL', distributionMethod: 'ROUND_ROBIN', triggerOnPhone: true }
 };
+
+/**
+ * Dağıtım seçenekleri. Kısa etiket düğmede, açıklama altında görünür:
+ * eski "Havuzda Beklet / Sırayla Dağıt" listesi seçimin sonucunu
+ * söylemiyordu, kimse neyin ne olduğunu bilmeden POOL'da bırakıyordu.
+ */
+const DAGITIM_SECENEKLERI = [
+    { id: 'POOL', kisa: 'Havuzda beklesin', aciklama: 'Kimseye atanmaz, biri üstlenene kadar bekler' },
+    { id: 'ROUND_ROBIN', kisa: 'Sırayla dağıt', aciklama: 'Üyelere sırayla verilir; mesai dışı ve kapasitesi dolu olan atlanır' },
+    { id: 'LEAST_BUSY', kisa: 'En az meşgule', aciklama: 'O anda en az açık sohbeti olan üyeye verilir' },
+    { id: 'ONLINE_ONLY', kisa: 'Çevrimiçine', aciklama: 'Yalnızca çevrimiçi üyeye verilir, yoksa havuzda bekler' },
+    { id: 'PHONE_ONLY', kisa: 'Telefon gelince', aciklama: 'Yalnızca telefon numarası alındığında sırayla dağıtılır' }
+];
 
 // Takımın mevcut ayarına göre listede hangi seçenek görünmeli
 const dagitimSecimi = (team) => {
@@ -190,6 +205,7 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
     const [branchIds, setBranchIds] = useState(() => parseBranchIds(member.branchIds));
     const [email, setEmail] = useState(member.user?.email || '');
     const [workingHours, setWorkingHours] = useState(member.user?.workingHours || DEFAULT_WORKING_HOURS);
+    const [maxOpen, setMaxOpen] = useState(member.maxOpenConversations ?? '');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
@@ -209,7 +225,7 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
         }
         setLoading(true);
         try {
-            await onSubmit({ name: name.trim(), email: email.trim(), workingHours, branchIds });
+            await onSubmit({ name: name.trim(), email: email.trim(), workingHours, branchIds, maxOpenConversations: maxOpen === '' ? null : maxOpen });
             if (password) {
                 await onPasswordChange(password);
                 setPassword('');
@@ -243,6 +259,24 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
                             <label>E-posta</label>
                             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                                 placeholder="ornek@mail.com" required />
+                        </div>
+                    </div>
+
+                    {/* Kapasite: dağıtım motorunun üst sınırı. Bu olmadan
+                        "en az meşgule dağıt" birine sınırsız yığabiliyordu. */}
+                    <div className="ut-form-row">
+                        <div className="ut-form-group ut-form-half">
+                            <label>Aynı anda en fazla sohbet</label>
+                            <input
+                                type="number"
+                                min="1"
+                                value={maxOpen}
+                                onChange={e => setMaxOpen(e.target.value)}
+                                placeholder="Sınırsız"
+                            />
+                            <small style={{ display: 'block', marginTop: 4, fontSize: '0.72rem', color: '#64748b' }}>
+                                Boş bırakılırsa sınır yok. Sınıra ulaşan kişiye otomatik yeni iş verilmez.
+                            </small>
                         </div>
                     </div>
 
@@ -493,6 +527,7 @@ const UsersTeams = () => {
 
     // Teams
     const [teams, setTeams] = useState([]);
+    const [overview, setOverview] = useState(null);
     const [teamsLoading, setTeamsLoading] = useState(false);
     const [teamModal, setTeamModal] = useState({ show: false, team: null, parentId: null, parentName: null });
     const [branches, setBranches] = useState([]);
@@ -526,7 +561,7 @@ const UsersTeams = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     const loadUsersAndTeams = () => {
-        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations(); loadRetellSettings(); loadBranches();
+        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations(); loadRetellSettings(); loadBranches(); loadOverview();
     };
 
     const loadBranches = async () => {
@@ -593,6 +628,11 @@ const UsersTeams = () => {
         if (currentWorkspace) { loadUsersAndTeams(); }
     }, [currentWorkspace]);
 
+    /** Bir kişinin canlı durumu (müsait mi, kaç açık sohbeti var). */
+    const uyeDurumu = (userId) => overview?.members?.find(m => m.userId === userId) || null;
+    /** Bir takımın canlı durumu (kaç kişi müsait, havuzda ne bekliyor). */
+    const takimDurumu = (teamId) => overview?.teams?.find(t => t.teamId === teamId) || null;
+
     // ── Loaders ──────────────────────────────────────────────
     const loadMembers = async () => {
         setMembersLoading(true);
@@ -600,6 +640,21 @@ const UsersTeams = () => {
             const res = await workspaceAPI.getMembers(currentWorkspace.id);
             setMembers(res.data.members || []);
         } catch { } finally { setMembersLoading(false); }
+    };
+
+    /**
+     * Canlı durum: kim müsait, kimde kaç açık sohbet, hangi takımın
+     * havuzunda ne birikti. Bu bilgiler ekranda hiç yoktu; mesai saatleri
+     * veritabanında duruyor ama görünmediği için mesai dışı birine atama
+     * denenip hata alınıyordu.
+     */
+    const loadOverview = async () => {
+        try {
+            const res = await teamAPI.getOverview(currentWorkspace.id);
+            setOverview(res.data || null);
+        } catch (err) {
+            console.error('Takım durumu alınamadı:', err);
+        }
     };
 
     const loadTeams = async () => {
@@ -854,6 +909,7 @@ const UsersTeams = () => {
         const memberCount = visibleMembers.length;
 
         // Sorumlu şubeleri hesapla
+        const durum = takimDurumu(team.id);
         let teamBranches = [];
         if (team.branchIds) {
             try {
@@ -1013,49 +1069,56 @@ const UsersTeams = () => {
                         </div>
                     </div>
 
-                    {/* Assignment Rule */}
-                    <div style={{
-                        display: 'flex', flexDirection: 'column', gap: '6px',
-                        padding: '8px 10px', marginTop: '6px',
-                        background: '#f8fafc', borderRadius: '8px',
-                        border: '1px solid #e2e8f0'
-                    }}>
-                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                            Havuzdakilere ne yapılsın?
-                        </span>
-                        <select
-                            value={dagitimSecimi(team)}
-                            onChange={async (e) => {
-                                const secim = e.target.value;
-                                // Eskiden yalnızca assignmentRule yazılıyordu; dağıtım
-                                // motoru o alanı OKUMUYOR (şemada "legacy"). Seçim
-                                // etkisiz kalıyor, konuşmalar havuzda bekliyordu.
-                                const patch = DAGITIM_PATCH[secim] || DAGITIM_PATCH.POOL;
-                                try {
-                                    await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: secim, ...patch });
-                                    const updateNested = (list) => list.map(t => {
-                                        if (t.id === team.id) return { ...t, assignmentRule: secim, ...patch };
-                                        if (t.children) return { ...t, children: updateNested(t.children) };
-                                        return t;
-                                    });
-                                    setTeams(prev => updateNested(prev));
-                                } catch (err) {
-                                    console.error('Assignment rule update error:', err);
-                                }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                                width: '100%', fontSize: '0.72rem', padding: '5px 8px', borderRadius: '6px',
-                                border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer',
-                                fontWeight: 500, color: '#334155', outline: 'none'
-                            }}
-                        >
-                            <option value="POOL">🗂️ Havuzda Beklet</option>
-                            <option value="ROUND_ROBIN">🔄 Sırayla Dağıt (Round Robin)</option>
-                            <option value="LEAST_BUSY">📊 En Az Görüşmesi Olana Dağıt</option>
-                            <option value="ONLINE_ONLY">🟢 Sadece Online Olanlara Dağıt</option>
-                            <option value="PHONE_ONLY">📞 Telefonu Olanları Sırayla Dağıt</option>
-                        </select>
+                    {/* Dağıtım — gizli bir açılır kutu yerine görünür seçim.
+                        "Havuzdakilere ne yapılsın?" cümlesi ne olacağını
+                        söylemiyordu; yedi takımın da POOL'da kalmasının sebebi
+                        büyük ölçüde buydu. Seçilinin altında sonucu yazıyor. */}
+                    <div className="ut-dist" onClick={(e) => e.stopPropagation()}>
+                        <div className="ut-dist-head">
+                            <span className="ut-dist-label">Gelen iş</span>
+                            {durum && (
+                                <span className="ut-dist-cover">
+                                    {durum.availableNow > 0
+                                        ? <><strong className="ok">{durum.availableNow} müsait</strong>{durum.offHours > 0 ? ` · ${durum.offHours} mesai dışı` : ''}</>
+                                        : <strong className="bad">Şu an müsait kimse yok</strong>}
+                                </span>
+                            )}
+                        </div>
+                        <div className="ut-dist-seg" role="group" aria-label="Dağıtım yöntemi">
+                            {DAGITIM_SECENEKLERI.map(sec => (
+                                <button
+                                    key={sec.id}
+                                    type="button"
+                                    aria-pressed={dagitimSecimi(team) === sec.id}
+                                    className={`ut-dist-btn ${dagitimSecimi(team) === sec.id ? 'on' : ''}`}
+                                    title={sec.aciklama}
+                                    onClick={async () => {
+                                        // Eskiden yalnızca assignmentRule yazılıyordu; dağıtım
+                                        // motoru o alanı OKUMUYOR (şemada "legacy"), seçim
+                                        // etkisiz kalıyordu.
+                                        const patch = DAGITIM_PATCH[sec.id] || DAGITIM_PATCH.POOL;
+                                        try {
+                                            await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: sec.id, ...patch });
+                                            const updateNested = (list) => list.map(t => {
+                                                if (t.id === team.id) return { ...t, assignmentRule: sec.id, ...patch };
+                                                if (t.children) return { ...t, children: updateNested(t.children) };
+                                                return t;
+                                            });
+                                            setTeams(prev => updateNested(prev));
+                                            loadOverview();
+                                        } catch (err) {
+                                            console.error('Assignment rule update error:', err);
+                                        }
+                                    }}
+                                >
+                                    {sec.kisa}
+                                </button>
+                            ))}
+                        </div>
+                        <div className={`ut-dist-note ${dagitimSecimi(team) === 'POOL' ? 'warn' : ''}`}>
+                            {(DAGITIM_SECENEKLERI.find(x => x.id === dagitimSecimi(team)) || {}).aciklama}
+                            {dagitimSecimi(team) === 'POOL' && durum?.pooledCount > 0 && ` — şu an ${durum.pooledCount} sohbet bekliyor`}
+                        </div>
                     </div>
                 </div>
 
@@ -1098,6 +1161,44 @@ const UsersTeams = () => {
                 </div>
             </div>
 
+            {/* ── Canlı durum şeridi ──
+                Ekran şimdiye kadar yalnızca "kim hangi takımda" gösteriyordu.
+                Asıl merak edilen — kim müsait, havuzda ne birikti, dağıtım
+                gerçekten çalışıyor mu — hiçbir yerde yoktu. */}
+            {overview?.totals && (
+                <div className="ut-stats">
+                    <div className="ut-stat">
+                        <span className="ut-stat-k">Şu an müsait</span>
+                        <span className="ut-stat-v">
+                            <strong className="ok">{overview.totals.availableNow}</strong>
+                            <em>/ {overview.totals.memberCount} temsilci</em>
+                        </span>
+                    </div>
+                    <div className="ut-stat">
+                        <span className="ut-stat-k">Takım</span>
+                        <span className="ut-stat-v"><strong>{overview.totals.teamCount}</strong></span>
+                    </div>
+                    <div className="ut-stat">
+                        <span className="ut-stat-k">Havuzda bekleyen</span>
+                        <span className="ut-stat-v"><strong className={overview.totals.pooledTotal > 0 ? 'warn' : ''}>{overview.totals.pooledTotal}</strong></span>
+                    </div>
+                    <div className="ut-stat">
+                        <span className="ut-stat-k">Dağıtımı kapalı takım</span>
+                        <span className="ut-stat-v"><strong className={overview.totals.poolOnlyTeams > 0 ? 'bad' : ''}>{overview.totals.poolOnlyTeams}</strong></span>
+                    </div>
+                </div>
+            )}
+
+            {overview?.totals?.poolOnlyTeams > 0 && overview.totals.poolOnlyTeams === overview.totals.teamCount && overview.totals.teamCount > 0 && (
+                <div className="ut-alert">
+                    <AlertTriangle size={18} />
+                    <span>
+                        <strong>Takımların hepsi "Havuzda beklesin" modunda.</strong> Gelen sohbet takıma düşüyor ama kimseye verilmiyor;
+                        biri elle üstlenene kadar bekliyor{overview.totals.pooledTotal > 0 ? ` — şu an ${overview.totals.pooledTotal} sohbet bekliyor` : ''}.
+                    </span>
+                </div>
+            )}
+
             {/* ── Two panels ── */}
             <div className="ut-body">
                 {/* LEFT: Users */}
@@ -1119,6 +1220,7 @@ const UsersTeams = () => {
                                 {members.map(member => {
                                     const roleInfo = ROLE_COLORS[member.role] || ROLE_COLORS.AGENT;
                                     const isOnline = onlineUsers?.get(member.userId)?.isOnline || member.user?.isOnline;
+                                    const durum = uyeDurumu(member.userId);
                                     return (
                                         <div
                                             key={member.id}
@@ -1139,6 +1241,22 @@ const UsersTeams = () => {
                                             <div className="ut-user-info">
                                                 <span className="ut-user-name">{member.user?.name}</span>
                                                 <span className="ut-user-email">{member.user?.email}</span>
+                                                {durum && (
+                                                    <span className="ut-user-state">
+                                                        {durum.isWorkingNow ? (
+                                                            durum.maxOpen && durum.openCount >= durum.maxOpen
+                                                                ? <span className="ut-state warn">Kapasite dolu</span>
+                                                                : <span className="ut-state ok">Müsait</span>
+                                                        ) : (
+                                                            <span className="ut-state off" title={durum.offHoursReason || ''}>
+                                                                <Clock size={10} /> Mesai dışı
+                                                            </span>
+                                                        )}
+                                                        <span className="ut-load" title="Açık sohbet sayısı">
+                                                            {durum.openCount}{durum.maxOpen ? `/${durum.maxOpen}` : ''} açık
+                                                        </span>
+                                                    </span>
+                                                )}
                                                 {branches.length > 0 && (() => {
                                                     const ids = parseBranchIds(member.branchIds);
                                                     const names = ids.map(id => branches.find(b => b.id === id)?.name).filter(Boolean);

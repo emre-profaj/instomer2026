@@ -397,6 +397,9 @@ model WorkspaceMember {
   // Temsilcinin çalıştığı / yetkili olduğu şubeler — JSON array: ["branch-id-1","branch-id-2"]
   // null veya [] = tüm şubeler (Call Center gibi şubeden bağımsız roller)
   branchIds   String?   @db.Text
+  // Aynı anda taşıyabileceği en fazla açık sohbet. null = sınırsız.
+  // Bu olmadan "en az meşgule dağıt" bir üst sınır tanımıyordu.
+  maxOpenConversations Int?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

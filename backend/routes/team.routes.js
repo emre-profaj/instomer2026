@@ -6,6 +6,7 @@ import {
     addTeamMember,
     removeTeamMember,
     getTeamMembers,
+    getTeamOverview,
     updateTeam,
     deleteTeam
 } from '../controllers/team.controller.js';
@@ -16,6 +17,7 @@ router.use(authenticateJWT);
 
 // Get all teams in workspace
 router.get('/:workspaceId', requireWorkspaceAccess, getTeams);
+router.get('/:workspaceId/overview', requireWorkspaceAccess, getTeamOverview);
 
 // Create team
 router.post('/:workspaceId', requireWorkspaceAccess, createTeam);

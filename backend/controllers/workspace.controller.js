@@ -540,7 +540,7 @@ export const changeMemberPassword = async (req, res) => {
 export const updateMemberInfo = async (req, res) => {
     try {
         const { workspaceId, userId } = req.params;
-        const { name, email, workingHours, branchIds } = req.body;
+        const { name, email, workingHours, branchIds, maxOpenConversations } = req.body;
 
         if (!['OWNER', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
             return res.status(403).json({ error: 'Yetkiniz yok' });
@@ -582,16 +582,25 @@ export const updateMemberInfo = async (req, res) => {
 
         // Şube yetkisi üyeliğe yazılır (kullanıcı birden fazla çalışma alanında olabilir)
         let updatedMember = member;
+        const uyelikGuncelleme = {};
         const memberBranchIds = await normalizeMemberBranchIds(workspaceId, branchIds);
-        if (memberBranchIds !== undefined) {
+        if (memberBranchIds !== undefined) uyelikGuncelleme.branchIds = memberBranchIds;
+
+        // Kapasite: boş ya da 0 gönderilirse sınırsız demektir.
+        if (maxOpenConversations !== undefined) {
+            const sayi = parseInt(maxOpenConversations, 10);
+            uyelikGuncelleme.maxOpenConversations = Number.isFinite(sayi) && sayi > 0 ? sayi : null;
+        }
+
+        if (Object.keys(uyelikGuncelleme).length > 0) {
             updatedMember = await prisma.workspaceMember.update({
                 where: { id: member.id },
-                data: { branchIds: memberBranchIds }
+                data: uyelikGuncelleme
             });
         }
 
         console.log(`✏️ Member info updated for ${updatedUser.email} by ${req.user.email}`);
-        res.json({ user: updatedUser, member: { id: updatedMember.id, role: updatedMember.role, branchIds: updatedMember.branchIds } });
+        res.json({ user: updatedUser, member: { id: updatedMember.id, role: updatedMember.role, branchIds: updatedMember.branchIds, maxOpenConversations: updatedMember.maxOpenConversations } });
     } catch (error) {
         console.error('Update member info error:', error);
         res.status(500).json({ error: 'Kullanıcı güncellenemedi' });
