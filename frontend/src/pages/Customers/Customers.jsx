@@ -246,7 +246,9 @@ const Customers = () => {
     const location = useLocation();
     const { t } = useTranslation();
 
-    const [viewMode, setViewMode] = useState('list'); // 'list' | 'card' | 'pipeline'
+    const [viewMode, setViewMode] = useState(() => {
+        try { return localStorage.getItem(`customers_viewMode_${currentWorkspace?.id}`) || 'list'; } catch { return 'list'; }
+    }); // 'list' | 'card' | 'pipeline'
     const [expandedCards, setExpandedCards] = useState(new Set()); // card view: expanded contact ids
     const [quickNotes, setQuickNotes] = useState({}); // card view: { contactId: noteText }
 
@@ -255,7 +257,8 @@ const Customers = () => {
 
     const getSavedFilters = () => {
         try {
-            const saved = sessionStorage.getItem(FILTER_STORAGE_KEY);
+            // localStorage: tarayıcı kapatılsa bile filtreler korunur
+            const saved = localStorage.getItem(FILTER_STORAGE_KEY);
             return saved ? JSON.parse(saved) : {};
         } catch { return {}; }
     };
@@ -508,7 +511,7 @@ const Customers = () => {
             onlyOpenCases, sortField, sortDir, limit, scoreFilter, segmentFilter
         };
         try {
-            sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filtersToSave));
+            localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filtersToSave));
         } catch { /* storage full — ignore */ }
     }, [assignmentFilter, quickFilterMode, search, statusFilter,
         funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
@@ -3275,7 +3278,7 @@ const Customers = () => {
                                     <button
                                         key={v.key}
                                         className={`cust-view-switch-btn ${viewMode === v.key ? 'active' : ''}`}
-                                        onClick={() => setViewMode(v.key)}
+                                        onClick={() => { setViewMode(v.key); try { localStorage.setItem(`customers_viewMode_${currentWorkspace?.id}`, v.key); } catch {} }}
                                         title={v.label}
                                     >
                                         {v.icon}
