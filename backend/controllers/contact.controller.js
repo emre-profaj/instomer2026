@@ -1258,7 +1258,10 @@ export const getContacts = async (req, res) => {
                         summary: true,
                         sentiment: true,
                         callSuccessful: true,
-                        callTopic: true,
+                        // callTopic RetellCall modelinde YOK (ContactActivity'de var).
+                        // Seçilince Prisma tüm sorguyu reddediyordu: logda sürekli
+                        // "Error fetching retellCallsMap" çıkıyor ve kişi kartında
+                        // AI arama geçmişi hiç görünmüyordu.
                         caseId: true,
                         createdAt: true
                     }
@@ -1408,7 +1411,7 @@ export const getContacts = async (req, res) => {
                         source: 'RETELL',
                         assignedByType: 'AI',
                         title: isInbound ? 'Gelen AI Arama' : 'AI Arama (Retell)',
-                        description: rc.summary || rc.callTopic || (isInbound ? 'Müşteri geri aradı' : 'AI sesli arama'),
+                        description: rc.summary || (isInbound ? 'Müşteri geri aradı' : 'AI sesli arama'),
                         result: resultText,
                         summary: rc.summary || null,
                         status: rc.status === 'completed' || rc.callSuccessful ? 'COMPLETED' : 'CANCELLED',
