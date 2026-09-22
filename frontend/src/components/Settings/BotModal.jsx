@@ -153,6 +153,18 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
     // Şube bazlı sıralı akış (çalışma alanı ayarı — anında kaydedilir)
     const [catalogFlow, setCatalogFlow] = useState(null);
     const [catalogSaving, setCatalogSaving] = useState(false);
+    // Agent davranış blokları
+    const [behaviorBlocks, setBehaviorBlocks] = useState(() => {
+        try {
+            const parsed = bot.behaviorBlocks ? (typeof bot.behaviorBlocks === 'string' ? JSON.parse(bot.behaviorBlocks) : bot.behaviorBlocks) : null;
+            return parsed || { greeting: true, collectName: true, collectPhone: true, classifyNeeds: true, stageGoals: true, suggestProducts: false, shareLocation: true, admitUncertainty: true };
+        } catch { return { greeting: true, collectName: true, collectPhone: true, classifyNeeds: true, stageGoals: true, suggestProducts: false, shareLocation: true, admitUncertainty: true }; }
+    });
+    const [tone, setTone] = useState(bot.tone || 'FRIENDLY_PRO');
+    const [msgLength, setMsgLength] = useState(bot.messageLength || 'NORMAL');
+    const [emojiEnabled, setEmojiEnabled] = useState(bot.emojiEnabled !== false);
+    const [multilingualEnabled, setMultilingualEnabled] = useState(bot.multilingualEnabled || false);
+    const [appointmentMode, setAppointmentMode] = useState(bot.appointmentMode || null);
     // Sol raydaki aktif bölüm
     const [activeSection, setActiveSection] = useState('channels');
     // Alt çubuktaki kayıt geri bildirimi
@@ -424,7 +436,14 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                 fallbackDelayMinutes: parseInt(fallbackDelayMinutes) || 5,
                 fallbackScope,
                 // Built-in tools
-                enabledTools: JSON.stringify(enabledTools)
+                enabledTools: JSON.stringify(enabledTools),
+                // Agent davranış blokları
+                behaviorBlocks,
+                tone,
+                messageLength: msgLength,
+                emojiEnabled,
+                multilingualEnabled,
+                appointmentMode,
             });
             setSaveState('saved');
             setTimeout(() => setSaveState(null), 2600);
@@ -478,6 +497,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
         { key: 'prompt', icon: <FileText size={17} />, label: 'Talimat ve devir', hint: `${prompt.length.toLocaleString('tr-TR')} karakter` },
         { key: 'behaviour', icon: <Gauge size={17} />, label: 'Davranış kuralları', hint: `${behaviourRules.length} kural, ${openBehaviourCount} açık` },
         { key: 'tools', icon: <Sparkles size={17} />, label: 'Yetenekler', hint: `${enabledTools.length} / ${TOOL_LIST.length} açık` },
+        { key: 'agent', icon: <Bot size={17} />, label: 'Agent davranışları', hint: 'Otomatik prompt' },
         { key: 'routing', icon: <GitBranch size={17} />, label: 'Yönlendirme', hint: routingConfig.routingEnabled ? 'Açık' : 'Kapalı' },
         { key: 'knowledge', icon: <BookOpen size={17} />, label: 'Bilgi bankası', hint: 'PDF ve DOCX' }
     ];
@@ -556,7 +576,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
 
                 {/* ── Sol ray ─────────────────────────────────────── */}
                 <nav className="bm-rail" aria-label="Bot ayarları bölümleri">
-                    <p className="bm-rail-eyebrow">Bot ayarları</p>
+                    <p className="bm-rail-eyebrow">Agent ayarları</p>
                     {navItems.map(item => (
                         <button
                             key={item.key}
@@ -625,7 +645,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                         <>
                             <section className="bm-sec">
                                 <div className="bm-sec-head">
-                                    <h3>{t('assistants.systemPrompt')}</h3>
+                                    <h3>Ek talimatlar</h3>
                                     <span className="bm-sec-note">Botun kişiliği, tonu ve kuralları</span>
                                 </div>
                                 <textarea
@@ -656,6 +676,162 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                                 <p className="bm-hint">Boş bırakırsanız varsayılan mesaj kullanılır.</p>
                             </section>
                         </>
+                    )}
+
+                    {activeSection === 'agent' && (
+                        <section className="bm-sec">
+                            <div className="bm-sec-head">
+                                <h3>Agent davranışları</h3>
+                                <span className="bm-sec-note">Toggle'ları açıp kapatarak agent'ın nasıl davranacağını belirleyin. Prompt yazmaya gerek yok.</span>
+                            </div>
+
+                            {/* ── Tanışma ── */}
+                            <div className="bm-list">
+                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '8px 0 4px 4px' }}>Tanışma</p>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Karşılama & Selamlama</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Müşteriyi firma adıyla sıcak karşıla</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.greeting !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, greeting: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Kişisel bilgileri al</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Ad, soyad bilgilerini doğal akışta topla</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.collectName !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, collectName: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>İletişim bilgilerini al</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Telefon numarasını iste ve doğrula</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.collectPhone !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, collectPhone: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                {/* ── Satış ── */}
+                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>Satış</p>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>İhtiyacı anla & Sınıflandır</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Müşterinin ne istediğini anla, kategorilere eşle</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.classifyNeeds !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, classifyNeeds: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Sıralı katalog akışı</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Şube → Kategori → Ürün sırasıyla daralt</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={catalogFlowOn} disabled={catalogSaving} onChange={e => handleCatalogFlowToggle(e.target.checked)} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                {catalogFlowOn && (
+                                    <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', marginLeft: '20px', cursor: 'pointer' }}>
+                                        <span style={{ fontSize: '0.82rem' }}>
+                                            <strong>Fiyat bilgisi paylaş</strong><br />
+                                            <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Ürün fiyatlarını müşteriye söyle</span>
+                                        </span>
+                                        <label className="toggle-switch"><input type="checkbox" checked={catalogFlow?.priceDisclosure || false} disabled={catalogSaving} onChange={async e => { setCatalogSaving(true); try { const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogPriceDisclosure: e.target.checked, botId: bot.id }); setCatalogFlow(res.data?.capability || null); } catch (err) { console.error(err); } finally { setCatalogSaving(false); } }} /><span className="toggle-slider"></span></label>
+                                    </label>
+                                )}
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Aşama bazlı satış hedefleri</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Hunideki aşamaya göre hedef belirle ve ilerlet</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.stageGoals !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, stageGoals: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Aktif ürün/hizmet öner</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Cross-sell ve upsell yaparak proaktif öneride bulun</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.suggestProducts === true} onChange={e => setBehaviorBlocks(prev => ({ ...prev, suggestProducts: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                {/* ── Randevu ── */}
+                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>Randevu</p>
+
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Randevu yönetimi</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>{appointmentMode === 'AUTO' ? 'API üzerinden otomatik randevu oluşturur' : appointmentMode === 'REQUEST' ? 'Bilgileri toplar, yetkiliye iletir' : 'Kapalı'}</span>
+                                    </span>
+                                    <select className="input-modern input-sm" value={appointmentMode || ''} onChange={e => setAppointmentMode(e.target.value || null)} style={{ width: '140px', fontSize: '0.78rem' }}>
+                                        <option value="">Kapalı</option>
+                                        <option value="AUTO">Kesin randevu ver</option>
+                                        <option value="REQUEST">Talep al</option>
+                                    </select>
+                                </div>
+
+                                {/* ── İletişim ── */}
+                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>İletişim</p>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Konum & Adres paylaş</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Şube adresi ve harita bilgisi gönder</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.shareLocation !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, shareLocation: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Bilmediğinde itiraf et & aktar</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Cevaplayamadığında uydurma, yetkiliye yönlendir</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.admitUncertainty !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, admitUncertainty: e.target.checked }))} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Çok dilli yanıt ver</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Müşteri farklı dilde yazarsa o dilde yanıt verir</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={multilingualEnabled} onChange={e => setMultilingualEnabled(e.target.checked)} /><span className="toggle-slider"></span></label>
+                                </label>
+
+                                {/* ── Stil ── */}
+                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>Stil</p>
+
+                                <div style={{ display: 'flex', gap: '12px', marginBottom: '6px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', marginBottom: '4px', display: 'block' }}>Üslup</label>
+                                        <select className="input-modern input-sm" value={tone} onChange={e => setTone(e.target.value)} style={{ width: '100%', fontSize: '0.78rem' }}>
+                                            <option value="FRIENDLY_PRO">Samimi & Profesyonel</option>
+                                            <option value="FORMAL">Resmi & Kurumsal</option>
+                                            <option value="CASUAL">Arkadaşça & Rahat</option>
+                                            <option value="CONCISE">Kısa & Net</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', marginBottom: '4px', display: 'block' }}>Mesaj uzunluğu</label>
+                                        <select className="input-modern input-sm" value={msgLength} onChange={e => setMsgLength(e.target.value)} style={{ width: '100%', fontSize: '0.78rem' }}>
+                                            <option value="SHORT">Kısa</option>
+                                            <option value="NORMAL">Normal</option>
+                                            <option value="DETAILED">Detaylı</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
+                                    <span style={{ fontSize: '0.82rem' }}>
+                                        <strong>Emoji kullan</strong><br />
+                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Mesajlarda emoji ve sembol kullan</span>
+                                    </span>
+                                    <label className="toggle-switch"><input type="checkbox" checked={emojiEnabled} onChange={e => setEmojiEnabled(e.target.checked)} /><span className="toggle-slider"></span></label>
+                                </label>
+                            </div>
+                        </section>
                     )}
 
                     {activeSection === 'behaviour' && (

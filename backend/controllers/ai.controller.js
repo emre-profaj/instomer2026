@@ -3752,7 +3752,9 @@ export const updateBot = async (req, res) => {
             // Handoff message
             handoffMessage,
             // Bot yetenekleri (tool toggles)
-            capabilities
+            capabilities,
+            // Agent davranış blokları
+            behaviorBlocks, tone, messageLength, emojiEnabled, multilingualEnabled, appointmentMode
         } = req.body;
 
         // Verify bot belongs to this workspace
@@ -3807,7 +3809,14 @@ export const updateBot = async (req, res) => {
                 // Handoff message
                 ...(handoffMessage !== undefined && { handoffMessage: handoffMessage || null }),
                 // Bot capabilities (tool toggles)
-                ...(capabilities !== undefined && { capabilities: capabilities || null })
+                ...(capabilities !== undefined && { capabilities: capabilities || null }),
+                // Agent davranış blokları
+                ...(behaviorBlocks !== undefined && { behaviorBlocks: behaviorBlocks || null }),
+                ...(tone !== undefined && { tone: tone || 'FRIENDLY_PRO' }),
+                ...(messageLength !== undefined && { messageLength: messageLength || 'NORMAL' }),
+                ...(emojiEnabled !== undefined && { emojiEnabled: !!emojiEnabled }),
+                ...(multilingualEnabled !== undefined && { multilingualEnabled: !!multilingualEnabled }),
+                ...(appointmentMode !== undefined && { appointmentMode: appointmentMode || null })
             }
         });
         res.json({ bot });

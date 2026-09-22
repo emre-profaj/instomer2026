@@ -653,6 +653,51 @@ export const handleFormSubmission = async (req, res) => {
             console.error('⚠️ [FormWebhook] Kategori eşleştirme hatası:', catMatchErr.message);
         }
 
+        // 🧠 EVRENSEL SINIFLANDIRICI: Şube, kategori, akış, ürün grubu tespiti
+        // Diğer kanallarla (WhatsApp, Instagram, Facebook, Widget) aynı sınıflandırmayı uygula
+        try {
+            const { classifyAndExtract, executeClassificationActions } = await import('../services/universalClassifier.service.js');
+            // Form alanlarından sınıflandırma metni oluştur
+            const classificationText = [
+                subject && `Konu: ${subject}`,
+                product && `Ürün/Hizmet: ${product}`,
+                message && `Mesaj: ${message}`,
+                company && `Şirket: ${company}`,
+                webhook.name && `Form: ${webhook.name}`,
+                messageContent
+            ].filter(Boolean).join('\n');
+
+            const fakeMessages = [{ content: classificationText, isFromContact: true }];
+            const classificationResult = await classifyAndExtract(
+                conversation.id,
+                fakeMessages,
+                contact,
+                'FORM',
+                webhook.workspaceId
+            );
+
+            if (classificationResult) {
+                // Eğer kategori zaten eşleştirilmişse (yukarıdaki categoryMatcher'dan), onu koru
+                if (conversation.topicCategoryId && !classificationResult.topicCategoryId) {
+                    classificationResult.topicCategoryId = conversation.topicCategoryId;
+                }
+                await executeClassificationActions(
+                    webhook.workspaceId,
+                    conversation.id,
+                    contact?.id,
+                    classificationResult
+                );
+                console.log(`🧠 [FormWebhook] Evrensel sınıflandırıcı uygulandı:`, {
+                    category: classificationResult.topicCategoryId || null,
+                    funnel: classificationResult.matchedFunnelId || null,
+                    branch: classificationResult.matchedBranchId || null,
+                    productGroup: classificationResult.matchedProductGroupId || null
+                });
+            }
+        } catch (classifierErr) {
+            console.error('⚠️ [FormWebhook] Evrensel sınıflandırıcı hatası:', classifierErr.message);
+        }
+
         // Madde 0: Pipeline post-processing
         try {
             const { runChannelPostProcessing } = await import('./inbox.controller.js');
