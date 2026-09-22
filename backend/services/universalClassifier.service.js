@@ -655,7 +655,10 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }),
             prisma.conversation.findUnique({
                 where: { id: conversationId },
-                select: { assignedToId: true, assignedTeamId: true, assignedAt: true, updatedAt: true }
+                // topicCategoryId de okunuyor: kategori genelde ilk mesajda
+                // belirleniyor, sonraki turlarda AI kategori döndürmüyor.
+                // Eskiden o turlarda kategori kuralı hiç çalışmıyordu.
+                select: { assignedToId: true, assignedTeamId: true, assignedAt: true, updatedAt: true, topicCategoryId: true }
             })
         ]);
         
@@ -699,9 +702,46 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         }
         // assignedToId yok → AI hemen müdahale, süre beklemiyor ✅
 
+        // --- Konuşmanın etkin kategorisi ---
+        // Bu turda AI kategori döndürmediyse konuşmada kayıtlı olan geçerli.
+        const etkinKategoriId = topicCategoryId || conversationRecord?.topicCategoryId || null;
+
+        /** Kategoriye bakan akış: önce kategori ekranındaki seçim, yoksa
+         *  akış ekranındaki "Sorumlu Kategoriler" eşleşmesi. */
+        const kategorininAkisi = async (kategoriId) => {
+            if (!kategoriId) return null;
+            const kat = await prisma.topicCategory.findUnique({
+                where: { id: kategoriId },
+                select: { defaultFunnelId: true }
+            });
+            if (kat?.defaultFunnelId) return kat.defaultFunnelId;
+
+            const akislar = await prisma.funnel.findMany({
+                where: { workspaceId },
+                select: { id: true, classificationCriteria: true }
+            });
+            for (const f of akislar) {
+                if (!f.classificationCriteria) continue;
+                try {
+                    const kriter = typeof f.classificationCriteria === 'string'
+                        ? JSON.parse(f.classificationCriteria)
+                        : f.classificationCriteria;
+                    if (Array.isArray(kriter?.categoryIds) && kriter.categoryIds.includes(kategoriId)) return f.id;
+                } catch (_) {}
+            }
+            return null;
+        };
+
         // --- Akış atama (skipFunnelAssignment false ise) ---
-        // AI'ın matchedFunnelId'sini kullan (akışlardaki classificationCriteria'ya göre eşleşir)
-        let targetFunnelId = skipFunnelAssignment ? null : matchedFunnelId;
+        // Kategori bir akış söylüyorsa o geçerli; AI'ın eşleştirmesi ikinci
+        // sırada. Müşteri "Bornova erkek" yazınca AI aynı isimli akışı
+        // eşleştirip sohbeti oraya taşıyordu, kategorinin sorumlu akışı
+        // yok sayılıyordu.
+        const kategoriAkisiErken = skipFunnelAssignment ? null : await kategorininAkisi(etkinKategoriId);
+        if (kategoriAkisiErken && kategoriAkisiErken !== matchedFunnelId) {
+            console.log(`📊 [Classifier] Kategori akışı AI eşleşmesinin önüne geçti: ${kategoriAkisiErken}`);
+        }
+        let targetFunnelId = skipFunnelAssignment ? null : (kategoriAkisiErken || matchedFunnelId);
         let targetStageId = null;
 
         // matchedFunnelId varsa → stage belirle
@@ -987,10 +1027,10 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 }
 
                 // --- Kategori'nin varsayılan takım/akış bilgisini kullan ---
-                if (topicCategoryId && !skipFunnelAssignment) {
+                if (etkinKategoriId && !skipFunnelAssignment) {
                     try {
                         const category = await prisma.topicCategory.findUnique({
-                            where: { id: topicCategoryId },
+                            where: { id: etkinKategoriId },
                             select: { defaultTeamId: true, defaultFunnelId: true, name: true }
                         });
 
@@ -999,30 +1039,14 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             // yoksa akış ekranındaki "Sorumlu Kategoriler" eşleşmesi.
                             // İkincisi eskiden yalnızca AI'a metin olarak veriliyordu,
                             // yani kesin değildi: Fitness sohbeti şube akışına düşüyordu.
-                            let kategoriAkisi = category.defaultFunnelId || null;
-                            if (!kategoriAkisi) {
-                                const akislar = await prisma.funnel.findMany({
-                                    where: { workspaceId },
-                                    select: { id: true, classificationCriteria: true }
-                                });
-                                for (const f of akislar) {
-                                    if (!f.classificationCriteria) continue;
-                                    try {
-                                        const kriter = typeof f.classificationCriteria === 'string'
-                                            ? JSON.parse(f.classificationCriteria)
-                                            : f.classificationCriteria;
-                                        if (Array.isArray(kriter?.categoryIds) && kriter.categoryIds.includes(topicCategoryId)) {
-                                            kategoriAkisi = f.id;
-                                            break;
-                                        }
-                                    } catch (_) {}
-                                }
-                            }
+                            const kategoriAkisi = kategoriAkisiErken || await kategorininAkisi(etkinKategoriId);
 
-                            // Müşteri kategoriyi seçtiği anda o kategorinin akışına
-                            // geçmeli; AI'ın ya da şubenin seçtiği akış bunu ezmemeli.
-                            if (kategoriAkisi && (kategoriDegisti || !targetFunnelId)) {
-                                kategoriAkisiUygulandi = await akisaTasi(kategoriAkisi, `Kategori "${category.name}"`);
+                            // Kategori bir akış söylüyorsa şube onu ezemez —
+                            // taşıma gerekmese bile (zaten o akıştaysa) bayrak kalkıyor.
+                            let akisTasindi = false;
+                            if (kategoriAkisi) {
+                                kategoriAkisiUygulandi = true;
+                                akisTasindi = await akisaTasi(kategoriAkisi, `Kategori "${category.name}"`);
                             }
 
                             // Kategori sorumlu takımı → konuşmayı o takıma ver.
@@ -1040,7 +1064,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             const takimGerekli = category.defaultTeamId
                                 && !kisiyeAtanmis
                                 && conversationRecord?.assignedTeamId !== category.defaultTeamId
-                                && (kategoriDegisti || !conversationRecord?.assignedTeamId);
+                                && (kategoriDegisti || !conversationRecord?.assignedTeamId || akisTasindi);
 
                             if (takimGerekli) {
                                 try {
