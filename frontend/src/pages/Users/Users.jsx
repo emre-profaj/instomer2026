@@ -31,7 +31,8 @@ import {
     MapPin,
     AlertTriangle,
     Clock,
-    Search
+    Search,
+    Settings
 } from 'lucide-react';
 import './Users.css';
 
@@ -44,6 +45,37 @@ const DEFAULT_WORKING_HOURS = {
     friday: { enabled: true, start: '08:00', end: '18:00' },
     saturday: { enabled: false, start: '08:00', end: '18:00' },
     sunday: { enabled: false, start: '08:00', end: '18:00' }
+};
+
+const GUN_ANAHTARLARI = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** "09:30" → 9.5 */
+const saatSayiya = (metin) => {
+    const [s, d] = String(metin || '').split(':').map(Number);
+    return Number.isFinite(s) ? s + (Number.isFinite(d) ? d / 60 : 0) : null;
+};
+
+/**
+ * Bir günün her saati için kaç kişinin mesaide olduğunu döndürür.
+ * Kapsama şeridi bunu çiziyor: hangi saatte kimsenin olmadığı — dolayısıyla
+ * gelen işin sabaha kadar bekleyeceği — ancak böyle görünüyor.
+ */
+const gunlukKapsama = (uyeler, gun = new Date(), ilk = 8, son = 22) => {
+    const anahtar = GUN_ANAHTARLARI[gun.getDay()];
+    const kutular = [];
+    for (let saat = ilk; saat < son; saat++) {
+        let sayi = 0;
+        for (const u of uyeler) {
+            const wh = { ...DEFAULT_WORKING_HOURS, ...(u?.user?.workingHours || {}) };
+            const g = wh[anahtar];
+            if (!g || g.enabled === false) continue;
+            const b = saatSayiya(g.start), bit = saatSayiya(g.end);
+            if (b === null || bit === null) continue;
+            if (saat + 0.5 >= b && saat + 0.5 <= bit) sayi++;
+        }
+        kutular.push({ saat, sayi });
+    }
+    return kutular;
 };
 
 // Açılır listedeki seçim → dağıtım motorunun GERÇEKTEN okuduğu alanlar.
@@ -545,6 +577,7 @@ const UsersTeams = () => {
     const [overview, setOverview] = useState(null);
     const [uyeArama, setUyeArama] = useState('');
     const [uyeFiltre, setUyeFiltre] = useState('hepsi');
+    const [takimPanel, setTakimPanel] = useState(null);   // açık takım ayarları çekmecesi
     const [teamsLoading, setTeamsLoading] = useState(false);
     const [teamModal, setTeamModal] = useState({ show: false, team: null, parentId: null, parentName: null });
     const [branches, setBranches] = useState([]);
@@ -1061,6 +1094,10 @@ const UsersTeams = () => {
                                 onClick={() => setTeamModal({ show: true, team: null, parentId: team.id, parentName: team.name })}>
                                 <Plus size={14} />
                             </button>
+                            <button className="ut-icon-btn" title="Takım ayarları"
+                                onClick={() => setTakimPanel(team)}>
+                                <Settings size={14} />
+                            </button>
                             <button className="ut-icon-btn" title={t('common.edit')}
                                 onClick={() => setTeamModal({ show: true, team, parentId: null, parentName: null })}>
                                 <Edit2 size={14} />
@@ -1519,6 +1556,146 @@ const UsersTeams = () => {
                     onSuccess={loadMembers}
                 />
             )}
+
+            {/* ── Takım ayarları çekmecesi ──
+                Dağıtım seçenekleri açıklamalarıyla, günün kapsama şeridi ve
+                üyelerin yükü tek yerde. Kapsama şeridi olmadan "sabah 9'dan
+                önce kimse yok, gelen iş bekliyor" bilgisi hiçbir yerde yoktu. */}
+            {takimPanel && (() => {
+                const t2 = takimPanel;
+                const d = takimDurumu(t2.id);
+                const uyeKayitlari = (t2.members || [])
+                    .filter(m => m.userId)
+                    .map(m => members.find(x => x.userId === m.userId))
+                    .filter(Boolean);
+                const kapsama = gunlukKapsama(uyeKayitlari);
+                const enCok = Math.max(1, ...kapsama.map(k => k.sayi));
+                const bosSaatler = kapsama.filter(k => k.sayi === 0).map(k => k.saat);
+                const secim = dagitimSecimi(t2);
+
+                return (
+                    <div className="ut-drawer-overlay" onClick={() => setTakimPanel(null)}>
+                        <div className="ut-drawer" onClick={e => e.stopPropagation()}>
+                            <div className="ut-drawer-head">
+                                <span className="ut-drawer-icon"><UsersIcon size={19} /></span>
+                                <div className="ut-drawer-id">
+                                    <div className="ut-drawer-name">{t2.name}</div>
+                                    <div className="ut-drawer-sub">
+                                        {d ? `${d.memberCount} üye` : ''}
+                                        {d?.pooledCount > 0 && ` · ${d.pooledCount} sohbet havuzda bekliyor`}
+                                    </div>
+                                </div>
+                                <button className="ut-drawer-x" aria-label="Kapat" onClick={() => setTakimPanel(null)}>
+                                    <X size={17} />
+                                </button>
+                            </div>
+
+                            <div className="ut-drawer-body">
+
+                                <div className="ut-dsec">
+                                    <span className="ut-dsec-name">Gelen iş ne olsun</span>
+                                    <span className="ut-dsec-rule" />
+                                </div>
+                                <div className="ut-radio-list">
+                                    {DAGITIM_SECENEKLERI.map(sec => (
+                                        <label key={sec.id} className={`ut-radio ${secim === sec.id ? 'on' : ''}`}>
+                                            <input
+                                                type="radio"
+                                                name="dagitim-cekmece"
+                                                checked={secim === sec.id}
+                                                onChange={async () => {
+                                                    const patch = DAGITIM_PATCH[sec.id] || DAGITIM_PATCH.POOL;
+                                                    try {
+                                                        await teamAPI.update(currentWorkspace.id, t2.id, { assignmentRule: sec.id, ...patch });
+                                                        const updateNested = (list) => list.map(x => {
+                                                            if (x.id === t2.id) return { ...x, assignmentRule: sec.id, ...patch };
+                                                            if (x.children) return { ...x, children: updateNested(x.children) };
+                                                            return x;
+                                                        });
+                                                        setTeams(prev => updateNested(prev));
+                                                        setTakimPanel(prev => prev ? { ...prev, ...patch } : prev);
+                                                        loadOverview();
+                                                    } catch (err) { console.error(err); }
+                                                }}
+                                            />
+                                            <span>
+                                                <strong>{sec.kisa}</strong>
+                                                <em>{sec.aciklama}</em>
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+
+                                {secim === 'POOL' && d?.pooledCount > 0 && (
+                                    <div className="ut-drawer-warn">
+                                        <AlertTriangle size={15} />
+                                        <span>Bu ayar yüzünden <strong>{d.pooledCount} sohbet</strong> kimseye atanmadan bekliyor.</span>
+                                    </div>
+                                )}
+
+                                <div className="ut-dsec">
+                                    <span className="ut-dsec-name">Bugünkü kapsama</span>
+                                    <span className="ut-dsec-rule" />
+                                    <span className="ut-dsec-note">08:00 – 22:00</span>
+                                </div>
+                                <div className="ut-cover">
+                                    <div className="ut-cover-bars">
+                                        {kapsama.map(k => (
+                                            <span
+                                                key={k.saat}
+                                                className={`ut-cover-bar ${k.sayi === 0 ? 'zero' : k.sayi >= enCok ? 'full' : 'some'}`}
+                                                title={`${String(k.saat).padStart(2, '0')}:00 — ${k.sayi} kişi`}
+                                            />
+                                        ))}
+                                    </div>
+                                    <div className="ut-cover-scale">
+                                        <span>08:00</span><span>13:00</span><span>17:00</span><span>22:00</span>
+                                    </div>
+                                    <div className="ut-cover-note">
+                                        {bosSaatler.length === 0
+                                            ? 'Gün boyunca en az bir kişi mesaide.'
+                                            : <><strong>{bosSaatler.map(h => `${String(h).padStart(2, '0')}:00`).join(', ')}</strong> saatlerinde kimse yok — o saatlerde gelen iş bekler.</>}
+                                    </div>
+                                </div>
+
+                                <div className="ut-dsec">
+                                    <span className="ut-dsec-name">Üyeler</span>
+                                    <span className="ut-dsec-rule" />
+                                </div>
+                                <div className="ut-drawer-members">
+                                    {uyeKayitlari.length === 0 && <div className="ut-cover-note">Bu takımda henüz kimse yok.</div>}
+                                    {uyeKayitlari.map(m => {
+                                        const md = uyeDurumu(m.userId);
+                                        const limit = md?.maxOpen || 12;
+                                        const oran = Math.min(100, Math.round(((md?.openCount || 0) / limit) * 100));
+                                        return (
+                                            <div key={m.id} className="ut-drawer-member">
+                                                <span className="ut-dm-av">{getInitials(m.user?.name)}</span>
+                                                <span className="ut-dm-name">{m.user?.name}</span>
+                                                <span className={`ut-state ${md?.isWorkingNow ? 'ok' : 'off'}`}>
+                                                    {md?.isWorkingNow ? 'Müsait' : 'Mesai dışı'}
+                                                </span>
+                                                <span className="ut-dm-bar">
+                                                    <span className={oran >= 90 ? 'full' : ''} style={{ width: `${oran}%` }} />
+                                                </span>
+                                                <span className="ut-dm-num">{md?.openCount ?? 0}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                            </div>
+
+                            <div className="ut-drawer-foot">
+                                <button type="button" className="ut-drawer-danger" onClick={() => { handleDeleteTeam(t2.id); setTakimPanel(null); }}>
+                                    Takımı sil
+                                </button>
+                                <button type="button" className="ut-btn-primary" onClick={() => setTakimPanel(null)}>Bitti</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {editModal.show && (
                 <EditMemberModal
