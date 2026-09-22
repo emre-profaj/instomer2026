@@ -68,7 +68,88 @@ Bu mesaj belirtilen niyetle örtüşüyor mu? Sadece "EVET" veya "HAYIR" ile cev
 }
 
 // ─── Funnel Stage'e taşıma ────────────────────────────────────
-async function moveConversationToFunnel(conversation, funnelId, botId = null, teamId = null, workspaceId = null, skipAssignment = false) {
+/**
+ * Kanal kuralı bu konuşmaya uyuyor mu?
+ *
+ * Kanallar ekranı kuralları HESAP KİMLİĞİYLE yazıyor:
+ *   wa-<whatsappPhoneNumber.id>, fb-msg-<page.id>, ig-<page.id>,
+ *   widget-<webWidget.id>, form-<formWebhook.id>, fb-form-<metaFormId>,
+ *   fb-comment-<page.id>, ig-comment-<page.id>
+ *
+ * Eski eşleştirme bunları kanal TÜRÜYLE ('WHATSAPP', 'WIDGET'...)
+ * karşılaştırıyordu; hiçbir zaman tutmuyordu. Sonuç: kullanıcının
+ * "Satış Akışı > Yeni Fırsat" ayarı sohbet kanallarında hiç işlemiyor,
+ * konuşma varsayılan "Genel" akışına düşüyordu.
+ *
+ * Önce KİMLİK eşleşmesi denenir (birden fazla numara/sayfa olan
+ * işletmede doğru kuralı bulmak için). Konuşma o tür için kimlik
+ * taşımıyorsa (widget ve form kayıtlarında kimlik tutulmuyor) kuralın
+ * ön eki kanal türüyle eşleşiyorsa kabul edilir.
+ */
+const KANAL_ONEK_TURU = {
+    'wa-': ['WHATSAPP'],
+    'fb-msg-': ['FACEBOOK'],
+    'fb-comment-': ['FACEBOOK_COMMENT'],
+    'ig-comment-': ['INSTAGRAM_COMMENT'],
+    'ig-': ['INSTAGRAM'],
+    'fb-form-': ['LEAD'],
+    'widget-': ['WIDGET', 'WEB_WIDGET'],
+    'form-': ['FORM', 'WEB_FORM'],
+    'email-': ['EMAIL']
+};
+
+function conversationChannelIds(conversation) {
+    const ids = new Set();
+    if (!conversation) return ids;
+    const tur = String(conversation.channel || '').toUpperCase();
+    const sayfa = conversation.facebookPageId;
+
+    if (conversation.whatsappPhoneNumberId) ids.add(`wa-${conversation.whatsappPhoneNumberId}`);
+    if (conversation.emailChannelId) ids.add(`email-${conversation.emailChannelId}`);
+
+    // Kimlikler kanal TÜRÜNE göre üretilir; aksi hâlde aynı sayfanın
+    // yorum kuralı normal mesaja da uyuyordu.
+    if (tur === 'FACEBOOK' && sayfa) {
+        ids.add(`fb-msg-${sayfa}`);
+        ids.add(`fb-${sayfa}`);
+    } else if (tur === 'FACEBOOK_COMMENT' && sayfa) {
+        ids.add(`fb-comment-${sayfa}`);
+    } else if (tur === 'INSTAGRAM') {
+        if (sayfa) ids.add(`ig-${sayfa}`);
+        if (conversation.instagramBusinessId) ids.add(`ig-${conversation.instagramBusinessId}`);
+    } else if (tur === 'INSTAGRAM_COMMENT' && sayfa) {
+        ids.add(`ig-comment-${sayfa}`);
+    }
+    return ids;
+}
+
+function channelRuleMatches(ruleChannels, conversation, channelType) {
+    const tur = String(conversation?.channel || channelType || '').toUpperCase();
+    const ids = conversationChannelIds(conversation);
+
+    for (const ham of ruleChannels) {
+        const ch = String(ham || '');
+        if (!ch) continue;
+
+        // 1) Tür adı doğrudan yazılmışsa (eski kurallar)
+        if (ch.toUpperCase() === tur) return true;
+
+        // 2) Kimlik eşleşmesi
+        if (ids.has(ch)) return true;
+
+        // 3) Kimlik tutulmayan kanallarda (widget/form) ön ek + tür eşleşmesi.
+        //    Uzun ön ekler önce denenmeli: 'fb-comment-' ile 'fb-msg-' karışmasın.
+        const onekler = Object.keys(KANAL_ONEK_TURU).sort((a, b) => b.length - a.length);
+        const onek = onekler.find(o => ch.startsWith(o));
+        if (onek && KANAL_ONEK_TURU[onek].includes(tur)) {
+            const kimlikVar = [...ids].some(i => i.startsWith(onek));
+            if (!kimlikVar) return true;   // daha iyi eşleşme mümkün değil
+        }
+    }
+    return false;
+}
+
+async function moveConversationToFunnel(conversation, funnelId, botId = null, teamId = null, workspaceId = null, skipAssignment = false, targetStageId = null) {
     try {
         console.log(`🚦 [ROUTER:MOVE] Funnel aranıyor: ${funnelId}`);
 
@@ -85,7 +166,15 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
         // Aşamaları ayrı sorguda çek (assignedBotId olmayabilir)
         let firstStage = null;
         try {
-            firstStage = await prisma.funnelStage.findFirst({
+            // Kuralda aşama seçildiyse ONU kullan; kullanıcı ekranda
+            // "Satış Akışı > Yeni Fırsat" derken aşamayı da seçiyor.
+            if (targetStageId) {
+                firstStage = await prisma.funnelStage.findFirst({
+                    where: { id: targetStageId, funnelId }
+                });
+                if (firstStage) console.log(`🚦 [ROUTER:MOVE] Kuraldaki aşama: ${firstStage.name}`);
+            }
+            if (!firstStage) firstStage = await prisma.funnelStage.findFirst({
                 where: { funnelId },
                 orderBy: { order: 'asc' }
             });
@@ -246,7 +335,16 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message, c
 
         const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            select: { id: true, funnelType: true, assignedToId: true }
+            select: {
+                id: true, funnelType: true, assignedToId: true,
+                // Kanal kuralları hesap KİMLİĞİNE göre yazılıyor
+                // (ör. "wa-<numara kaydı>"), bu yüzden bunlar da gerekli.
+                channel: true,
+                whatsappPhoneNumberId: true,
+                facebookPageId: true,
+                instagramBusinessId: true,
+                emailChannelId: true
+            }
         });
 
         console.log(`🚦 [ROUTER] conversation: ${JSON.stringify(conversation)}`);
@@ -290,10 +388,10 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message, c
                 }
                 case 'CHANNEL': {
                     const ruleChannels = conditions.channels || [];
-                    if (channel && ruleChannels.length) {
-                        matched = ruleChannels.some(ch => ch === channel || ch === `wa-${channel}` || ch === `fb-${channel}` || ch === `ig-${channel}`);
+                    if (ruleChannels.length) {
+                        matched = channelRuleMatches(ruleChannels, conversation, channel);
                     }
-                    console.log(`🚦 [ROUTER] channel match: ${matched}`);
+                    console.log(`🚦 [ROUTER] channel match: ${matched} (kural: ${ruleChannels.join(',')})`);
                     break;
                 }
                 case 'TIME': {
@@ -340,7 +438,8 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message, c
                     null, // botId — ClassifierRule'da yok, takım/stage'den miras alınır
                     rule.targetTeamId || null,
                     workspaceId,
-                    alreadyAssigned
+                    alreadyAssigned,
+                    rule.targetStageId || null
                 );
                 console.log('🚦 [ROUTER] Taşıma tamamlandı:', result ? 'başarılı' : 'sonuç yok');
                 return { matched: true, rule, result };
