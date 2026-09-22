@@ -30,7 +30,8 @@ import {
     Power,
     MapPin,
     AlertTriangle,
-    Clock
+    Clock,
+    Search
 } from 'lucide-react';
 import './Users.css';
 
@@ -62,6 +63,13 @@ const DAGITIM_PATCH = {
  * eski "Havuzda Beklet / Sırayla Dağıt" listesi seçimin sonucunu
  * söylemiyordu, kimse neyin ne olduğunu bilmeden POOL'da bırakıyordu.
  */
+const UYE_FILTRELERI = [
+    { id: 'hepsi', ad: 'Tümü', renk: 'dark' },
+    { id: 'musait', ad: 'Müsait', renk: 'ok' },
+    { id: 'mesai', ad: 'Mesai dışı', renk: 'plain' },
+    { id: 'takimsiz', ad: 'Takımsız', renk: 'warn' }
+];
+
 const DAGITIM_SECENEKLERI = [
     { id: 'POOL', kisa: 'Havuzda beklesin', aciklama: 'Kimseye atanmaz, biri üstlenene kadar bekler' },
     { id: 'ROUND_ROBIN', kisa: 'Sırayla dağıt', aciklama: 'Üyelere sırayla verilir; mesai dışı ve kapasitesi dolu olan atlanır' },
@@ -528,6 +536,8 @@ const UsersTeams = () => {
     // Teams
     const [teams, setTeams] = useState([]);
     const [overview, setOverview] = useState(null);
+    const [uyeArama, setUyeArama] = useState('');
+    const [uyeFiltre, setUyeFiltre] = useState('hepsi');
     const [teamsLoading, setTeamsLoading] = useState(false);
     const [teamModal, setTeamModal] = useState({ show: false, team: null, parentId: null, parentName: null });
     const [branches, setBranches] = useState([]);
@@ -630,6 +640,40 @@ const UsersTeams = () => {
 
     /** Bir kişinin canlı durumu (müsait mi, kaç açık sohbeti var). */
     const uyeDurumu = (userId) => overview?.members?.find(m => m.userId === userId) || null;
+    /** Herhangi bir takımda yer alan kullanıcılar (takımsız filtresi için). */
+    const teamliUserIds = (() => {
+        const küme = new Set();
+        const gez = (liste) => (liste || []).forEach(t => {
+            (t.members || []).forEach(m => m.userId && küme.add(m.userId));
+            gez(t.children);
+        });
+        gez(teams);
+        return küme;
+    })();
+
+    /** Arama ve filtreden geçen üyeler. */
+    const uyeGecer = (member) => {
+        const ad = (member.user?.name || '').toLocaleLowerCase('tr');
+        const mail = (member.user?.email || '').toLocaleLowerCase('tr');
+        const q = uyeArama.trim().toLocaleLowerCase('tr');
+        if (q && !ad.includes(q) && !mail.includes(q)) return false;
+        if (uyeFiltre === 'hepsi') return true;
+        const d = uyeDurumu(member.userId);
+        if (uyeFiltre === 'musait') return !!d?.isAvailable;
+        if (uyeFiltre === 'mesai') return d ? !d.isWorkingNow : false;
+        if (uyeFiltre === 'takimsiz') return !teamliUserIds.has(member.userId);
+        return true;
+    };
+
+    const sayFiltre = (id) => members.filter(m => {
+        if (id === 'hepsi') return true;
+        const d = uyeDurumu(m.userId);
+        if (id === 'musait') return !!d?.isAvailable;
+        if (id === 'mesai') return d ? !d.isWorkingNow : false;
+        if (id === 'takimsiz') return !teamliUserIds.has(m.userId);
+        return true;
+    }).length;
+
     /** Bir takımın canlı durumu (kaç kişi müsait, havuzda ne bekliyor). */
     const takimDurumu = (teamId) => overview?.teams?.find(t => t.teamId === teamId) || null;
 
@@ -1141,8 +1185,9 @@ const UsersTeams = () => {
                 <div className="ut-header-left">
                     <Layers size={20} className="ut-header-icon" />
                     <div>
+                        <div className="ut-eyebrow">Ayarlar</div>
                         <h1 className="ut-page-title">Takımlar ve Temsilciler</h1>
-                        <span className="ut-page-subtitle">Kullanıcıları ve AI asistanları takımlara sürükleyip bırakarak atayın</span>
+                        <span className="ut-page-subtitle">Gelen iş kime gidiyor, şu an kim müsait.</span>
                     </div>
                 </div>
                 <div className="ut-header-actions">
@@ -1208,6 +1253,35 @@ const UsersTeams = () => {
                         <span>Temsilciler</span>
                         <span className="ut-panel-count">{members.length + bots.length + retellAgents.length}</span>
                     </div>
+
+                    {/* Arama ve filtre: 12 kişilik listede "şu an kim müsait"
+                        sorusuna gözle cevap aramak gerekiyordu. */}
+                    <div className="ut-filters">
+                        <div className="ut-search">
+                            <Search size={15} />
+                            <input
+                                type="search"
+                                value={uyeArama}
+                                onChange={e => setUyeArama(e.target.value)}
+                                placeholder="İsim ara"
+                                aria-label="Temsilci ara"
+                            />
+                        </div>
+                        <div className="ut-chips">
+                            {UYE_FILTRELERI.map(f => (
+                                <button
+                                    key={f.id}
+                                    type="button"
+                                    aria-pressed={uyeFiltre === f.id}
+                                    className={`ut-chip ${f.renk} ${uyeFiltre === f.id ? 'on' : ''}`}
+                                    onClick={() => setUyeFiltre(f.id)}
+                                >
+                                    {f.ad} {sayFiltre(f.id)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="ut-panel-body">
                         {membersLoading ? (
                             <div className="ut-loading"><div className="ut-spinner" /><p>Loading...</p></div>
@@ -1217,7 +1291,7 @@ const UsersTeams = () => {
                                 {members.length > 0 && (
                                     <div className="ut-panel-section-label"><UserCircle2 size={12} /> Users</div>
                                 )}
-                                {members.map(member => {
+                                {members.filter(uyeGecer).map(member => {
                                     const roleInfo = ROLE_COLORS[member.role] || ROLE_COLORS.AGENT;
                                     const isOnline = onlineUsers?.get(member.userId)?.isOnline || member.user?.isOnline;
                                     const durum = uyeDurumu(member.userId);
