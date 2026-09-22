@@ -30,7 +30,6 @@ import {
     Power,
     MapPin,
     AlertTriangle,
-    Clock,
     Search,
     Settings
 } from 'lucide-react';
@@ -246,6 +245,7 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
     const [email, setEmail] = useState(member.user?.email || '');
     const [workingHours, setWorkingHours] = useState(member.user?.workingHours || DEFAULT_WORKING_HOURS);
     const [maxOpen, setMaxOpen] = useState(member.maxOpenConversations ?? '');
+    const [role, setRole] = useState(member.role || 'AGENT');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
@@ -265,7 +265,7 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
         }
         setLoading(true);
         try {
-            await onSubmit({ name: name.trim(), email: email.trim(), workingHours, branchIds, maxOpenConversations: maxOpen === '' ? null : maxOpen });
+            await onSubmit({ name: name.trim(), email: email.trim(), workingHours, branchIds, maxOpenConversations: maxOpen === '' ? null : maxOpen, role });
             if (password) {
                 await onPasswordChange(password);
                 setPassword('');
@@ -305,6 +305,14 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
                     {/* Kapasite: dağıtım motorunun üst sınırı. Bu olmadan
                         "en az meşgule dağıt" birine sınırsız yığabiliyordu. */}
                     <div className="ut-form-row">
+                        <div className="ut-form-group ut-form-half">
+                            <label>Rol</label>
+                            <select value={role} onChange={e => setRole(e.target.value)}>
+                                <option value="OWNER">Sahip</option>
+                                <option value="MANAGER">Yönetici</option>
+                                <option value="AGENT">Temsilci</option>
+                            </select>
+                        </div>
                         <div className="ut-form-group ut-form-half">
                             <label>Aynı anda en fazla sohbet</label>
                             <input
@@ -483,6 +491,15 @@ const TeamModal = ({ team, parentName, branches = [], onSubmit, onClose }) => {
 
 // ─── Helpers ──────────────────────────────────────────────────
 const getInitials = (name = '') => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+
+// Sol paneldeki künye satırı için kısa Türkçe rol adları.
+const ROL_ADI = {
+    SUPER_ADMIN: 'Süper yönetici',
+    OWNER: 'Sahip',
+    MANAGER: 'Yönetici',
+    AGENT: 'Temsilci',
+    VIEWER: 'İzleyici'
+};
 
 const ROLE_COLORS = {
     SUPER_ADMIN: { bg: '#818cf8', color: '#fff', label: 'Super Admin' },
@@ -819,8 +836,12 @@ const UsersTeams = () => {
         alert(res.data.message || 'Şifre başarıyla değiştirildi');
     };
 
-    const handleUpdateMemberInfo = async (data) => {
+    const handleUpdateMemberInfo = async ({ role, ...data }) => {
         await workspaceAPI.updateMemberInfo(currentWorkspace.id, editModal.member.userId, data);
+        // Rol ayrı uçtan gidiyor; satırdaki açılır kutu kalkınca buraya taşındı.
+        if (role && role !== editModal.member.role) {
+            await workspaceAPI.updateMemberRole(currentWorkspace.id, editModal.member.userId, { role });
+        }
         loadMembers();
     };
 
@@ -1353,18 +1374,21 @@ const UsersTeams = () => {
                                     <div className="ut-panel-section-label"><UserCircle2 size={12} /> Kişiler</div>
                                 )}
                                 {members.filter(uyeGecer).map(member => {
-                                    const roleInfo = ROLE_COLORS[member.role] || ROLE_COLORS.AGENT;
                                     const isOnline = onlineUsers?.get(member.userId)?.isOnline || member.user?.isOnline;
                                     const durum = uyeDurumu(member.userId);
+                                    const doluMu = durum?.maxOpen && durum.openCount >= durum.maxOpen;
+                                    const subeAdlari = parseBranchIds(member.branchIds)
+                                        .map(id => branches.find(b => b.id === id)?.name)
+                                        .filter(Boolean);
                                     return (
                                         <div
                                             key={member.id}
-                                            className="ut-user-card"
+                                            className={`ut-user-card ${durum && !durum.isWorkingNow ? 'ut-user-off' : ''}`}
                                             draggable
                                             onDragStart={e => handleUserDragStart(e, member)}
                                             title="Takıma eklemek için sürükle"
                                         >
-                                            <div className="ut-user-drag-handle"><GripVertical size={14} /></div>
+                                            <div className="ut-user-drag-handle"><GripVertical size={13} /></div>
                                             <div className="ut-user-avatar-wrap">
                                                 <div className="ut-user-avatar">
                                                     {member.user?.avatar
@@ -1375,66 +1399,47 @@ const UsersTeams = () => {
                                             </div>
                                             <div className="ut-user-info">
                                                 <span className="ut-user-name">{member.user?.name}</span>
-                                                <span className="ut-user-email">{member.user?.email}</span>
-                                                {durum && (
-                                                    <span className="ut-user-state">
-                                                        {durum.isWorkingNow ? (
-                                                            durum.maxOpen && durum.openCount >= durum.maxOpen
-                                                                ? <span className="ut-state warn">Kapasite dolu</span>
-                                                                : <span className="ut-state ok">Müsait</span>
-                                                        ) : (
-                                                            <span className="ut-state off" title={durum.offHoursReason || ''}>
-                                                                <Clock size={10} /> Mesai dışı
+                                                {/* Tek künye satırı: rol · durum · şube.
+                                                    E-posta ve rol kutusu satırdan çıktı, ikisi de
+                                                    düzenleme penceresinde duruyor. */}
+                                                <span className="ut-user-meta">
+                                                    <span>{ROL_ADI[member.role] || 'Temsilci'}</span>
+                                                    {durum && (
+                                                        <>
+                                                            <i className="ut-meta-dot" />
+                                                            {durum.isWorkingNow
+                                                                ? <span className={doluMu ? 'ut-state warn' : 'ut-state ok'}>{doluMu ? 'Kapasite dolu' : 'Müsait'}</span>
+                                                                : <span className="ut-state off" title={durum.offHoursReason || ''}>Mesai dışı</span>}
+                                                        </>
+                                                    )}
+                                                    {subeAdlari.length > 0 && (
+                                                        <>
+                                                            <i className="ut-meta-dot" />
+                                                            <span className="ut-meta-branch" title={`Yetkili şubeler: ${subeAdlari.join(', ')}`}>
+                                                                {subeAdlari[0]}{subeAdlari.length > 1 ? ` +${subeAdlari.length - 1}` : ''}
                                                             </span>
-                                                        )}
-                                                        <span className="ut-load" title="Açık sohbet sayısı">
-                                                            {durum.openCount}{durum.maxOpen ? `/${durum.maxOpen}` : ''} açık
-                                                        </span>
-                                                    </span>
-                                                )}
-                                                {branches.length > 0 && (() => {
-                                                    const ids = parseBranchIds(member.branchIds);
-                                                    const names = ids.map(id => branches.find(b => b.id === id)?.name).filter(Boolean);
-                                                    return (
-                                                        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}
-                                                            title={names.length > 0 ? `Yetkili olduğu şubeler: ${names.join(', ')}` : 'Tüm şubelerde yetkili'}>
-                                                            {names.length > 0 ? names.map(n => (
-                                                                <span key={n} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe' }}>
-                                                                    📍 {n}
-                                                                </span>
-                                                            )) : (
-                                                                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }}>
-                                                                    🌐 Tüm şubeler
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                    );
-                                                })()}
-                                            </div>
-                                            <div className="ut-user-actions">
-                                                <span className="ut-role-badge" style={{ background: roleInfo.bg, color: roleInfo.color }}>
-                                                    {roleInfo.label}
+                                                        </>
+                                                    )}
                                                 </span>
-                                                {canManage() && member.userId !== user?.id && (
-                                                    <div className="ut-user-btns">
-                                                        <select className="ut-role-select" value={member.role}
-                                                            onChange={e => handleUpdateRole(member.userId, e.target.value)}
-                                                            title="Rol Değiştir">
-                                                            <option value="OWNER">Owner</option>
-                                                            <option value="MANAGER">Yönetici</option>
-                                                            <option value="AGENT">Agent</option>
-                                                        </select>
-                                                        <button className="ut-icon-btn" title="Düzenle"
-                                                            onClick={() => setEditModal({ show: true, member })}>
-                                                            <Edit2 size={13} />
-                                                        </button>
-                                                        <button className="ut-icon-btn danger" title="Kaldır"
-                                                            onClick={() => handleRemoveMember(member.userId)}>
-                                                            <Trash2 size={13} />
-                                                        </button>
-                                                    </div>
-                                                )}
                                             </div>
+                                            {durum && (
+                                                <div className="ut-user-load" title="Açık sohbet sayısı">
+                                                    <b>{durum.openCount}</b>
+                                                    <span className={doluMu ? 'full' : ''}>{doluMu ? 'dolu' : 'açık'}</span>
+                                                </div>
+                                            )}
+                                            {canManage() && member.userId !== user?.id && (
+                                                <div className="ut-user-btns">
+                                                    <button className="ut-icon-btn" title="Düzenle"
+                                                        onClick={() => setEditModal({ show: true, member })}>
+                                                        <Edit2 size={13} />
+                                                    </button>
+                                                    <button className="ut-icon-btn danger" title="Kaldır"
+                                                        onClick={() => handleRemoveMember(member.userId)}>
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
