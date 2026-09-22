@@ -949,15 +949,21 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                                 }
                             }
 
-                            // Kategori varsayılan takımı → conversation'a ata (atanmamışsa)
+                            // Kategori sorumlu takımı → konuşmayı o takıma ver.
+                            // Eskiden yalnızca assignedTeamId yazılıyordu: konuşma
+                            // takıma düşüyor ama kimseye dağıtılmıyor, vakaya da
+                            // yansımıyordu. assignToTeamMember takımın "Havuzdakilere
+                            // ne yapılsın?" ayarını uyguluyor (havuzda beklet / sırayla
+                            // dağıt / en az meşgul), mesai dışı üyeyi atlıyor ve
+                            // atamayı vakaya da işliyor.
                             if (category.defaultTeamId && !conversationRecord?.assignedTeamId) {
                                 try {
-                                    await prisma.conversation.update({
-                                        where: { id: conversationId },
-                                        data: { assignedTeamId: category.defaultTeamId }
-                                    });
-                                    console.log(`👥 [Classifier] Kategori "${category.name}" varsayılan takım atandı`);
-                                } catch (_) {}
+                                    const { assignToTeamMember } = await import('./teamAssignment.service.js');
+                                    const kime = await assignToTeamMember(category.defaultTeamId, conversationId);
+                                    console.log(`👥 [Classifier] Kategori "${category.name}" → takım atandı${kime ? ` (kişi: ${kime})` : ' (havuzda)'}`);
+                                } catch (teamErr) {
+                                    console.error('⚠️ [Classifier] Kategori takım ataması hatası:', teamErr.message);
+                                }
                             }
                         }
                     } catch (catErr) {

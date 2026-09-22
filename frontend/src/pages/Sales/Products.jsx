@@ -2268,6 +2268,53 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                                     </p>
                                 </div>
 
+                                {/* Varsayılan yönlendirme — kategori eşleşince konuşma buraya gider */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                            Sorumlu Takım
+                                        </label>
+                                        <select
+                                            value={categoryForm.defaultTeamId || ''}
+                                            onChange={e => setCategoryForm({ ...categoryForm, defaultTeamId: e.target.value })}
+                                            style={{
+                                                width: '100%', padding: '10px 14px', borderRadius: '10px',
+                                                border: '1px solid #d1d5db', fontSize: '0.86rem', outline: 'none',
+                                                background: '#f8fafc', boxSizing: 'border-box', cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="">— Takım seçilmedi —</option>
+                                            {(teams || []).map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                            Müşteri bu kategoriyle ilgilenirse konuşma bu takıma atanır.
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                                            Varsayılan Akış
+                                        </label>
+                                        <select
+                                            value={categoryForm.defaultFunnelId || ''}
+                                            onChange={e => setCategoryForm({ ...categoryForm, defaultFunnelId: e.target.value })}
+                                            style={{
+                                                width: '100%', padding: '10px 14px', borderRadius: '10px',
+                                                border: '1px solid #d1d5db', fontSize: '0.86rem', outline: 'none',
+                                                background: '#f8fafc', boxSizing: 'border-box', cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="">— Akış seçilmedi —</option>
+                                            {(funnels || []).map(f => (
+                                                <option key={f.id} value={f.id}>{f.name}</option>
+                                            ))}
+                                        </select>
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                            Kanal kuralı bir akış vermediyse bu akış kullanılır.
+                                        </p>
+                                    </div>
+                                </div>
 
                             </div>
 
