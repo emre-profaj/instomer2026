@@ -1438,12 +1438,12 @@ export const assignConversation = async (req, res) => {
                 if (!member) {
                     return res.status(400).json({ error: 'Seçilen kişi bu çalışma alanının üyesi değil.' });
                 }
-                // Mesai dışı atama engellenmiyor ama UYARILIYOR: yönetici
-                // bilerek atayabilir, sessiz kalmak yanlış olur.
+                // Mesai dışındaki temsilciye atama YAPILMAZ.
                 const mesaiNotu = unavailabilityReason(member.user?.workingHours);
                 if (mesaiNotu) {
-                    atamaUyarisi = `${member.user?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapıldı, ancak yanıt gecikebilir.`;
-                    console.log(`🕒 [Assign] Mesai dışı atama: ${atamaUyarisi}`);
+                    const mesaj = `${member.user?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapılmadı.`;
+                    console.log(`🚫 [Assign] Mesai dışı — atama reddedildi: ${mesaj}`);
+                    return res.status(409).json({ error: mesaj, code: 'AGENT_OFF_HOURS' });
                 }
                 updateData.assignedToId = userId;
                 // 🟡 Agent atandığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
@@ -3657,19 +3657,18 @@ export const smartAssignConversation = async (req, res) => {
         let resolvedAgentId = agentId || null;
         let atamaUyarisi = null;   // mesai dışı atamada kullanıcıya dönecek not
 
-        // Kişi ELLE seçildiyse: engellemiyoruz ama mesai dışıysa uyarıyoruz.
+        // Kişi ELLE seçildiyse ve mesai dışındaysa ATAMA YAPILMAZ.
         if (agentId) {
-            try {
-                const secilen = await prisma.user.findUnique({
-                    where: { id: agentId },
-                    select: { name: true, workingHours: true }
-                });
-                const mesaiNotu = unavailabilityReason(secilen?.workingHours);
-                if (mesaiNotu) {
-                    atamaUyarisi = `${secilen?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapıldı, ancak yanıt gecikebilir.`;
-                    console.log(`🕒 [SmartAssign] Mesai dışı atama: ${atamaUyarisi}`);
-                }
-            } catch (_) {}
+            const secilen = await prisma.user.findUnique({
+                where: { id: agentId },
+                select: { name: true, workingHours: true }
+            });
+            const mesaiNotu = unavailabilityReason(secilen?.workingHours);
+            if (mesaiNotu) {
+                const mesaj = `${secilen?.name || 'Seçilen temsilci'} şu anda çalışmıyor (${mesaiNotu}). Atama yapılmadı.`;
+                console.log(`🚫 [SmartAssign] Mesai dışı — atama reddedildi: ${mesaj}`);
+                return res.status(409).json({ error: mesaj, code: 'AGENT_OFF_HOURS' });
+            }
         }
 
         // Takım ID'si verilmişse ve kişi belirtilmemişse → atama kuralını uygula
