@@ -80,7 +80,10 @@ export async function getBaseKnowledgeContext(workspaceId) {
                     description: true,
                     aiContext: true,
                     groupName: true,
-                    category: { select: { id: true, name: true } }
+                    category: { select: { id: true, name: true } },
+                    // Şubeye göre kapatılan ürünler: kayıt yoksa "tüm şubeler",
+                    // varsa yalnızca isAvailable olanlar geçerli.
+                    productBranches: { select: { branchId: true, isAvailable: true } }
                 },
                 take: 150
             }),
@@ -215,11 +218,23 @@ export async function getBaseKnowledgeContext(workspaceId) {
                 // yalnızca AI'ın bağlamına girmiyor.
                 let info = `- ${p.name}`;
                 if (p.category?.name) info += ` | Kategori: ${p.category.name}`;
+                // Ürün bazı şubelerde kapatılmışsa bunu söylemezsek bot her
+                // şubede varmış gibi anlatıyor; sıralı akış dışındaki serbest
+                // sohbette tek bilgi kaynağı bu liste.
+                const acikSubeler = (p.productBranches || []).filter(pb => pb.isAvailable !== false);
+                if ((p.productBranches || []).length > 0) {
+                    const adlar = acikSubeler
+                        .map(pb => branches.find(b => b.id === pb.branchId)?.name)
+                        .filter(Boolean);
+                    info += adlar.length > 0
+                        ? ` | YALNIZCA şu şubelerde var: ${adlar.join(', ')}`
+                        : ` | ŞU AN HİÇBİR ŞUBEDE SUNULMUYOR`;
+                }
                 if (p.description) info += ` | Açıklama: ${p.description.substring(0, 500)}`;
                 if (p.aiContext) info += ` | [Satış Notu: ${p.aiContext}]`;
                 return info;
             });
-            sections.push(`🛍️ ÜRÜNLER VE HİZMETLER (FİYAT BİLGİSİ YOKTUR):\n${productLines.join('\n')}\n\n⚠️ Fiyat bilgisi bu listede KASITLI OLARAK yer almaz. Müşteri fiyat, ücret, tutar veya indirim sorarsa ASLA rakam söyleme, tahmin etme veya aralık verme; talebi yetkiliye aktar.`);
+            sections.push(`🛍️ ÜRÜNLER VE HİZMETLER (FİYAT BİLGİSİ YOKTUR):\n${productLines.join('\n')}\n\n⚠️ "YALNIZCA şu şubelerde var" yazan bir hizmeti, müşterinin bulunduğu şube o listede değilse SUNMA; o şubede bulunmadığını söyle ve alternatiflerden bahset.\n⚠️ Fiyat bilgisi bu listede KASITLI OLARAK yer almaz. Müşteri fiyat, ücret, tutar veya indirim sorarsa ASLA rakam söyleme, tahmin etme veya aralık verme; talebi yetkiliye aktar.`);
         }
 
         // 5. Akışlar (Funnels) ve Aşamaları
