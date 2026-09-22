@@ -80,8 +80,12 @@ const Comments = () => {
         const socket = io(socketUrl, {
             transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            // 5 denemeden sonra pes ediyordu; kısa bir ağ kesintisi bağlantıyı
+            // kalıcı olarak öldürüyor, ekran ancak yenilenince güncelleniyordu.
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
         });
         socketRef.current = socket;
 

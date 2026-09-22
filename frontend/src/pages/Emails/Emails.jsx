@@ -164,7 +164,14 @@ const Emails = () => {
 
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         const socket = io(API_URL.replace('/api', ''), {
-            transports: ['websocket', 'polling']
+            transports: ['websocket', 'polling'],
+            // Yeniden bağlanma ayarı yoktu: bağlantı koptuğunda yeni e-postalar
+            // sayfa yenilenene kadar görünmüyordu.
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
         });
 
         socket.on('connect', () => {
