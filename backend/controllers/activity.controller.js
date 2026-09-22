@@ -1249,8 +1249,17 @@ export const getWorkspaceActivities = async (req, res) => {
         const activities = await prisma.contactActivity.findMany({
             where,
             include: {
+                // Kaynak raporlama: kişinin İLK başvuru kaynağı + bu başvurunun
+                // (case) kendi kaynağı. Randevu/Görüşme analizinde iki kolon
+                // olarak gösterilir.
                 contact: {
-                    select: { id: true, name: true, phone: true, email: true, company: true }
+                    select: {
+                        id: true, name: true, phone: true, email: true, company: true,
+                        leadSource: true, leadSourceDetail: true, source: true
+                    }
+                },
+                case: {
+                    select: { id: true, caseNumber: true, leadSource: true, leadSourceDetail: true }
                 },
                 assignee: {
                     select: { id: true, name: true, avatar: true }

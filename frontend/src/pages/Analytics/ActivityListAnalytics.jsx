@@ -12,6 +12,16 @@ import './AramaAnalizi.css'; // Reuse styles
 import '../CeoReport/CeoReport.css';
 import '../CeoReport/CeoDetailReport.css';
 
+// Kaynak kodları → okunur etiket (backend/utils/leadSource.js ile aynı)
+const SOURCE_LABELS = {
+    INBOUND: 'Gelen Arama', WHATSAPP: 'WhatsApp', FACEBOOK: 'Facebook',
+    FACEBOOK_LEAD: 'Facebook Lead', INSTAGRAM: 'Instagram', WEB_FORM: 'Web Formu',
+    WEB_WIDGET: 'Web Sohbeti', EMAIL: 'E-posta', AI_CALL: 'AI Arama', SMS: 'SMS',
+    GOOGLE: 'Google', SOCIAL_MEDIA: 'Sosyal Medya', REFERRAL: 'Referans',
+    WALK_IN: 'Yüz Yüze', EVENT: 'Etkinlik', OTHER: 'Diğer'
+};
+const sourceLabel = (v) => SOURCE_LABELS[String(v || '').toUpperCase()] || v || null;
+
 const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
     const { currentWorkspace } = useAuth();
     const { showSuccess, showError } = useToast();
@@ -193,6 +203,8 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
                         <thead>
                             <tr>
                                 <th>Kişi Adı</th>
+                                <th>Başvuru Kaynağı</th>
+                                <th>Kişinin İlk Kaynağı</th>
                                 <th>Temsilci</th>
                                 <th>Aşama / Durum</th>
                                 <th>Tarih</th>
@@ -203,7 +215,7 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
                         <tbody>
                             {filteredActivities.length === 0 ? (
                                 <tr>
-                                    <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                                    <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
                                         <MessageSquare size={32} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
                                         Bu aralıkta kayıt bulunamadı.
                                     </td>
@@ -234,6 +246,36 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
                                             <td>
                                                 <div style={{ fontWeight: 700, color: '#0f172a' }}>{a.contact?.name || 'Bilinmiyor'}</div>
                                                 <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{a.contact?.phone || ''}</div>
+                                            </td>
+                                            {/* Bu başvurunun (case) kaynağı */}
+                                            <td>
+                                                {sourceLabel(a.case?.leadSource) ? (
+                                                    <>
+                                                        <span style={{ fontSize: '0.72rem', background: '#ecfdf5', color: '#047857', padding: '2px 8px', borderRadius: '12px', fontWeight: 600, border: '1px solid #a7f3d0' }}>
+                                                            {sourceLabel(a.case.leadSource)}
+                                                        </span>
+                                                        {a.case.leadSourceDetail && (
+                                                            <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>{a.case.leadSourceDetail}</div>
+                                                        )}
+                                                    </>
+                                                ) : sourceLabel(a.contact?.leadSource || a.contact?.source) ? (
+                                                    <span title="Başvuruya kaynak girilmemiş — kişiden devralındı"
+                                                        style={{ fontSize: '0.72rem', background: '#f8fafc', color: '#94a3b8', padding: '2px 8px', borderRadius: '12px', fontWeight: 600, border: '1px dashed #cbd5e1' }}>
+                                                        {sourceLabel(a.contact?.leadSource || a.contact?.source)} (devralındı)
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>—</span>
+                                                )}
+                                            </td>
+                                            {/* Kişinin ilk başvuru kaynağı */}
+                                            <td>
+                                                {sourceLabel(a.contact?.leadSource || a.contact?.source) ? (
+                                                    <span style={{ fontSize: '0.72rem', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '12px', fontWeight: 600, border: '1px solid #bfdbfe' }}>
+                                                        {sourceLabel(a.contact?.leadSource || a.contact?.source)}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>—</span>
+                                                )}
                                             </td>
                                             <td>
                                                 {a.assignee ? (

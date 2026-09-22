@@ -1,6 +1,6 @@
 import express from 'express';
 import { createActivity, getContactTimeline, updateActivity, deleteActivity, completeActivity, claimActivity, getWorkspaceCallQueue, getWorkspaceActivities, getActivityById, getContactRetellCall, translateText } from '../controllers/activity.controller.js';
-import { authenticateJWT } from '../middleware/auth.middleware.js';
+import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -8,8 +8,12 @@ const router = express.Router();
 router.use(authenticateJWT);
 
 // Workspace call queue (CALL + MEETING activities)
-router.get('/workspace/:workspaceId/call-queue', getWorkspaceCallQueue);
-router.get('/workspace/:workspaceId/list', getWorkspaceActivities);
+// requireWorkspaceAccess ŞART: req.workspaceMember'ı dolduran ara katman bu.
+// Yokken isAgentRole() rolü undefined görüp HERKESİ (OWNER/ADMIN/SUPER_ADMIN
+// dahil) kısıtlı sayıyordu; raporlar yalnızca kullanıcının kendi kayıtlarını
+// gösteriyordu. Gerçek vaka: 232 randevu varken Randevu Analizi 0 gösterdi.
+router.get('/workspace/:workspaceId/call-queue', requireWorkspaceAccess, getWorkspaceCallQueue);
+router.get('/workspace/:workspaceId/list', requireWorkspaceAccess, getWorkspaceActivities);
 
 // Tüm route'lar için auth kontrolü
 router.use(authenticateJWT);
@@ -27,6 +31,6 @@ router.put('/:activityId/complete', completeActivity);
 router.put('/:activityId/claim', claimActivity);
 router.get('/:activityId/detail', getActivityById);
 router.get('/contacts/:contactId/retell-call', getContactRetellCall);
-router.post('/workspace/:workspaceId/translate', translateText);
+router.post('/workspace/:workspaceId/translate', requireWorkspaceAccess, translateText);
 
 export default router;

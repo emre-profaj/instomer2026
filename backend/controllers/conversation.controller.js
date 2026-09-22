@@ -2898,7 +2898,11 @@ export const createManualConversation = async (req, res) => {
                 data: {
                     name: name.trim(),
                     ...(phone?.trim() && { phone: phone.trim() }),
-                    ...(email?.trim() && { email: email.trim() })
+                    ...(email?.trim() && { email: email.trim() }),
+                    // İlk temas kuralı: kişinin kaynağı BOŞSA doldurulur,
+                    // doluysa asla üzerine yazılmaz.
+                    ...(leadSource && !contact.leadSource ? { leadSource } : {}),
+                    ...(leadSourceDetail && !contact.leadSourceDetail ? { leadSourceDetail } : {})
                 }
             });
         } else {
@@ -2945,6 +2949,17 @@ export const createManualConversation = async (req, res) => {
             } catch (_) {}
         }
 
+        // "Yeni görüşme"deki "Bizi Nereden Buldunuz?" seçimi BAŞVURUNUN
+        // (case) kaynağıdır. Önceden yalnızca kişiye yazılıyordu ve her yeni
+        // görüşmede üzerine yazılıyordu; bu yüzden aynı kişinin farklı
+        // kanallardan gelen başvuruları tek değere çöküyordu.
+        const { resolveCaseLeadSource } = await import('../utils/leadSource.js');
+        const { leadSource: caseLeadSource } = resolveCaseLeadSource({
+            explicit: leadSource,
+            channel: meetingType === 'WALK_IN' ? 'WALK_IN' : meetingType === 'PHONE' ? 'PHONE' : null,
+            contactSource: contact.leadSource || contact.source
+        });
+
         const newCase = await prisma.case.create({
             data: {
                 workspaceId: workspaceId,
@@ -2955,6 +2970,8 @@ export const createManualConversation = async (req, res) => {
                 priority: 'NORMAL',
                 assignedToId: req.user.id,
                 caseTypeId,
+                leadSource: caseLeadSource,
+                leadSourceDetail: leadSourceDetail || null,
                 ...(funnelType && { funnelType }),
                 ...(funnelStageId && { funnelStageId })
             }

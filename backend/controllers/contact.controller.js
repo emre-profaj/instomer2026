@@ -2222,6 +2222,31 @@ export const updateContact = async (req, res) => {
             return res.status(404).json({ error: 'Contact not found' });
         }
 
+        // ── İLK BAŞVURU KAYNAĞI KORUMASI ────────────────────────────────
+        // Kişideki kaynak "ilk temas"tır ve kalıcı olmalıdır. Önceden bu alan
+        // herkesin açılır listeden serbestçe değiştirebildiği, hiçbir yere
+        // kaydedilmeyen bir alandı; temsilci referans kaydını sessizce
+        // Instagram'a çevirebiliyordu.
+        // Kural: boşken herkes doldurabilir; DOLU bir değeri değiştirmek
+        // yönetici yetkisi ister ve kişi zaman tüneline not düşülür.
+        const changingSource =
+            leadSource !== undefined &&
+            leadSource !== null &&
+            String(leadSource) !== String(existing.leadSource || '') &&
+            !!existing.leadSource;
+
+        if (changingSource) {
+            const role = req.workspaceMember?.role;
+            const canOverride = ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER'].includes(role);
+            if (!canOverride) {
+                return res.status(403).json({
+                    error: 'Kişinin ilk başvuru kaynağı değiştirilemez. Değişiklik için yönetici yetkisi gerekir.',
+                    field: 'leadSource',
+                    current: existing.leadSource
+                });
+            }
+        }
+
         // Build update data dynamically - only include fields that are provided
         const updateData = {};
         if (name !== undefined) updateData.name = name;
@@ -2315,6 +2340,25 @@ export const updateContact = async (req, res) => {
                 where: { id },
                 data: updateData
             });
+        }
+
+        // Kaynak değişikliği iz bırakır — kim, ne zaman, neyi neye çevirdi
+        if (changingSource) {
+            const { LEAD_SOURCE_LABELS } = await import('../utils/leadSource.js');
+            const lbl = (v) => LEAD_SOURCE_LABELS[String(v || '').toUpperCase()] || v || '(boş)';
+            await prisma.contactActivity.create({
+                data: {
+                    workspaceId,
+                    contactId: id,
+                    type: 'NOTE',
+                    title: '📍 İlk başvuru kaynağı değiştirildi',
+                    description: `${lbl(existing.leadSource)} → ${lbl(leadSource)}\nDeğiştiren: ${req.user?.name || req.user?.email || 'bilinmiyor'}`,
+                    status: 'COMPLETED',
+                    source: 'MANUAL',
+                    createdBy: req.user?.id || null
+                }
+            }).catch(e => console.error('[Contact] Kaynak değişikliği notu yazılamadı:', e.message));
+            console.log(`📍 [Contact] ${id} kaynağı değişti: ${existing.leadSource} → ${leadSource} (${req.user?.id})`);
         }
 
         // ── Auto-update Case status based on stage's statusType ──

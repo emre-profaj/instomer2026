@@ -257,6 +257,47 @@ export const createDeal = async (req, res) => {
             caseId: req.body.caseId || null
         };
 
+        // ── KAYNAK DEVRALMA ─────────────────────────────────────────────
+        // Siparişin kaynağı = bağlı olduğu BAŞVURUNUN (case) kaynağı.
+        // Önceden channel/sourceNote hiç doldurulmuyordu (416 kayıtta 0) ve
+        // sipariş detayındaki "Kaynak" alanı hiç görünmüyordu.
+        // Case yoksa kişinin ilk kaynağına düşer ve devralındığı işaretlenir.
+        if (!dealData.channel) {
+            try {
+                let inherited = null;
+                if (dealData.caseId) {
+                    const c = await prisma.case.findUnique({
+                        where: { id: dealData.caseId },
+                        select: { leadSource: true, leadSourceDetail: true }
+                    });
+                    if (c?.leadSource) {
+                        inherited = { src: c.leadSource, detail: c.leadSourceDetail, from: 'case' };
+                    }
+                }
+                if (!inherited && contactId) {
+                    const ct = await prisma.contact.findUnique({
+                        where: { id: contactId },
+                        select: { leadSource: true, source: true, leadSourceDetail: true }
+                    });
+                    const src = ct?.leadSource || ct?.source;
+                    const { isMeaningfulSource } = await import('../utils/leadSource.js');
+                    if (isMeaningfulSource(src)) {
+                        inherited = { src, detail: ct?.leadSourceDetail, from: 'contact' };
+                    }
+                }
+                if (inherited) {
+                    dealData.channel = inherited.src;
+                    if (!dealData.sourceNote) {
+                        dealData.sourceNote = inherited.from === 'case'
+                            ? (inherited.detail || null)
+                            : `${inherited.detail ? inherited.detail + ' — ' : ''}kişiden devralındı`;
+                    }
+                }
+            } catch (e) {
+                console.error('[Deal] Kaynak devralma hatası:', e.message);
+            }
+        }
+
         // assignedToId varsa atayan bilgisini ekle
         if (assignedToId) {
             dealData.assignedById = req.user?.id;

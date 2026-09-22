@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { resolveCaseLeadSource } from '../utils/leadSource.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 
 const CLOSED_CASE_STATUSES = ['CLOSED', 'WON', 'LOST'];
@@ -269,6 +270,18 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                     caseTypeId = tc?.caseTypeId || null;
                 }
 
+                // Kaynak: otomatik açılan case'te konuşmanın kanalından türetilir.
+                // Kanal bilgi vermiyorsa kişinin mevcut kaynağından devralınır.
+                const contactForSource = await prisma.contact.findUnique({
+                    where: { id: conv.contactId },
+                    select: { source: true, leadSource: true }
+                });
+                const { leadSource: caseLeadSource } = resolveCaseLeadSource({
+                    explicit: options.leadSource,
+                    channel: conv.channel,
+                    contactSource: contactForSource?.leadSource || contactForSource?.source
+                });
+
                 const newCase = await prisma.case.create({
                     data: {
                         workspaceId,
@@ -282,9 +295,23 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                         categoryId: topicCategoryId || null,
                         caseTypeId,
                         campaignId: conv.campaignId || null,
-                        priority: 'NORMAL'
+                        priority: 'NORMAL',
+                        leadSource: caseLeadSource,
+                        leadSourceDetail: options.leadSourceDetail || null
                     }
                 });
+
+                // Kişinin ilk başvurusu: kişideki kaynak BOŞSA doldurulur,
+                // doluysa asla değiştirilmez (ilk temas kalıcıdır).
+                if (caseLeadSource && !contactForSource?.leadSource) {
+                    await prisma.contact.update({
+                        where: { id: conv.contactId },
+                        data: {
+                            leadSource: caseLeadSource,
+                            ...(options.leadSourceDetail ? { leadSourceDetail: options.leadSourceDetail } : {})
+                        }
+                    }).catch(e => console.error('[Case] Kişi ilk kaynağı yazılamadı:', e.message));
+                }
 
                 await prisma.conversation.update({
                     where: { id: conversationId },
@@ -729,13 +756,30 @@ export const getCase = async (req, res) => {
 export const createCase = async (req, res) => {
     try {
         const { workspaceId, contactId } = req.params;
-        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId, branchId } = req.body;
+        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId, branchId, leadSource, leadSourceDetail } = req.body;
 
         if (!title?.trim()) {
             return res.status(400).json({ error: 'Case başlığı gerekli' });
         }
 
         const caseNumber = await generateCaseNumber(workspaceId);
+
+        // ── Kaynak çözümleme ────────────────────────────────────────
+        let convChannel = null;
+        if (conversationId) {
+            const cv = await prisma.conversation.findUnique({
+                where: { id: conversationId }, select: { channel: true }
+            });
+            convChannel = cv?.channel || null;
+        }
+        const contactSrc = await prisma.contact.findUnique({
+            where: { id: contactId }, select: { source: true, leadSource: true }
+        });
+        const { leadSource: manualCaseSource } = resolveCaseLeadSource({
+            explicit: leadSource,
+            channel: convChannel,
+            contactSource: contactSrc?.leadSource || contactSrc?.source
+        });
 
         const newCase = await prisma.case.create({
             data: {
@@ -750,9 +794,24 @@ export const createCase = async (req, res) => {
                 assignedTeamId: assignedTeamId || null,
                 priority: priority || 'NORMAL',
                 caseTypeId: caseTypeId || null,
-                branchId: branchId || null
+                branchId: branchId || null,
+                // Elle açılan case: kullanıcının seçtiği kaynak. Seçilmediyse
+                // varsa konuşmanın kanalından, o da yoksa kişiden devralınır.
+                leadSource: manualCaseSource,
+                leadSourceDetail: leadSourceDetail || null
             }
         });
+
+        // Kişinin ilk başvurusu: yalnızca BOŞSA yazılır, doluysa dokunulmaz
+        if (manualCaseSource && !contactSrc?.leadSource) {
+            await prisma.contact.update({
+                where: { id: contactId },
+                data: {
+                    leadSource: manualCaseSource,
+                    ...(leadSourceDetail ? { leadSourceDetail } : {})
+                }
+            }).catch(e => console.error('[Case] Kişi ilk kaynağı yazılamadı:', e.message));
+        }
 
         // Eğer conversationId verilmişse, conversation'ı case'e bağla
         if (conversationId) {
