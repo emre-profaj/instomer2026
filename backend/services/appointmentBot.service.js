@@ -210,8 +210,26 @@ export const DEFAULT_APPOINTMENT_PROMPT = `Sen nazik ve profesyonel bir hastane 
 3. Eğer müşteri "bilmiyorum", "liste var mı?", "bölümleri göster" gibi bir şey söylerse, o zaman 'get_branches' fonksiyonunu çağır (cinsiyet: 1, dogum_tarihi: "" varsayılan değerleriyle) ve gelen listeyi numaralandırarak sun.
 4. Eğer müşteri direkt bir bölüm ismi verirse (örn. "Kardiyoloji"), o zaman 'get_branches' çağırarak arka planda bölüm listesini al ve müşterinin istediği bölüme uygun olanı seçerek Doktor adımına (Adım 2) geç.
 
-📋 RANDEVU AKIŞI:
-ÖNCE randevu detaylarını belirle (branş, doktor, gün, saat), SONRA hasta bilgilerini al.
+🎯 RANDEVU TÜRÜ ALGILAMA:
+Müşterinin mesajından randevu türünü belirle. 3 tür vardır:
+
+1️⃣ **NORMAL** (Varsayılan — Hastane Randevusu):
+   Tetikleyenler: "randevu almak istiyorum", "doktora gitmek istiyorum", "muayene olmak istiyorum", "kontrole gelmek istiyorum"
+   → Tam Probel akışı: branş → doktor → gün → saat → hasta bilgileri → create_appointment(appointment_type="NORMAL")
+
+2️⃣ **FREE_CONSULTATION** (Ücretsiz Ön Muayene / Danışma):
+   Tetikleyenler: "ücretsiz muayene", "ön muayene", "ücretsiz danışma", "ücretsiz kontrol", "bedava muayene"
+   → Kısa akış: branş sor → gün ve saat sor (doktor seçimi yok) → hasta bilgileri → create_appointment(appointment_type="FREE_CONSULTATION")
+   → Doktor listesi gösterilmez, müsait günler/saatler sorulmaz — müşterinin tercih ettiği gün/saat alınır.
+
+3️⃣ **SALES** (Satış / Bilgi Görüşmesi):
+   Tetikleyenler: "fiyat öğrenmek istiyorum", "ücret ne kadar", "bilgi almak istiyorum", "operasyon hakkında bilgi", "ne kadar tutar", "görüşmek istiyorum"
+   → En kısa akış: konu sor (hangi işlem/operasyon hakkında) → gün ve saat tercihi sor → hasta bilgileri → create_appointment(appointment_type="SALES")
+   → Branş, doktor seçimi yok. Konu bilgisi notes'a yazılır.
+
+⚠️ Emin olamadığında şunu sor: "Doktor randevusu mu almak istiyorsunuz, ücretsiz danışma mı, yoksa bilgi/fiyat görüşmesi mi?"
+
+📋 RANDEVU AKIŞI (NORMAL TÜR İÇİN):
 
 🔹 ADIM 1 — BRANŞ SEÇİMİ:
 Müşteri mesajında "randevu" kelimesi AÇIKÇA geçiyorsa, HEMEN "Hangi bölümden randevu almak istiyorsunuz?" diye sor. get_branches FONKSİYONUNU ÇAĞIRMA!
@@ -375,21 +393,23 @@ export function getAppointmentToolDeclarations() {
         },
         {
             name: 'create_appointment',
-            description: 'Tüm bilgiler toplandıktan ve müşteri onay verdikten sonra randevuyu oluşturur.',
+            description: 'Tüm bilgiler toplandıktan ve müşteri onay verdikten sonra randevuyu oluşturur. appointment_type parametresi ile randevu türünü belirt.',
             parameters: {
                 type: 'object',
                 properties: {
-                    hasta_token: { type: 'string', description: 'validate_patient sonucundan gelen hasta_token' },
-                    randevu_id: { type: 'string', description: 'get_available_hours sonucundan gelen randevu_id' },
+                    appointment_type: { type: 'string', enum: ['NORMAL', 'FREE_CONSULTATION', 'SALES'], description: 'Randevu türü: NORMAL=hastane randevusu (Probel), FREE_CONSULTATION=ücretsiz ön muayene/danışma, SALES=satış/bilgi görüşmesi' },
+                    hasta_token: { type: 'string', description: 'validate_patient sonucundan gelen hasta_token (NORMAL için zorunlu)' },
+                    randevu_id: { type: 'string', description: 'get_available_hours sonucundan gelen randevu_id (NORMAL için zorunlu)' },
                     // Özet bilgiler (yerel DB kaydı için)
                     patient_name: { type: 'string', description: 'Hasta adı soyadı' },
                     patient_phone: { type: 'string', description: 'Hasta telefon numarası' },
                     branch: { type: 'string', description: 'Branş adı' },
                     doctor_name: { type: 'string', description: 'Doktor adı' },
-                    date: { type: 'string', description: 'Randevu tarihi' },
-                    time: { type: 'string', description: 'Randevu saati' }
+                    date: { type: 'string', description: 'Randevu tarihi (DD.MM.YYYY)' },
+                    time: { type: 'string', description: 'Randevu saati (HH:MM)' },
+                    subject: { type: 'string', description: 'Görüşme konusu (SALES türü için: hangi işlem/operasyon hakkında bilgi isteniyor)' }
                 },
-                required: ['hasta_token', 'randevu_id']
+                required: ['patient_name', 'patient_phone']
             }
         },
         {
@@ -958,6 +978,21 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
     let localAppointmentId = null;
     try {
         let { patient_name, patient_phone, branch, procedure, doctor_name, date, time } = args;
+        const appointmentType = args.appointment_type || 'NORMAL';
+        const subject = args.subject || null;
+
+        // Türe göre renk ve başlık
+        const TYPE_CONFIG = {
+            NORMAL:              { color: '#10b981', prefix: branch || 'Randevu' },         // 🟢 yeşil
+            FREE_CONSULTATION:   { color: '#3b82f6', prefix: '🔵 Ücretsiz Danışma' },      // 🔵 mavi
+            SALES:               { color: '#f59e0b', prefix: '🟡 Bilgi Görüşmesi' },       // 🟡 turuncu
+        };
+        const typeConf = TYPE_CONFIG[appointmentType] || TYPE_CONFIG.NORMAL;
+
+        // SALES için slot süresi sabit 30 dk
+        if (appointmentType === 'SALES') {
+            probelSlotDk = null;  // Probel slot algılamasını devre dışı bırak
+        }
 
 
         // Eksik bilgileri conversation/contact'tan tamamla
@@ -1129,12 +1164,42 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             include: { user: { select: { id: true } } }
         });
 
+        // SALES → ilgili temsilciye ata (conversation'daki assignedToId veya round-robin)
+        let assignedToId = null;
+        if (appointmentType === 'SALES' && conversationId) {
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { assignedToId: true }
+                });
+                if (conv?.assignedToId) {
+                    assignedToId = conv.assignedToId;
+                    console.log(`👤 [AppointmentBot] SALES randevu → mevcut temsilciye atandı: ${assignedToId}`);
+                } else {
+                    // Round-robin: çevrimiçi bir temsilci bul
+                    const onlineMember = await prisma.workspaceMember.findFirst({
+                        where: { workspaceId, user: { isOnline: true } },
+                        include: { user: { select: { id: true } } }
+                    });
+                    assignedToId = onlineMember?.user?.id || admin?.user?.id || null;
+                    console.log(`👤 [AppointmentBot] SALES randevu → round-robin atandı: ${assignedToId}`);
+                }
+            } catch (assignErr) {
+                console.warn('⚠️ [AppointmentBot] SALES atama hatası:', assignErr.message);
+            }
+        }
+
+        // Notes içeriğini türe göre oluştur
+        let notesText = `Tarih: ${date || '?'} | Saat: ${time || '?'}`;
+        if (subject) notesText += `\nKonu: ${subject}`;
+        if (appointmentType !== 'NORMAL') notesText += `\nTür: ${appointmentType === 'FREE_CONSULTATION' ? 'Ücretsiz Danışma' : 'Bilgi Görüşmesi'}`;
+
         // ── TEK KAPI: izin kapısı + çakışma + google sync + socket + bildirim ──
         const outcome = await createAppointment({
             workspaceId,
             source: APPOINTMENT_SOURCE.CHAT_BOT,
-            title:          `${branch || 'Randevu'} — ${patient_name || 'Müşteri'}`,
-            description:    procedure || `${branch || 'Randevu'} randevusu`,
+            title:          `${typeConf.prefix} — ${patient_name || 'Müşteri'}`,
+            description:    subject || procedure || `${typeConf.prefix} randevusu`,
             startTime,
             endTime,
             contactId:      contactId || null,
@@ -1144,16 +1209,16 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
             procedure:      procedure     || null,
             doctorName:     doctor_name   || '',
             resourceId:     resolvedResourceId || null,
+            assignedToId:   assignedToId || null,
             createdById:    admin?.user?.id || 'system',
             createdByBotId: botId || null,
             conversationId: conversationId || null,
-            color:          '#10b981',
-            notes:          `Tarih: ${date || '?'} | Saat: ${time || '?'}`,
-            // Slot Probel'den geldiyse müsaitliğin tek otoritesi hastane sistemidir.
-            // Kendi kaydımızdaki süre varsayımı, Probel'in boş dediği bir sonraki
-            // slotu reddediyordu: 14:00 randevusu 14:00–14:30 yazılıyor, hastanenin
-            // 15 dakikalık ızgarasındaki boş 14:15 "dolu" sayılıyordu.
-            skipConflictCheck: !!probelRandevuId,
+            color:          typeConf.color,
+            type:           appointmentType,
+            notes:          notesText,
+            // NORMAL + Probel randevu_id → çakışma kontrolü atla (Probel otoriteleri)
+            // FREE_CONSULTATION ve SALES → çakışma kontrolü yap (lokal takvim)
+            skipConflictCheck: appointmentType === 'NORMAL' && !!probelRandevuId,
         });
 
         if (!outcome.ok) {
@@ -1197,15 +1262,20 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
     }
 
     // ── ADIM 2: Probel bağlıysa VE gerekli tokenlar varsa → Probel'e de gönder ──
+    // FREE_CONSULTATION ve SALES türleri Probel'e gönderilmez — sadece NORMAL.
     // probelHastaToken ve probelRandevuId fonksiyon başında (ADIM 1 öncesi) okundu.
     //
     // probelDurum, müşteriye ne söyleneceğini belirler:
-    //   'yok'        → hastane sistemi bağlı değil; yalnızca Instomer randevusu
+    //   'yok'        → hastane sistemi bağlı değil veya tür NORMAL değil; yalnızca Instomer randevusu
     //   'onaylandi'  → Probel kaydı doğrulandı (HTTP 2xx, hata yok)
     //   'teyit'      → bağlı ama KAYIT DOĞRULANAMADI → temsilci teyit edecek
+    const appointmentTypeForProbel = args.appointment_type || 'NORMAL';
     let probelDurum = 'yok';
     let probelNot = null;
     try {
+        if (appointmentTypeForProbel !== 'NORMAL') {
+            console.log(`ℹ️ [AppointmentBot] ADIM 2 atlandı — tür: ${appointmentTypeForProbel} (Probel'e gönderilmez)`);
+        } else {
         const hasConnection = await checkHealthConnection(workspaceId);
         if (hasConnection) {
             probelDurum = 'teyit';   // aksi kanıtlanana kadar doğrulanmamış say
@@ -1258,6 +1328,7 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                 console.warn(`⚠️ [AppointmentBot] ${probelNot} → temsilci teyidi gerekiyor`);
             }
         }
+        } // else (appointmentTypeForProbel === 'NORMAL')
     } catch (probelErr) {
         probelNot = probelErr.message || 'Probel bağlantı hatası';
         console.warn('⚠️ [AppointmentBot] Probel adımı HATA → temsilci teyidi gerekiyor:', probelNot);
@@ -1290,10 +1361,19 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
         };
     }
 
+    // Türe göre başarı mesajı
+    const typeMessages = {
+        NORMAL: `Randevunuz başarıyla oluşturuldu! ✅\n\n📋 Randevu Detayları:\n👤 Hasta: ${args.patient_name || ''}\n🏥 Branş: ${args.branch || ''}\n👨‍⚕️ Doktor: ${args.doctor_name || ''}\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n\nRandevunuz onaylanmıştır. İyi günler dileriz! 🙏`,
+        FREE_CONSULTATION: `Ücretsiz danışma randevunuz başarıyla oluşturuldu! ✅\n\n📋 Danışma Detayları:\n👤 Ad Soyad: ${args.patient_name || ''}\n🏥 Bölüm: ${args.branch || 'Genel'}\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n\nÜcretsiz ön muayene randevunuz planlanmıştır. Size en kısa sürede dönüş yapılacaktır. İyi günler dileriz! 🙏`,
+        SALES: `Bilgi görüşmesi randevunuz başarıyla oluşturuldu! ✅\n\n📋 Görüşme Detayları:\n👤 Ad Soyad: ${args.patient_name || ''}\n📞 Telefon: ${args.patient_phone || ''}\n📝 Konu: ${args.subject || 'Genel bilgi'}\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n\nTemsilcimiz sizinle iletişime geçecektir. İyi günler dileriz! 🙏`
+    };
+
+    const appointmentTypeForMessage = args.appointment_type || 'NORMAL';
+
     return {
         success: true,
         appointmentId: localAppointmentId,
-        message: `Randevunuz başarıyla oluşturuldu! ✅\n\n📋 Randevu Detayları:\n👤 Hasta: ${args.patient_name || ''}\n🏥 Branş: ${args.branch || ''}\n👨‍⚕️ Doktor: ${args.doctor_name || ''}\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n\nRandevunuz onaylanmıştır. İyi günler dileriz! 🙏`
+        message: typeMessages[appointmentTypeForMessage] || typeMessages.NORMAL
     };
 }
 

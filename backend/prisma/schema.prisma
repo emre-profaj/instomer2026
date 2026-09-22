@@ -977,7 +977,8 @@ model Appointment {
   contactName    String?
   contactPhone   String?
   contactEmail   String?
-  status         String   @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
+  status         String   @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW, PENDING_CONFIRMATION
+  type           String   @default("NORMAL")    // NORMAL, FREE_CONSULTATION, SALES
   color          String   @default("#3b82f6")
   reminderSent   Boolean  @default(false)
   notes          String?
@@ -998,6 +999,7 @@ model Appointment {
   @@index([resourceId])
   @@index([startTime])
   @@index([status])
+  @@index([type])
   @@index([googleEventId])
   @@map("appointments")
 }

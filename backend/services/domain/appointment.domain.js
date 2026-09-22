@@ -105,6 +105,7 @@ export async function createAppointment(input = {}) {
         color = null,
         notes = null,
         status = 'SCHEDULED',
+        type = 'NORMAL',  // NORMAL, FREE_CONSULTATION, SALES
         createdById = 'system',
         createdByBotId = null,
         conversationId = null,
@@ -224,6 +225,7 @@ export async function createAppointment(input = {}) {
                 color: color || '#3b82f6',
                 notes,
                 status,
+                type,
                 createdById: createdById || 'system',
                 createdByBotId: resolvedBotId || null,
                 conversationId: conversationId || null,
