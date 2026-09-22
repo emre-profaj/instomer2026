@@ -8408,3 +8408,26 @@
     flex-shrink: 0;
 }
 
+
+/* ── Konu değişti önerisi ────────────────────────────────
+   Sistem sohbeti kendiliğinden taşımıyor; öneriyi gösterip
+   devretme kararını temsilciye bırakıyor. */
+.apple-system-event-pill.oneri {
+    background: #fffbeb;
+    border-color: #f5d7a8;
+    color: #92400e;
+}
+.apple-system-event-pill.oneri .apple-event-time { color: #b45309; }
+.apple-event-action {
+    margin-left: 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: none;
+    background: #b45309;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: pointer;
+}
+.apple-event-action:hover { background: #92400e; }

@@ -1041,12 +1041,23 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             // yani kesin değildi: Fitness sohbeti şube akışına düşüyordu.
                             const kategoriAkisi = kategoriAkisiErken || await kategorininAkisi(etkinKategoriId);
 
-                            // Kategori bir akış söylüyorsa şube onu ezemez —
-                            // taşıma gerekmese bile (zaten o akıştaysa) bayrak kalkıyor.
+                            // ── YÖNLENDİRME BİR KEZ ──────────────────────────
+                            // Müşteri sohbet sırasında konu değiştirebiliyor
+                            // (masaj sordu, sonra fitness). Her seferinde takım
+                            // değiştirirsek sohbet temsilcinin elinden alınıp
+                            // durur; biri mesajı yazarken başka takıma geçer.
+                            // Bu yüzden sistem YALNIZCA ilk kez yönlendirir.
+                            // Sonraki konu değişikliklerinde taşımaz, temsilciye
+                            // sohbetin içinde haber verir; devretme kararı insanda.
+                            const ilkYonlendirme = !conversationRecord?.assignedTeamId;
+
                             let akisTasindi = false;
-                            if (kategoriAkisi) {
+                            if (kategoriAkisi && ilkYonlendirme) {
                                 kategoriAkisiUygulandi = true;
                                 akisTasindi = await akisaTasi(kategoriAkisi, `Kategori "${category.name}"`);
+                            } else if (kategoriAkisi) {
+                                // Şube de ezmesin: yönlendirme zaten yapılmış.
+                                kategoriAkisiUygulandi = true;
                             }
 
                             // Kategori sorumlu takımı → konuşmayı o takıma ver.
@@ -1061,12 +1072,11 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             // takıma geçmeli; yalnızca sohbetle bizzat ilgilenen bir
                             // temsilci varsa elinden alınmıyor.
                             const kisiyeAtanmis = !!conversationRecord?.assignedToId;
-                            const takimGerekli = category.defaultTeamId
-                                && !kisiyeAtanmis
-                                && conversationRecord?.assignedTeamId !== category.defaultTeamId
-                                && (kategoriDegisti || !conversationRecord?.assignedTeamId || akisTasindi);
+                            const hedefTakimFarkli = category.defaultTeamId
+                                && conversationRecord?.assignedTeamId !== category.defaultTeamId;
 
-                            if (takimGerekli) {
+                            if (category.defaultTeamId && ilkYonlendirme && !kisiyeAtanmis) {
+                                // İlk yönlendirme: takıma ver.
                                 try {
                                     const { assignToTeamMember } = await import('./teamAssignment.service.js');
                                     const kime = await assignToTeamMember(category.defaultTeamId, conversationId);
@@ -1074,6 +1084,33 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                                     console.log(`👥 [Classifier] Kategori "${category.name}" → takım atandı${kime ? ` (kişi: ${kime})` : ' (havuzda)'}`);
                                 } catch (teamErr) {
                                     console.error('⚠️ [Classifier] Kategori takım ataması hatası:', teamErr.message);
+                                }
+                            } else if (kategoriDegisti && hedefTakimFarkli) {
+                                // Konu değişti ama sohbet zaten bir takımda: TAŞIMA,
+                                // temsilciye söyle. Devretme düğmesi arayüzde.
+                                try {
+                                    const hedefTakim = await prisma.team.findUnique({
+                                        where: { id: category.defaultTeamId },
+                                        select: { id: true, name: true }
+                                    });
+                                    if (hedefTakim) {
+                                        const { logEvent } = await import('./conversationEvent.service.js');
+                                        await logEvent({
+                                            conversationId,
+                                            workspaceId,
+                                            eventType: 'ROUTING_SUGGESTION',
+                                            title: `Müşteri artık <b>${category.name}</b> konusunda — sorumlu takım: <b>${hedefTakim.name}</b>`,
+                                            details: {
+                                                categoryId: etkinKategoriId,
+                                                categoryName: category.name,
+                                                teamId: hedefTakim.id,
+                                                teamName: hedefTakim.name
+                                            }
+                                        });
+                                        console.log(`💡 [Classifier] Konu değişti → "${hedefTakim.name}" önerildi (taşınmadı)`);
+                                    }
+                                } catch (oneriErr) {
+                                    console.error('⚠️ [Classifier] Yönlendirme önerisi hatası:', oneriErr.message);
                                 }
                             }
                         }

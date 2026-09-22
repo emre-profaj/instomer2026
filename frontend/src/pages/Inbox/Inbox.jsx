@@ -1529,13 +1529,29 @@ const Inbox = () => {
             // yaşamıyor; uygulamanın diğer ekranları da böyle bağlanıyor.
             transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            // 5 denemeden sonra pes ediyordu: ağ bir saniye kesilse ya da
+            // dizüstü uyusa bağlantı kalıcı olarak ölüyor, gelen mesajlar
+            // ancak sayfa yenilenince görünüyordu. Süresiz, artan aralıklı.
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
         });
         socketRef.current = socket;
 
+        // Bağlantı koptuğu sürede gelen olaylar kaybolur; yeniden bağlanınca
+        // listeyi ve açık sohbeti bir kez tazeleyip aradaki boşluğu kapatıyoruz.
+        let kopmustu = false;
+        socket.on('disconnect', () => { kopmustu = true; });
+
         socket.on('connect', () => {
             console.log('✅ Inbox WebSocket connected, workspace:', currentWorkspace?.id);
+            if (kopmustu) {
+                kopmustu = false;
+                if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
+                const acikSohbet = selectedItemRef.current;
+                if (acikSohbet?.id && selectedItemTypeRef.current === INBOX_TYPES.MESSAGE) loadConversationDetails(acikSohbet.id);
+            }
             // Join workspace room to receive workspace-specific events
             if (currentWorkspace?.id) {
                 socket.emit('join_workspace', currentWorkspace.id);
@@ -3238,6 +3254,24 @@ const Inbox = () => {
      * İstekler küçük gruplar hâlinde gönderiliyor: sıra bozulmasın ve
      * 100 kayıtta sunucu boğulmasın.
      */
+    /**
+     * Konu değişti önerisindeki "Devret": sohbeti önerilen takıma verir.
+     * Sistem bunu kendiliğinden yapmıyor — temsilci mesajın ortasındayken
+     * sohbet elinden alınmasın diye karar insana bırakıldı.
+     */
+    const handleDevret = async (teamId, teamName) => {
+        const convId = selectedItemRef.current?.id || selectedItem?.id;
+        if (!convId || !teamId) return;
+        try {
+            await conversationAPI.assignNew(currentWorkspace.id, convId, { teamId });
+            if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
+            loadConversationDetails(convId);
+        } catch (err) {
+            console.error('Devretme hatası:', err);
+            alert(err.response?.data?.error || 'Devredilemedi.');
+        }
+    };
+
     const handleBulkAssignTeam = async (teamId) => {
         if (selectedItems.length === 0 || !teamId) return;
         try {
@@ -6289,10 +6323,26 @@ const Inbox = () => {
                                                         </div>
                                                     )}
                                                     <div className="apple-system-event-row">
-                                                        <div className="apple-system-event-pill">
+                                                        <div className={`apple-system-event-pill ${msg.eventType === 'ROUTING_SUGGESTION' ? 'oneri' : ''}`}>
                                                             {evtTime && <span className="apple-event-time">{evtTime}</span>}
                                                             <span className="apple-event-text" dangerouslySetInnerHTML={{ __html: msg.title }} />
-                                                            {actorName && <span className="apple-event-actor">— {actorName}</span>}
+                                                            {/* Konu değişti önerisi: sistem sohbeti kendiliğinden
+                                                                taşımıyor, kararı temsilciye bırakıyor. */}
+                                                            {msg.eventType === 'ROUTING_SUGGESTION' && (() => {
+                                                                let ayrinti = {};
+                                                                try { ayrinti = typeof msg.details === 'string' ? JSON.parse(msg.details) : (msg.details || {}); } catch { }
+                                                                if (!ayrinti.teamId) return null;
+                                                                return (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="apple-event-action"
+                                                                        onClick={() => handleDevret(ayrinti.teamId, ayrinti.teamName)}
+                                                                    >
+                                                                        Devret
+                                                                    </button>
+                                                                );
+                                                            })()}
+                                                            {actorName && msg.eventType !== 'ROUTING_SUGGESTION' && <span className="apple-event-actor">— {actorName}</span>}
                                                         </div>
                                                     </div>
                                                 </React.Fragment>
