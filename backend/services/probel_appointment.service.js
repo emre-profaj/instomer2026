@@ -91,8 +91,9 @@ async function probelApiCall(workspaceId, stored_procedure, input_data = {}) {
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ [Probel] API error ${response.status}:`, errorText);
-        throw new Error(`HBYS API hatası: ${response.status}`);
+        const statusCategory = response.status >= 500 ? 'SUNUCU HATASI' : 'İSTEK HATASI';
+        console.error(`❌ [Probel] API ${statusCategory} ${response.status} (${stored_procedure}):`, errorText.substring(0, 500));
+        throw new Error(`HBYS API hatası: HTTP ${response.status} (${statusCategory}) — ${errorText.substring(0, 200)}`);
     }
 
     const data = await response.json();
@@ -466,36 +467,71 @@ export async function createAppointment(workspaceId, hastaToken, randevuId) {
             RANDEVU_ID: String(randevuId)
         });
 
-        console.log(`✅ [Probel] prc_set_randevu_bilgisi response:`, JSON.stringify(result).substring(0, 500));
+        // ── FULL RAW RESPONSE LOG — debug için her zaman yazdır ──
+        const rawJson = JSON.stringify(result);
+        console.log(`📦 [Probel] prc_set_randevu_bilgisi RAW response (${rawJson.length} bytes):`, rawJson.substring(0, 1000));
 
-        // ProbelApiCall returns ref_out_list. Let's check the contents.
+        // ── RESPONSE DOĞRULAMA ──
+        // probelApiCall zaten HTTP 4xx/5xx'te throw eder.
+        // Buraya geldiysek HTTP 200 aldık. Ama API-seviye hataları olabilir.
         let isSuccess = false;
         let errorMsg = 'Randevu oluşturulamadı. Lütfen hastane ile iletişime geçiniz.';
 
         if (Array.isArray(result) && result.length > 0) {
-            // Check if any row has an error
-            const errorRow = result.find(r => r.HATA_KODU || (r.ISLEM_SONUCU && String(r.ISLEM_SONUCU).toLowerCase() !== 'basarili' && String(r.ISLEM_SONUCU).toLowerCase() !== 'başarılı'));
+            // Probel sonuç satırlarını incele
+            const firstRow = result[0];
 
-            if (errorRow) {
-                console.error('❌ [Probel] Appointment creation failed with error:', errorRow);
-                errorMsg = errorRow.HATA_MESAJI || errorRow.MESAJ || errorRow.ISLEM_SONUCU || errorMsg;
-            } else {
-                // If it's an array, has elements, and no error codes, assume success
+            // HATA_KODU kontrolü: 0 veya null/undefined = başarılı, diğer her şey = hata
+            const hataKodu = firstRow.HATA_KODU;
+            const hasErrorCode = hataKodu !== undefined && hataKodu !== null && hataKodu !== 0 && hataKodu !== '0' && hataKodu !== '';
+
+            // ISLEM_SONUCU kontrolü (case-insensitive, Türkçe karakter destekli)
+            const islemSonucu = String(firstRow.ISLEM_SONUCU || '').toLowerCase().trim();
+            const isExplicitSuccess = islemSonucu === 'basarili' || islemSonucu === 'başarılı' || islemSonucu === 'başarili' || islemSonucu === 'ok' || islemSonucu === 'success';
+            const isExplicitFailure = islemSonucu.includes('hata') || islemSonucu.includes('başarısız') || islemSonucu.includes('basarisiz') || islemSonucu.includes('iptal') || islemSonucu.includes('red');
+
+            if (hasErrorCode) {
+                // Açık hata kodu var
+                errorMsg = firstRow.HATA_MESAJI || firstRow.MESAJ || firstRow.ISLEM_SONUCU || `HATA_KODU: ${hataKodu}`;
+                console.error(`❌ [Probel] Randevu oluşturma BAŞARISIZ — HATA_KODU: ${hataKodu}, mesaj: ${errorMsg}`);
+                isSuccess = false;
+            } else if (isExplicitFailure) {
+                // ISLEM_SONUCU açıkça başarısız diyor
+                errorMsg = firstRow.HATA_MESAJI || firstRow.MESAJ || firstRow.ISLEM_SONUCU || errorMsg;
+                console.error(`❌ [Probel] Randevu oluşturma BAŞARISIZ — ISLEM_SONUCU: "${islemSonucu}"`);
+                isSuccess = false;
+            } else if (isExplicitSuccess || !hasErrorCode) {
+                // Açık başarı mesajı veya hata kodu yok = başarılı kabul et
                 isSuccess = true;
+                console.log(`✅ [Probel] Randevu oluşturma BAŞARILI — ISLEM_SONUCU: "${islemSonucu}", HATA_KODU: ${hataKodu ?? 'yok'}`);
             }
         } else if (result && !Array.isArray(result)) {
-            // If it returned a single object (e.g. error from Probel wrapper)
-            if (result.HATA_KODU || result.HasError || (result.ISLEM_SONUCU && String(result.ISLEM_SONUCU).toLowerCase() !== 'basarili')) {
+            // Tek obje döndü (Probel wrapper hatası)
+            const hataKodu = result.HATA_KODU;
+            const hasErrorCode = hataKodu !== undefined && hataKodu !== null && hataKodu !== 0 && hataKodu !== '0' && hataKodu !== '';
+
+            if (hasErrorCode || result.HasError) {
                 errorMsg = result.HATA_MESAJI || result.MESAJ || result.ISLEM_SONUCU || errorMsg;
+                console.error(`❌ [Probel] Randevu oluşturma BAŞARISIZ (object) — ${errorMsg}`);
+                isSuccess = false;
             } else {
-                isSuccess = true;
+                const islemSonucu = String(result.ISLEM_SONUCU || '').toLowerCase().trim();
+                const isExplicitFailure = islemSonucu.includes('hata') || islemSonucu.includes('başarısız') || islemSonucu.includes('basarisiz');
+                if (isExplicitFailure) {
+                    errorMsg = result.HATA_MESAJI || result.MESAJ || result.ISLEM_SONUCU || errorMsg;
+                    console.error(`❌ [Probel] Randevu oluşturma BAŞARISIZ (object/sonucu) — ${errorMsg}`);
+                    isSuccess = false;
+                } else {
+                    isSuccess = true;
+                    console.log(`✅ [Probel] Randevu oluşturma BAŞARILI (object response)`);
+                }
             }
         } else {
-            // Empty array or null returned. Since we don't know if this means success in this specific API, 
-            // we should be careful. Usually, a success message is returned. Let's assume failure if nothing is returned.
-            // Wait, if it strictly returns empty array on success, we would need to know. Assuming it returns at least some confirmation.
-            // But just in case:
-            isSuccess = true; // Let's assume empty means no errors for now, as ProbelApiCall throws on HTTP/JsonData errors.
+            // ❌ BOŞ ARRAY VEYA NULL — başarısız kabul et!
+            // Probel başarılıysa mutlaka onay verisi döndürür.
+            console.error(`❌ [Probel] Randevu oluşturma BAŞARISIZ — boş/null yanıt döndü (result: ${JSON.stringify(result)})`);
+            errorMsg = 'Hastane sisteminden onay yanıtı alınamadı (boş yanıt). Randevu oluşturulamadı.';
+            isSuccess = false;
         }
 
         if (!isSuccess) {
@@ -510,7 +546,8 @@ export async function createAppointment(workspaceId, hastaToken, randevuId) {
             message: 'Randevunuz başarıyla oluşturuldu! ✅'
         };
     } catch (error) {
-        console.error('❌ [Probel] createAppointment error:', error.message);
+        // probelApiCall HTTP 4xx/5xx'te buraya düşer
+        console.error(`❌ [Probel] createAppointment EXCEPTION (HTTP hatası olabilir):`, error.message);
         return {
             success: false,
             message: error.message || 'Randevu oluşturulamadı. Lütfen hastane ile iletişime geçiniz.'
