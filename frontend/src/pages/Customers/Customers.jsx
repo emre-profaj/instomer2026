@@ -118,6 +118,25 @@ const getContactSourceLabel = (contact) => {
     return KAYNAK_ETIKETLERI[key] || raw || '';
 };
 
+/**
+ * Kişinin projesi / şubesi.
+ *
+ * Gayrimenkulde şube kaydı PROJE anlamına geliyor (sektör etiketleri:
+ * "Şube / Proje"). Önce en güncel vakanın şubesi, yoksa son konuşmanın
+ * şubesi kullanılır.
+ */
+const getContactBranchName = (contact) => {
+    if (!contact) return '';
+    const cases = [...(contact.cases || [])]
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    const fromCase = cases.find(c => c?.branch?.name)?.branch?.name;
+    if (fromCase) return fromCase;
+
+    const convs = [...(contact.conversations || [])]
+        .sort((a, b) => new Date(b.lastMessageAt || b.createdAt || 0) - new Date(a.lastMessageAt || a.createdAt || 0));
+    return convs.find(c => c?.branch?.name)?.branch?.name || '';
+};
+
 export const getContactPrimaryPhone = (contact) => {
     if (!contact) return null;
     const isValid = (num) => {
@@ -1129,7 +1148,7 @@ const Customers = () => {
             });
 
             // Create CSV content
-            const headers = ['İsim', 'Telefon', 'E-posta', 'Kaynak', 'İlk Yazma Tarihi', 'Durum', 'Kime Atandığı', 'Son Not'];
+            const headers = ['İsim', 'Telefon', 'E-posta', 'Kaynak', 'Proje / Şube', 'İlk Yazma Tarihi', 'Durum', 'Kime Atandığı', 'Son Not'];
 
             const rows = filteredContacts.map(contact => {
                 // Get last note from notes
@@ -1179,6 +1198,7 @@ const Customers = () => {
                     contact.phone || '',
                     contact.email || '',
                     getContactSourceLabel(contact),
+                    getContactBranchName(contact),
                     contact.firstMessageAt ? new Date(contact.firstMessageAt).toLocaleDateString('tr-TR') : '',
                     displayLabel,
                     assignedTo,
@@ -1194,6 +1214,7 @@ const Customers = () => {
                 { wch: 18 }, // Telefon
                 { wch: 28 }, // E-posta
                 { wch: 16 }, // Kaynak
+                { wch: 22 }, // Proje / Şube
                 { wch: 18 }, // Tarih
                 { wch: 15 }, // Durum
                 { wch: 20 }, // Atanan
@@ -1287,6 +1308,7 @@ const Customers = () => {
                 'Telefon',
                 'E-posta',
                 'Kaynak',
+                'Proje / Şube',
                 'Firma',
                 'Konu',
                 'Skor',
@@ -1358,6 +1380,7 @@ const Customers = () => {
                     contact.phone || '',
                     contact.email || '',
                     getContactSourceLabel(contact),
+                    getContactBranchName(contact),
                     contact.company || '',
                     topic,
                     contact.leadScore != null ? contact.leadScore : '',
@@ -1377,6 +1400,7 @@ const Customers = () => {
                 { wch: 18 }, // Telefon
                 { wch: 28 }, // E-posta
                 { wch: 16 }, // Kaynak
+                { wch: 22 }, // Proje / Şube
                 { wch: 20 }, // Firma
                 { wch: 22 }, // Konu
                 { wch: 10 }, // Skor

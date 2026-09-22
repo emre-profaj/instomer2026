@@ -1588,6 +1588,10 @@ export const getContacts = async (req, res) => {
                             caseId: true,
                             funnelStageId: true,
                             funnelType: true,
+                            // Şube = gayrimenkulde PROJE. Dışa aktarmadaki
+                            // "Proje / Şube" kolonu buradan besleniyor.
+                            branchId: true,
+                            branch: { select: { id: true, name: true } },
                             utmSource: true,
                             utmMedium: true,
                             utmCampaign: true,
@@ -1622,6 +1626,8 @@ export const getContacts = async (req, res) => {
                                 caseType: { select: { id: true, name: true, color: true, icon: true } },
                                 funnelStageId: true,
                                 funnelType: true,
+                                branchId: true,
+                                branch: { select: { id: true, name: true } },
                                 createdAt: true,
                                 updatedAt: true,
                                 assignedToId: true,
@@ -1751,6 +1757,10 @@ export const getContacts = async (req, res) => {
                             caseId: true,
                             funnelStageId: true,
                             funnelType: true,
+                            // Şube = gayrimenkulde PROJE. Dışa aktarmadaki
+                            // "Proje / Şube" kolonu buradan besleniyor.
+                            branchId: true,
+                            branch: { select: { id: true, name: true } },
                             utmSource: true,
                             utmMedium: true,
                             utmCampaign: true,
@@ -1785,6 +1795,8 @@ export const getContacts = async (req, res) => {
                                 caseType: { select: { id: true, name: true, color: true, icon: true } },
                                 funnelStageId: true,
                                 funnelType: true,
+                                branchId: true,
+                                branch: { select: { id: true, name: true } },
                                 createdAt: true,
                                 updatedAt: true,
                                 assignedToId: true,
