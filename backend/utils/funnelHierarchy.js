@@ -71,6 +71,7 @@ export async function getAllowedFunnelKeysForAgent(workspaceId, userId, userTeam
             allowedKeys.add(assigned.id);
             if (assigned.name) allowedKeys.add(assigned.name);
 
+            // Alt akışlar (descendants)
             const queue = [assigned.id];
             while (queue.length > 0) {
                 const currentId = queue.shift();
@@ -80,6 +81,21 @@ export async function getAllowedFunnelKeysForAgent(workspaceId, userId, userTeam
                     if (child.name) allowedKeys.add(child.name);
                     queue.push(child.id);
                 }
+            }
+
+            // ── ÜST AKIŞ HAVUZ GÖRÜNÜRLÜğÜ ──
+            // Atanmış akışın üst akışlarını da dahil et.
+            // Böylece agent, üst akıştaki atanmamış (havuz) konuşmaları görebilir.
+            // Örn: Armağan "Kurumsal Satış" (1.1) → "Satış" (1) havuzunu da görür.
+            let parentId = assigned.parentId;
+            let parentDepth = 0;
+            while (parentId && parentDepth < 5) {
+                const parent = allFunnels.find(f => f.id === parentId);
+                if (!parent) break;
+                allowedKeys.add(parent.id);
+                if (parent.name) allowedKeys.add(parent.name);
+                parentId = parent.parentId;
+                parentDepth++;
             }
         }
 
