@@ -130,6 +130,31 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
                         where: { id: conversationId },
                         data: updateData
                     });
+
+                    // Konuşma mevcut bir vakaya bağlıysa vakayı da taşı.
+                    // Inbox listesi VAKANIN akışını gösterdiği için, burada
+                    // güncellenmezse ekranda eski akış görünüyor.
+                    if (updateData.funnelType) {
+                        try {
+                            const conv = await prisma.conversation.findUnique({
+                                where: { id: conversationId },
+                                select: { caseId: true }
+                            });
+                            if (conv?.caseId) {
+                                await prisma.case.update({
+                                    where: { id: conv.caseId },
+                                    data: {
+                                        funnelType: updateData.funnelType,
+                                        ...(updateData.funnelStageId && { funnelStageId: updateData.funnelStageId }),
+                                        ...(updateData.assignedTeamId && { assignedTeamId: updateData.assignedTeamId })
+                                    }
+                                });
+                                console.log(`🔄 [Classifier] Vaka ${conv.caseId} kurala göre taşındı`);
+                            }
+                        } catch (caseErr) {
+                            console.error('⚠️ [Classifier] Vaka güncellenemedi:', caseErr.message);
+                        }
+                    }
                 }
                 
                 // Otomasyon çağrısı (Opsiyonel)

@@ -166,6 +166,36 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
             data: updateData
         });
 
+        // VAKAYI da taşı. Inbox listesi ve üst başlık VAKANIN akışını
+        // gösteriyor; burada güncellenmezse konuşma doğru akışa geçse bile
+        // ekranda eski akış görünüyordu (changeFunnelStage bunu yapıyor,
+        // bu yol ise doğrudan conversation.update ile onu atlıyordu).
+        try {
+            const caseData = {
+                funnelType: updateData.funnelType,
+                funnelStageId: updateData.funnelStageId
+            };
+            if (updateData.assignedTeamId !== undefined) caseData.assignedTeamId = updateData.assignedTeamId;
+            if (updateData.assignedToId !== undefined) caseData.assignedToId = updateData.assignedToId;
+
+            if (conversation.caseId) {
+                await prisma.case.update({ where: { id: conversation.caseId }, data: caseData });
+                console.log(`🔄 [ROUTER:MOVE] Vaka ${conversation.caseId} → "${funnel.name}"`);
+            } else if (conversation.contactId) {
+                const sonuc = await prisma.case.updateMany({
+                    where: {
+                        contactId: conversation.contactId,
+                        workspaceId,
+                        status: { notIn: ['CLOSED', 'CANCELLED'] }
+                    },
+                    data: caseData
+                });
+                if (sonuc.count > 0) console.log(`🔄 [ROUTER:MOVE] ${sonuc.count} açık vaka → "${funnel.name}"`);
+            }
+        } catch (caseErr) {
+            console.error('⚠️ [ROUTER:MOVE] Vaka güncellenemedi:', caseErr.message);
+        }
+
         console.log(`✅ [ROUTER:MOVE] Conversation ${conversation.id} → "${funnel.name}" taşındı`);
 
         // UI'ı anlık güncelle
@@ -257,6 +287,7 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message, c
             where: { id: conversationId },
             select: {
                 id: true, funnelType: true, assignedToId: true,
+                caseId: true, contactId: true,
                 // Kanal kuralları hesap KİMLİĞİNE göre yazılıyor
                 // (ör. "wa-<numara kaydı>"), bu yüzden bunlar da gerekli.
                 channel: true,
