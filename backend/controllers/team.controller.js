@@ -250,6 +250,7 @@ export const updateTeam = async (req, res) => {
                 ...(req.body.hasOwnProperty('triggerOnEmail') && { triggerOnEmail: req.body.triggerOnEmail }),
                 ...(req.body.hasOwnProperty('triggerOnAppointment') && { triggerOnAppointment: req.body.triggerOnAppointment }),
                 ...(req.body.hasOwnProperty('triggerTimeoutMinutes') && { triggerTimeoutMinutes: req.body.triggerTimeoutMinutes }),
+                ...(req.body.hasOwnProperty('maxOpenConversations') && { maxOpenConversations: req.body.maxOpenConversations ? parseInt(req.body.maxOpenConversations, 10) : null }),
                 ...(req.body.hasOwnProperty('branchIds') && { branchIds: req.body.branchIds ? JSON.stringify(req.body.branchIds) : null }),
             },
             include: {
@@ -348,6 +349,7 @@ export const getTeamOverview = async (req, res) => {
                 select: {
                     id: true, name: true, parentId: true,
                     distributionMode: true, distributionMethod: true,
+                    maxOpenConversations: true,
                     members: { select: { userId: true } }
                 }
             }),
@@ -402,6 +404,7 @@ export const getTeamOverview = async (req, res) => {
                 parentId: t.parentId,
                 distributionMode: t.distributionMode,
                 distributionMethod: t.distributionMethod,
+                maxOpenConversations: t.maxOpenConversations || null,
                 memberCount: t.members.length,
                 availableNow: durumlar.filter(u => u.isAvailable).length,
                 offHours: durumlar.filter(u => !u.isWorkingNow).length,

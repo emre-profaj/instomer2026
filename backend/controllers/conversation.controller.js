@@ -2141,6 +2141,16 @@ export const updateConversationStatus = async (req, res) => {
             }
         }
 
+        // Bir sohbet çözüldüğünde (kapandığında) temsilcinin kapasitesi açılır.
+        // Takım havuzunda kapasite nedeniyle bekleyen konuşma varsa otomatik dağıt.
+        if (status === 'RESOLVED' && existing.assignedTeamId) {
+            import('../services/teamAssignment.service.js')
+                .then(({ distributeWaitingTeamConversations }) => {
+                    distributeWaitingTeamConversations(existing.assignedTeamId);
+                })
+                .catch(err => console.warn('distributeWaitingTeamConversations error:', err.message));
+        }
+
         res.json({ conversation, closingStage: closingStage ? { name: closingStage.name, statusType: closingStage.statusType } : null });
     } catch (error) {
         console.error('❌ Update conversation status error:', error);
@@ -3722,97 +3732,12 @@ export const smartAssignConversation = async (req, res) => {
             } catch (_) {}
         }
 
-        // Takım ID'si verilmişse ve kişi belirtilmemişse → atama kuralını uygula
+        // Takım ID'si verilmişse ve kişi belirtilmemişse → takım dağıtım motorunu çalıştır
         if (teamId && !agentId) {
             try {
-                const team = await prisma.team.findFirst({
-                    where: { id: teamId, workspaceId },
-                    include: {
-                        members: {
-                            include: { user: { select: { id: true, name: true, isOnline: true, workingHours: true } } }
-                        }
-                    }
-                });
-
-                if (team) {
-                    // Sıra KARARLI olmalı: sıralama verilmediğinde artan indeks
-                    // her çağrıda farklı diziye uygulanıyordu.
-                    const allMembers = team.members
-                        .filter(m => m.user && m.userId)
-                        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0) || String(a.id).localeCompare(String(b.id)))
-                        .map(m => m.user);
-
-                    // Mesai dışındaki temsilciye dağıtma. Saati girilmemişte kısıt yok.
-                    const uygunMembers = allMembers.filter(m => isWorkingAt(m.workingHours));
-                    if (uygunMembers.length < allMembers.length) {
-                        const atlanan = allMembers
-                            .filter(m => !uygunMembers.includes(m))
-                            .map(m => `${m.name} (${unavailabilityReason(m.workingHours) || 'uygun değil'})`)
-                            .join(', ');
-                        console.log(`🕒 [SmartAssign] "${team.name}" → mesai dışı atlandı: ${atlanan}`);
-                    }
-
-                    // Motorun okuduğu alanlar distributionMode/Method; assignmentRule
-                    // legacy. Eski kayıtlar bozulmasın diye ikisi de destekleniyor.
-                    const mode = team.distributionMode || 'POOL';
-                    let rule;
-                    if (mode === 'POOL') {
-                        rule = (team.assignmentRule && team.assignmentRule !== 'POOL')
-                            ? team.assignmentRule           // eski kayıt: yalnız assignmentRule yazılmış
-                            : 'POOL';
-                    } else {
-                        rule = team.distributionMethod || 'ROUND_ROBIN';
-                    }
-
-                    const sirayla = async (havuz) => {
-                        if (havuz.length === 0) return null;
-                        // İndeksi atomik artır: iki eşzamanlı atama aynı kişiye gitmesin
-                        const guncel = await prisma.team.update({
-                            where: { id: teamId },
-                            data: { roundRobinIndex: { increment: 1 } },
-                            select: { roundRobinIndex: true }
-                        });
-                        const idx = ((guncel.roundRobinIndex || 1) - 1) % havuz.length;
-                        console.log(`🔄 [SmartAssign] "${team.name}" → ${havuz[idx].name} (sıra ${idx + 1}/${havuz.length})`);
-                        return havuz[idx].id;
-                    };
-
-                    if (rule === 'POOL' || rule === 'MANUAL') {
-                        resolvedAgentId = null;
-                    } else if (allMembers.length === 0) {
-                        resolvedAgentId = null;
-                        atamaUyarisi = `${team.name} takımında kayıtlı temsilci yok. Konuşma havuzda bekliyor.`;
-                        console.log(`🕒 [SmartAssign] "${team.name}" → üye yok, havuzda`);
-                    } else {
-                        // Mesai saatinde üye varsa öncelikli kullan; yoksa (akşam/hafta sonu) tüm üyeler arasından sırayla dağıt
-                        const adayHavuz = uygunMembers.length > 0 ? uygunMembers : allMembers;
-                        if (uygunMembers.length === 0) {
-                            console.log(`🕒 [SmartAssign] "${team.name}" → mesai saatinde üye yok, takımdaki ${allMembers.length} temsilci arasından sırayla atanıyor`);
-                        }
-
-                        if (rule === 'ROUND_ROBIN') {
-                            resolvedAgentId = await sirayla(adayHavuz);
-                        } else if (rule === 'LEAST_BUSY') {
-                            const counts = await Promise.all(
-                                adayHavuz.map(async m => ({
-                                    id: m.id,
-                                    count: await prisma.conversation.count({ where: { assignedToId: m.id, status: 'OPEN' } })
-                                }))
-                            );
-                            counts.sort((a, b) => a.count - b.count);
-                            resolvedAgentId = counts[0].id;
-                        } else if (rule === 'ONLINE_ONLY') {
-                            const online = adayHavuz.filter(m => m.isOnline);
-                            if (online.length > 0) {
-                                resolvedAgentId = await sirayla(online);
-                            } else {
-                                resolvedAgentId = await sirayla(adayHavuz);
-                            }
-                        } else {
-                            resolvedAgentId = await sirayla(adayHavuz);
-                        }
-                    }
-                }
+                const { assignToTeamMember } = await import('../services/teamAssignment.service.js');
+                resolvedAgentId = await assignToTeamMember(teamId, conversationId, { force: true });
+                console.log(`🎯 [SmartAssign] Takım dağıtımı sonucu: ${resolvedAgentId || 'havuzda bekliyor'}`);
             } catch (teamErr) {
                 console.error('Team rule error (falling back to POOL):', teamErr.message);
                 resolvedAgentId = null;

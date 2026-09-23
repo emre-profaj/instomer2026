@@ -58,83 +58,95 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         }
     }
 
-    // Mesai saatindeki üyeleri öncelikle tercih et. Saati girilmemiş kişilerde kısıt yok sayılır (isWorkingAt true döner).
-    let humanMembers = branchFilteredMembers.filter(m => isWorkingAt(m.user?.workingHours));
-    if (humanMembers.length === 0) {
-        // Mesai saatinde kimse yoksa (akşam/gece/hafta sonu), konuşmayı sahipsiz bırakmamak için
-        // takımdaki tüm üyelere dağıt (mesai dışı fallback).
-        console.log(`🕒 [Distribute] "${team.name}" → şu an mesaide üye yok, takımdaki tüm üyelere dağıtılıyor (${branchFilteredMembers.length} üye)`);
-        humanMembers = [...branchFilteredMembers];
-    } else if (humanMembers.length < branchFilteredMembers.length) {
-        const atlanan = branchFilteredMembers
-            .filter(m => !humanMembers.includes(m))
-            .map(m => m.user?.name)
-            .join(', ');
-        console.log(`🕒 [Distribute] "${team.name}" → mesai dışı atlandı: ${atlanan}`);
+    const effectiveMethod = method || team.distributionMethod || 'ROUND_ROBIN';
+
+    // ── KURALA GÖRE ADAYLARI BELİRLE ──
+    let candidateMembers = [...branchFilteredMembers];
+
+    if (effectiveMethod === 'WORKING_HOURS_ONLY') {
+        // Yalnızca mesai saatindeki üyeler
+        candidateMembers = candidateMembers.filter(m => isWorkingAt(m.user?.workingHours));
+        if (candidateMembers.length === 0) {
+            console.log(`🕒 [Distribute] "${team.name}" → WORKING_HOURS_ONLY seçili ama şu an mesaide üye yok, konuşma havuzda bekletiliyor`);
+            return null;
+        }
+    } else if (effectiveMethod === 'ONLINE_ONLY') {
+        // Yalnızca çevrimiçi olan üyeler
+        candidateMembers = candidateMembers.filter(m => m.user?.isOnline);
+        if (candidateMembers.length === 0) {
+            console.log(`🟢 [Distribute] "${team.name}" → ONLINE_ONLY seçili ama şu an online üye yok, konuşma havuzda bekletiliyor`);
+            return null;
+        }
+    } else if (effectiveMethod === 'ROUND_ROBIN') {
+        // Sırayla dağıt: Mesai saatindeki üyeleri öncelikle tercih et; mesaide kimse yoksa tüm üyelere dağıt
+        const mesaidekiler = candidateMembers.filter(m => isWorkingAt(m.user?.workingHours));
+        if (mesaidekiler.length > 0) {
+            candidateMembers = mesaidekiler;
+        } else {
+            console.log(`🕒 [Distribute] "${team.name}" → şu an mesaide üye yok, takımdaki tüm üyelere sırayla dağıtılıyor (${candidateMembers.length} üye)`);
+        }
     }
 
-    // Kapasitesi dolmuş temsilciye yeni iş verilmez. Sınır tanımlı değilse
-    // (null) kısıt yok. Herkes doluysa havuzda kalmak yerine en az yüke sahip olana ver.
+    // ── KAPASİTE (X KADAR AÇIK YAZIŞMA) KONTROLÜ ──
+    // "Üzerinde x kadar açık yazışma olana takip ettiği çok müşteri var diye dağıtım yapma"
+    // X sınırı: Üyenin kendi maxOpenConversations ayarı varsa o, yoksa takımın maxOpenConversations ayarı.
+    const teamLimit = team.maxOpenConversations || null;
     const musaitUyeler = [];
-    for (const m of humanMembers) {
-        const uyelik = await prisma.workspaceMember.findFirst({
-            where: { userId: m.userId, workspaceId: team.workspaceId },
-            select: { maxOpenConversations: true }
-        });
-        const limit = uyelik?.maxOpenConversations || null;
-        if (!limit) { musaitUyeler.push(m); continue; }
+
+    for (const m of candidateMembers) {
+        let limit = teamLimit;
+        try {
+            const uyelik = await prisma.workspaceMember.findFirst({
+                where: { userId: m.userId, workspaceId: team.workspaceId },
+                select: { maxOpenConversations: true }
+            });
+            if (uyelik?.maxOpenConversations !== null && uyelik?.maxOpenConversations !== undefined) {
+                limit = uyelik.maxOpenConversations;
+            }
+        } catch (_) {}
+
+        if (!limit || limit <= 0) {
+            // Sınır yok
+            musaitUyeler.push(m);
+            continue;
+        }
+
         const acik = await prisma.conversation.count({
-            where: { assignedToId: m.userId, status: 'OPEN' }
+            where: { assignedToId: m.userId, workspaceId: team.workspaceId, status: 'OPEN' }
         });
-        if (acik < limit) musaitUyeler.push(m);
-        else console.log(`📦 [Distribute] ${m.user?.name} kapasitesi dolu (${acik}/${limit}) — atlandı`);
+
+        if (acik < limit) {
+            musaitUyeler.push(m);
+        } else {
+            console.log(`📦 [Distribute] ${m.user?.name} açık sohbet kapasitesi dolu (${acik}/${limit}) — takip ettiği çok müşteri var, atlandı`);
+        }
     }
-    if (musaitUyeler.length > 0) {
-        humanMembers.length = 0;
-        humanMembers.push(...musaitUyeler);
-    } else {
-        console.log(`📦 [Distribute] "${team.name}" → herkesin kapasitesi dolu, yükü dengelemek için havuzdaki üyeler arasından seçiliyor`);
+
+    if (musaitUyeler.length === 0) {
+        console.log(`📦 [Distribute] "${team.name}" → Tüm adayların açık sohbet kapasitesi dolu (${teamLimit ? 'takım limiti: ' + teamLimit : 'bireysel limitler'}). Konuşma havuzda bekletiliyor.`);
+        return null;
     }
 
     let assignedUserId = null;
-    const effectiveMethod = method || team.distributionMethod || 'ROUND_ROBIN';
 
-    switch (effectiveMethod) {
-        case 'ROUND_ROBIN': {
-            // İndeksi ÖNCE atomik artır, sonra dönen değeri kullan.
-            const guncel = await prisma.team.update({
-                where: { id: team.id },
-                data: { roundRobinIndex: { increment: 1 } },
-                select: { roundRobinIndex: true }
-            });
-            const idx = ((guncel.roundRobinIndex || 1) - 1) % humanMembers.length;
-            assignedUserId = humanMembers[idx].userId;
-            console.log(`🔄 [Distribute] "${team.name}" → ROUND ROBIN → ${humanMembers[idx].user.name} (sıra ${idx + 1}/${humanMembers.length})`);
-            break;
+    if (effectiveMethod === 'LEAST_BUSY') {
+        let minCount = Infinity, chosen = musaitUyeler[0];
+        for (const m of musaitUyeler) {
+            const cnt = await prisma.conversation.count({ where: { assignedToId: m.userId, workspaceId: team.workspaceId, status: 'OPEN' } });
+            if (cnt < minCount) { minCount = cnt; chosen = m; }
         }
-        case 'LEAST_BUSY': {
-            let minCount = Infinity, chosen = humanMembers[0];
-            for (const m of humanMembers) {
-                const cnt = await prisma.conversation.count({ where: { assignedToId: m.userId, status: 'OPEN' } });
-                if (cnt < minCount) { minCount = cnt; chosen = m; }
-            }
-            assignedUserId = chosen.userId;
-            console.log(`📊 [Distribute] "${team.name}" → LEAST BUSY → ${chosen.user.name} (${minCount} açık)`);
-            break;
-        }
-        case 'ONLINE_ONLY': {
-            const online = humanMembers.filter(m => m.user?.isOnline);
-            const candidates = online.length > 0 ? online : humanMembers;
-            const guncel = await prisma.team.update({
-                where: { id: team.id },
-                data: { roundRobinIndex: { increment: 1 } },
-                select: { roundRobinIndex: true }
-            });
-            const idx = ((guncel.roundRobinIndex || 1) - 1) % candidates.length;
-            assignedUserId = candidates[idx].userId;
-            console.log(`🟢 [Distribute] "${team.name}" → ONLINE (${online.length > 0 ? 'online' : 'fallback'}) → ${candidates[idx].user.name}`);
-            break;
-        }
+        assignedUserId = chosen.userId;
+        console.log(`📊 [Distribute] "${team.name}" → LEAST BUSY → ${chosen.user.name} (${minCount} açık)`);
+    } else {
+        // ROUND_ROBIN, WORKING_HOURS_ONLY, ONLINE_ONLY
+        const guncel = await prisma.team.update({
+            where: { id: team.id },
+            data: { roundRobinIndex: { increment: 1 } },
+            select: { roundRobinIndex: true }
+        });
+        const idx = ((guncel.roundRobinIndex || 1) - 1) % musaitUyeler.length;
+        assignedUserId = musaitUyeler[idx].userId;
+        console.log(`🔄 [Distribute] "${team.name}" → ${effectiveMethod} → ${musaitUyeler[idx].user.name} (sıra ${idx + 1}/${musaitUyeler.length})`);
     }
 
     if (assignedUserId) {
@@ -422,3 +434,45 @@ export async function processTimeoutDistributions() {
         console.error('❌ [Timeout] Hata:', error.message);
     }
 }
+
+/**
+ * Temsilci sohbet kapattığında veya havuzda bekleyen konuşmalar olduğunda
+ * takımın havuzundaki bekleyen konuşmaları sırayla dağıtır.
+ */
+export async function distributeWaitingTeamConversations(teamId) {
+    if (!teamId) return;
+    try {
+        const team = await prisma.team.findUnique({
+            where: { id: teamId },
+            include: {
+                members: {
+                    where: { userId: { not: null } },
+                    include: { user: true }
+                }
+            }
+        });
+        if (!team || team.distributionMode !== 'DISTRIBUTE') return;
+
+        // Havuzda bekleyen (takıma atanmış ama henüz kişiye atanmamış) açık konuşmaları bul
+        const waitingConvs = await prisma.conversation.findMany({
+            where: {
+                assignedTeamId: teamId,
+                assignedToId: null,
+                status: 'OPEN'
+            },
+            orderBy: { createdAt: 'asc' },
+            take: 10
+        });
+
+        for (const conv of waitingConvs) {
+            const assigned = await distributeByMethod(team, conv.id, team.distributionMethod, true);
+            if (!assigned) {
+                // Hâlâ müsait kimse kalmadıysa dur
+                break;
+            }
+        }
+    } catch (err) {
+        console.error('❌ [DistributeWaiting] Hata:', err.message);
+    }
+}
+

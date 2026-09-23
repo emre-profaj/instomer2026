@@ -1062,7 +1062,9 @@ export const getCatalogFlowSettings = async (req, res) => {
         const botId = req.query.botId || null;
         const { getCatalogCapability } = await import('../services/catalogFlow.service.js');
         const capability = await getCatalogCapability(workspaceId, botId);
-        res.json({ success: true, capability });
+        // classificationOrder'ı workspace'ten oku ve capability'ye ekle
+        const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { classificationOrder: true } });
+        res.json({ success: true, capability: { ...capability, classificationOrder: ws?.classificationOrder || null } });
     } catch (error) {
         console.error('getCatalogFlowSettings error:', error);
         res.status(500).json({ error: 'Katalog akışı ayarları alınamadı.' });

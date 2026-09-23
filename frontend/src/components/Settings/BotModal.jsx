@@ -511,7 +511,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
             {/* ── Başlık ──────────────────────────────────────────── */}
             <header className="bm-head">
                 <div className="bm-head-avatar">
-                    {bot.botType === 'APPOINTMENT' ? <Stethoscope size={21} /> : <Bot size={21} />}
+                    <Bot size={21} />
                 </div>
                 <div className="bm-head-id">
                     {isEditingTitle ? (
@@ -536,7 +536,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                         <>
                             <div className="bm-head-name-row">
                                 <h2 className="bm-head-name">{name}</h2>
-                                <span className="bm-head-badge">{bot.botType === 'APPOINTMENT' ? 'Randevu Asistanı' : (role || 'AI Asistan')}</span>
+                                <span className="bm-head-badge">{appointmentMode ? 'Randevu Asistanı' : (role || 'AI Asistan')}</span>
                             </div>
                             <p className="bm-head-sub">
                                 Mesaj asistanı
@@ -909,6 +909,59 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                                     </div>
                                 )}
 
+                                {/* Sınıflandırma sırası */}
+                                <div className="bm-rule on" style={{ borderLeft: '3px solid #8b5cf6' }}>
+                                    <div className="bm-rule-head">
+                                        <span className="bm-rule-ico">📋</span>
+                                        <span className="bm-rule-text">
+                                            <span className="bm-rule-title">Sınıflandırma sırası</span>
+                                            <span className="bm-rule-desc">Bot müşteriyi doğru akışa yönlendirmek için sırasıyla bu bilgileri toplar</span>
+                                        </span>
+                                    </div>
+                                    <div className="bm-rule-body" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '6px' }}>
+                                        {(() => {
+                                            const order = (catalogFlow && typeof catalogFlow === 'object' && catalogFlow.classificationOrder) 
+                                                ? catalogFlow.classificationOrder 
+                                                : ['branch', 'category', 'product'];
+                                            const STEPS = {
+                                                branch: { label: 'Şube tespiti', icon: '🏢', count: catalogFlow?.branchCount || 0 },
+                                                category: { label: 'Kategori tespiti', icon: '🏷️', count: catalogFlow?.categoryCount || 0 },
+                                                product: { label: 'Ürün/Hizmet tespiti', icon: '📦', count: catalogFlow?.productCount || 0 },
+                                            };
+                                            const handleReorder = (from, to) => {
+                                                const newOrder = [...order];
+                                                const [item] = newOrder.splice(from, 1);
+                                                newOrder.splice(to, 0, item);
+                                                workspaceAPI.updateCatalogFlow(workspaceId, { classificationOrder: newOrder, botId: bot.id }).catch(console.error);
+                                            };
+                                            return (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                    {order.map((key, idx) => {
+                                                        const step = STEPS[key];
+                                                        if (!step) return null;
+                                                        const disabled = step.count === 0;
+                                                        return (
+                                                            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: disabled ? '#f9fafb' : '#f0fdf4', borderRadius: 6, border: `1px solid ${disabled ? '#e5e7eb' : '#bbf7d0'}`, opacity: disabled ? 0.6 : 1 }}>
+                                                                <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, minWidth: 18 }}>{idx + 1}.</span>
+                                                                <span style={{ fontSize: 14 }}>{step.icon}</span>
+                                                                <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{step.label}</span>
+                                                                <span style={{ fontSize: 11, color: disabled ? '#ef4444' : '#059669', background: disabled ? '#fee2e2' : '#dcfce7', padding: '1px 6px', borderRadius: 4 }}>
+                                                                    {disabled ? 'Yok' : `${step.count} kayıt`}
+                                                                </span>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                                                                    <button disabled={idx === 0} onClick={() => handleReorder(idx, idx - 1)} style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', fontSize: 10, color: idx === 0 ? '#d1d5db' : '#6b7280', padding: 0, lineHeight: 1 }}>▲</button>
+                                                                    <button disabled={idx === order.length - 1} onClick={() => handleReorder(idx, idx + 1)} style={{ background: 'none', border: 'none', cursor: idx === order.length - 1 ? 'default' : 'pointer', fontSize: 10, color: idx === order.length - 1 ? '#d1d5db' : '#6b7280', padding: 0, lineHeight: 1 }}>▼</button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    <span style={{ fontSize: 11, color: '#94a3b8' }}>0 kayıt olan adımlar otomatik atlanır. 1 kayıt varsa sorulmaz, otomatik atanır.</span>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+
                                 {/* Yazışma devralma */}
                                 <div className={`bm-rule ${fallbackEnabled ? 'on' : ''}`}>
                                     <div className="bm-rule-head">
@@ -1154,7 +1207,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                         </section>
                     )}
 
-                    {activeSection === 'appointment' && bot.botType === 'APPOINTMENT' && (
+                    {activeSection === 'appointment' && appointmentMode && (
                         <section className="bm-sec">
                             <AppointmentBotConfig workspaceId={workspaceId} />
                         </section>

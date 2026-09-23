@@ -83,6 +83,7 @@ const gunlukKapsama = (uyeler, gun = new Date(), ilk = 8, son = 22) => {
 const DAGITIM_PATCH = {
     POOL: { distributionMode: 'POOL' },
     ROUND_ROBIN: { distributionMode: 'DISTRIBUTE', distributionMethod: 'ROUND_ROBIN', triggerOnPhone: false },
+    WORKING_HOURS_ONLY: { distributionMode: 'DISTRIBUTE', distributionMethod: 'WORKING_HOURS_ONLY', triggerOnPhone: false },
     LEAST_BUSY: { distributionMode: 'DISTRIBUTE', distributionMethod: 'LEAST_BUSY', triggerOnPhone: false },
     ONLINE_ONLY: { distributionMode: 'DISTRIBUTE', distributionMethod: 'ONLINE_ONLY', triggerOnPhone: false },
     // Telefon gelince dağıt: motordaki CONDITIONAL + triggerOnPhone karşılığı
@@ -103,9 +104,10 @@ const UYE_FILTRELERI = [
 
 const DAGITIM_SECENEKLERI = [
     { id: 'POOL', kisa: 'Havuzda beklesin', aciklama: 'Kimseye atanmaz, biri üstlenene kadar bekler' },
-    { id: 'ROUND_ROBIN', kisa: 'Sırayla dağıt', aciklama: 'Üyelere sırayla verilir; mesai dışı ve kapasitesi dolu olan atlanır' },
+    { id: 'ROUND_ROBIN', kisa: 'Sırayla dağıt', aciklama: 'Tüm üyelere sırayla ve eşit dağıtır (kapasitesi dolu olanlar atlanır)' },
+    { id: 'WORKING_HOURS_ONLY', kisa: 'Mesaiye göre', aciklama: 'Yalnızca mesaide olan üyelere sırayla dağıtır, yoksa havuzda bekler' },
+    { id: 'ONLINE_ONLY', kisa: 'Çevrimiçine', aciklama: 'Yalnızca çevrimiçi üyelere verilir, yoksa havuzda bekler' },
     { id: 'LEAST_BUSY', kisa: 'En az meşgule', aciklama: 'O anda en az açık sohbeti olan üyeye verilir' },
-    { id: 'ONLINE_ONLY', kisa: 'Çevrimiçine', aciklama: 'Yalnızca çevrimiçi üyeye verilir, yoksa havuzda bekler' },
     { id: 'PHONE_ONLY', kisa: 'Telefon gelince', aciklama: 'Yalnızca telefon numarası alındığında sırayla dağıtılır' }
 ];
 
@@ -370,6 +372,7 @@ const EditMemberModal = ({ member, branches = [], onSubmit, onPasswordChange, on
 const TeamModal = ({ team, parentName, branches = [], onSubmit, onClose }) => {
     const [name, setName] = useState(team?.name || '');
     const [description, setDescription] = useState(team?.description || '');
+    const [maxOpen, setMaxOpen] = useState(team?.maxOpenConversations ?? '');
     const [selectedBranchIds, setSelectedBranchIds] = useState(() => {
         if (!team?.branchIds) return [];
         try {
@@ -394,7 +397,8 @@ const TeamModal = ({ team, parentName, branches = [], onSubmit, onClose }) => {
             await onSubmit({
                 name,
                 description,
-                branchIds: selectedBranchIds.length > 0 ? selectedBranchIds : null
+                branchIds: selectedBranchIds.length > 0 ? selectedBranchIds : null,
+                maxOpenConversations: maxOpen ? parseInt(maxOpen, 10) : null
             });
             onClose();
         }
@@ -422,6 +426,24 @@ const TeamModal = ({ team, parentName, branches = [], onSubmit, onClose }) => {
                         <label>Description</label>
                         <textarea value={description} onChange={e => setDescription(e.target.value)}
                             placeholder="Takım hakkında kısa bilgi..." rows={3} />
+                    </div>
+
+                    <div className="ut-form-group">
+                        <label>Temsilci Başına Maksimum Açık Sohbet (Kapasite)</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <input
+                                type="number"
+                                min="1"
+                                value={maxOpen}
+                                onChange={e => setMaxOpen(e.target.value)}
+                                placeholder="Sınırsız"
+                                style={{ width: '120px' }}
+                            />
+                            <span style={{ fontSize: '13px', color: '#64748b' }}>açık sohbet</span>
+                        </div>
+                        <small style={{ display: 'block', marginTop: 4, fontSize: '0.72rem', color: '#64748b' }}>
+                            Üzerinde bu sayıda açık yazışma olan temsilciye yeni dağıtım yapılmaz. Tüm ekip doluysa konuşma havuzda bekler.
+                        </small>
                     </div>
 
                     {/* Sorumlu Olduğu Şubeler (Çoklu Seçim) */}
@@ -846,12 +868,12 @@ const UsersTeams = () => {
     };
 
     // ── Team actions ──────────────────────────────────────────
-    const handleSaveTeam = async ({ name, description, branchIds }) => {
+    const handleSaveTeam = async ({ name, description, branchIds, maxOpenConversations }) => {
         const { team, parentId } = teamModal;
         if (team) {
-            await teamAPI.update(currentWorkspace.id, team.id, { name, description, branchIds });
+            await teamAPI.update(currentWorkspace.id, team.id, { name, description, branchIds, maxOpenConversations });
         } else {
-            await teamAPI.create(currentWorkspace.id, { name, description, parentId: parentId || null, branchIds });
+            await teamAPI.create(currentWorkspace.id, { name, description, parentId: parentId || null, branchIds, maxOpenConversations });
             if (parentId) setExpandedTeams(p => ({ ...p, [parentId]: true }));
         }
         loadTeams();
@@ -1609,6 +1631,41 @@ const UsersTeams = () => {
                                             </span>
                                         </label>
                                     ))}
+                                </div>
+
+                                <div style={{ marginTop: '14px', marginBottom: '14px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: '#1e293b', marginBottom: '4px' }}>
+                                        📦 Temsilci Başına Maksimum Açık Sohbet (Kapasite)
+                                    </label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            style={{ width: '100px', padding: '6px 10px', fontSize: '13px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                                            defaultValue={t2.maxOpenConversations ?? ''}
+                                            key={`cap-${t2.id}-${t2.maxOpenConversations}`}
+                                            onBlur={async (e) => {
+                                                const val = e.target.value.trim();
+                                                const num = val ? parseInt(val, 10) : null;
+                                                try {
+                                                    await teamAPI.update(currentWorkspace.id, t2.id, { maxOpenConversations: num });
+                                                    const updateNested = (list) => list.map(x => {
+                                                        if (x.id === t2.id) return { ...x, maxOpenConversations: num };
+                                                        if (x.children) return { ...x, children: updateNested(x.children) };
+                                                        return x;
+                                                    });
+                                                    setTeams(prev => updateNested(prev));
+                                                    setTakimPanel(prev => prev ? { ...prev, maxOpenConversations: num } : prev);
+                                                    loadOverview();
+                                                } catch (err) { console.error('Error saving team capacity:', err); }
+                                            }}
+                                            placeholder="Sınırsız"
+                                        />
+                                        <span style={{ fontSize: '0.82rem', color: '#64748b' }}>açık sohbet</span>
+                                    </div>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748b', display: 'block', marginTop: '4px' }}>
+                                        Üzerinde bu sayıda açık yazışma olan temsilciye yeni dağıtım yapılmaz. Tüm ekip doluysa konuşma havuzda bekler.
+                                    </span>
                                 </div>
 
                                 {secim === 'POOL' && d?.pooledCount > 0 && (

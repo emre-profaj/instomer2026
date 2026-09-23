@@ -352,7 +352,8 @@ const Funnels = () => {
                 requiredFields: stagePanel.requiredFields || null,
                 aiGoal: stagePanel.aiGoal || null,
                 aiInstruction: stagePanel.aiInstruction || null,
-                transitionCriteria: stagePanel.transitionCriteria || null
+                transitionCriteria: stagePanel.transitionCriteria || null,
+                collectFields: stagePanel.collectFields || null
             };
             const res = await funnelAPI.updateStage(
                 currentWorkspace.id, stagePanel.funnelId, stagePanel.id, data
@@ -954,6 +955,78 @@ const Funnels = () => {
                                     />
                                     <span style={{ fontSize: 11, color: '#94a3b8' }}>Bu kriter sağlandığında konuşma otomatik sonraki aşamaya geçer</span>
                                 </div>
+                            </div>
+
+                            {/* Toplanacak Bilgiler (collectFields) */}
+                            <div className="settings-section">
+                                <div className="settings-section-title">📋 Toplanacak Bilgiler</div>
+                                <p className="settings-hint">Bu aşamadayken bot'un müşteriden toplaması gereken bilgiler</p>
+                                {(() => {
+                                    const cfRaw = stagePanel.collectFields;
+                                    let config;
+                                    try { config = cfRaw ? (typeof cfRaw === 'string' ? JSON.parse(cfRaw) : cfRaw) : { fields: [], onComplete: 'advance_stage' }; } catch { config = { fields: [], onComplete: 'advance_stage' }; }
+                                    const fields = config.fields || [];
+                                    const updateConfig = (newConfig) => setStagePanel(p => ({ ...p, collectFields: JSON.stringify(newConfig) }));
+                                    const PRESET_FIELDS = [
+                                        { key: 'phone', label: 'Telefon', type: 'phone' },
+                                        { key: 'name', label: 'İsim Soyisim', type: 'text' },
+                                        { key: 'email', label: 'E-posta', type: 'email' },
+                                        { key: 'company', label: 'Firma', type: 'text' },
+                                        { key: 'budget', label: 'Bütçe', type: 'text' },
+                                        { key: 'preferredCallTime', label: 'Aranma Zamanı', type: 'text' },
+                                        { key: 'appointmentDate', label: 'Randevu Tarihi', type: 'date' },
+                                        { key: 'orderNumber', label: 'Sipariş No', type: 'text' },
+                                    ];
+                                    const usedKeys = new Set(fields.map(f => f.key));
+                                    const availablePresets = PRESET_FIELDS.filter(p => !usedKeys.has(p.key));
+                                    return (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                            {fields.map((field, idx) => (
+                                                <div key={field.key + idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                                                    <span style={{ fontSize: 14, minWidth: 20 }}>
+                                                        {field.key === 'phone' ? '📞' : field.key === 'name' ? '👤' : field.key === 'email' ? '📧' : field.key === 'company' ? '🏢' : field.key === 'budget' ? '💰' : field.key === 'preferredCallTime' ? '🕐' : field.key === 'appointmentDate' ? '📅' : field.key === 'orderNumber' ? '📦' : '✏️'}
+                                                    </span>
+                                                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{field.label}</span>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: field.required ? '#059669' : '#94a3b8', cursor: 'pointer' }}>
+                                                        <input type="checkbox" checked={!!field.required} onChange={e => {
+                                                            const newFields = [...fields]; newFields[idx] = { ...field, required: e.target.checked };
+                                                            updateConfig({ ...config, fields: newFields });
+                                                        }} style={{ width: 14, height: 14 }} />
+                                                        Zorunlu
+                                                    </label>
+                                                    <button onClick={() => { updateConfig({ ...config, fields: fields.filter((_, i) => i !== idx) }); }}
+                                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+                                                </div>
+                                            ))}
+                                            {availablePresets.length > 0 && (
+                                                <select
+                                                    value="" onChange={e => {
+                                                        const preset = PRESET_FIELDS.find(p => p.key === e.target.value);
+                                                        if (preset) updateConfig({ ...config, fields: [...fields, { ...preset, required: false, prompt: '' }] });
+                                                    }}
+                                                    style={{ padding: '6px 8px', fontSize: 13, borderRadius: 6, border: '1px dashed #cbd5e1', color: '#64748b', background: '#fff', cursor: 'pointer' }}
+                                                >
+                                                    <option value="">+ Alan ekle...</option>
+                                                    {availablePresets.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                                                    <option value="__custom">✏️ Özel alan...</option>
+                                                </select>
+                                            )}
+                                            {fields.length > 0 && (
+                                                <div className="settings-field" style={{ marginTop: 4 }}>
+                                                    <label style={{ fontSize: 12 }}>Zorunlu alanlar dolunca:</label>
+                                                    <select value={config.onComplete || 'advance_stage'}
+                                                        onChange={e => updateConfig({ ...config, onComplete: e.target.value })}
+                                                        style={{ padding: '4px 8px', fontSize: 12, borderRadius: 4, border: '1px solid #e2e8f0' }}
+                                                    >
+                                                        <option value="advance_stage">🔄 Sonraki aşamaya geç</option>
+                                                        <option value="notify_team">🔔 Takıma bildirim gönder</option>
+                                                        <option value="mark_qualified">🔥 Sıcak lead olarak işaretle</option>
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Entry Rules */}

@@ -31,6 +31,7 @@ const Teams = () => {
     // Distribution (Havuz Dağıtım) States
     const [distributionMode, setDistributionMode] = useState('POOL');
     const [distributionMethod, setDistributionMethod] = useState('ROUND_ROBIN');
+    const [maxOpenConversations, setMaxOpenConversations] = useState('');
     const [triggerOnPhone, setTriggerOnPhone] = useState(false);
     const [triggerOnEmail, setTriggerOnEmail] = useState(false);
     const [triggerOnAppointment, setTriggerOnAppointment] = useState(false);
@@ -117,6 +118,7 @@ const Teams = () => {
         const distPayload = {
             distributionMode,
             distributionMethod,
+            maxOpenConversations: maxOpenConversations ? parseInt(maxOpenConversations, 10) : null,
             triggerOnPhone,
             triggerOnEmail,
             triggerOnAppointment,
@@ -180,6 +182,7 @@ const Teams = () => {
     const resetDistributionState = () => {
         setDistributionMode('POOL');
         setDistributionMethod('ROUND_ROBIN');
+        setMaxOpenConversations('');
         setTriggerOnPhone(false);
         setTriggerOnEmail(false);
         setTriggerOnAppointment(false);
@@ -194,6 +197,7 @@ const Teams = () => {
             setTeamAssignmentRule(team.assignmentRule || 'POOL');
             setDistributionMode(team.distributionMode || 'POOL');
             setDistributionMethod(team.distributionMethod || 'ROUND_ROBIN');
+            setMaxOpenConversations(team.maxOpenConversations ? String(team.maxOpenConversations) : '');
             setTriggerOnPhone(team.triggerOnPhone || false);
             setTriggerOnEmail(team.triggerOnEmail || false);
             setTriggerOnAppointment(team.triggerOnAppointment || false);
@@ -209,7 +213,7 @@ const Teams = () => {
             setTeamAssignmentRule('POOL');
             resetDistributionState();
             setParentIdForCreate(parentId);
-            setTeamBranchId('');
+            setTeamBranchIds([]);
         }
         setIsCreateModalOpen(true);
     };
@@ -222,7 +226,7 @@ const Teams = () => {
         setTeamAssignmentRule('POOL');
         resetDistributionState();
         setParentIdForCreate(null);
-        setTeamBranchId('');
+        setTeamBranchIds([]);
     };
 
     const toggleExpand = (teamId) => {
@@ -578,11 +582,19 @@ const Teams = () => {
                         </div>
                         {/* Show method badge if DISTRIBUTE or CONDITIONAL */}
                         {(team.distributionMode === 'DISTRIBUTE' || team.distributionMode === 'CONDITIONAL') && (
-                            <div className="dist-method-badge">
-                                {team.distributionMethod === 'ROUND_ROBIN' && '🔁 Sırayla'}
-                                {team.distributionMethod === 'LEAST_BUSY' && '📊 En az yoğun'}
-                                {team.distributionMethod === 'ONLINE_ONLY' && '🟢 Online'}
-                                {!team.distributionMethod && '🔁 Sırayla'}
+                            <div className="dist-method-badge" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span>
+                                    {team.distributionMethod === 'ROUND_ROBIN' && '🔁 Sırayla'}
+                                    {team.distributionMethod === 'WORKING_HOURS_ONLY' && '🕒 Mesaiye göre'}
+                                    {team.distributionMethod === 'ONLINE_ONLY' && '🟢 Online'}
+                                    {team.distributionMethod === 'LEAST_BUSY' && '📊 En az yoğun'}
+                                    {!team.distributionMethod && '🔁 Sırayla'}
+                                </span>
+                                {team.maxOpenConversations > 0 && (
+                                    <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                        📦 Maks {team.maxOpenConversations} sohbet
+                                    </span>
+                                )}
                             </div>
                         )}
                         {/* Show trigger badges if CONDITIONAL */}
@@ -763,9 +775,10 @@ const Teams = () => {
                                         <label className="dist-sub-label">Dağıtım Yöntemi</label>
                                         <div className="dist-method-options">
                                             {[
-                                                { value: 'ROUND_ROBIN', icon: '🔁', label: 'Sırayla (Round Robin)', desc: 'Üyeler arasında sırayla ve eşit dağıtır' },
-                                                { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Yoğuna', desc: 'Açık yazışması en az olana atar' },
-                                                { value: 'ONLINE_ONLY', icon: '🟢', label: 'Online Olanlara', desc: 'Sadece aktif üyelere, yoksa havuzda bekler' },
+                                                { value: 'ROUND_ROBIN', icon: '🔁', label: 'Sırayla Dağıt', desc: 'Tüm ekip üyeleri arasında sırayla ve eşit dağıtır' },
+                                                { value: 'WORKING_HOURS_ONLY', icon: '🕒', label: 'Yalnızca Mesaiye Göre', desc: 'Yalnızca o an çalışma saatlerindeki üyelere dağıtır' },
+                                                { value: 'ONLINE_ONLY', icon: '🟢', label: 'Yalnızca Çevrimiçi Olanlar', desc: 'Sadece aktif online üyelere dağıtır' },
+                                                { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Yoğuna', desc: 'Açık yazışması en az olan üyeye atar' },
                                             ].map(method => (
                                                 <label
                                                     key={method.value}
@@ -785,6 +798,28 @@ const Teams = () => {
                                                     </div>
                                                 </label>
                                             ))}
+                                        </div>
+
+                                        {/* Temsilci Başına Maksimum Açık Sohbet (X Sınırı) */}
+                                        <div style={{ marginTop: '14px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: '#1e293b', marginBottom: '4px' }}>
+                                                📦 Temsilci Başına Maksimum Açık Sohbet (Kapasite)
+                                            </label>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    className="form-input"
+                                                    style={{ width: '120px' }}
+                                                    value={maxOpenConversations}
+                                                    onChange={(e) => setMaxOpenConversations(e.target.value)}
+                                                    placeholder="Sınırsız"
+                                                />
+                                                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>açık sohbet</span>
+                                            </div>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '4px' }}>
+                                                Üzerinde bu sayıda açık yazışma olan temsilciye yeni dağıtım yapılmaz. Tüm ekip doluysa konuşma havuzda bekler. Boş bırakılırsa sınır uygulanmaz.
+                                            </span>
                                         </div>
                                     </div>
                                 )}
