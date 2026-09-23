@@ -21,6 +21,8 @@ import {
     resetWorkspaceAiCounter,
     checkSystemEmail,
     sendEmail,
+    saveSystemEmailSettings,
+    sendSystemEmailTest,
     sendBulkEmail,
     syncPhoneNumbersFromConversations,
     getGlobalSettings,
@@ -84,6 +86,8 @@ router.patch('/workspaces/:workspaceId/modules/appointment', toggleAppointmentMo
 
 // System Email Management
 router.get('/email/check', checkSystemEmail);
+router.put('/email/settings', saveSystemEmailSettings);
+router.post('/email/test', sendSystemEmailTest);
 router.post('/email/send', sendEmail);
 router.post('/email/bulk', sendBulkEmail);
 

@@ -1265,15 +1265,84 @@ export const getGlobalSettings = async (req, res) => {
             where: { id: 'singleton' }
         });
         const result = settings || {};
+        // Şifre hiçbir zaman geri dönmüyor; yalnızca "kayıtlı mı" bilgisi.
+        const { systemEmailPass, ...digerleri } = result;
         res.json({
             settings: {
-                ...result,
-                hasGlobalAiApiKey: !!(result.globalAiApiKey && result.globalAiApiKey.length > 0)
+                ...digerleri,
+                hasGlobalAiApiKey: !!(result.globalAiApiKey && result.globalAiApiKey.length > 0),
+                hasSystemEmailPass: !!(systemEmailPass && systemEmailPass.length > 0)
             }
         });
     } catch (error) {
         console.error('Get global settings error:', error);
         res.status(500).json({ error: 'Failed to get global settings' });
+    }
+};
+
+// ── Sistem e-postası ayarları (süper admin paneli) ──────────
+// .env'e dokunmadan panelden girilebilsin diye. Şifre AES-256-GCM ile
+// şifreli saklanıyor ve okuma uçlarında asla geri dönmüyor.
+export const saveSystemEmailSettings = async (req, res) => {
+    try {
+        const { host, port, user, from, pass } = req.body;
+
+        if (!host || !user) {
+            return res.status(400).json({ error: 'Sunucu adresi ve kullanıcı zorunlu.' });
+        }
+
+        const { encrypt } = await import('../utils/encryption.js');
+        const veri = {
+            systemEmailHost: String(host).trim(),
+            systemEmailPort: parseInt(port) || 587,
+            systemEmailUser: String(user).trim(),
+            systemEmailFrom: from ? String(from).trim() : null
+        };
+        // Şifre boş bırakıldıysa mevcut kayıt korunur
+        if (pass) veri.systemEmailPass = encrypt(String(pass));
+
+        await prisma.globalSettings.upsert({
+            where: { id: 'singleton' },
+            update: veri,
+            create: { id: 'singleton', ...veri }
+        });
+
+        const { resetSystemTransporter, verifySystemEmail } = await import('../services/systemEmail.service.js');
+        resetSystemTransporter();
+        const durum = await verifySystemEmail();
+
+        res.json({ success: true, durum });
+    } catch (error) {
+        console.error('Save system email settings error:', error);
+        res.status(500).json({ error: 'Ayar kaydedilemedi: ' + error.message });
+    }
+};
+
+/** Kaydedilen gönderici ile gerçek bir test maili atar. */
+export const sendSystemEmailTest = async (req, res) => {
+    try {
+        const { to } = req.body;
+        if (!to || !String(to).includes('@')) {
+            return res.status(400).json({ error: 'Geçerli bir alıcı adresi girin.' });
+        }
+        const { resetSystemTransporter } = await import('../services/systemEmail.service.js');
+        resetSystemTransporter();
+
+        await sendSystemEmail(
+            String(to).trim(),
+            'Instomer sistem e-postası testi',
+            `<div style="font-family:Arial,sans-serif;max-width:480px">
+                <h2 style="color:#0f172a;font-size:17px;margin:0 0 8px">Test başarılı</h2>
+                <p style="color:#475569;font-size:14px;line-height:1.6;margin:0">
+                    Bu mesajı görüyorsanız sistem e-postası çalışıyor; lead ve
+                    bildirim mailleri bu adresten gönderilecek.
+                </p>
+            </div>`
+        );
+        res.json({ success: true, message: `Test maili ${to} adresine gönderildi.` });
+    } catch (error) {
+        console.error('System email test error:', error);
+        res.status(400).json({ error: error.message });
     }
 };
 

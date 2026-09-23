@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { adminAPI } from '../../services/api';
-import { Key, Save, Loader, CheckCircle, AlertCircle, Activity, ShieldCheck, HelpCircle } from 'lucide-react';
+import { Key, Save, Loader, CheckCircle, AlertCircle, Activity, ShieldCheck, HelpCircle, Mail, Send } from 'lucide-react';
 import './AdminDashboard.css';
 import './AdminSettings.css';
 
@@ -15,6 +15,12 @@ const AdminSettings = () => {
 
     // Facebook Health Check
     const [checkingHealth, setCheckingHealth] = useState(false);
+    // Sistem e-postası: .env'e dokunmadan panelden girilebilsin diye
+    const [mail, setMail] = useState({ host: 'smtp.gmail.com', port: 587, user: '', from: '', pass: '' });
+    const [mailDurum, setMailDurum] = useState(null);
+    const [mailKaydediliyor, setMailKaydediliyor] = useState(false);
+    const [testAdresi, setTestAdresi] = useState('');
+    const [testGonderiliyor, setTestGonderiliyor] = useState(false);
     const [healthResults, setHealthResults] = useState(null);
 
     useEffect(() => {
@@ -25,7 +31,17 @@ const AdminSettings = () => {
         try {
             setLoading(true);
             const response = await adminAPI.getGlobalSettings();
-            setGlobalSettings(response.data.settings);
+            const ayar = response.data.settings;
+            setGlobalSettings(ayar);
+            setMail(m => ({
+                ...m,
+                host: ayar?.systemEmailHost || m.host,
+                port: ayar?.systemEmailPort || 587,
+                user: ayar?.systemEmailUser || '',
+                from: ayar?.systemEmailFrom || '',
+                pass: ''
+            }));
+            adminAPI.checkSystemEmail().then(r => setMailDurum(r.data)).catch(() => {});
         } catch (error) {
             console.error('Global settings error:', error);
             setMessage({ type: 'error', text: 'Ayarlar yüklenemedi' });
@@ -52,6 +68,37 @@ const AdminSettings = () => {
             });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const mailKaydet = async () => {
+        setMailKaydediliyor(true);
+        setMessage({ type: '', text: '' });
+        try {
+            const r = await adminAPI.saveSystemEmail(mail);
+            setMailDurum(r.data.durum);
+            setMail(m => ({ ...m, pass: '' }));
+            setMessage(r.data.durum?.configured
+                ? { type: 'success', text: 'Gönderici kaydedildi ve bağlantı doğrulandı.' }
+                : { type: 'error', text: 'Kaydedildi ama bağlantı kurulamadı: ' + (r.data.durum?.error || '') });
+            loadGlobalSettings();
+        } catch (error) {
+            setMessage({ type: 'error', text: 'Kaydetme hatası: ' + (error.response?.data?.error || error.message) });
+        } finally {
+            setMailKaydediliyor(false);
+        }
+    };
+
+    const mailTestGonder = async () => {
+        setTestGonderiliyor(true);
+        setMessage({ type: '', text: '' });
+        try {
+            const r = await adminAPI.testSystemEmail(testAdresi);
+            setMessage({ type: 'success', text: r.data.message });
+        } catch (error) {
+            setMessage({ type: 'error', text: 'Test maili gönderilemedi: ' + (error.response?.data?.error || error.message) });
+        } finally {
+            setTestGonderiliyor(false);
         }
     };
 
@@ -108,6 +155,90 @@ const AdminSettings = () => {
                     {message.text}
                 </div>
             )}
+
+            {/* Sistem E-postası */}
+            <div className="settings-card">
+                <div className="settings-card-header">
+                    <div className="header-icon-box red">
+                        <Mail size={26} color="white" strokeWidth={2.5} />
+                    </div>
+                    <div className="header-text">
+                        <h2>Sistem E-postası</h2>
+                        <p>Lead ve bildirim mailleri bu adresten gönderilir</p>
+                    </div>
+                </div>
+
+                <div className={`status-badge ${mailDurum?.configured ? 'active' : 'warning'}`}>
+                    {mailDurum?.configured ? (
+                        <>
+                            <CheckCircle size={18} />
+                            <span>Bağlantı doğrulandı — <strong>{mailDurum.email}</strong>
+                                {mailDurum.kaynak === 'env' ? ' (.env)' : ''}</span>
+                        </>
+                    ) : (
+                        <>
+                            <AlertCircle size={18} />
+                            <span>{mailDurum?.error || 'Gönderici tanımlı değil — bildirim mailleri gitmiyor.'}</span>
+                        </>
+                    )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12, marginTop: 18 }}>
+                    <div>
+                        <label htmlFor="m-host" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>SMTP Sunucusu</label>
+                        <input id="m-host" className="settings-input" placeholder="smtp.gmail.com"
+                            value={mail.host} onChange={e => setMail({ ...mail, host: e.target.value })} />
+                    </div>
+                    <div>
+                        <label htmlFor="m-port" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Port</label>
+                        <input id="m-port" className="settings-input" type="number" placeholder="587"
+                            value={mail.port} onChange={e => setMail({ ...mail, port: e.target.value })} />
+                    </div>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                    <label htmlFor="m-user" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Kullanıcı (e-posta)</label>
+                    <input id="m-user" className="settings-input" placeholder="bildirim@instomer.com"
+                        value={mail.user} onChange={e => setMail({ ...mail, user: e.target.value })} />
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                    <label htmlFor="m-pass" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                        Şifre {globalSettings?.hasSystemEmailPass && <span style={{ fontWeight: 400, color: '#64748b' }}>— kayıtlı, değiştirmek için yazın</span>}
+                    </label>
+                    <input id="m-pass" className="settings-input" type="password" autoComplete="new-password"
+                        placeholder={globalSettings?.hasSystemEmailPass ? '••••••••••••' : 'Uygulama şifresi'}
+                        value={mail.pass} onChange={e => setMail({ ...mail, pass: e.target.value })} />
+                    <small style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                        Google Workspace kullanıyorsanız hesabın normal şifresi çalışmaz; 2 adımlı doğrulamayı açıp
+                        <strong> Uygulama Şifresi</strong> üretin. Şifre şifrelenerek saklanır ve bir daha ekranda gösterilmez.
+                    </small>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                    <label htmlFor="m-from" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Görünen gönderici <span style={{ fontWeight: 400, color: '#64748b' }}>(opsiyonel)</span></label>
+                    <input id="m-from" className="settings-input" placeholder="Instomer &lt;bildirim@instomer.com&gt;"
+                        value={mail.from} onChange={e => setMail({ ...mail, from: e.target.value })} />
+                </div>
+
+                <button className="btn-premium red" onClick={mailKaydet} disabled={mailKaydediliyor || !mail.host || !mail.user}
+                    style={{ marginTop: 18 }}>
+                    {mailKaydediliyor ? <><Loader size={18} className="spinning" /> Kaydediliyor...</> : <><Save size={18} /> Kaydet ve doğrula</>}
+                </button>
+
+                <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid #f1f5f9' }}>
+                    <label htmlFor="m-test" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Test maili gönder</label>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        <input id="m-test" className="settings-input" type="email" placeholder="ornek@firma.com"
+                            value={testAdresi} onChange={e => setTestAdresi(e.target.value)} style={{ flexGrow: 1 }} />
+                        <button className="btn-premium red" onClick={mailTestGonder}
+                            disabled={testGonderiliyor || !testAdresi.includes('@') || !mailDurum?.configured}
+                            style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                            {testGonderiliyor ? <><Loader size={16} className="spinning" /> Gönderiliyor</> : <><Send size={16} /> Gönder</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {/* Global AI API Key Card */}
             <div className="settings-card">

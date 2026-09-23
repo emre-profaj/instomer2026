@@ -1,32 +1,77 @@
 import nodemailer from 'nodemailer';
+import prisma from '../lib/prisma.js';
+import { decrypt } from '../utils/encryption.js';
 
-// System email transporter using environment variables
+// Sistem e-postası göndericisi.
+// Kaynak sırası: önce veritabanı (süper admin paneli), sonra .env.
+// Panelden girilebilmesinin sebebi: sunucuda SYSTEM_EMAIL_* hiç tanımlı
+// değildi ve her bildirim denemesi sessizce düşüyordu (binlerce kez).
 let systemTransporter = null;
+let sonAyarImzasi = null;
 
-/**
- * Get or create the system email transporter
- */
-const getSystemTransporter = () => {
-    if (systemTransporter) return systemTransporter;
+/** Panelde kayıtlı ayarı okur; yoksa .env'e düşer. */
+export const getSystemEmailConfig = async () => {
+    let db = null;
+    try {
+        db = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
+    } catch (err) {
+        console.error('[SystemEmail] Ayar okunamadı:', err.message);
+    }
+
+    const dbPass = db?.systemEmailPass ? (decrypt(db.systemEmailPass) || null) : null;
+    if (db?.systemEmailHost && db?.systemEmailUser && dbPass) {
+        return {
+            kaynak: 'panel',
+            host: db.systemEmailHost,
+            port: db.systemEmailPort || 587,
+            user: db.systemEmailUser,
+            pass: dbPass,
+            from: db.systemEmailFrom || db.systemEmailUser
+        };
+    }
 
     const host = process.env.SYSTEM_EMAIL_HOST;
-    const port = parseInt(process.env.SYSTEM_EMAIL_PORT) || 587;
     const user = process.env.SYSTEM_EMAIL_USER;
     const pass = process.env.SYSTEM_EMAIL_PASS;
+    if (host && user && pass) {
+        return {
+            kaynak: 'env',
+            host,
+            port: parseInt(process.env.SYSTEM_EMAIL_PORT) || 587,
+            user,
+            pass,
+            from: process.env.SYSTEM_EMAIL_FROM || user
+        };
+    }
+    return null;
+};
 
-    if (!host || !user || !pass) {
-        console.error('❌ System email not configured. Missing SYSTEM_EMAIL_* environment variables.');
+/** Ayar değiştiğinde bağlantıyı yeniden kurmak için. */
+export const resetSystemTransporter = () => {
+    systemTransporter = null;
+    sonAyarImzasi = null;
+};
+
+const getSystemTransporter = async () => {
+    const cfg = await getSystemEmailConfig();
+    if (!cfg) {
+        console.error('❌ System email not configured. Süper admin panelinden veya SYSTEM_EMAIL_* ile tanımlayın.');
         return null;
     }
 
-    systemTransporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass }
-    });
+    // Ayar değiştiyse eski bağlantıyı bırak
+    const imza = `${cfg.host}|${cfg.port}|${cfg.user}|${cfg.pass.length}`;
+    if (systemTransporter && imza === sonAyarImzasi) return systemTransporter;
 
-    console.log('✅ System email transporter created:', user);
+    systemTransporter = nodemailer.createTransport({
+        host: cfg.host,
+        port: cfg.port,
+        secure: cfg.port === 465,
+        auth: { user: cfg.user, pass: cfg.pass }
+    });
+    sonAyarImzasi = imza;
+
+    console.log(`✅ System email transporter created (${cfg.kaynak}):`, cfg.user);
     return systemTransporter;
 };
 
@@ -38,12 +83,13 @@ const getSystemTransporter = () => {
  * @param {Object} options - Additional options
  */
 export const sendSystemEmail = async (to, subject, body, options = {}) => {
-    const transporter = getSystemTransporter();
+    const transporter = await getSystemTransporter();
     if (!transporter) {
         throw new Error('System email not configured');
     }
 
-    const fromAddress = process.env.SYSTEM_EMAIL_FROM || process.env.SYSTEM_EMAIL_USER;
+    const cfg = await getSystemEmailConfig();
+    const fromAddress = cfg?.from;
     const recipients = Array.isArray(to) ? to.join(', ') : to;
 
     const mailOptions = {
@@ -118,15 +164,19 @@ export const sendToAllWorkspaces = async (prisma, subject, body, options = {}) =
  * Verify system email configuration
  */
 export const verifySystemEmail = async () => {
-    const transporter = getSystemTransporter();
+    const cfg = await getSystemEmailConfig();
+    if (!cfg) {
+        return { configured: false, error: 'Gönderici tanımlı değil. Süper admin panelinden girin.' };
+    }
+    const transporter = await getSystemTransporter();
     if (!transporter) {
-        return { configured: false, error: 'Missing environment variables' };
+        return { configured: false, error: 'Bağlantı kurulamadı.' };
     }
 
     try {
         await transporter.verify();
-        return { configured: true, email: process.env.SYSTEM_EMAIL_USER };
+        return { configured: true, email: cfg.user, from: cfg.from, kaynak: cfg.kaynak };
     } catch (error) {
-        return { configured: false, error: error.message };
+        return { configured: false, email: cfg.user, kaynak: cfg.kaynak, error: error.message };
     }
 };

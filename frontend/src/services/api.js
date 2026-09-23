@@ -118,6 +118,9 @@ export const adminAPI = {
     resetWorkspaceAiCounter: (workspaceId) => api.post(`/admin/workspaces/${workspaceId}/ai-reset`),
     // Global Settings (AI API Key, etc.)
     getGlobalSettings: () => api.get('/admin/global-settings'),
+    checkSystemEmail: () => api.get('/admin/email/check'),
+    saveSystemEmail: (data) => api.put('/admin/email/settings', data),
+    testSystemEmail: (to) => api.post('/admin/email/test', { to }),
     updateGlobalSettings: (data) => api.put('/admin/global-settings', data),
     // Facebook/Instagram Health Check
     checkFacebookHealth: () => api.get('/admin/facebook/health-check'),

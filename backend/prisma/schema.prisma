@@ -11,6 +11,17 @@ datasource db {
 model GlobalSettings {
   id             String   @id @default("singleton")
   globalAiApiKey String? // Super Admin tarafından girilen global AI API key
+
+  // ── Sistem e-postası (bildirim göndericisi) ──
+  // Önceden yalnızca .env'deki SYSTEM_EMAIL_* değişkenlerinden okunuyordu;
+  // sunucuda tanımlı olmadığı için her bildirim denemesi düşüyordu.
+  // Artık süper admin panelinden girilebiliyor; .env hâlâ yedek yol.
+  systemEmailHost String?
+  systemEmailPort Int?    @default(587)
+  systemEmailUser String?
+  systemEmailPass String? // AES-256-GCM ile şifreli
+  systemEmailFrom String? // Görünen gönderici, ör. Instomer <bildirim@instomer.com>
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
