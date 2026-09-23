@@ -24,6 +24,12 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
     const [newQuickReply, setNewQuickReply] = useState('');
     const [prechatFormEnabled, setPrechatFormEnabled] = useState(false);
     const [ignoreSchedule, setIgnoreSchedule] = useState(true);
+    // Akıllı kartlar: hepsi kapalı başlar. Widget müşterinin kendi
+    // sitesinde çalışıyor; görünümü sahibi istemeden değiştirmiyoruz.
+    const [smartCardsEnabled, setSmartCardsEnabled] = useState(false);
+    const [cardsBranches, setCardsBranches] = useState(false);
+    const [cardsServices, setCardsServices] = useState(false);
+    const [cardsCatalog, setCardsCatalog] = useState(false);
     const [availableBots, setAvailableBots] = useState([]);
 
     useEffect(() => {
@@ -66,6 +72,10 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
 
         setPrechatFormEnabled(widget.prechatFormEnabled !== undefined ? widget.prechatFormEnabled : true);
         setIgnoreSchedule(widget.ignoreSchedule !== undefined ? widget.ignoreSchedule : true);
+        setSmartCardsEnabled(widget.smartCardsEnabled === true);
+        setCardsBranches(widget.cardsBranches === true);
+        setCardsServices(widget.cardsServices === true);
+        setCardsCatalog(widget.cardsCatalog === true);
     };
 
     const handleAddQuickReply = () => {
@@ -102,7 +112,11 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
                 width,
                 assignedBotId: assignedBotId || null,
                 prechatFormEnabled,
-                ignoreSchedule
+                ignoreSchedule,
+                smartCardsEnabled,
+                cardsBranches,
+                cardsServices,
+                cardsCatalog
             };
 
             if (mode === 'create') {
@@ -360,6 +374,57 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
                                             : '⚠️ Widget, botun çalışma saatlerine göre yanıt verecek.'}
                                     </small>
                                 </div>
+
+                                {/* ── Akıllı kartlar ── */}
+                                <div className="modal-form-group" style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginTop: 4 }}>
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={smartCardsEnabled}
+                                            onChange={(e) => setSmartCardsEnabled(e.target.checked)}
+                                        />
+                                        Akıllı Kartlar
+                                    </label>
+                                    <small className="hint">
+                                        {smartCardsEnabled
+                                            ? '✅ Sohbette kart ve bölüm menüsü gösterilir. Aşağıdan hangi bölümlerin açık olacağını seçin.'
+                                            : '⚠️ Kapalı. Widget yalnızca düz metin gösterir (bugünkü davranış).'}
+                                    </small>
+                                </div>
+
+                                {smartCardsEnabled && (
+                                    <div className="modal-form-group" style={{ paddingLeft: 18, borderLeft: '2px solid #f1f5f9' }}>
+                                        <label className="checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={cardsBranches}
+                                                onChange={(e) => setCardsBranches(e.target.checked)}
+                                            />
+                                            Şubeler
+                                        </label>
+                                        <small className="hint">Adres, telefon, yol tarifi ve şube seçimi kartları.</small>
+
+                                        <label className="checkbox-label" style={{ marginTop: 10 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={cardsServices}
+                                                onChange={(e) => setCardsServices(e.target.checked)}
+                                            />
+                                            Hizmetler
+                                        </label>
+                                        <small className="hint">Ürün ve paket kartları. Fiyatın görünmesi bot ayarına bağlıdır.</small>
+
+                                        <label className="checkbox-label" style={{ marginTop: 10 }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={cardsCatalog}
+                                                onChange={(e) => setCardsCatalog(e.target.checked)}
+                                            />
+                                            Katalog
+                                        </label>
+                                        <small className="hint">Bilgi bankasındaki indirilebilir dosyalar ve bağlantı kartı.</small>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

@@ -731,6 +731,13 @@ model WebWidget {
   position           String    @default("RIGHT")
   width              Int       @default(350)
   prechatFormEnabled Boolean   @default(false) // Pre-chat form aktif/pasif
+  // ── Akıllı kartlar ──
+  // Hepsi KAPALI başlar: bu widget'lar müşterilerin kendi sitelerinde
+  // çalışıyor, görünümü sahibi istemeden değiştirmiyoruz.
+  smartCardsEnabled  Boolean   @default(false) // Ana anahtar; kapalıysa hiç kart çıkmaz
+  cardsBranches      Boolean   @default(false) // Şubeler: adres, telefon, yol tarifi, şube seçimi
+  cardsServices      Boolean   @default(false) // Hizmetler: ürün/paket kartları
+  cardsCatalog       Boolean   @default(false) // Katalog: indirilebilir dosyalar
   ignoreSchedule     Boolean   @default(true) // true = widget bot schedule'ı yok sayar (7/24 çalışır)
   assignedBotId      String?
   assignedBot        AIBot?    @relation(fields: [assignedBotId], references: [id], onDelete: SetNull)

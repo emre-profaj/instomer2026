@@ -268,15 +268,17 @@ async function subeKartlari(workspaceId) {
 }
 
 /** Menüdeki bölümler. Karşılığı olmayan bölüm hiç gösterilmez. */
-export async function bolumMenusu(workspaceId) {
+export async function bolumMenusu(workspaceId, ayarlar = null) {
     const [subeSayisi, urunSayisi, dosyaSayisi] = await Promise.all([
         prisma.appointmentBranch.count({ where: { workspaceId, isActive: true } }).catch(() => 0),
         prisma.product.count({ where: { workspaceId, isActive: true, isGroup: false } }).catch(() => 0),
         prisma.knowledgeBase.count({ where: { workspaceId, fileUrl: { not: null } } }).catch(() => 0)
     ]);
 
+    const acik = (ad) => !ayarlar || ayarlar[ad] === true;
+
     const items = [];
-    if (subeSayisi > 0) {
+    if (subeSayisi > 0 && acik('branches')) {
         items.push({
             id: 'branches',
             icon: 'branches',
@@ -284,7 +286,7 @@ export async function bolumMenusu(workspaceId) {
             subtitle: `${subeSayisi} şube · adres ve yol tarifi`
         });
     }
-    if (urunSayisi > 0) {
+    if (urunSayisi > 0 && acik('services')) {
         items.push({
             id: 'services',
             icon: 'services',
@@ -292,7 +294,7 @@ export async function bolumMenusu(workspaceId) {
             subtitle: 'Seçenekler ve paketler'
         });
     }
-    if (dosyaSayisi > 0) {
+    if (dosyaSayisi > 0 && acik('catalog')) {
         items.push({
             id: 'catalog',
             icon: 'catalog',
@@ -346,16 +348,18 @@ async function hizmetBloklari(workspaceId, conversationId) {
  * Widget'tan gelen kart eylemini karşılar.
  * Bilinmeyen eylemde null döner; çağıran taraf o zaman normal AI akışına düşer.
  */
-export async function buildSectionResponse(workspaceId, conversationId, govde = {}) {
+export async function buildSectionResponse(workspaceId, conversationId, govde = {}, ayarlar = null) {
     const { action, sectionId, branchId } = govde;
+    const acik = (ad) => !ayarlar || ayarlar[ad] === true;
     try {
         if (action === 'menu') {
-            const menu = await bolumMenusu(workspaceId);
+            const menu = await bolumMenusu(workspaceId, ayarlar);
             return { text: 'Neye bakmak istersiniz?', richContent: menu ? [menu] : null };
         }
 
         if (action === 'section') {
             if (sectionId === 'branches') {
+                if (!acik('branches')) return null;
                 const kartlar = await subeKartlari(workspaceId);
                 if (kartlar.length === 0) return { text: 'Şube bilgisi kayıtlı değil, size bir temsilcimiz yardımcı olsun.', richContent: null };
                 return {
@@ -366,9 +370,11 @@ export async function buildSectionResponse(workspaceId, conversationId, govde = 
                 };
             }
             if (sectionId === 'services') {
+                if (!acik('services')) return null;
                 return hizmetBloklari(workspaceId, conversationId);
             }
             if (sectionId === 'catalog') {
+                if (!acik('catalog')) return null;
                 const kayitlar = await prisma.knowledgeBase.findMany({
                     where: { workspaceId, fileUrl: { not: null } },
                     select: { title: true, filename: true, fileType: true, fileUrl: true },
@@ -391,6 +397,7 @@ export async function buildSectionResponse(workspaceId, conversationId, govde = 
         }
 
         if (action === 'branch' && branchId) {
+            if (!acik('branches')) return null;
             const sube = await prisma.appointmentBranch.findFirst({
                 where: { id: branchId, workspaceId, isActive: true },
                 select: { id: true, name: true }
@@ -435,8 +442,10 @@ export async function buildWidgetRichContent(workspaceId, {
     userMessage = '',
     aiText = '',
     botId = null,
-    recentMessages = []
+    recentMessages = [],
+    ayarlar = null
 } = {}) {
+    const acik = (ad) => !ayarlar || ayarlar[ad] === true;
     try {
         // Bu konuşmadaki ilk bot cevabı mı? Bölüm menüsü yalnızca bir kez
         // çıkar; müşteri yazmaya başladıktan sonra araya girmez.
@@ -458,10 +467,10 @@ export async function buildWidgetRichContent(workspaceId, {
         }
 
         const [katalog, konum, bilgi, menu] = await Promise.all([
-            katalogBloklari(workspaceId, { conversationId, userMessage, botId, recentMessages }),
-            konumBlogu(workspaceId, { conversationId, userMessage }),
-            bilgiBankasiBloklari(workspaceId, { userMessage, aiText }),
-            ilkCevap ? bolumMenusu(workspaceId) : Promise.resolve(null)
+            acik('services') ? katalogBloklari(workspaceId, { conversationId, userMessage, botId, recentMessages }) : Promise.resolve([]),
+            acik('branches') ? konumBlogu(workspaceId, { conversationId, userMessage }) : Promise.resolve([]),
+            acik('catalog') ? bilgiBankasiBloklari(workspaceId, { userMessage, aiText }) : Promise.resolve([]),
+            ilkCevap ? bolumMenusu(workspaceId, ayarlar) : Promise.resolve(null)
         ]);
 
         let bloklar = [...bilgi, ...konum, ...katalog];

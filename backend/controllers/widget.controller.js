@@ -364,6 +364,31 @@ export const handleWidgetChat = async (req, res) => {
             }
         }
 
+        // ── Akıllı kart ayarları ──────────────────────────────────
+        // Hepsi kapalı doğar. Ana anahtar kapalıysa ne bölüm menüsü ne de
+        // kart çıkar; widget bugünkü gibi yalnızca metin gösterir.
+        let kartAyarlari = null;
+        try {
+            const w = widgetId
+                ? await prisma.webWidget.findUnique({
+                    where: { id: widgetId },
+                    select: { smartCardsEnabled: true, cardsBranches: true, cardsServices: true, cardsCatalog: true }
+                })
+                : await prisma.webWidget.findFirst({
+                    where: { workspaceId },
+                    select: { smartCardsEnabled: true, cardsBranches: true, cardsServices: true, cardsCatalog: true }
+                });
+            if (w?.smartCardsEnabled) {
+                kartAyarlari = {
+                    branches: w.cardsBranches === true,
+                    services: w.cardsServices === true,
+                    catalog: w.cardsCatalog === true
+                };
+            }
+        } catch (ayarErr) {
+            console.error('[Widget] Kart ayarı okunamadı:', ayarErr.message);
+        }
+
         // Capture poll anchor BEFORE any messages are created
         // So widget polling catches everything from this point forward
         const pollAnchor = new Date(Date.now() - 1000).toISOString(); // 1 second buffer
@@ -504,10 +529,10 @@ export const handleWidgetChat = async (req, res) => {
         // doğrudan veritabanından kurulur, cevap sabittir. Anında açılır,
         // token harcamaz, yanlış cevap veremez. Serbest yazı aşağıdaki
         // normal akışa devam eder.
-        if (action) {
+        if (action && kartAyarlari) {
             try {
                 const { buildSectionResponse } = await import('../services/widgetRichContent.service.js');
-                const sonuc = await buildSectionResponse(workspaceId, conversation.id, { action, sectionId, branchId });
+                const sonuc = await buildSectionResponse(workspaceId, conversation.id, { action, sectionId, branchId }, kartAyarlari);
                 if (sonuc && sonuc.text) {
                     const botMessage = await prisma.message.create({
                         data: {
@@ -558,7 +583,7 @@ export const handleWidgetChat = async (req, res) => {
             // Modelden ayrıştırılmıyor; catalogFlow adımından ve
             // veritabanından üretiliyor (widgetRichContent.service.js).
             let richContent = null;
-            try {
+            if (kartAyarlari) try {
                 const { buildWidgetRichContent } = await import('../services/widgetRichContent.service.js');
                 const sonMesajlar = await prisma.message.findMany({
                     where: { conversationId: conversation.id },
@@ -570,7 +595,8 @@ export const handleWidgetChat = async (req, res) => {
                     conversationId: conversation.id,
                     userMessage: message,
                     aiText: cleanAiResponse,
-                    recentMessages: sonMesajlar.reverse()
+                    recentMessages: sonMesajlar.reverse(),
+                    ayarlar: kartAyarlari
                 });
             } catch (kartErr) {
                 console.error('[Widget] Kart üretilemedi:', kartErr.message);

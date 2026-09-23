@@ -62,7 +62,8 @@ export const getWidget = async (req, res) => {
 // Create new widget
 export const createWidget = async (req, res) => {
     try {
-        const { workspaceId, name, siteUrl, title, subtitle, primaryColor, greetingMessage, quickReplies, isActive, position, width, assignedBotId, prechatFormEnabled, ignoreSchedule } = req.body;
+        const { workspaceId, name, siteUrl, title, subtitle, primaryColor, greetingMessage, quickReplies, isActive, position, width, assignedBotId, prechatFormEnabled, ignoreSchedule,
+            smartCardsEnabled, cardsBranches, cardsServices, cardsCatalog } = req.body;
 
         if (!workspaceId || !name) {
             return res.status(400).json({ error: 'workspaceId and name are required' });
@@ -83,7 +84,13 @@ export const createWidget = async (req, res) => {
                 width: width || 350,
                 assignedBotId: assignedBotId || null,
                 prechatFormEnabled: prechatFormEnabled !== undefined ? prechatFormEnabled : false,
-                ignoreSchedule: ignoreSchedule !== undefined ? ignoreSchedule : true
+                ignoreSchedule: ignoreSchedule !== undefined ? ignoreSchedule : true,
+                // Akıllı kartlar kapalı doğar; sahibi açana kadar widget
+                // bugünkü gibi yalnızca metin gösterir.
+                smartCardsEnabled: smartCardsEnabled === true,
+                cardsBranches: cardsBranches === true,
+                cardsServices: cardsServices === true,
+                cardsCatalog: cardsCatalog === true
             },
             include: {
                 assignedBot: {
@@ -107,7 +114,8 @@ export const createWidget = async (req, res) => {
 export const updateWidget = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, quickReplies, isActive, position, width, assignedBotId, prechatFormEnabled, ignoreSchedule } = req.body;
+        const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, quickReplies, isActive, position, width, assignedBotId, prechatFormEnabled, ignoreSchedule,
+            smartCardsEnabled, cardsBranches, cardsServices, cardsCatalog } = req.body;
 
         // If a bot is being assigned, automatically activate it
         if (assignedBotId) {
@@ -133,7 +141,11 @@ export const updateWidget = async (req, res) => {
                 ...(width !== undefined && { width }),
                 ...(assignedBotId !== undefined && { assignedBotId: assignedBotId || null }),
                 ...(prechatFormEnabled !== undefined && { prechatFormEnabled }),
-                ...(ignoreSchedule !== undefined && { ignoreSchedule })
+                ...(ignoreSchedule !== undefined && { ignoreSchedule }),
+                ...(smartCardsEnabled !== undefined && { smartCardsEnabled }),
+                ...(cardsBranches !== undefined && { cardsBranches }),
+                ...(cardsServices !== undefined && { cardsServices }),
+                ...(cardsCatalog !== undefined && { cardsCatalog })
             },
             include: {
                 assignedBot: {
