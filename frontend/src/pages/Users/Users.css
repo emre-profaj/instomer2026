@@ -1594,9 +1594,39 @@
 .ut-team-sum strong.ok { color: #15803d; }
 .ut-team-sum strong.bad { color: #b91c1c; }
 
-/* Kart düğmeleri sakinleşsin: üstüne gelince görünür */
-.ut-team-card-right .ut-icon-btn { opacity: 0; transition: opacity .14s; }
-.ut-team-card:hover .ut-team-card-right .ut-icon-btn { opacity: 1; }
+/* Kart düğmeleri sakinleşsin: üstüne gelince görünür.
+   Mutlak konumlu, çünkü gizliyken de yer kaplıyorlardı ve her kartın
+   sağında ~160px ölü boşluk bırakıyorlardı. */
+.ut-team-card-header { position: relative; }
+.ut-team-btns {
+    position: absolute;
+    top: 13px;
+    right: 18px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 14px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0, #ffffff 14px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .14s;
+}
+.ut-team-card-header:hover .ut-team-btns { opacity: 1; pointer-events: auto; }
+.ut-team-card-header:hover .ut-pool,
+.ut-team-card-header:hover .ut-team-member-count { opacity: 0; transition: opacity .14s; }
+
+/* Şube rozetleri: sol paneldeki künye satırıyla aynı dilde */
+.ut-team-branches { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.ut-team-branch {
+    font-size: 11px;
+    font-weight: 600;
+    color: #4338ca;
+    background: #eef2ff;
+    border-radius: 8px;
+    padding: 1px 7px;
+    white-space: nowrap;
+}
+.ut-team-branch.hepsi { color: #6b7480; background: #f1f2f5; font-weight: 500; }
 
 /* Üye çipleri küçüldü */
 .ut-team-members { padding: 0 18px 12px; gap: 6px; }

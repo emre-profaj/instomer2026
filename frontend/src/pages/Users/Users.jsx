@@ -1048,39 +1048,13 @@ const UsersTeams = () => {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                     <span className="ut-team-name">{team.name}</span>
                                     {teamBranches.length > 0 ? (
-                                        <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                                        <div className="ut-team-branches">
                                             {teamBranches.map(b => (
-                                                <span key={b.id} style={{
-                                                    fontSize: 11,
-                                                    padding: '1px 7px',
-                                                    borderRadius: 10,
-                                                    background: '#eff6ff',
-                                                    color: '#2563eb',
-                                                    border: '1px solid #bfdbfe',
-                                                    fontWeight: 500,
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: 3
-                                                }}>
-                                                    📍 {b.name}
-                                                </span>
+                                                <span key={b.id} className="ut-team-branch">{b.name}</span>
                                             ))}
                                         </div>
                                     ) : branches.length > 0 ? (
-                                        <span style={{
-                                            fontSize: 11,
-                                            padding: '1px 7px',
-                                            borderRadius: 10,
-                                            background: '#f8fafc',
-                                            color: '#64748b',
-                                            border: '1px solid #e2e8f0',
-                                            fontWeight: 500,
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: 3
-                                        }}>
-                                            🌐 Tüm Şubeler
-                                        </span>
+                                        <span className="ut-team-branch hepsi">Tüm şubeler</span>
                                     ) : null}
                                 </div>
                                 {durum && (
@@ -1111,22 +1085,28 @@ const UsersTeams = () => {
                                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                 </button>
                             )}
-                            <button className="ut-icon-btn" title={t('teams.addSubTeam')}
-                                onClick={() => setTeamModal({ show: true, team: null, parentId: team.id, parentName: team.name })}>
-                                <Plus size={14} />
-                            </button>
-                            <button className="ut-icon-btn" title="Takım ayarları"
-                                onClick={() => setTakimPanel(team)}>
-                                <Settings size={14} />
-                            </button>
-                            <button className="ut-icon-btn" title={t('common.edit')}
-                                onClick={() => setTeamModal({ show: true, team, parentId: null, parentName: null })}>
-                                <Edit2 size={14} />
-                            </button>
-                            <button className="ut-icon-btn danger" title={t('common.delete')}
-                                onClick={() => handleDeleteTeam(team.id)}>
-                                <Trash2 size={14} />
-                            </button>
+                            {/* Dört düğme gizliyken de yer kaplıyordu: her kartın
+                                sağında ~160px boşluk kalıyor, havuz sayısı ve üye
+                                rozeti kartın kenarından kopuk duruyordu. Artık
+                                mutlak konumlu, akışta yer tutmuyor. */}
+                            <div className="ut-team-btns">
+                                <button className="ut-icon-btn" title={t('teams.addSubTeam')}
+                                    onClick={() => setTeamModal({ show: true, team: null, parentId: team.id, parentName: team.name })}>
+                                    <Plus size={14} />
+                                </button>
+                                <button className="ut-icon-btn" title="Takım ayarları"
+                                    onClick={() => setTakimPanel(team)}>
+                                    <Settings size={14} />
+                                </button>
+                                <button className="ut-icon-btn" title={t('common.edit')}
+                                    onClick={() => setTeamModal({ show: true, team, parentId: null, parentName: null })}>
+                                    <Edit2 size={14} />
+                                </button>
+                                <button className="ut-icon-btn danger" title={t('common.delete')}
+                                    onClick={() => handleDeleteTeam(team.id)}>
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
                         </div>
                     </div>
 
