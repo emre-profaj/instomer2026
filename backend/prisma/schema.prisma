@@ -275,6 +275,10 @@ model KnowledgeBase {
   lastSyncedAt DateTime? // Son güncelleme zamanı
   filename     String?
   fileType     String?
+  // Yüklenen dosyanın servis edilen yolu (/uploads/knowledge/...).
+  // Önceden yalnızca özgün dosya adı tutuluyordu; dosya diskte rastgele
+  // bir adla durduğu için sonradan bulunup müşteriye gönderilemiyordu.
+  fileUrl      String?
   retellKbId   String? // Retell KB ID — each Instomer KB maps to its own Retell KB
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -700,6 +704,11 @@ model Message {
   // Dahili mesajlar (ekip içi, müşteri görmez)
   isInternal        Boolean      @default(false)
   isManual          Boolean      @default(false) // Agent elle mi girdi (AI arama kararını etkilemez)
+  // Web widget'ta metnin yanında gösterilen yapılandırılmış içerik:
+  // ürün kartları, hızlı yanıt çipleri, link/dosya/konum kartı.
+  // Tek bir mediaUrl bu iş için yetmiyordu (bir ürün listesi = N kart).
+  // Şekli: [{ kind: "products"|"quickReplies"|"link"|"file"|"location", ... }]
+  richContent       Json?
   mentionedIds      String? // JSON: ["userId1", "userId2"]
   sender            User?        @relation(fields: [senderId], references: [id])
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

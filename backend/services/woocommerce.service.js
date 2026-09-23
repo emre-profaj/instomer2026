@@ -85,6 +85,51 @@ async function getClientForWorkspace(workspaceId, overrideCredentials = null) {
     };
 }
 
+/**
+ * WooCommerce ürününün görselini ve sayfa linkini Instomer'a yazar.
+ * WooCommerce cevabı images[] ve permalink alanlarını zaten döndürüyordu;
+ * içe aktarma bunları hiç okumuyordu, bu yüzden 345 üründe tek bir
+ * fotoğraf yoktu ve widget kartlarında gösterilecek görsel bulunamıyordu.
+ */
+async function medyaVeLinkYaz(productId, wp) {
+    try {
+        const gorsel = Array.isArray(wp.images) && wp.images.length > 0 ? wp.images[0].src : null;
+        if (gorsel) {
+            const mevcut = await prisma.productMedia.findFirst({
+                where: { productId, mediaType: 'IMAGE' }
+            });
+            if (!mevcut) {
+                await prisma.productMedia.create({
+                    data: { productId, mediaUrl: gorsel, mediaType: 'IMAGE' }
+                });
+            } else if (mevcut.mediaUrl !== gorsel) {
+                await prisma.productMedia.update({
+                    where: { id: mevcut.id },
+                    data: { mediaUrl: gorsel }
+                });
+            }
+        }
+
+        if (wp.permalink) {
+            const mevcut = await prisma.productFeature.findFirst({
+                where: { productId, featureKey: 'product_url' }
+            });
+            if (!mevcut) {
+                await prisma.productFeature.create({
+                    data: { productId, featureKey: 'product_url', featureValue: wp.permalink }
+                });
+            } else if (mevcut.featureValue !== wp.permalink) {
+                await prisma.productFeature.update({
+                    where: { id: mevcut.id },
+                    data: { featureValue: wp.permalink }
+                });
+            }
+        }
+    } catch (err) {
+        console.error('[Woo] Görsel/link yazılamadı:', err.message);
+    }
+}
+
 export const woocommerceService = {
     /**
      * WooCommerce Entegrasyon Ayarlarını Getirir (Consumer Key maskelenmiş)
@@ -460,6 +505,7 @@ export const woocommerceService = {
                             description: stripHtml(wp.description || '')
                         }
                     });
+                    await medyaVeLinkYaz(existingFeature.product.id, wp);
                     updated++;
                 } else {
                     // İsimle var mı kontrol et
@@ -483,10 +529,11 @@ export const woocommerceService = {
                                 featureValue: wooIdStr
                             }
                         });
+                        await medyaVeLinkYaz(existingByName.id, wp);
                         updated++;
                     } else {
                         // Yeni ürün oluştur (Kategorisiz - categoryId: null)
-                        await prisma.product.create({
+                        const yeniUrun = await prisma.product.create({
                             data: {
                                 workspaceId,
                                 name: wp.name,
@@ -506,6 +553,7 @@ export const woocommerceService = {
                                 }
                             }
                         });
+                        await medyaVeLinkYaz(yeniUrun.id, wp);
                         imported++;
                     }
                 }

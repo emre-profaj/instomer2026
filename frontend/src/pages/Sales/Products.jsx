@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { productAPI, funnelAPI, teamAPI, appointmentConfigAPI, woocommerceAPI } from '../../services/api';
-import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown, Folder, Layers, Tag, Sparkles, Check, ShoppingCart, Users, AlertTriangle } from 'lucide-react';
+import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown, Folder, Layers, Tag, Sparkles, Check, ShoppingCart, Users, AlertTriangle, Rss } from 'lucide-react';
 
 import WooCommerceModal from '../../components/Sales/WooCommerceModal';
+import ProductFeedModal from '../../components/Sales/ProductFeedModal';
 import { importFromExcel, getTopicCategories, createTopicCategory, updateTopicCategory, deleteTopicCategory, bulkDeleteTopicCategories } from '../../services/topicCategory.api';
 import { getSectorLabels } from '../../utils/sectorLabels';
 import './Sales.css';
@@ -114,6 +115,7 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
 
     // WooCommerce Modal State
     const [showWooModal, setShowWooModal] = useState(false);
+    const [showFeedModal, setShowFeedModal] = useState(false);
     const [wooConfig, setWooConfig] = useState(null);
 
     const pageSize = 25;
@@ -1058,6 +1060,19 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                         )}
                         {activeTab === 'products' && (
                             <>
+                                <button
+                                    onClick={() => setShowFeedModal(true)}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        border: '1px solid #ddd6fe', background: '#faf5ff',
+                                        fontSize: '0.8rem', fontWeight: 600, color: '#7c3aed',
+                                        cursor: 'pointer', transition: 'all 0.2s'
+                                    }}
+                                    title="Google Merchant Center / Google Shopping XML feed'inden ürün çek"
+                                >
+                                    <Rss size={15} /> Ürün Feed'i
+                                </button>
                                 <button
                                     onClick={() => setShowWooModal(true)}
                                     style={{
@@ -3181,6 +3196,18 @@ const Products = ({ embedded = false, activeTab: propActiveTab, onTabChange }) =
                     </div>
                 );
             })()}
+
+            {/* Google Merchant Center / Google Shopping feed'i */}
+            <ProductFeedModal
+                isOpen={showFeedModal}
+                onClose={() => setShowFeedModal(false)}
+                workspaceId={currentWorkspace?.id}
+                onSyncComplete={() => {
+                    fetchProducts();
+                    fetchCategories();
+                    fetchGroups();
+                }}
+            />
 
             {/* WooCommerce Modal */}
             <WooCommerceModal

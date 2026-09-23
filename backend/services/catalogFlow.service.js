@@ -330,7 +330,11 @@ export async function buildCatalogStep(workspaceId, { conversationId = null, rec
             select: {
                 id: true, name: true, price: true, unit: true,
                 categoryId: true, parentId: true, description: true,
-                productBranches: { select: { branchId: true, price: true, isAvailable: true } }
+                productBranches: { select: { branchId: true, price: true, isAvailable: true } },
+                // Widget kartları için: görsel ve ürün sayfası linki.
+                // Prompt metnine girmez, yalnızca kart üretiminde kullanılır.
+                media: { select: { mediaUrl: true, mediaType: true }, take: 1 },
+                features: { where: { featureKey: 'product_url' }, select: { featureValue: true }, take: 1 }
             },
             orderBy: { name: 'asc' }
         });
@@ -350,6 +354,7 @@ export async function buildCatalogStep(workspaceId, { conversationId = null, rec
                 branchId: null,
                 categoryId: null,
                 productIds: [],
+                options: adaylar.map(b => ({ id: b.id, label: b.name })),
                 text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ŞUBE SEÇİMİ
 ${daraldi
     ? 'Müşteri kısmi bilgi verdi ama HÂLÂ tek şubeye inmedi. Aşağıdaki şubeler hâlâ mümkün.'
@@ -411,6 +416,7 @@ Kurallar:
                 branchId,
                 categoryId: null,
                 productIds: [],
+                options: usableCats.map(c => ({ id: c.id, label: c.name })),
                 text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: KATEGORİ SEÇİMİ
 Seçili şube: ${branch ? branch.name : '(tek şube)'}
 Müşterinin hangi hizmet grubunu istediği belli değil.
@@ -452,6 +458,7 @@ Kurallar:
                         branchId,
                         categoryId: category?.id || null,
                         productIds: matchingProducts(inCategory, text),
+                        options: groups.map(g => ({ id: g.id, label: g.name })),
                         text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ÜRÜN GRUBU SEÇİMİ
 Seçili şube: ${branch ? branch.name : '(tek şube)'}${category ? ` | Kategori: ${category.name}` : ''}
 Bu kategoride ${inCategory.length} seçenek var, hepsini birden listeleme.
@@ -485,6 +492,21 @@ Kurallar:
             branchId,
             categoryId: category?.id || null,
             productIds: matchingProducts(inGroup, text),
+            // Widget kart verisi. Fiyat kuralı prompt ile aynı: kapalıysa
+            // rakam hiç çıkmaz, "fiyat için yetkiliye aktarılır" denir.
+            cards: shown.map(p => {
+                const price = cap.priceDisclosure ? priceOf(p, branchId) : null;
+                return {
+                    id: p.id,
+                    name: p.name,
+                    note: [group?.name || category?.name || null, branch?.name || null]
+                        .filter(Boolean).join(' · ') || null,
+                    priceText: price != null ? `${formatPrice(price)}${p.unit ? ` / ${p.unit}` : ''}` : null,
+                    imageUrl: (p.media || []).find(m => (m.mediaType || 'IMAGE').toUpperCase() === 'IMAGE')?.mediaUrl || null,
+                    url: (p.features || [])[0]?.featureValue || null
+                };
+            }),
+            totalCount: inGroup.length,
             text: `🔢 SIRALI AKIŞ — ŞU ANKİ ADIM: ÜRÜN SUNUMU
 Seçili şube: ${branch ? branch.name : '(tek şube)'}${category ? ` | Kategori: ${category.name}` : ''}${group ? ` | Grup: ${group.name}` : ''}
 

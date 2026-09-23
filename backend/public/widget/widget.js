@@ -557,6 +557,80 @@
             .ag-chat-content.hidden {
                 display: none;
             }
+
+            /* ── Kartlar: ürün, hızlı yanıt, link, dosya, konum ── */
+            .ag-cards { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
+            .ag-prod-row {
+                display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
+                scrollbar-width: none; -webkit-overflow-scrolling: touch;
+            }
+            .ag-prod-row::-webkit-scrollbar { display: none; }
+            .ag-prod {
+                width: 186px; flex: none; box-sizing: border-box;
+                border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;
+                padding: 12px; display: flex; flex-direction: column; gap: 7px;
+            }
+            .ag-prod-img {
+                width: 100%; height: 108px; object-fit: cover;
+                border-radius: 10px; display: block; background: #f1f5f9;
+                margin: -12px -12px 0; width: calc(100% + 24px); max-width: none;
+            }
+            .ag-prod-note {
+                font-size: 10px; font-weight: 700; letter-spacing: .06em;
+                text-transform: uppercase; color: #64748b;
+            }
+            .ag-prod-name {
+                font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.3;
+                text-decoration: none;
+            }
+            .ag-prod-price { font-size: 16px; font-weight: 700; color: #0f172a; }
+            .ag-prod-btn {
+                margin-top: 4px; display: block; text-align: center;
+                font-size: 12.5px; font-weight: 600; padding: 13px 0; border: 0;
+                border-radius: 10px; background: #0f172a; color: #ffffff;
+                text-decoration: none; cursor: pointer; font-family: inherit;
+            }
+            .ag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+            .ag-chip {
+                font-size: 12px; font-weight: 600; color: #0f172a; background: #ffffff;
+                border: 1px solid #cbd5e1; border-radius: 999px; padding: 11px 14px;
+                cursor: pointer; font-family: inherit;
+            }
+            .ag-chip:hover { border-color: #0f172a; }
+            .ag-card {
+                border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;
+                overflow: hidden; max-width: 285px;
+            }
+            .ag-card-body { padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; }
+            .ag-card-domain { font-size: 11px; color: #64748b; }
+            .ag-card-title { font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.35; }
+            .ag-card-sum { font-size: 12px; color: #64748b; line-height: 1.45; }
+            .ag-card-action {
+                display: block; text-align: center; padding: 13px; font-size: 12.5px;
+                font-weight: 600; color: #0f172a; text-decoration: none;
+                border-top: 1px solid #f1f5f9;
+            }
+            .ag-file {
+                display: flex; align-items: center; gap: 11px; padding: 12px;
+                border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;
+                max-width: 285px;
+            }
+            .ag-file-badge {
+                width: 42px; height: 50px; flex: none; border-radius: 8px;
+                background: #f1f5f9; border: 1px solid #e2e8f0;
+                display: flex; align-items: center; justify-content: center;
+                font-size: 10px; font-weight: 700; color: #475569; letter-spacing: .04em;
+            }
+            .ag-file-name { font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.3; }
+            .ag-file-meta { font-size: 11.5px; color: #64748b; }
+            .ag-icon-btn {
+                width: 44px; height: 44px; flex: none; border-radius: 10px;
+                background: #0f172a; display: flex; align-items: center;
+                justify-content: center; text-decoration: none;
+            }
+            .ag-loc-btns { display: flex; gap: 6px; border-top: 1px solid #f1f5f9; }
+            .ag-loc-btns .ag-card-action { flex: 1; border-top: 0; }
+            .ag-loc-btns .ag-card-action + .ag-card-action { border-left: 1px solid #f1f5f9; }
         `;
 
         // Check if form was already submitted (visitor returning) OR form is disabled
@@ -824,18 +898,199 @@
         let pollInterval = null;
         let handoffShown = false;
 
-        function addMessage(text, type, messageId) {
+        // ── Kart çizimi ────────────────────────────────────────
+        // Kurallar (pazarlığa açık değil): bu widget müşterinin kendi
+        // sitesinde çalışıyor ve içerik AI çıktısından besleniyor.
+        // Bu yüzden hiçbir yerde innerHTML kullanılmaz; her düğüm
+        // createElement + textContent ile kurulur ve her bağlantı
+        // http/https olduğu doğrulanır.
+        function el(tag, cls, text) {
+            const n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text != null && text !== '') n.textContent = String(text);
+            return n;
+        }
+
+        function guvenliBaglanti(url) {
+            if (!url || typeof url !== 'string') return null;
+            const t = url.trim();
+            if (t.startsWith('/')) return t;          // kendi sunucumuz
+            if (t.startsWith('tel:')) return t;
+            try {
+                const u = new URL(t);
+                return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+            } catch { return null; }
+        }
+
+        function ikon(d) {
+            const ns = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('width', '16');
+            svg.setAttribute('height', '16');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', '#ffffff');
+            svg.setAttribute('stroke-width', '2');
+            svg.setAttribute('stroke-linecap', 'round');
+            svg.setAttribute('stroke-linejoin', 'round');
+            const path = document.createElementNS(ns, 'path');
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+            return svg;
+        }
+
+        function urunKarti(item) {
+            const kart = el('div', 'ag-prod');
+            const gorsel = guvenliBaglanti(item.imageUrl);
+            if (gorsel) {
+                const img = document.createElement('img');
+                img.className = 'ag-prod-img';
+                img.src = gorsel;
+                img.alt = '';
+                img.loading = 'lazy';
+                img.referrerPolicy = 'no-referrer';
+                img.onerror = () => img.remove();   // kırık görsel boşluk bırakmasın
+                kart.appendChild(img);
+            }
+            if (item.note) kart.appendChild(el('span', 'ag-prod-note', item.note));
+
+            const link = guvenliBaglanti(item.url);
+            if (link) {
+                const a = el('a', 'ag-prod-name', item.name);
+                a.href = link;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                kart.appendChild(a);
+            } else {
+                kart.appendChild(el('span', 'ag-prod-name', item.name));
+            }
+
+            if (item.priceText) kart.appendChild(el('span', 'ag-prod-price', item.priceText));
+
+            const btn = el('button', 'ag-prod-btn', 'Randevu al');
+            btn.type = 'button';
+            btn.onclick = () => gonderMetin(`${item.name} için randevu almak istiyorum`);
+            kart.appendChild(btn);
+            return kart;
+        }
+
+        function kartBloguCiz(blok) {
+            if (!blok || !blok.kind) return null;
+
+            if (blok.kind === 'products' && Array.isArray(blok.items)) {
+                const row = el('div', 'ag-prod-row');
+                blok.items.forEach(it => { if (it && it.name) row.appendChild(urunKarti(it)); });
+                return row.childNodes.length ? row : null;
+            }
+
+            if (blok.kind === 'quickReplies' && Array.isArray(blok.items)) {
+                const row = el('div', 'ag-chips');
+                blok.items.forEach(it => {
+                    if (!it || !it.label) return;
+                    const b = el('button', 'ag-chip', it.label);
+                    b.type = 'button';
+                    b.onclick = () => gonderMetin(it.label);
+                    row.appendChild(b);
+                });
+                return row.childNodes.length ? row : null;
+            }
+
+            if (blok.kind === 'link') {
+                const url = guvenliBaglanti(blok.url);
+                if (!url) return null;
+                const kart = el('div', 'ag-card');
+                const govde = el('div', 'ag-card-body');
+                if (blok.domain) govde.appendChild(el('span', 'ag-card-domain', blok.domain));
+                govde.appendChild(el('span', 'ag-card-title', blok.title || url));
+                if (blok.summary) govde.appendChild(el('span', 'ag-card-sum', blok.summary));
+                kart.appendChild(govde);
+                const a = el('a', 'ag-card-action', 'Sayfayı aç');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                kart.appendChild(a);
+                return kart;
+            }
+
+            if (blok.kind === 'file' && Array.isArray(blok.items)) {
+                const sarmal = el('div', 'ag-cards');
+                blok.items.forEach(f => {
+                    const url = guvenliBaglanti(f && f.url);
+                    if (!url) return;
+                    const kart = el('div', 'ag-file');
+                    kart.appendChild(el('div', 'ag-file-badge', (f.ext || 'DOSYA').slice(0, 4)));
+                    const orta = el('div');
+                    orta.style.flexGrow = '1';
+                    orta.style.minWidth = '0';
+                    orta.appendChild(el('div', 'ag-file-name', f.name || 'Dosya'));
+                    if (f.sizeText) orta.appendChild(el('div', 'ag-file-meta', f.sizeText));
+                    kart.appendChild(orta);
+                    const a = el('a', 'ag-icon-btn');
+                    a.href = url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.setAttribute('aria-label', `${f.name || 'Dosya'} indir`);
+                    a.appendChild(ikon('M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'));
+                    kart.appendChild(a);
+                    sarmal.appendChild(kart);
+                });
+                return sarmal.childNodes.length ? sarmal : null;
+            }
+
+            if (blok.kind === 'location') {
+                const kart = el('div', 'ag-card');
+                const govde = el('div', 'ag-card-body');
+                govde.appendChild(el('span', 'ag-card-title', blok.name || 'Konum'));
+                if (blok.address) govde.appendChild(el('span', 'ag-card-sum', blok.address));
+                kart.appendChild(govde);
+
+                const maps = guvenliBaglanti(blok.mapsUrl);
+                const tel = blok.phone ? guvenliBaglanti(`tel:${String(blok.phone).replace(/\s+/g, '')}`) : null;
+                if (maps || tel) {
+                    const satir = el('div', 'ag-loc-btns');
+                    if (maps) {
+                        const a = el('a', 'ag-card-action', 'Yol tarifi');
+                        a.href = maps; a.target = '_blank'; a.rel = 'noopener noreferrer';
+                        satir.appendChild(a);
+                    }
+                    if (tel) {
+                        const a = el('a', 'ag-card-action', 'Ara');
+                        a.href = tel;
+                        satir.appendChild(a);
+                    }
+                    kart.appendChild(satir);
+                }
+                return kart;
+            }
+
+            return null;
+        }
+
+        function kartlariCiz(richContent) {
+            if (!Array.isArray(richContent) || richContent.length === 0) return;
+            const sarmal = el('div', 'ag-cards');
+            richContent.forEach(blok => {
+                const dugum = kartBloguCiz(blok);
+                if (dugum) sarmal.appendChild(dugum);
+            });
+            if (!sarmal.childNodes.length) return;
+            messagesContainer.appendChild(sarmal);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function addMessage(text, type, messageId, richContent) {
             // Prevent duplicate messages
             if (messageId && seenMessageIds.has(messageId)) return;
             if (messageId) seenMessageIds.add(messageId);
 
             const cleanText = (text || '').replace(/\[HANDOFF\]/gi, '').trim();
-            if (!cleanText) return;
-
-            const msg = document.createElement('div');
-            msg.className = `ag-message ${type}`;
-            msg.innerText = cleanText;
-            messagesContainer.appendChild(msg);
+            if (cleanText) {
+                const msg = document.createElement('div');
+                msg.className = `ag-message ${type}`;
+                msg.innerText = cleanText;
+                messagesContainer.appendChild(msg);
+            }
+            kartlariCiz(richContent);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
@@ -856,7 +1111,7 @@
                 if (data.messages && data.messages.length > 0) {
                     for (const msg of data.messages) {
                         if (!seenMessageIds.has(msg.id)) {
-                            addMessage(msg.content, 'bot', msg.id);
+                            addMessage(msg.content, 'bot', msg.id, msg.richContent);
                             // Use the message's server-side createdAt as the new poll anchor
                             lastPollTime = msg.createdAt;
                         }
@@ -875,8 +1130,16 @@
         async function sendMessage() {
             const text = input.value.trim();
             if (!text) return;
-
             input.value = '';
+            await gonderMetin(text);
+        }
+
+        // Kart ve çip tıklamaları da buradan geçer: müşteri yazmış gibi
+        // davranır, böylece sunucu tarafında tek bir akış kalır.
+        async function gonderMetin(text) {
+            text = (text || '').trim();
+            if (!text) return;
+
             addMessage(text, 'user', null);
 
             typingIndicator.style.display = 'block';
@@ -918,7 +1181,7 @@
                 if (data.reply) {
                     console.log('[Widget] Bot reply received, showing message');
                     // addMessage internally tracks the ID to prevent polling duplicates
-                    addMessage(data.reply, 'bot', data.botMessageId || null);
+                    addMessage(data.reply, 'bot', data.botMessageId || null, data.richContent);
                     // Do NOT update lastPollTime here — keep it at pollAnchor
                     // so polling still catches any messages we might have missed
                 } else if (!handoffShown) {

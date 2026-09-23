@@ -71,6 +71,11 @@ export default function FirmSettings() {
     const [branchModalOpen, setBranchModalOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState(null);
     const [branchName, setBranchName] = useState('');
+    // Adres / telefon / harita: şemada vardı ama hiçbir ekran yazmıyordu.
+    // Bot "nerede" sorusuna bu yüzden cevap veremiyordu.
+    const [branchAddress, setBranchAddress] = useState('');
+    const [branchPhone, setBranchPhone] = useState('');
+    const [branchMapsUrl, setBranchMapsUrl] = useState('');
 
     // Doctor Modal State
     const [doctorModalOpen, setDoctorModalOpen] = useState(false);
@@ -191,12 +196,18 @@ export default function FirmSettings() {
     const openCreateBranchModal = () => {
         setEditingBranch(null);
         setBranchName('');
+        setBranchAddress('');
+        setBranchPhone('');
+        setBranchMapsUrl('');
         setBranchModalOpen(true);
     };
 
     const openEditBranchModal = (branch) => {
         setEditingBranch(branch);
         setBranchName(branch.name);
+        setBranchAddress(branch.address || '');
+        setBranchPhone(branch.phone || '');
+        setBranchMapsUrl(branch.googleMapsUrl || '');
         setBranchModalOpen(true);
     };
 
@@ -204,12 +215,19 @@ export default function FirmSettings() {
         e.preventDefault();
         if (!branchName.trim()) return;
 
+        const govde = {
+            name: branchName.trim(),
+            address: branchAddress.trim(),
+            phone: branchPhone.trim(),
+            googleMapsUrl: branchMapsUrl.trim()
+        };
+
         try {
             if (editingBranch) {
-                await appointmentConfigAPI.updateBranch(currentWorkspace.id, editingBranch.id, { name: branchName.trim() });
+                await appointmentConfigAPI.updateBranch(currentWorkspace.id, editingBranch.id, govde);
                 showToast('Branş güncellendi.');
             } else {
-                await appointmentConfigAPI.createBranch(currentWorkspace.id, { name: branchName.trim() });
+                await appointmentConfigAPI.createBranch(currentWorkspace.id, govde);
                 showToast('Yeni branş oluşturuldu.');
             }
             setBranchModalOpen(false);
@@ -1209,6 +1227,41 @@ export default function FirmSettings() {
                                         required
                                         autoFocus
                                     />
+                                </div>
+                                {/* Konum bilgisi: bot müşteriye adres ve yol tarifi
+                                    verebilsin diye. Boş bırakılabilir. */}
+                                <div className="fs-field">
+                                    <label>Adres</label>
+                                    <input
+                                        type="text"
+                                        className="fs-input"
+                                        placeholder="Örn: Atatürk Cad. No:12, Bornova / İzmir"
+                                        value={branchAddress}
+                                        onChange={e => setBranchAddress(e.target.value)}
+                                    />
+                                </div>
+                                <div className="fs-field">
+                                    <label>Telefon</label>
+                                    <input
+                                        type="tel"
+                                        className="fs-input"
+                                        placeholder="Örn: 0232 000 00 00"
+                                        value={branchPhone}
+                                        onChange={e => setBranchPhone(e.target.value)}
+                                    />
+                                </div>
+                                <div className="fs-field">
+                                    <label>Google Maps Linki</label>
+                                    <input
+                                        type="url"
+                                        className="fs-input"
+                                        placeholder="https://maps.app.goo.gl/..."
+                                        value={branchMapsUrl}
+                                        onChange={e => setBranchMapsUrl(e.target.value)}
+                                    />
+                                    <small style={{ display: 'block', marginTop: 4, fontSize: '0.72rem', color: '#64748b' }}>
+                                        Girilirse web widget'ta "Yol tarifi" düğmesi çıkar.
+                                    </small>
                                 </div>
                             </div>
                             <div className="fs-modal-foot">

@@ -199,7 +199,7 @@ export const getBranches = async (req, res) => {
 export const createBranch = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, defaultTeamId, defaultFunnelId } = req.body;
+        const { name, defaultTeamId, defaultFunnelId, address, phone, googleMapsUrl } = req.body;
 
         if (!name) {
             return res.status(400).json({ error: 'Branş adı gereklidir' });
@@ -216,7 +216,13 @@ export const createBranch = async (req, res) => {
                 name,
                 order: (maxOrder._max.order || 0) + 1,
                 defaultTeamId: defaultTeamId || null,
-                defaultFunnelId: defaultFunnelId || null
+                defaultFunnelId: defaultFunnelId || null,
+                // Adres, telefon ve harita linki şemada vardı ama hiçbir uç
+                // bunları yazmıyordu; 33 şubenin 32'sinde adres boştu ve bot
+                // "nerede" sorusuna cevap veremiyordu.
+                address: address || null,
+                phone: phone || null,
+                googleMapsUrl: googleMapsUrl || null
             },
             include: { doctors: true }
         });
@@ -231,7 +237,7 @@ export const createBranch = async (req, res) => {
 export const updateBranch = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, isActive, order, defaultTeamId, defaultFunnelId } = req.body;
+        const { name, isActive, order, defaultTeamId, defaultFunnelId, address, phone, googleMapsUrl } = req.body;
 
         const existing = await prisma.appointmentBranch.findFirst({ where: { id, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Branş bulunamadı' });
@@ -242,6 +248,9 @@ export const updateBranch = async (req, res) => {
         if (order !== undefined) updateData.order = order;
         if (defaultTeamId !== undefined) updateData.defaultTeamId = defaultTeamId || null;
         if (defaultFunnelId !== undefined) updateData.defaultFunnelId = defaultFunnelId || null;
+        if (address !== undefined) updateData.address = address || null;
+        if (phone !== undefined) updateData.phone = phone || null;
+        if (googleMapsUrl !== undefined) updateData.googleMapsUrl = googleMapsUrl || null;
 
         const branch = await prisma.appointmentBranch.update({
             where: { id },

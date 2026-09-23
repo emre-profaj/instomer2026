@@ -285,7 +285,10 @@ export const uploadFile = async (req, res) => {
                 content: content.substring(0, 100000), // Limit content size
                 sourceType: 'FILE',
                 filename: file.originalname,
-                fileType: fileType
+                fileType: fileType,
+                // Servis edilen yol. Dosya diskte rastgele bir adla duruyor;
+                // bu alan olmadan sonradan bulunup müşteriye gönderilemiyordu.
+                fileUrl: `/uploads/knowledge/${path.basename(file.path)}`
             }
         });
 

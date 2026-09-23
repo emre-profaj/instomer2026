@@ -746,6 +746,14 @@ export const woocommerceAPI = {
     pullAll: (workspaceId) => api.post(`/workspaces/${workspaceId}/woocommerce/sync/pull`)
 };
 
+// Ürün feed'i (Google Merchant Center / Google Shopping XML)
+export const productFeedAPI = {
+    getConfig: (workspaceId) => api.get(`/workspaces/${workspaceId}/product-feed/config`),
+    saveConfig: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/product-feed/config`, data),
+    test: (workspaceId, feedUrl) => api.post(`/workspaces/${workspaceId}/product-feed/test`, { feedUrl }),
+    sync: (workspaceId, feedUrl) => api.post(`/workspaces/${workspaceId}/product-feed/sync`, feedUrl ? { feedUrl } : {})
+};
+
 // Notification API
 export const notificationAPI = {
     getAll: (workspaceId, limit = 50, offset = 0) => api.get(`/notifications/${workspaceId}?limit=${limit}&offset=${offset}`),

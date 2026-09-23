@@ -178,6 +178,7 @@ export const getWidgetMessages = async (req, res) => {
                 content: true,
                 createdAt: true,
                 isFromContact: true,
+                richContent: true,
                 sender: {
                     select: { name: true }
                 }
@@ -507,12 +508,28 @@ export const handleWidgetChat = async (req, res) => {
                 return res.json({ reply: null, conversationId: conversation.id, serverTime: pollAnchor });
             }
 
+            // Kartlar: ürün, hızlı yanıt, link, dosya, konum.
+            // Modelden ayrıştırılmıyor; catalogFlow adımından ve
+            // veritabanından üretiliyor (widgetRichContent.service.js).
+            let richContent = null;
+            try {
+                const { buildWidgetRichContent } = await import('../services/widgetRichContent.service.js');
+                richContent = await buildWidgetRichContent(workspaceId, {
+                    conversationId: conversation.id,
+                    userMessage: message,
+                    aiText: cleanAiResponse
+                });
+            } catch (kartErr) {
+                console.error('[Widget] Kart üretilemedi:', kartErr.message);
+            }
+
             // Save AI Message
             const botMessage = await prisma.message.create({
                 data: {
                     content: cleanAiResponse,
                     conversationId: conversation.id,
-                    isFromContact: false
+                    isFromContact: false,
+                    ...(richContent ? { richContent } : {})
                 }
             });
 
@@ -533,7 +550,13 @@ export const handleWidgetChat = async (req, res) => {
                 console.error('❌ [Widget] Bot message socket emit error:', socketError);
             }
 
-            return res.json({ reply: cleanAiResponse, conversationId: conversation.id, botMessageId: botMessage.id, serverTime: pollAnchor });
+            return res.json({
+                reply: cleanAiResponse,
+                richContent: richContent || null,
+                conversationId: conversation.id,
+                botMessageId: botMessage.id,
+                serverTime: pollAnchor
+            });
         }
 
         res.json({ reply: null, conversationId: conversation.id, serverTime: pollAnchor });
