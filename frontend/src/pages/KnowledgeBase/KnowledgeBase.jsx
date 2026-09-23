@@ -1138,76 +1138,35 @@ const KnowledgeBase = ({ hideSidebar = false }) => {
                         </div>
                     </div>
 
-                    {/* ── 2. İLETİŞİM ── */}
+                    {/* ── 2. İLETİŞİM — Şubelerden otomatik alınır ── */}
                     <div className="cb-sec" id="cb-iletisim">
                         <div className="cb-sec-head">
                             <div className="cb-sec-t">
                                 <div className="cb-sec-ico"><Phone size={16} /></div>
                                 <div>
-                                    <div className="cb-sec-name">İletişim</div>
-                                    <div className="cb-sec-desc">Müşteriye verilebilecek iletişim bilgileri ve konum</div>
+                                    <div className="cb-sec-name">İletişim Bilgileri</div>
+                                    <div className="cb-sec-desc">Telefon, adres ve konum bilgileri şubelerinizden otomatik alınır</div>
                                 </div>
                             </div>
                         </div>
                         <div className="cb-sec-body">
-                            <div className="cb-grid" style={{ marginBottom: '16px' }}>
-                                <div className="cb-f">
-                                    <label>Telefon</label>
-                                    <input
-                                        type="tel"
-                                        className="cb-in"
-                                        placeholder="+90 212 123 45 67"
-                                        value={companyInfo.phone}
-                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, phone: e.target.value }))}
-                                    />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', background: '#f0f9ff', borderRadius: 10, border: '1px solid #bae6fd' }}>
+                                <Building2 size={20} style={{ color: '#0284c7', flexShrink: 0 }} />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0c4a6e', marginBottom: 2 }}>
+                                        İletişim bilgileri Firma Bilgileri → Şubeler'den yönetilir
+                                    </div>
+                                    <div style={{ fontSize: 12, color: '#0369a1' }}>
+                                        Merkez şubenizin telefon, adres ve Google Maps bilgileri AI asistana otomatik aktarılır.
+                                    </div>
                                 </div>
-                                <div className="cb-f">
-                                    <label>E-posta</label>
-                                    <input
-                                        type="email"
-                                        className="cb-in"
-                                        placeholder="info@ornek.com"
-                                        value={companyInfo.email}
-                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
-                                    />
-                                </div>
-                                <div className="cb-f">
-                                    <label>Website</label>
-                                    <input
-                                        type="url"
-                                        className="cb-in"
-                                        placeholder="https://www.ornek.com"
-                                        value={companyInfo.website}
-                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, website: e.target.value }))}
-                                    />
-                                </div>
-                            </div>
-                            <div className="cb-grid one" style={{ gap: '16px' }}>
-                                <div className="cb-f">
-                                    <label>Adres</label>
-                                    <input
-                                        type="text"
-                                        className="cb-in"
-                                        placeholder="Örn: Kadıköy, İstanbul, Türkiye"
-                                        value={companyInfo.address}
-                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, address: e.target.value }))}
-                                    />
-                                </div>
-                                <div className="cb-f">
-                                    <label>📍 Google Maps linki <span className="cb-hint">— yol tarifi istendiğinde paylaşılır</span></label>
-                                    <input
-                                        type="url"
-                                        className="cb-in"
-                                        placeholder="https://maps.google.com/..."
-                                        value={companyInfo.googleMapsUrl}
-                                        onChange={(e) => setCompanyInfo(prev => ({ ...prev, googleMapsUrl: e.target.value }))}
-                                    />
-                                    {companyInfo.googleMapsUrl && (
-                                        <a className="cb-link" href={companyInfo.googleMapsUrl} target="_blank" rel="noopener noreferrer">
-                                            🔗 Haritada görüntüle
-                                        </a>
-                                    )}
-                                </div>
+                                <button
+                                    onClick={() => navigate('/base')}
+                                    className="cb-btn-outline"
+                                    style={{ fontSize: 12, padding: '6px 14px', whiteSpace: 'nowrap' }}
+                                >
+                                    Şubeleri Düzenle →
+                                </button>
                             </div>
                         </div>
                     </div>
