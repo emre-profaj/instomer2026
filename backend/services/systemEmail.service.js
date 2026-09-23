@@ -89,7 +89,13 @@ export const sendSystemEmail = async (to, subject, body, options = {}) => {
     }
 
     const cfg = await getSystemEmailConfig();
-    const fromAddress = cfg?.from;
+    // "Görünen gönderici" alanına yalnızca isim yazılabiliyor ("Instomer
+    // Bildirim"). İçinde adres yoksa geçerli bir From başlığı olmaz;
+    // sunucular ya reddeder ya sessizce kendi adresiyle değiştirir.
+    let fromAddress = cfg?.from || cfg?.user;
+    if (fromAddress && !fromAddress.includes('@')) {
+        fromAddress = `"${fromAddress.replace(/"/g, '')}" <${cfg.user}>`;
+    }
     const recipients = Array.isArray(to) ? to.join(', ') : to;
 
     const mailOptions = {
@@ -102,7 +108,13 @@ export const sendSystemEmail = async (to, subject, body, options = {}) => {
 
     try {
         const result = await transporter.sendMail(mailOptions);
-        console.log(`📧 [SystemEmail] Sent to ${recipients}: ${subject}`);
+        // Sunucunun yanıtını da yazıyoruz: "gönderildi" demek yetmiyor,
+        // kabul edilen/reddedilen alıcıyı ve SMTP cevabını görmek gerekiyor.
+        console.log(
+            `📧 [SystemEmail] ${subject} | kabul: ${(result.accepted || []).join(', ') || '-'}`
+            + ` | ret: ${(result.rejected || []).join(', ') || '-'}`
+            + ` | sunucu: ${result.response || '-'}`
+        );
         return result;
     } catch (error) {
         console.error('❌ [SystemEmail] Send error:', error);

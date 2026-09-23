@@ -16,11 +16,41 @@ const AdminSettings = () => {
     // Facebook Health Check
     const [checkingHealth, setCheckingHealth] = useState(false);
     // Sistem e-postası: .env'e dokunmadan panelden girilebilsin diye
-    const [mail, setMail] = useState({ host: 'smtp.gmail.com', port: 587, user: '', from: '', pass: '' });
+    const [mail, setMail] = useState({ host: 'smtp-relay.brevo.com', port: 587, user: '', from: '', pass: '' });
+    const [saglayici, setSaglayici] = useState('brevo');
     const [mailDurum, setMailDurum] = useState(null);
     const [mailKaydediliyor, setMailKaydediliyor] = useState(false);
     const [testAdresi, setTestAdresi] = useState('');
     const [testGonderiliyor, setTestGonderiliyor] = useState(false);
+
+    // Hazır sağlayıcılar. Alanlar yine elle düzenlenebilir; bunlar sadece
+    // doğru sunucu/portu bir tıkla dolduruyor.
+    const SAGLAYICILAR = {
+        brevo: {
+            ad: 'Brevo',
+            host: 'smtp-relay.brevo.com',
+            port: 587,
+            ipucu: 'Brevo panelinde SMTP & API → SMTP sekmesindeki giriş adını ve ürettiğiniz SMTP anahtarını kullanın. Hesap şifreniz değil.'
+        },
+        google: {
+            ad: 'Google Workspace',
+            host: 'smtp.gmail.com',
+            port: 587,
+            ipucu: 'Gerçek bir kullanıcı hesabı gerekir; takma ad (alias) ile giriş yapılamaz. 2 adımlı doğrulamayı açıp Uygulama Şifresi üretin.'
+        },
+        ozel: {
+            ad: 'Özel SMTP',
+            host: '',
+            port: 465,
+            ipucu: 'Hosting panelinizdeki giden sunucu bilgileri (ör. mail.instomer.com, port 465) ve o posta kutusunun şifresi.'
+        }
+    };
+
+    const saglayiciSec = (anahtar) => {
+        setSaglayici(anahtar);
+        const p = SAGLAYICILAR[anahtar];
+        setMail(m => ({ ...m, host: p.host || m.host, port: p.port }));
+    };
     const [healthResults, setHealthResults] = useState(null);
 
     useEffect(() => {
@@ -41,6 +71,10 @@ const AdminSettings = () => {
                 from: ayar?.systemEmailFrom || '',
                 pass: ''
             }));
+            const h = (ayar?.systemEmailHost || '').toLowerCase();
+            if (h.includes('brevo') || h.includes('sendinblue')) setSaglayici('brevo');
+            else if (h.includes('gmail') || h.includes('google')) setSaglayici('google');
+            else if (h) setSaglayici('ozel');
             adminAPI.checkSystemEmail().then(r => setMailDurum(r.data)).catch(() => {});
         } catch (error) {
             console.error('Global settings error:', error);
@@ -183,7 +217,29 @@ const AdminSettings = () => {
                     )}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12, marginTop: 18 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
+                    {Object.entries(SAGLAYICILAR).map(([anahtar, p]) => (
+                        <button
+                            key={anahtar}
+                            type="button"
+                            onClick={() => saglayiciSec(anahtar)}
+                            style={{
+                                padding: '9px 16px', borderRadius: 999, cursor: 'pointer',
+                                fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+                                border: `1px solid ${saglayici === anahtar ? '#0f172a' : '#e2e8f0'}`,
+                                background: saglayici === anahtar ? '#0f172a' : '#ffffff',
+                                color: saglayici === anahtar ? '#ffffff' : '#334155'
+                            }}
+                        >
+                            {p.ad}
+                        </button>
+                    ))}
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>
+                    {SAGLAYICILAR[saglayici]?.ipucu}
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12, marginTop: 14 }}>
                     <div>
                         <label htmlFor="m-host" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>SMTP Sunucusu</label>
                         <input id="m-host" className="settings-input" placeholder="smtp.gmail.com"
@@ -197,8 +253,11 @@ const AdminSettings = () => {
                 </div>
 
                 <div style={{ marginTop: 12 }}>
-                    <label htmlFor="m-user" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Kullanıcı (e-posta)</label>
-                    <input id="m-user" className="settings-input" placeholder="bildirim@instomer.com"
+                    <label htmlFor="m-user" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                        {saglayici === 'brevo' ? 'Brevo SMTP giriş adı' : 'Kullanıcı (e-posta)'}
+                    </label>
+                    <input id="m-user" className="settings-input"
+                        placeholder={saglayici === 'brevo' ? '8xxxxx@smtp-brevo.com' : 'bildirim@instomer.com'}
                         value={mail.user} onChange={e => setMail({ ...mail, user: e.target.value })} />
                 </div>
 
@@ -210,15 +269,21 @@ const AdminSettings = () => {
                         placeholder={globalSettings?.hasSystemEmailPass ? '••••••••••••' : 'Uygulama şifresi'}
                         value={mail.pass} onChange={e => setMail({ ...mail, pass: e.target.value })} />
                     <small style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                        Google Workspace kullanıyorsanız hesabın normal şifresi çalışmaz; 2 adımlı doğrulamayı açıp
-                        <strong> Uygulama Şifresi</strong> üretin. Şifre şifrelenerek saklanır ve bir daha ekranda gösterilmez.
+                        {saglayici === 'brevo'
+                            ? 'Brevo panelinde ürettiğiniz SMTP anahtarı. '
+                            : ''}
+                        Şifre şifrelenerek saklanır ve bir daha ekranda gösterilmez.
                     </small>
                 </div>
 
                 <div style={{ marginTop: 12 }}>
                     <label htmlFor="m-from" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Görünen gönderici <span style={{ fontWeight: 400, color: '#64748b' }}>(opsiyonel)</span></label>
-                    <input id="m-from" className="settings-input" placeholder="Instomer &lt;bildirim@instomer.com&gt;"
+                    <input id="m-from" className="settings-input" placeholder="Instomer Bildirim &lt;bildirim@instomer.com&gt;"
                         value={mail.from} onChange={e => setMail({ ...mail, from: e.target.value })} />
+                    <small style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                        İçinde e-posta adresi olmalı. Yalnızca isim yazarsanız giriş yapılan adresle tamamlanır.
+                        {saglayici === 'brevo' && ' Brevo\'da bu adresin gönderen olarak doğrulanmış olması gerekir.'}
+                    </small>
                 </div>
 
                 <button className="btn-premium red" onClick={mailKaydet} disabled={mailKaydediliyor || !mail.host || !mail.user}
