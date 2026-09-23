@@ -234,6 +234,12 @@ model Workspace {
   // yetkiliye aktarılır (bkz. baseKnowledge.service.js).
   catalogPriceDisclosure Boolean  @default(false)
 
+  // Sınıflandırma Pipeline Sırası — bot ve formlar bu sırada bilgi toplar.
+  // null = otomatik varsayılan: ["branch", "category", "product"]
+  // JSON array: ["branch", "category", "product"] (sıra değiştirilebilir, eleman çıkarılabilir)
+  // 0 kayıt olan adımlar otomatik atlanır, 1 kayıt olan otomatik atanır.
+  classificationOrder    Json?
+
   // Disao CRM
   disaoCrmEnabled  Boolean @default(false)
   disaoCrmSettings Json?
@@ -882,6 +888,8 @@ model Team {
   triggerOnEmail        Boolean @default(false)
   triggerOnAppointment  Boolean @default(false)
   triggerTimeoutMinutes Int? // null = süre yok
+  // Temsilci başına maksimum açık konuşma kapasitesi (X sınırı). null = sınırsız.
+  maxOpenConversations  Int?
 
   // AI Devralma Ayarları (takım seviyesi — workspace'i override eder)
   aiFallbackEnabled      Boolean? // null = workspace ayarını kullan, true/false = override
@@ -1734,6 +1742,10 @@ model FunnelStage {
   // YENİ: Aşama bazlı AI davranışı
   aiGoal             String? @db.Text // "Bu aşamada müşteriyi randevuya yönlendir"
   aiInstruction      String? @db.Text // "Müşteriyle görüşme saati belirle, telefon numarası al"
+  // Bot'un bu aşamada müşteriden toplaması gereken bilgiler.
+  // JSON: { fields: [{ key, label, type, required, prompt }], onComplete: "advance_stage"|"notify_team"|"mark_qualified" }
+  // key örnekleri: phone, name, email, company, budget, preferredCallTime, appointmentDate, orderNumber, custom_*
+  collectFields      String? @db.Text
   transitionCriteria String? @db.Text // JSON: { conditions: [{ field: "phone", op: "exists" }], autoTransition: true }
 
   // Bağlı otomasyon kuralları (Otomasyonlar sayfasından)

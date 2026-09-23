@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, CalendarDays, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles, UserCog } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, CalendarDays, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch, Bell, BookOpen, Sparkles, UserCog, Target } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -77,6 +77,7 @@ const Sidebar = () => {
         { path: '/general-report', icon: BarChart3, label: 'Genel Rapor' },
         { path: '/general-report/sales', icon: ShoppingCart, label: 'Satışlar' },
         { path: '/general-report/requests', icon: ClipboardList, label: 'Talep Raporu' },
+        { path: '/general-report/attribution', icon: Target, label: 'Kaynak Raporu' },
         { path: '/general-report/team', icon: Users, label: 'Takım ve Temsilciler' },
         { path: '/general-report/activities', icon: Activity, label: 'Aktivite Raporu' },
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },

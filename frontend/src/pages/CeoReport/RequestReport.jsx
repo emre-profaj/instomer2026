@@ -33,6 +33,15 @@ const money = (n) => Number(n || 0).toLocaleString('tr-TR', { style: 'currency',
 
 const sum = (arr, f) => arr.reduce((s, x) => s + (f(x) || 0), 0);
 
+const CHANNEL_ICONS = {
+    'WHATSAPP': '💬',
+    'PHONE': '📞',
+    'INSTAGRAM': '📸',
+    'FACEBOOK': '💬',
+    'FORM': '📝',
+    'EMAIL': '📧'
+};
+
 const Metric = ({ v, k, isMoney }) => (
     <div className="ra-metric">
         <div className={`v${v ? (isMoney ? ' money' : '') : ' zero'}`}>{v ? (isMoney ? money(v) : tr(v)) : '—'}</div>
@@ -376,8 +385,14 @@ const RequestReport = () => {
                                                     <span style={{ textAlign: 'right' }}>Ciro</span>
                                                 </div>
                                                 {srcs.map(s => (
-                                                    <div className="ra-srow" key={s.name}>
-                                                        <span className="t">{s.name}</span>
+                                                    <div className="ra-srow" key={s.name} style={{ height: 'auto', padding: '8px 12px' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }} className="t">
+                                                            <div>
+                                                                {CHANNEL_ICONS[s.caseChannel] ? `${CHANNEL_ICONS[s.caseChannel]} ` : ''}{s.name}
+                                                            </div>
+                                                            {s.campaignName && <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.1 }}>K: {s.campaignName}</div>}
+                                                            {s.adName && <div style={{ fontSize: '0.7rem', color: '#94a3b8', lineHeight: 1.1 }}>R: {s.adName}</div>}
+                                                        </div>
                                                         <SubCell v={s.count} /><SubCell v={s.wonCount} /><SubCell v={s.wonAmount} isMoney />
                                                     </div>
                                                 ))}
@@ -448,7 +463,14 @@ const RequestReport = () => {
                         <>
                             {sources.map(g => (
                                 <div className="ra-brow" key={g.name}>
-                                    <span /><div><div className="nm">{g.name}</div></div>
+                                    <span />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start', justifyContent: 'center' }}>
+                                        <div className="nm">
+                                            {CHANNEL_ICONS[g.caseChannel] ? `${CHANNEL_ICONS[g.caseChannel]} ` : ''}{g.name}
+                                        </div>
+                                        {g.campaignName && <div className="sub" style={{ fontSize: '0.75rem', color: '#64748b' }}>Kampanya: {g.campaignName}</div>}
+                                        {g.adName && <div className="sub" style={{ fontSize: '0.75rem', color: '#64748b' }}>Reklam: {g.adName}</div>}
+                                    </div>
                                     <div className="ra-primary">
                                         <div className="top"><span className="v">{tr(g.count)}</span><span className="u">talep</span></div>
                                         <div className="bar"><i style={{ width: `${(g.count / sourceMax) * 100}%` }} /></div>

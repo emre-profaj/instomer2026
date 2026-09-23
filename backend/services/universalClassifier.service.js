@@ -1247,6 +1247,92 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             console.warn(`⚠️ [Classifier] createIntentActivity hatası:`, intentErr.message);
         }
 
+        // --- Aşama bazlı veri toplama — collectFields kontrol ve otomatik ilerleme ---
+        try {
+            const conv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { funnelStageId: true, contactId: true }
+            });
+            if (conv?.funnelStageId) {
+                const stage = await prisma.funnelStage.findUnique({
+                    where: { id: conv.funnelStageId },
+                    select: { collectFields: true, funnelId: true, order: true }
+                });
+                if (stage?.collectFields) {
+                    let config;
+                    try { config = JSON.parse(stage.collectFields); } catch { config = null; }
+                    if (config?.fields?.length > 0) {
+                        // Toplanan verileri birleştir
+                        const contact = conv.contactId ? await prisma.contact.findUnique({
+                            where: { id: conv.contactId },
+                            select: { name: true, phone: true, email: true, companyName: true }
+                        }) : null;
+
+                        const collected = {
+                            ...(extractedData || {}),
+                            ...(contact?.phone && { phone: contact.phone }),
+                            ...(contact?.name && contact.name !== 'Instagram Kullanıcısı' && contact.name !== 'Web Kullanıcısı' && { name: contact.name }),
+                            ...(contact?.email && { email: contact.email }),
+                            ...(contact?.companyName && { company: contact.companyName }),
+                        };
+
+                        // Zorunlu alan kontrolü
+                        const requiredFields = config.fields.filter(f => f.required);
+                        const allRequiredFilled = requiredFields.every(f => {
+                            const val = collected[f.key];
+                            return val !== null && val !== undefined && val !== '';
+                        });
+
+                        if (allRequiredFilled && requiredFields.length > 0) {
+                            console.log(`✅ [Classifier] Aşama collectFields tamamlandı: ${requiredFields.map(f => f.key).join(', ')}`);
+
+                            const onComplete = config.onComplete || 'advance_stage';
+
+                            if (onComplete === 'advance_stage') {
+                                // Sonraki aşamayı bul ve ilerlet
+                                const nextStage = await prisma.funnelStage.findFirst({
+                                    where: { funnelId: stage.funnelId, order: { gt: stage.order } },
+                                    orderBy: { order: 'asc' },
+                                    select: { id: true, name: true }
+                                });
+                                if (nextStage) {
+                                    await prisma.conversation.update({
+                                        where: { id: conversationId },
+                                        data: { funnelStageId: nextStage.id }
+                                    });
+                                    console.log(`🔄 [Classifier] Aşama ilerledi: → ${nextStage.name}`);
+                                    try {
+                                        emitToWorkspace(workspaceId, 'conversation_stage_advanced', {
+                                            conversationId,
+                                            newStageId: nextStage.id,
+                                            newStageName: nextStage.name,
+                                            reason: 'collectFields_complete'
+                                        });
+                                    } catch { }
+                                }
+                            } else if (onComplete === 'notify_team') {
+                                try {
+                                    emitToWorkspace(workspaceId, 'collect_fields_complete', {
+                                        conversationId,
+                                        collectedFields: collected,
+                                        reason: 'notify_team'
+                                    });
+                                } catch { }
+                            } else if (onComplete === 'mark_qualified') {
+                                await prisma.conversation.update({
+                                    where: { id: conversationId },
+                                    data: { isQualifiedLead: true }
+                                });
+                                console.log(`🔥 [Classifier] Sıcak lead işaretlendi (collectFields complete)`);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (cfErr) {
+            console.warn(`⚠️ [Classifier] collectFields kontrol hatası:`, cfErr.message);
+        }
+
         console.log(`✅ [Classifier] Aksiyon tamamlandı: ${classification} | Lead: ${isQualifiedLead} | Funnel: ${targetFunnelId || 'N/A'}`);
     } catch (error) {
         console.error('❌ [Classifier] Aksiyon hatası:', error.message);

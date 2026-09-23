@@ -501,8 +501,8 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
         { key: 'routing', icon: <GitBranch size={17} />, label: 'Yönlendirme', hint: routingConfig.routingEnabled ? 'Açık' : 'Kapalı' },
         { key: 'knowledge', icon: <BookOpen size={17} />, label: 'Bilgi bankası', hint: 'PDF ve DOCX' }
     ];
-    if (bot.botType === 'APPOINTMENT') {
-        navItems.push({ key: 'appointment', icon: <Calendar size={17} />, label: 'Randevu ayarları', hint: 'Bölüm ve uzmanlar' });
+    if (appointmentMode) {
+        navItems.push({ key: 'appointment', icon: <Calendar size={17} />, label: 'Randevu ayarları', hint: appointmentMode === 'AUTO' ? 'Otomatik randevu' : 'Talep toplama' });
     }
 
     return (

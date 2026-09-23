@@ -1072,7 +1072,7 @@ export const getCatalogFlowSettings = async (req, res) => {
 export const updateCatalogFlowSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { catalogFlowEnabled, catalogPriceDisclosure, botId } = req.body;
+        const { catalogFlowEnabled, catalogPriceDisclosure, botId, classificationOrder } = req.body;
 
         const data = {};
         if (catalogFlowEnabled !== undefined) {
@@ -1086,6 +1086,20 @@ export const updateCatalogFlowSettings = async (req, res) => {
                 return res.status(400).json({ error: 'catalogPriceDisclosure boolean veya null olmalıdır.' });
             }
             data.catalogPriceDisclosure = catalogPriceDisclosure;
+        }
+        if (classificationOrder !== undefined) {
+            // null = varsayılan sıraya dön, array = özel sıra
+            if (classificationOrder !== null) {
+                if (!Array.isArray(classificationOrder)) {
+                    return res.status(400).json({ error: 'classificationOrder bir dizi olmalıdır (ör. ["branch","category","product"]).' });
+                }
+                const validKeys = ['branch', 'category', 'product'];
+                const invalid = classificationOrder.filter(k => !validKeys.includes(k));
+                if (invalid.length > 0) {
+                    return res.status(400).json({ error: `Geçersiz sınıflandırma adımı: ${invalid.join(', ')}. Geçerli: ${validKeys.join(', ')}` });
+                }
+            }
+            data.classificationOrder = classificationOrder;
         }
         if (Object.keys(data).length === 0) {
             return res.status(400).json({ error: 'Güncellenecek alan bulunamadı.' });

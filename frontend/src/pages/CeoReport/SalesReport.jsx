@@ -40,6 +40,15 @@ const shortDate = (s) => {
 };
 const SRC_COLORS = ['#ef4444', '#f59e0b', '#6366f1', '#a78bfa', '#cbd5e1'];
 
+const CHANNEL_ICONS = {
+    'WHATSAPP': '💬',
+    'PHONE': '📞',
+    'INSTAGRAM': '📸',
+    'FACEBOOK': '💬',
+    'FORM': '📝',
+    'EMAIL': '📧'
+};
+
 const SaleLines = ({ list }) => (
     list.length === 0 ? null : (
         <div className="ra-sales">
@@ -47,7 +56,20 @@ const SaleLines = ({ list }) => (
                 <div className="ra-sale" key={s.id}>
                     <span className="who" title={s.contactName}>{s.contactName}</span>
                     <span className="ttl" title={s.title}>{s.title}</span>
-                    <span className="src">{s.source || '—'}</span>
+                    <span className="src" style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+                        <div>
+                            {CHANNEL_ICONS[s.caseChannel] ? `${CHANNEL_ICONS[s.caseChannel]} ` : ''}
+                            {s.source || '—'}
+                        </div>
+                        {s.campaignName && (
+                            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{s.campaignName}</div>
+                        )}
+                        {s.contactFirstSource && (
+                            <div style={{ fontSize: '0.7rem', color: '#cbd5e1', background: '#f8fafc', padding: '2px 4px', borderRadius: 4 }}>
+                                İlk: {s.contactFirstSource}
+                            </div>
+                        )}
+                    </span>
                     <span className="amt">{money(s.amount)}</span>
                     <span className="dt">{shortDate(s.createdAt)}</span>
                 </div>
@@ -87,6 +109,8 @@ const Drill = ({ axis, id, title, meta, groups, max, fallbackColor, subKey, subL
                             <div>
                                 <div className="nm">{g.icon ? `${g.icon} ` : ''}{g.name}</div>
                                 {subs.length > 0 && <div className="sub">{tr(subs.length)} {subLabel}</div>}
+                                {axis === 'source' && g.campaignName && <div className="sub" style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>Kampanya: {g.campaignName}</div>}
+                                {axis === 'source' && g.adName && <div className="sub" style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>Reklam: {g.adName}</div>}
                             </div>
                             <div className="ra-primary">
                                 <div className="top"><span className="v">{money(g.amount)}</span><span className="u">ciro</span></div>
@@ -327,7 +351,7 @@ const SalesReport = () => {
                         <>
                             <div className="ra-slist head">
                                 <span>#</span><span>Müşteri</span><span>Kategori</span><span>Temsilci</span>
-                                <span>Başlık</span><span>Kaynak</span>
+                                <span>Başlık</span><span>Kanal</span><span>Kaynak</span>
                                 <span style={{ textAlign: 'right' }}>Tutar</span><span style={{ textAlign: 'right' }}>Tarih</span>
                             </div>
                             {salesList.map((s, i) => (
@@ -347,8 +371,19 @@ const SalesReport = () => {
                                     </span>
                                     <span className="cell">{s.agentName || '—'}</span>
                                     <span className="cell" title={s.title}>{s.title}</span>
-                                    <span className="cell">
+                                    <span className="cell" style={{ display: 'flex', alignItems: 'center' }} title={s.caseChannel}>
+                                        {CHANNEL_ICONS[s.caseChannel] || '—'}
+                                    </span>
+                                    <span className="cell" style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
                                         <span className="ra-tag" style={{ background: '#f8fafc', color: '#64748b' }}>{s.source || '—'}</span>
+                                        {s.campaignName && (
+                                            <div style={{ fontSize: '0.75rem', color: '#94a3b8', lineHeight: 1.1 }}>{s.campaignName}</div>
+                                        )}
+                                        {s.contactFirstSource && (
+                                            <div style={{ fontSize: '0.7rem', color: '#cbd5e1', background: '#f8fafc', padding: '2px 4px', borderRadius: 4, lineHeight: 1 }}>
+                                                İlk: {s.contactFirstSource}
+                                            </div>
+                                        )}
                                     </span>
                                     <span className="money">{money(s.amount)}</span>
                                     <span className="dt">{shortDate(s.createdAt)}</span>

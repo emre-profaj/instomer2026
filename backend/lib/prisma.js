@@ -28,8 +28,13 @@ const prisma = new PrismaClient({
 
 // Establish DB connection
 prisma.$connect()
-    .then(() => {
+    .then(async () => {
         console.log(`🗄️ [Database] PostgreSQL connected successfully [instance: ${process.env.NODE_APP_INSTANCE ?? 'default'}]`);
+        try {
+            await prisma.$executeRawUnsafe(`ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "maxOpenConversations" INTEGER;`);
+        } catch (e) {
+            console.warn('DB schema self-heal (teams.maxOpenConversations):', e.message);
+        }
     })
     .catch(err => {
         console.error('❌ [Database] PostgreSQL connection error:', err.message);

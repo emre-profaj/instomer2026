@@ -345,6 +345,7 @@ const CeoReport = () => {
 
     const DOORS = [
         { l: 'Talep Raporu', s: 'konu, temsilci, akış', to: '/general-report/requests' },
+        { l: 'Kaynak & Attribution', s: 'reklam, kampanya, ROI', to: '/general-report/attribution' },
         { l: 'Satış Raporu', s: 'kategori ve temsilci', to: '/general-report/sales' },
         { l: 'Takım ve Temsilciler', s: 'performans', to: '/general-report/team' },
         { l: 'Aktivite Raporu', s: 'dönem özeti', to: '/general-report/activities' },

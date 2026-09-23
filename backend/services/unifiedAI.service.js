@@ -92,7 +92,7 @@ export async function executeUnifiedAICall({
         // ── 1. Workspace ve bağlam bilgilerini yükle ──
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
-            select: { aiApiKey: true, aiModel: true, companyName: true, companyDescription: true, industry: true, company: { select: { aiModel: true } } }
+            select: { aiApiKey: true, aiModel: true, companyName: true, companyDescription: true, industry: true, classificationOrder: true, company: { select: { aiModel: true } } }
         });
 
         // Anahtar: çalışma alanının kendi anahtarı, yoksa global anahtar.
@@ -319,10 +319,69 @@ export async function executeUnifiedAICall({
         // ── 7b. Agent davranış blokları → otomatik prompt ──
         let behaviorContext = '';
         try {
-            const { buildBehaviorPrompt } = await import('./behaviorPrompt.service.js');
+            const { buildBehaviorPrompt, buildClassificationPipelineBlock, buildStageCollectPrompt } = await import('./behaviorPrompt.service.js');
+
+            // Sınıflandırma pipeline için ürün gruplarını yükle
+            let productGroups = [];
+            try {
+                productGroups = await prisma.product.findMany({
+                    where: { workspaceId, isActive: true, isGroup: true },
+                    select: { id: true, name: true }
+                });
+            } catch { }
+
+            // Konuşma bilgisini al (zaten bilinen şube/kategori)
+            let convData = {};
+            try {
+                const conv = conversationId ? await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { branchId: true, topicCategoryId: true, classificationData: true, funnelStageId: true }
+                }) : null;
+                convData = conv || {};
+            } catch { }
+
+            // Katman 1: Sınıflandırma Pipeline bloğu
+            const classificationPipeline = buildClassificationPipelineBlock({
+                branches: branchList || [],
+                categories: topicCategories || [],
+                products: productGroups,
+                classificationOrder: workspace?.classificationOrder || null,
+                conversation: { branchId: convData.branchId, topicCategoryId: convData.topicCategoryId }
+            });
+
+            // Katman 2: Aşama bazlı veri toplama bloğu
+            let stageCollectPrompt = null;
+            if (convData.funnelStageId) {
+                try {
+                    const stage = await prisma.funnelStage.findUnique({
+                        where: { id: convData.funnelStageId },
+                        select: { collectFields: true }
+                    });
+                    if (stage?.collectFields) {
+                        // Zaten toplanan verileri classificationData'dan çıkar
+                        let collectedData = {};
+                        try {
+                            const cd = typeof convData.classificationData === 'string'
+                                ? JSON.parse(convData.classificationData) : convData.classificationData;
+                            collectedData = {
+                                ...(cd?.extractedData || {}),
+                                ...(cd?.collectedFields || {})
+                            };
+                            // Contact bilgileri de ekle
+                            if (contact?.phone) collectedData.phone = contact.phone;
+                            if (contact?.name) collectedData.name = contact.name;
+                            if (contact?.email) collectedData.email = contact.email;
+                        } catch { }
+                        stageCollectPrompt = buildStageCollectPrompt(stage.collectFields, collectedData);
+                    }
+                } catch { }
+            }
+
             behaviorContext = buildBehaviorPrompt(activeBot, workspace, {
                 categories: topicCategories,
-                branches: branchList
+                branches: branchList,
+                classificationPipeline,
+                stageCollectPrompt
             });
         } catch (bhErr) {
             console.error('⚠️ [UnifiedAI] Davranış blokları hatası:', bhErr.message);

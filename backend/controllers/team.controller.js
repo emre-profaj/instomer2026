@@ -27,6 +27,7 @@ export const createTeam = async (req, res) => {
             triggerOnEmail: req.body.triggerOnEmail || false,
             triggerOnAppointment: req.body.triggerOnAppointment || false,
             triggerTimeoutMinutes: req.body.triggerTimeoutMinutes || null,
+            maxOpenConversations: req.body.maxOpenConversations ? parseInt(req.body.maxOpenConversations, 10) : null,
             branchIds: req.body.branchIds ? JSON.stringify(req.body.branchIds) : null,
             members: {
                 create: {

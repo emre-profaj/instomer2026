@@ -5803,6 +5803,7 @@ export const getSalesReport = async (req, res) => {
                     select: {
                         id: true,
                         caseNumber: true,
+                        channel: true,
                         leadSource: true,
                         leadSourceDetail: true,
                         attributions: {
@@ -5955,6 +5956,7 @@ export const getSalesReport = async (req, res) => {
                     ? formatSourceName(d.case.leadSource)
                     : (d.contact?.source ? formatSourceName(d.contact.source) : null),
                 caseLeadSource: d.case?.leadSource || null,
+                caseChannel: d.case?.channel || null,
                 caseLeadSourceDetail: d.case?.leadSourceDetail || null,
                 contactFirstSource: d.contact?.source ? formatSourceName(d.contact.source) : null,
                 campaignName: d.case?.attributions?.[0]?.fb_campaign_name
@@ -6517,6 +6519,7 @@ export const getAttributionReport = async (req, res) => {
             where: { workspaceId, ...dateFilter },
             select: {
                 id: true,
+                channel: true,
                 leadSource: true,
                 leadSourceDetail: true,
                 status: true,
@@ -6656,12 +6659,54 @@ export const getAttributionReport = async (req, res) => {
             lastTouchSources[lastSrc].revenue += revenue;
         }
 
+        // ── 6. Kanal bazlı gruplama (WhatsApp, Telefon, Form vb.) ──
+        const byChannel = {};
+        for (const c of cases) {
+            const ch = c.channel || 'Bilinmeyen';
+            const chLabel = {
+                WHATSAPP: '💬 WhatsApp', FACEBOOK: '💬 Facebook', INSTAGRAM: '📸 Instagram',
+                EMAIL: '📧 E-posta', PHONE: '📞 Telefon', FORM: '📝 Web Formu',
+                WEB_WIDGET: '🌐 Web Sohbeti', AI_CALL: '🤖 AI Arama', SMS: '✉️ SMS',
+                WALK_IN: '🚶 Yüz Yüze', LEAD: '📋 Lead Form', FACEBOOK_LEAD: '📋 Lead Form'
+            }[ch] || ch;
+
+            if (!byChannel[ch]) {
+                byChannel[ch] = {
+                    channel: ch,
+                    label: chLabel,
+                    caseCount: 0,
+                    contactIds: new Set(),
+                    orderCount: 0,
+                    totalRevenue: 0
+                };
+            }
+            const cg = byChannel[ch];
+            cg.caseCount++;
+            cg.contactIds.add(c.contactId);
+            for (const deal of (c.deals || [])) {
+                if (deal.stage === 'ORDER' || deal.stage === 'INVOICE') cg.orderCount++;
+                if (deal.status === 'WON') cg.totalRevenue += (deal.amount || 0);
+            }
+        }
+
+        const channelGroups = Object.values(byChannel)
+            .map(cg => ({
+                channel: cg.channel,
+                label: cg.label,
+                caseCount: cg.caseCount,
+                contactCount: cg.contactIds.size,
+                orderCount: cg.orderCount,
+                totalRevenue: cg.totalRevenue
+            }))
+            .sort((a, b) => b.totalRevenue - a.totalRevenue || b.caseCount - a.caseCount);
+
         res.json({
             totalCases,
             totalContacts,
             totalRevenue,
             totalOrders,
-            sourceGroups,
+            sourceGroups,        // Kaynak bazlı: Google, Facebook, Referans...
+            channelGroups,       // Kanal bazlı: WhatsApp, Telefon, Instagram DM...
             firstTouchAttribution: Object.values(firstTouchSources).sort((a, b) => b.revenue - a.revenue),
             lastTouchAttribution: Object.values(lastTouchSources).sort((a, b) => b.revenue - a.revenue)
         });

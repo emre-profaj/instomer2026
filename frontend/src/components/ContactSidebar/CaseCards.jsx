@@ -919,8 +919,20 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none'
                                     }}
                                 />
-                                <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.74rem' }}>
-                                    <option value="">Kaynak seçin (opsiyonel)</option>
+                                <select value={newChannel} onChange={e => setNewChannel(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.74rem', marginTop: 4 }}>
+                                    <option value="">📡 Geliş kanalı seçin (opsiyonel)</option>
+                                    <option value="WHATSAPP">💬 WhatsApp</option>
+                                    <option value="INSTAGRAM">📸 Instagram</option>
+                                    <option value="FACEBOOK">💬 Facebook</option>
+                                    <option value="PHONE">📞 Telefon</option>
+                                    <option value="EMAIL">📧 E-posta</option>
+                                    <option value="FORM">📝 Web Formu</option>
+                                    <option value="WEB_WIDGET">🌐 Web Sohbeti</option>
+                                    <option value="SMS">✉️ SMS</option>
+                                    <option value="WALK_IN">🚶 Yüz Yüze</option>
+                                </select>
+                                <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.74rem', marginTop: 4 }}>
+                                    <option value="">🎯 Kaynak seçin (opsiyonel)</option>
                                     <optgroup label="Manuel">
                                         <option value="INBOUND">📞 Telefon</option>
                                         <option value="WALK_IN">🚶 Yüz Yüze</option>
@@ -1104,8 +1116,20 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     boxSizing: 'border-box', background: '#fff', marginBottom: 8
                                 }}
                             />
+                            <select value={newChannel} onChange={e => setNewChannel(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', marginBottom: 8, boxSizing: 'border-box' }}>
+                                <option value="">📡 Geliş kanalı seçin (opsiyonel)</option>
+                                <option value="WHATSAPP">💬 WhatsApp</option>
+                                <option value="INSTAGRAM">📸 Instagram</option>
+                                <option value="FACEBOOK">💬 Facebook</option>
+                                <option value="PHONE">📞 Telefon</option>
+                                <option value="EMAIL">📧 E-posta</option>
+                                <option value="FORM">📝 Web Formu</option>
+                                <option value="WEB_WIDGET">🌐 Web Sohbeti</option>
+                                <option value="SMS">✉️ SMS</option>
+                                <option value="WALK_IN">🚶 Yüz Yüze</option>
+                            </select>
                             <select value={newLeadSource} onChange={e => setNewLeadSource(e.target.value)} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', marginBottom: newLeadSource ? 8 : 0, boxSizing: 'border-box' }}>
-                                <option value="">Kaynak seçin (opsiyonel)</option>
+                                <option value="">🎯 Kaynak seçin (opsiyonel)</option>
                                 <optgroup label="Manuel">
                                     <option value="INBOUND">📞 Telefon</option>
                                     <option value="WALK_IN">🚶 Yüz Yüze</option>
