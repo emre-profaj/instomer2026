@@ -22,6 +22,13 @@ model GlobalSettings {
   systemEmailPass String? // AES-256-GCM ile şifreli
   systemEmailFrom String? // Görünen gönderici, ör. Instomer <bildirim@instomer.com>
 
+  // Gönderim yöntemi: SMTP (klasik) veya BREVO_API (HTTP).
+  // Brevo'nun API'si SMTP kullanıcı adı/şifresi yerine tek bir anahtar ve
+  // gönderen adı/adresi istiyor; SMTP alanları o modda kullanılmıyor.
+  systemEmailProvider   String? @default("SMTP")
+  systemEmailApiKey     String? // AES-256-GCM ile şifreli
+  systemEmailSenderName String?
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

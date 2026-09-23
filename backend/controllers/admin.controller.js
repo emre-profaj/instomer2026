@@ -1266,12 +1266,13 @@ export const getGlobalSettings = async (req, res) => {
         });
         const result = settings || {};
         // Şifre hiçbir zaman geri dönmüyor; yalnızca "kayıtlı mı" bilgisi.
-        const { systemEmailPass, ...digerleri } = result;
+        const { systemEmailPass, systemEmailApiKey, ...digerleri } = result;
         res.json({
             settings: {
                 ...digerleri,
                 hasGlobalAiApiKey: !!(result.globalAiApiKey && result.globalAiApiKey.length > 0),
-                hasSystemEmailPass: !!(systemEmailPass && systemEmailPass.length > 0)
+                hasSystemEmailPass: !!(systemEmailPass && systemEmailPass.length > 0),
+                hasSystemEmailApiKey: !!(systemEmailApiKey && systemEmailApiKey.length > 0)
             }
         });
     } catch (error) {
@@ -1285,21 +1286,37 @@ export const getGlobalSettings = async (req, res) => {
 // şifreli saklanıyor ve okuma uçlarında asla geri dönmüyor.
 export const saveSystemEmailSettings = async (req, res) => {
     try {
-        const { host, port, user, from, pass } = req.body;
-
-        if (!host || !user) {
-            return res.status(400).json({ error: 'Sunucu adresi ve kullanıcı zorunlu.' });
-        }
-
+        const { provider, host, port, user, from, pass, apiKey, senderName } = req.body;
         const { encrypt } = await import('../utils/encryption.js');
-        const veri = {
-            systemEmailHost: String(host).trim(),
-            systemEmailPort: parseInt(port) || 587,
-            systemEmailUser: String(user).trim(),
-            systemEmailFrom: from ? String(from).trim() : null
-        };
-        // Şifre boş bırakıldıysa mevcut kayıt korunur
-        if (pass) veri.systemEmailPass = encrypt(String(pass));
+
+        let veri;
+        if (provider === 'BREVO_API') {
+            // Brevo API: SMTP sunucusu/şifresi yok; gönderen adı, adresi ve anahtar.
+            if (!user || !String(user).includes('@')) {
+                return res.status(400).json({ error: 'Gönderici e-posta adresi zorunlu.' });
+            }
+            veri = {
+                systemEmailProvider: 'BREVO_API',
+                systemEmailUser: String(user).trim(),
+                systemEmailSenderName: senderName ? String(senderName).trim() : 'Instomer',
+                systemEmailFrom: null
+            };
+            // Anahtar boş bırakıldıysa mevcut kayıt korunur
+            if (apiKey) veri.systemEmailApiKey = encrypt(String(apiKey).trim());
+        } else {
+            if (!host || !user) {
+                return res.status(400).json({ error: 'Sunucu adresi ve kullanıcı zorunlu.' });
+            }
+            veri = {
+                systemEmailProvider: 'SMTP',
+                systemEmailHost: String(host).trim(),
+                systemEmailPort: parseInt(port) || 587,
+                systemEmailUser: String(user).trim(),
+                systemEmailFrom: from ? String(from).trim() : null
+            };
+            // Şifre boş bırakıldıysa mevcut kayıt korunur
+            if (pass) veri.systemEmailPass = encrypt(String(pass));
+        }
 
         await prisma.globalSettings.upsert({
             where: { id: 'singleton' },

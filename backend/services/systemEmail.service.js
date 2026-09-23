@@ -1,6 +1,9 @@
 import nodemailer from 'nodemailer';
+import axios from 'axios';
 import prisma from '../lib/prisma.js';
 import { decrypt } from '../utils/encryption.js';
+
+const BREVO_API = 'https://api.brevo.com/v3';
 
 // Sistem e-postası göndericisi.
 // Kaynak sırası: önce veritabanı (süper admin paneli), sonra .env.
@@ -18,10 +21,24 @@ export const getSystemEmailConfig = async () => {
         console.error('[SystemEmail] Ayar okunamadı:', err.message);
     }
 
+    // Brevo API modu: SMTP yerine HTTP. Tek anahtar + gönderen adı/adresi.
+    const dbApiKey = db?.systemEmailApiKey ? (decrypt(db.systemEmailApiKey) || null) : null;
+    if (db?.systemEmailProvider === 'BREVO_API' && dbApiKey && db?.systemEmailUser) {
+        return {
+            kaynak: 'panel',
+            yontem: 'BREVO_API',
+            apiKey: dbApiKey,
+            senderEmail: db.systemEmailUser,
+            senderName: db.systemEmailSenderName || 'Instomer',
+            user: db.systemEmailUser
+        };
+    }
+
     const dbPass = db?.systemEmailPass ? (decrypt(db.systemEmailPass) || null) : null;
     if (db?.systemEmailHost && db?.systemEmailUser && dbPass) {
         return {
             kaynak: 'panel',
+            yontem: 'SMTP',
             host: db.systemEmailHost,
             port: db.systemEmailPort || 587,
             user: db.systemEmailUser,
@@ -36,6 +53,7 @@ export const getSystemEmailConfig = async () => {
     if (host && user && pass) {
         return {
             kaynak: 'env',
+            yontem: 'SMTP',
             host,
             port: parseInt(process.env.SYSTEM_EMAIL_PORT) || 587,
             user,
@@ -54,6 +72,7 @@ export const resetSystemTransporter = () => {
 
 const getSystemTransporter = async () => {
     const cfg = await getSystemEmailConfig();
+    if (cfg?.yontem === 'BREVO_API') return null;   // SMTP bağlantısı kurulmaz
     if (!cfg) {
         console.error('❌ System email not configured. Süper admin panelinden veya SYSTEM_EMAIL_* ile tanımlayın.');
         return null;
@@ -83,12 +102,43 @@ const getSystemTransporter = async () => {
  * @param {Object} options - Additional options
  */
 export const sendSystemEmail = async (to, subject, body, options = {}) => {
+    const cfgOn = await getSystemEmailConfig();
+
+    // ── Brevo API (HTTP) ──
+    if (cfgOn?.yontem === 'BREVO_API') {
+        const aliciDizi = (Array.isArray(to) ? to : String(to).split(/[,;]+/))
+            .map(e => String(e).trim())
+            .filter(e => e.includes('@'))
+            .map(email => ({ email }));
+        if (aliciDizi.length === 0) throw new Error('Geçerli alıcı adresi yok.');
+
+        try {
+            const res = await axios.post(`${BREVO_API}/smtp/email`, {
+                sender: { name: cfgOn.senderName, email: cfgOn.senderEmail },
+                to: aliciDizi,
+                subject,
+                htmlContent: body
+            }, {
+                headers: { 'api-key': cfgOn.apiKey, accept: 'application/json', 'content-type': 'application/json' },
+                timeout: 20000
+            });
+            console.log(`📧 [SystemEmail/Brevo] ${subject} | alıcı: ${aliciDizi.map(a => a.email).join(', ')}`
+                + ` | messageId: ${res.data?.messageId || '-'}`);
+            return res.data;
+        } catch (error) {
+            // Brevo hatayı gövdede açıklıyor; "İstek başarısız" demek yetmiyor.
+            const detay = error.response?.data?.message || error.response?.data?.code || error.message;
+            console.error('❌ [SystemEmail/Brevo] Gönderilemedi:', detay);
+            throw new Error(detay);
+        }
+    }
+
     const transporter = await getSystemTransporter();
     if (!transporter) {
         throw new Error('System email not configured');
     }
 
-    const cfg = await getSystemEmailConfig();
+    const cfg = cfgOn;
     // "Görünen gönderici" alanına yalnızca isim yazılabiliyor ("Instomer
     // Bildirim"). İçinde adres yoksa geçerli bir From başlığı olmaz;
     // sunucular ya reddeder ya sessizce kendi adresiyle değiştirir.
@@ -179,6 +229,28 @@ export const verifySystemEmail = async () => {
     const cfg = await getSystemEmailConfig();
     if (!cfg) {
         return { configured: false, error: 'Gönderici tanımlı değil. Süper admin panelinden girin.' };
+    }
+
+    if (cfg.yontem === 'BREVO_API') {
+        try {
+            const res = await axios.get(`${BREVO_API}/account`, {
+                headers: { 'api-key': cfg.apiKey, accept: 'application/json' },
+                timeout: 15000
+            });
+            return {
+                configured: true,
+                email: cfg.senderEmail,
+                from: `${cfg.senderName} <${cfg.senderEmail}>`,
+                kaynak: cfg.kaynak,
+                yontem: 'Brevo API',
+                hesap: res.data?.companyName || res.data?.email || null
+            };
+        } catch (error) {
+            const detay = error.response?.status === 401
+                ? 'API anahtarı kabul edilmedi.'
+                : (error.response?.data?.message || error.message);
+            return { configured: false, email: cfg.senderEmail, yontem: 'Brevo API', error: detay };
+        }
     }
     const transporter = await getSystemTransporter();
     if (!transporter) {

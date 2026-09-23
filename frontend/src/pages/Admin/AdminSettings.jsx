@@ -18,6 +18,7 @@ const AdminSettings = () => {
     // Sistem e-postası: .env'e dokunmadan panelden girilebilsin diye
     const [mail, setMail] = useState({ host: 'smtp-relay.brevo.com', port: 587, user: '', from: '', pass: '' });
     const [saglayici, setSaglayici] = useState('brevo');
+    const [brevo, setBrevo] = useState({ senderName: 'Instomer Bildirim', senderEmail: '', apiKey: '' });
     const [mailDurum, setMailDurum] = useState(null);
     const [mailKaydediliyor, setMailKaydediliyor] = useState(false);
     const [testAdresi, setTestAdresi] = useState('');
@@ -27,10 +28,9 @@ const AdminSettings = () => {
     // doğru sunucu/portu bir tıkla dolduruyor.
     const SAGLAYICILAR = {
         brevo: {
-            ad: 'Brevo',
-            host: 'smtp-relay.brevo.com',
-            port: 587,
-            ipucu: 'Brevo panelinde SMTP & API → SMTP sekmesindeki giriş adını ve ürettiğiniz SMTP anahtarını kullanın. Hesap şifreniz değil.'
+            ad: 'Brevo (API)',
+            api: true,
+            ipucu: 'Brevo panelinde SMTP & API → API Keys bölümünden bir anahtar üretin. Gönderici adresin Brevo\'da "Senders" listesinde doğrulanmış olması gerekir.'
         },
         google: {
             ad: 'Google Workspace',
@@ -49,8 +49,9 @@ const AdminSettings = () => {
     const saglayiciSec = (anahtar) => {
         setSaglayici(anahtar);
         const p = SAGLAYICILAR[anahtar];
-        setMail(m => ({ ...m, host: p.host || m.host, port: p.port }));
+        if (!p.api) setMail(m => ({ ...m, host: p.host || m.host, port: p.port }));
     };
+    const brevoMu = SAGLAYICILAR[saglayici]?.api === true;
     const [healthResults, setHealthResults] = useState(null);
 
     useEffect(() => {
@@ -71,8 +72,14 @@ const AdminSettings = () => {
                 from: ayar?.systemEmailFrom || '',
                 pass: ''
             }));
+            setBrevo(b => ({
+                ...b,
+                senderName: ayar?.systemEmailSenderName || b.senderName,
+                senderEmail: ayar?.systemEmailProvider === 'BREVO_API' ? (ayar?.systemEmailUser || '') : b.senderEmail,
+                apiKey: ''
+            }));
             const h = (ayar?.systemEmailHost || '').toLowerCase();
-            if (h.includes('brevo') || h.includes('sendinblue')) setSaglayici('brevo');
+            if (ayar?.systemEmailProvider === 'BREVO_API') setSaglayici('brevo');
             else if (h.includes('gmail') || h.includes('google')) setSaglayici('google');
             else if (h) setSaglayici('ozel');
             adminAPI.checkSystemEmail().then(r => setMailDurum(r.data)).catch(() => {});
@@ -109,9 +116,13 @@ const AdminSettings = () => {
         setMailKaydediliyor(true);
         setMessage({ type: '', text: '' });
         try {
-            const r = await adminAPI.saveSystemEmail(mail);
+            const govde = brevoMu
+                ? { provider: 'BREVO_API', user: brevo.senderEmail, senderName: brevo.senderName, apiKey: brevo.apiKey }
+                : { provider: 'SMTP', ...mail };
+            const r = await adminAPI.saveSystemEmail(govde);
             setMailDurum(r.data.durum);
             setMail(m => ({ ...m, pass: '' }));
+            setBrevo(b => ({ ...b, apiKey: '' }));
             setMessage(r.data.durum?.configured
                 ? { type: 'success', text: 'Gönderici kaydedildi ve bağlantı doğrulandı.' }
                 : { type: 'error', text: 'Kaydedildi ama bağlantı kurulamadı: ' + (r.data.durum?.error || '') });
@@ -239,6 +250,35 @@ const AdminSettings = () => {
                     {SAGLAYICILAR[saglayici]?.ipucu}
                 </p>
 
+                {brevoMu ? (
+                    <>
+                        <div style={{ marginTop: 14 }}>
+                            <label htmlFor="b-ad" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Gönderen adı</label>
+                            <input id="b-ad" className="settings-input" placeholder="Instomer Bildirim"
+                                value={brevo.senderName} onChange={e => setBrevo({ ...brevo, senderName: e.target.value })} />
+                        </div>
+                        <div style={{ marginTop: 12 }}>
+                            <label htmlFor="b-mail" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Gönderici e-posta adresi</label>
+                            <input id="b-mail" className="settings-input" type="email" placeholder="bildirim@instomer.com"
+                                value={brevo.senderEmail} onChange={e => setBrevo({ ...brevo, senderEmail: e.target.value })} />
+                            <small style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                                Bu adres Brevo'da <strong>Senders</strong> listesinde doğrulanmış olmalı, aksi halde Brevo gönderimi reddeder.
+                            </small>
+                        </div>
+                        <div style={{ marginTop: 12 }}>
+                            <label htmlFor="b-key" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                                API anahtarı {globalSettings?.hasSystemEmailApiKey && <span style={{ fontWeight: 400, color: '#64748b' }}>— kayıtlı, değiştirmek için yazın</span>}
+                            </label>
+                            <input id="b-key" className="settings-input" type="password" autoComplete="new-password"
+                                placeholder={globalSettings?.hasSystemEmailApiKey ? '••••••••••••' : 'xkeysib-...'}
+                                value={brevo.apiKey} onChange={e => setBrevo({ ...brevo, apiKey: e.target.value })} />
+                            <small style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                                Brevo → SMTP &amp; API → API Keys. Anahtar şifrelenerek saklanır ve bir daha ekranda gösterilmez.
+                            </small>
+                        </div>
+                    </>
+                ) : (
+                    <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12, marginTop: 14 }}>
                     <div>
                         <label htmlFor="m-host" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>SMTP Sunucusu</label>
@@ -285,8 +325,10 @@ const AdminSettings = () => {
                         {saglayici === 'brevo' && ' Brevo\'da bu adresin gönderen olarak doğrulanmış olması gerekir.'}
                     </small>
                 </div>
+                    </>
+                )}
 
-                <button className="btn-premium red" onClick={mailKaydet} disabled={mailKaydediliyor || !mail.host || !mail.user}
+                <button className="btn-premium red" onClick={mailKaydet} disabled={mailKaydediliyor || (brevoMu ? !brevo.senderEmail.includes('@') : (!mail.host || !mail.user))}
                     style={{ marginTop: 18 }}>
                     {mailKaydediliyor ? <><Loader size={18} className="spinning" /> Kaydediliyor...</> : <><Save size={18} /> Kaydet ve doğrula</>}
                 </button>
