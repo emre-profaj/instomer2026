@@ -73,11 +73,15 @@ function iceriyorMu(metin, kelimeler) {
  * Adımı yeniden hesaplar: botun gördüğü adımın AYNISI, çünkü aynı
  * girdilerle aynı fonksiyon çağrılıyor. Modelden bir şey taşımıyoruz.
  */
-async function katalogBloklari(workspaceId, { conversationId, userMessage, botId }) {
+async function katalogBloklari(workspaceId, { conversationId, userMessage, botId, recentMessages = [] }) {
     try {
         const { buildCatalogStep } = await import('./catalogFlow.service.js');
+        // recentMessages ŞART: botun gördüğü adımın aynısını görmemiz gerekiyor.
+        // Verilmediğinde müşterinin bir önceki "Bornova Erkek" cevabı görünmüyor,
+        // adım hep ASK_BRANCH'te kalıyor ve aynı çipler her mesajda tekrarlıyordu.
         const adim = await buildCatalogStep(workspaceId, {
             conversationId,
+            recentMessages,
             userMessage,
             botId
         });
@@ -240,6 +244,185 @@ async function bilgiBankasiBloklari(workspaceId, { userMessage, aiText }) {
     return bloklar;
 }
 
+// ─── Bölüm menüsü ve kart eylemleri ──────────────────────────
+//
+// Karta dokunmak modele soru sormaz: widget bölüm kimliğini gönderir,
+// burası kartları doğrudan veritabanından kurar ve sabit bir cümleyle
+// döner. Anında açılır, token harcamaz, yanlış cevap veremez.
+// Serbest yazı yine bota gider.
+
+/** Şube kartları — adres, telefon, yol tarifi ve "bu şubeyi seç" bir arada. */
+async function subeKartlari(workspaceId) {
+    const subeler = await prisma.appointmentBranch.findMany({
+        where: { workspaceId, isActive: true },
+        select: { id: true, name: true, address: true, phone: true, googleMapsUrl: true },
+        orderBy: { order: 'asc' }
+    });
+    return subeler.map(b => ({
+        id: b.id,
+        name: b.name,
+        address: b.address || null,
+        phone: b.phone || null,
+        mapsUrl: guvenliUrl(b.googleMapsUrl)
+    }));
+}
+
+/** Menüdeki bölümler. Karşılığı olmayan bölüm hiç gösterilmez. */
+export async function bolumMenusu(workspaceId) {
+    const [subeSayisi, urunSayisi, dosyaSayisi] = await Promise.all([
+        prisma.appointmentBranch.count({ where: { workspaceId, isActive: true } }).catch(() => 0),
+        prisma.product.count({ where: { workspaceId, isActive: true, isGroup: false } }).catch(() => 0),
+        prisma.knowledgeBase.count({ where: { workspaceId, fileUrl: { not: null } } }).catch(() => 0)
+    ]);
+
+    const items = [];
+    if (subeSayisi > 0) {
+        items.push({
+            id: 'branches',
+            icon: 'branches',
+            title: 'Şubeler',
+            subtitle: `${subeSayisi} şube · adres ve yol tarifi`
+        });
+    }
+    if (urunSayisi > 0) {
+        items.push({
+            id: 'services',
+            icon: 'services',
+            title: 'Hizmetler',
+            subtitle: 'Seçenekler ve paketler'
+        });
+    }
+    if (dosyaSayisi > 0) {
+        items.push({
+            id: 'catalog',
+            icon: 'catalog',
+            title: 'Katalog',
+            subtitle: 'Fiyat listesi ve broşürler'
+        });
+    }
+    return items.length > 0 ? { kind: 'menu', items } : null;
+}
+
+/** Seçili şubenin hizmet kartları. Şube yoksa önce şube sorulur. */
+async function hizmetBloklari(workspaceId, conversationId) {
+    const { buildCatalogStep } = await import('./catalogFlow.service.js');
+    const adim = await buildCatalogStep(workspaceId, { conversationId });
+
+    if (adim && adim.step === 'SHOW_PRODUCTS' && Array.isArray(adim.cards) && adim.cards.length > 0) {
+        return {
+            text: 'Seçenekler burada. Kartı kaydırarak hepsini görebilirsiniz.',
+            richContent: [{
+                kind: 'products',
+                items: adim.cards.slice(0, MAX_KART).map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    note: c.note || null,
+                    priceText: c.priceText || null,
+                    imageUrl: guvenliUrl(c.imageUrl),
+                    url: guvenliUrl(c.url)
+                }))
+            }]
+        };
+    }
+
+    // Adım henüz ürüne inmediyse: elimizdeki seçenekleri kart olarak sun
+    if (adim && Array.isArray(adim.options) && adim.options.length > 0) {
+        if (adim.step === 'ASK_BRANCH') {
+            return {
+                text: 'Önce hangi şubeyle ilgilendiğinizi seçin; hizmetler ve fiyatlar şubeye göre değişiyor.',
+                richContent: [{ kind: 'branches', items: await subeKartlari(workspaceId) }]
+            };
+        }
+        return {
+            text: 'Hangisiyle ilgileniyorsunuz?',
+            richContent: [{ kind: 'quickReplies', items: adim.options.slice(0, 6) }]
+        };
+    }
+
+    return { text: 'Hizmet listesine şu an ulaşamadım, size bir temsilcimiz yardımcı olsun.', richContent: null };
+}
+
+/**
+ * Widget'tan gelen kart eylemini karşılar.
+ * Bilinmeyen eylemde null döner; çağıran taraf o zaman normal AI akışına düşer.
+ */
+export async function buildSectionResponse(workspaceId, conversationId, govde = {}) {
+    const { action, sectionId, branchId } = govde;
+    try {
+        if (action === 'menu') {
+            const menu = await bolumMenusu(workspaceId);
+            return { text: 'Neye bakmak istersiniz?', richContent: menu ? [menu] : null };
+        }
+
+        if (action === 'section') {
+            if (sectionId === 'branches') {
+                const kartlar = await subeKartlari(workspaceId);
+                if (kartlar.length === 0) return { text: 'Şube bilgisi kayıtlı değil, size bir temsilcimiz yardımcı olsun.', richContent: null };
+                return {
+                    text: kartlar.length === 1
+                        ? 'Adresimiz burada.'
+                        : 'Şubelerimiz burada. Birini seçerseniz hizmetleri o şubeye göre gösteririm.',
+                    richContent: [{ kind: 'branches', items: kartlar }]
+                };
+            }
+            if (sectionId === 'services') {
+                return hizmetBloklari(workspaceId, conversationId);
+            }
+            if (sectionId === 'catalog') {
+                const kayitlar = await prisma.knowledgeBase.findMany({
+                    where: { workspaceId, fileUrl: { not: null } },
+                    select: { title: true, filename: true, fileType: true, fileUrl: true },
+                    take: 5
+                });
+                const dosyalar = kayitlar
+                    .filter(k => guvenliUrl(k.fileUrl))
+                    .map(k => ({
+                        name: k.filename || k.title,
+                        url: guvenliUrl(k.fileUrl),
+                        sizeText: null,
+                        ext: (k.fileType || '').replace('.', '').toUpperCase() || 'DOSYA'
+                    }));
+                if (dosyalar.length === 0) {
+                    return { text: 'Şu an paylaşabileceğim bir katalog dosyası yok; talebinizi yetkiliye aktarabilirim.', richContent: null };
+                }
+                return { text: 'Dosyalarımız burada.', richContent: [{ kind: 'file', items: dosyalar }] };
+            }
+            return null;
+        }
+
+        if (action === 'branch' && branchId) {
+            const sube = await prisma.appointmentBranch.findFirst({
+                where: { id: branchId, workspaceId, isActive: true },
+                select: { id: true, name: true }
+            });
+            if (!sube) return null;
+
+            // Seçim KALICI: bugüne kadar hiçbir konuşmada branchId dolmuyordu,
+            // bot her mesajda şubeyi baştan tahmin ediyordu.
+            if (conversationId) {
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { branchId: sube.id }
+                }).catch(e => console.error('[WidgetKart] Şube yazılamadı:', e.message));
+            }
+
+            const hizmet = await hizmetBloklari(workspaceId, conversationId);
+            return {
+                text: `${sube.name} seçildi. ${hizmet.text}`,
+                richContent: [
+                    { kind: 'context', label: sube.name },
+                    ...(hizmet.richContent || [])
+                ]
+            };
+        }
+
+        return null;
+    } catch (err) {
+        console.error('[WidgetKart] Bölüm yanıtı üretilemedi:', err.message);
+        return null;
+    }
+}
+
 // ─── Giriş noktası ───────────────────────────────────────────
 
 /**
@@ -251,16 +434,51 @@ export async function buildWidgetRichContent(workspaceId, {
     conversationId = null,
     userMessage = '',
     aiText = '',
-    botId = null
+    botId = null,
+    recentMessages = []
 } = {}) {
     try {
-        const [katalog, konum, bilgi] = await Promise.all([
-            katalogBloklari(workspaceId, { conversationId, userMessage, botId }),
+        // Bu konuşmadaki ilk bot cevabı mı? Bölüm menüsü yalnızca bir kez
+        // çıkar; müşteri yazmaya başladıktan sonra araya girmez.
+        let ilkCevap = false;
+        let oncekiCipler = null;
+        if (conversationId) {
+            const oncekiBotMesajlari = await prisma.message.findMany({
+                where: { conversationId, isFromContact: false },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+                select: { richContent: true }
+            }).catch(() => []);
+            ilkCevap = oncekiBotMesajlari.length === 0;
+            const onceki = oncekiBotMesajlari[0]?.richContent;
+            if (Array.isArray(onceki)) {
+                const cip = onceki.find(b => b && b.kind === 'quickReplies');
+                if (cip) oncekiCipler = JSON.stringify((cip.items || []).map(i => i.id || i.label));
+            }
+        }
+
+        const [katalog, konum, bilgi, menu] = await Promise.all([
+            katalogBloklari(workspaceId, { conversationId, userMessage, botId, recentMessages }),
             konumBlogu(workspaceId, { conversationId, userMessage }),
-            bilgiBankasiBloklari(workspaceId, { userMessage, aiText })
+            bilgiBankasiBloklari(workspaceId, { userMessage, aiText }),
+            ilkCevap ? bolumMenusu(workspaceId) : Promise.resolve(null)
         ]);
 
-        const bloklar = [...bilgi, ...konum, ...katalog];
+        let bloklar = [...bilgi, ...konum, ...katalog];
+
+        // Aynı çipleri arka arkaya basma: müşteri dört şube çipini her
+        // mesajın altında yeniden görüyordu.
+        if (oncekiCipler) {
+            bloklar = bloklar.filter(b => {
+                if (!b || b.kind !== 'quickReplies') return true;
+                const simdi = JSON.stringify((b.items || []).map(i => i.id || i.label));
+                return simdi !== oncekiCipler;
+            });
+        }
+
+        // Menü varsa en başta durur ve çiplerin yerini alır
+        if (menu) bloklar = [menu, ...bloklar.filter(b => b && b.kind !== 'quickReplies')];
+
         return bloklar.length > 0 ? bloklar : null;
     } catch (err) {
         console.error('[WidgetKart] Üretilemedi:', err.message);
@@ -268,4 +486,4 @@ export async function buildWidgetRichContent(workspaceId, {
     }
 }
 
-export default { buildWidgetRichContent, guvenliUrl };
+export default { buildWidgetRichContent, buildSectionResponse, bolumMenusu, guvenliUrl };

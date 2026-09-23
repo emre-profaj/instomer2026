@@ -227,7 +227,7 @@ export const getWidgetMessages = async (req, res) => {
 // Handle public chat from widget
 export const handleWidgetChat = async (req, res) => {
     try {
-        const { workspaceId, widgetId, visitorId, message } = req.body;
+        const { workspaceId, widgetId, visitorId, message, action, sectionId, branchId } = req.body;
 
         if (!message || !workspaceId) {
             return res.status(400).json({ error: 'Eksik bilgi.' });
@@ -499,6 +499,52 @@ export const handleWidgetChat = async (req, res) => {
         }
         // --- AUTOMATION RULES END ---
 
+        // ── 3.5 KART EYLEMİ ───────────────────────────────────────
+        // Menüden bir bölüme dokunmak modele soru sormaz: kartlar
+        // doğrudan veritabanından kurulur, cevap sabittir. Anında açılır,
+        // token harcamaz, yanlış cevap veremez. Serbest yazı aşağıdaki
+        // normal akışa devam eder.
+        if (action) {
+            try {
+                const { buildSectionResponse } = await import('../services/widgetRichContent.service.js');
+                const sonuc = await buildSectionResponse(workspaceId, conversation.id, { action, sectionId, branchId });
+                if (sonuc && sonuc.text) {
+                    const botMessage = await prisma.message.create({
+                        data: {
+                            content: sonuc.text,
+                            conversationId: conversation.id,
+                            isFromContact: false,
+                            ...(sonuc.richContent ? { richContent: sonuc.richContent } : {})
+                        }
+                    });
+                    try {
+                        emitToWorkspace(workspaceId, 'new_message', {
+                            workspaceId,
+                            conversationId: conversation.id,
+                            message: botMessage,
+                            conversation: updatedConversation,
+                            contact: updatedConversation.contact,
+                            channel: 'WIDGET',
+                            assignedToId: updatedConversation.assignedToId || null,
+                            assignedTeamId: updatedConversation.assignedTeamId || null
+                        });
+                    } catch (socketError) {
+                        console.error('❌ [Widget] Kart eylemi socket hatası:', socketError);
+                    }
+                    return res.json({
+                        reply: sonuc.text,
+                        richContent: sonuc.richContent || null,
+                        conversationId: conversation.id,
+                        botMessageId: botMessage.id,
+                        serverTime: pollAnchor
+                    });
+                }
+            } catch (eylemErr) {
+                console.error('[Widget] Kart eylemi karşılanamadı:', eylemErr.message);
+                // Düşüp normal AI akışına devam eder
+            }
+        }
+
         // 4. Get AI response
         const aiResponse = await getAutoReply(workspaceId, conversation.id, message, 'widget', 'WIDGET');
 
@@ -514,10 +560,17 @@ export const handleWidgetChat = async (req, res) => {
             let richContent = null;
             try {
                 const { buildWidgetRichContent } = await import('../services/widgetRichContent.service.js');
+                const sonMesajlar = await prisma.message.findMany({
+                    where: { conversationId: conversation.id },
+                    orderBy: { createdAt: 'desc' },
+                    take: 8,
+                    select: { content: true, isFromContact: true }
+                }).catch(() => []);
                 richContent = await buildWidgetRichContent(workspaceId, {
                     conversationId: conversation.id,
                     userMessage: message,
-                    aiText: cleanAiResponse
+                    aiText: cleanAiResponse,
+                    recentMessages: sonMesajlar.reverse()
                 });
             } catch (kartErr) {
                 console.error('[Widget] Kart üretilemedi:', kartErr.message);

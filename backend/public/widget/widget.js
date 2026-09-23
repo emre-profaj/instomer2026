@@ -628,6 +628,31 @@
                 background: #0f172a; display: flex; align-items: center;
                 justify-content: center; text-decoration: none;
             }
+            .ag-menu-card {
+                width: 150px; flex: none; box-sizing: border-box; text-align: left;
+                border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;
+                padding: 13px 12px; display: flex; flex-direction: column; gap: 8px;
+                cursor: pointer; font-family: inherit;
+            }
+            .ag-menu-card:hover { border-color: #0f172a; }
+            .ag-menu-ico {
+                width: 34px; height: 34px; border-radius: 10px; background: #f1f5f9;
+                display: inline-flex; align-items: center; justify-content: center;
+            }
+            .ag-menu-title { font-size: 13.5px; font-weight: 600; color: #0f172a; }
+            .ag-menu-sub { font-size: 11.5px; color: #64748b; line-height: 1.4; }
+            .ag-branch {
+                width: 230px; flex: none; box-sizing: border-box;
+                border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;
+                overflow: hidden; display: flex; flex-direction: column;
+            }
+            .ag-branch-body { padding: 12px 13px 10px; display: flex; flex-direction: column; gap: 5px; }
+            .ag-branch .ag-prod-btn { margin-top: 0; }
+            .ag-context {
+                align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+                background: #eef2ff; border-radius: 999px; padding: 6px 12px;
+                font-size: 11.5px; font-weight: 600; color: #4338ca;
+            }
             .ag-loc-btns { display: flex; gap: 6px; border-top: 1px solid #f1f5f9; }
             .ag-loc-btns .ag-card-action { flex: 1; border-top: 0; }
             .ag-loc-btns .ag-card-action + .ag-card-action { border-left: 1px solid #f1f5f9; }
@@ -939,6 +964,47 @@
             return svg;
         }
 
+        function ikonCizgi(d, renk) {
+            const ns = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('width', '13');
+            svg.setAttribute('height', '13');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', renk || '#334155');
+            svg.setAttribute('stroke-width', '2');
+            svg.setAttribute('stroke-linecap', 'round');
+            svg.setAttribute('stroke-linejoin', 'round');
+            const path = document.createElementNS(ns, 'path');
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+            return svg;
+        }
+
+        function menuIkonu(ad) {
+            const yollar = {
+                branches: 'M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6',
+                services: 'M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0',
+                catalog: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6'
+            };
+            const ns = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('width', '16');
+            svg.setAttribute('height', '16');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', '#0f172a');
+            svg.setAttribute('stroke-width', '2');
+            svg.setAttribute('stroke-linecap', 'round');
+            svg.setAttribute('stroke-linejoin', 'round');
+            (yollar[ad] || yollar.services).split('M').filter(Boolean).forEach(par => {
+                const path = document.createElementNS(ns, 'path');
+                path.setAttribute('d', 'M' + par);
+                svg.appendChild(path);
+            });
+            return svg;
+        }
+
         function urunKarti(item) {
             const kart = el('div', 'ag-prod');
             const gorsel = guvenliBaglanti(item.imageUrl);
@@ -993,6 +1059,68 @@
                     row.appendChild(b);
                 });
                 return row.childNodes.length ? row : null;
+            }
+
+            if (blok.kind === 'menu' && Array.isArray(blok.items)) {
+                const row = el('div', 'ag-prod-row');
+                blok.items.forEach(it => {
+                    if (!it || !it.title) return;
+                    const kart = el('button', 'ag-menu-card');
+                    kart.type = 'button';
+                    const ikonKutu = el('span', 'ag-menu-ico');
+                    ikonKutu.appendChild(menuIkonu(it.icon));
+                    kart.appendChild(ikonKutu);
+                    kart.appendChild(el('span', 'ag-menu-title', it.title));
+                    if (it.subtitle) kart.appendChild(el('span', 'ag-menu-sub', it.subtitle));
+                    kart.onclick = () => gonderMetin(it.title, { action: 'section', sectionId: it.id });
+                    row.appendChild(kart);
+                });
+                return row.childNodes.length ? row : null;
+            }
+
+            if (blok.kind === 'branches' && Array.isArray(blok.items)) {
+                const row = el('div', 'ag-prod-row');
+                blok.items.forEach(b => {
+                    if (!b || !b.name) return;
+                    const kart = el('div', 'ag-branch');
+                    const govde = el('div', 'ag-branch-body');
+                    govde.appendChild(el('span', 'ag-card-title', b.name));
+                    if (b.address) govde.appendChild(el('span', 'ag-card-sum', b.address));
+                    if (b.phone) govde.appendChild(el('span', 'ag-card-sum', b.phone));
+                    kart.appendChild(govde);
+
+                    const sec = el('button', 'ag-prod-btn', 'Bu şubeyi seç');
+                    sec.type = 'button';
+                    sec.style.margin = '0 12px 10px';
+                    sec.onclick = () => gonderMetin(b.name, { action: 'branch', branchId: b.id });
+                    kart.appendChild(sec);
+
+                    const maps = guvenliBaglanti(b.mapsUrl);
+                    const tel = b.phone ? guvenliBaglanti('tel:' + String(b.phone).replace(/\s+/g, '')) : null;
+                    if (maps || tel) {
+                        const satir = el('div', 'ag-loc-btns');
+                        if (maps) {
+                            const a = el('a', 'ag-card-action', 'Yol tarifi');
+                            a.href = maps; a.target = '_blank'; a.rel = 'noopener noreferrer';
+                            satir.appendChild(a);
+                        }
+                        if (tel) {
+                            const a = el('a', 'ag-card-action', 'Ara');
+                            a.href = tel;
+                            satir.appendChild(a);
+                        }
+                        kart.appendChild(satir);
+                    }
+                    row.appendChild(kart);
+                });
+                return row.childNodes.length ? row : null;
+            }
+
+            if (blok.kind === 'context' && blok.label) {
+                const rozet = el('div', 'ag-context');
+                rozet.appendChild(ikonCizgi('M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z', '#4338ca'));
+                rozet.appendChild(el('span', null, blok.label));
+                return rozet;
             }
 
             if (blok.kind === 'link') {
@@ -1136,7 +1264,7 @@
 
         // Kart ve çip tıklamaları da buradan geçer: müşteri yazmış gibi
         // davranır, böylece sunucu tarafında tek bir akış kalır.
-        async function gonderMetin(text) {
+        async function gonderMetin(text, ekstra) {
             text = (text || '').trim();
             if (!text) return;
 
@@ -1154,7 +1282,10 @@
                         widgetId,
                         workspaceId,
                         visitorId,
-                        message: text
+                        message: text,
+                        // Kart eylemi: sunucu bunu görürse modele gitmez,
+                        // kartları doğrudan veritabanından kurar.
+                        ...(ekstra || {})
                     })
                 });
                 console.log('[Widget] Response status:', response.status);
