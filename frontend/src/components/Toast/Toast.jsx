@@ -357,12 +357,12 @@ export const useToast = () => {
             showSuccess: (title, message) => console.log(title, message),
             showError: (title, message) => alert(message || title),
             showInfo: (title, message) => console.info(title, message),
-            showWarning: (title, message) => alert(message || title),
+            showWarning: (title, message) => console.warn(title, message),
             showAssignment: (title, message) => console.log(title, message),
             success: (msg, title) => console.log(title, msg),
             error: (msg, title) => alert(msg || title),
             info: (msg, title) => console.info(title, msg),
-            warning: (msg, title) => alert(msg || title)
+            warning: (msg, title) => console.warn(title, msg)
         };
     }
     return context;

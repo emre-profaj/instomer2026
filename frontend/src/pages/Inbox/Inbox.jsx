@@ -3060,7 +3060,7 @@ const Inbox = () => {
             const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { userId: userId || null });
 
             if (response.data?.warning) {
-                showWarning ? showWarning('Mesai Dışı Atama', response.data.warning) : alert(`⚠️ ${response.data.warning}`);
+                if (showWarning) showWarning('Mesai Dışı Atama', response.data.warning);
             }
 
             // Update local state instead of reloading
@@ -3233,7 +3233,7 @@ const Inbox = () => {
 
             const warnMsg = responses?.find(r => r?.data?.warning)?.data?.warning;
             if (warnMsg) {
-                showWarning ? showWarning('Mesai Dışı Atama', warnMsg) : alert(`⚠️ ${warnMsg}`);
+                if (showWarning) showWarning('Mesai Dışı Atama', warnMsg);
             }
 
             // Update local state for all assigned conversations
@@ -3584,9 +3584,9 @@ const Inbox = () => {
         setAssignMegaMenuOpen(false); // Her durumda kapat
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, selectedItem.id, { teamId, agentId });
-            // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
+            // Mesai dışı atamada backend uyarı döner
             if (res?.data?.warning) {
-                showWarning ? showWarning('Mesai Dışı Atama', res.data.warning) : alert(`⚠️ ${res.data.warning}`);
+                if (showWarning) showWarning('Mesai Dışı Atama', res.data.warning);
             }
             const conv = res.data.conversation;
             const agentName = conv.assignedTo?.name || members.find(m => (m.user?.id || m.userId || m.id) === agentId)?.user?.name || null;
@@ -7776,13 +7776,16 @@ const Inbox = () => {
                         members={members}
                         teams={teams}
                         onAssign={userId => handleAssignUser(selectedItem.id, userId)}
-                        onAssignTeam={async (convId, teamId) => {
+                        onAssignTeam={async (convId, teamId, skipApi = false) => {
                             try {
-                                const res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { teamId: teamId || null });
+                                let res = null;
+                                if (!skipApi) {
+                                    res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { teamId: teamId || null });
+                                }
                                 const newTeamIds = teamId ? JSON.stringify([teamId]) : '[]';
-                                setSelectedItem(prev => prev ? { ...prev, teamIds: newTeamIds } : prev);
+                                setSelectedItem(prev => prev ? { ...prev, teamIds: newTeamIds, assignedTeamId: teamId || null } : prev);
                                 setInboxItems(prev => prev.map(item =>
-                                    item.id === selectedItem.id ? { ...item, teamIds: newTeamIds } : item
+                                    item.id === selectedItem.id ? { ...item, teamIds: newTeamIds, assignedTeamId: teamId || null } : item
                                 ));
                                 const teamName = teams?.find(t => t.id === teamId)?.name || 'Takım';
                                 const evt = res?.data?.event || {
@@ -7800,28 +7803,33 @@ const Inbox = () => {
                                 });
                             } catch(e) {
                                 console.error('[Inbox] Team assign error:', e?.response?.data || e);
-                                alert('Takım ataması başarısız: ' + (e?.response?.data?.error || e.message));
+                                if (showError) showError('Hata', 'Takım ataması başarısız: ' + (e?.response?.data?.error || e.message));
                             }
                         }}
-                        onAssignUser={async (convId, userId) => {
+                        onAssignUser={async (convId, userId, skipApi = false, teamId = null) => {
                             try {
-                                const res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { userId: userId || null });
-                                if (res?.data?.warning) {
-                                    showWarning ? showWarning('Mesai Dışı Atama', res.data.warning) : alert(`⚠️ ${res.data.warning}`);
+                                let res = null;
+                                if (!skipApi) {
+                                    const payload = { userId: userId || null };
+                                    if (teamId !== undefined && teamId !== null) payload.teamId = teamId;
+                                    res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, payload);
+                                    if (res?.data?.warning) {
+                                        if (showWarning) showWarning('Mesai Dışı Atama', res.data.warning);
+                                    }
                                 }
-                                const assignedMember = userId ? members.find(m => m.id === userId) : null;
-                                const assignedTo = assignedMember ? { id: assignedMember.id, name: assignedMember.name, avatar: assignedMember.avatar } : null;
-                                const newTeamIds = res?.data?.conversation?.teamIds || selectedItem.teamIds;
-                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null, assignedTo, teamIds: newTeamIds } : prev);
+                                const assignedMember = userId ? members.find(m => (m.userId === userId || m.user?.id === userId || m.id === userId)) : null;
+                                const assignedTo = res?.data?.conversation?.assignedTo || (assignedMember ? { id: userId, name: assignedMember.user?.name || assignedMember.name, avatar: assignedMember.user?.avatar || assignedMember.avatar } : (userId ? { id: userId, name: 'Temsilci' } : null));
+                                const newTeamIds = res?.data?.conversation?.teamIds || (teamId !== null && teamId !== undefined ? JSON.stringify([teamId]) : selectedItem.teamIds);
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null, assignedTo, teamIds: newTeamIds, ...(teamId !== null && teamId !== undefined ? { assignedTeamId: teamId } : {}) } : prev);
                                 setInboxItems(prev => prev.map(item =>
-                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null, assignedTo, teamIds: newTeamIds } : item
+                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null, assignedTo, teamIds: newTeamIds, ...(teamId !== null && teamId !== undefined ? { assignedTeamId: teamId } : {}) } : item
                                 ));
                                 const evt = res?.data?.event || {
                                     id: `user-assign-${Date.now()}`,
                                     createdAt: new Date().toISOString(),
                                     isSystemEvent: true,
                                     eventType: 'ASSIGNED',
-                                    title: assignedMember?.name ? `<b>${assignedMember.name}</b> kişisine atandı` : 'Kişi ataması kaldırıldı',
+                                    title: assignedTo?.name ? `<b>${assignedTo.name}</b> kişisine atandı` : 'Kişi ataması kaldırıldı',
                                     actorType: 'USER',
                                     actorId: user?.id
                                 };
@@ -7831,7 +7839,7 @@ const Inbox = () => {
                                 });
                             } catch(e) {
                                 console.error('[Inbox] User assign error:', e?.response?.data || e);
-                                alert('Agent ataması başarısız: ' + (e?.response?.data?.error || e.message));
+                                if (showError) showError('Hata', 'Temsilci ataması başarısız: ' + (e?.response?.data?.error || e.message));
                             }
                         }}
                         onTakeOver={async () => {

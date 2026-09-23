@@ -3779,27 +3779,37 @@ export const smartAssignConversation = async (req, res) => {
 
                     if (rule === 'POOL' || rule === 'MANUAL') {
                         resolvedAgentId = null;
-                    } else if (uygunMembers.length === 0) {
+                    } else if (allMembers.length === 0) {
                         resolvedAgentId = null;
-                        atamaUyarisi = `${team.name} takımında şu anda çalışan temsilci yok. Konuşma havuzda bekliyor.`;
-                        console.log(`🕒 [SmartAssign] "${team.name}" → çalışan üye yok, havuzda`);
-                    } else if (rule === 'ROUND_ROBIN') {
-                        resolvedAgentId = await sirayla(uygunMembers);
-                    } else if (rule === 'LEAST_BUSY') {
-                        const counts = await Promise.all(
-                            uygunMembers.map(async m => ({
-                                id: m.id,
-                                count: await prisma.conversation.count({ where: { assignedToId: m.id, status: 'OPEN' } })
-                            }))
-                        );
-                        counts.sort((a, b) => a.count - b.count);
-                        resolvedAgentId = counts[0].id;
-                    } else if (rule === 'ONLINE_ONLY') {
-                        const online = uygunMembers.filter(m => m.isOnline);
-                        if (online.length > 0) {
-                            resolvedAgentId = await sirayla(online);
+                        atamaUyarisi = `${team.name} takımında kayıtlı temsilci yok. Konuşma havuzda bekliyor.`;
+                        console.log(`🕒 [SmartAssign] "${team.name}" → üye yok, havuzda`);
+                    } else {
+                        // Mesai saatinde üye varsa öncelikli kullan; yoksa (akşam/hafta sonu) tüm üyeler arasından sırayla dağıt
+                        const adayHavuz = uygunMembers.length > 0 ? uygunMembers : allMembers;
+                        if (uygunMembers.length === 0) {
+                            console.log(`🕒 [SmartAssign] "${team.name}" → mesai saatinde üye yok, takımdaki ${allMembers.length} temsilci arasından sırayla atanıyor`);
+                        }
+
+                        if (rule === 'ROUND_ROBIN') {
+                            resolvedAgentId = await sirayla(adayHavuz);
+                        } else if (rule === 'LEAST_BUSY') {
+                            const counts = await Promise.all(
+                                adayHavuz.map(async m => ({
+                                    id: m.id,
+                                    count: await prisma.conversation.count({ where: { assignedToId: m.id, status: 'OPEN' } })
+                                }))
+                            );
+                            counts.sort((a, b) => a.count - b.count);
+                            resolvedAgentId = counts[0].id;
+                        } else if (rule === 'ONLINE_ONLY') {
+                            const online = adayHavuz.filter(m => m.isOnline);
+                            if (online.length > 0) {
+                                resolvedAgentId = await sirayla(online);
+                            } else {
+                                resolvedAgentId = await sirayla(adayHavuz);
+                            }
                         } else {
-                            resolvedAgentId = null; // Kimse online değil, havuzda kal
+                            resolvedAgentId = await sirayla(adayHavuz);
                         }
                     }
                 }

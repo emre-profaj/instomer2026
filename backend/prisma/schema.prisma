@@ -2263,11 +2263,21 @@ model Case {
   branch   AppointmentBranch? @relation("CaseBranch", fields: [branchId], references: [id], onDelete: SetNull)
 
   // ─── Kaynak: BU BAŞVURUNUN kaynağı ────────────────────────────────
-  // Kişideki source/leadSource "ilk temas"ı tutar ve değişmez.
-  // Buradaki alan her başvurunun kendi kaynağı; sipariş ve randevu bunu
-  // devralır. Otomatik açılan case'lerde kanaldan doldurulur
-  // (FACEBOOK_LEAD, WHATSAPP, WEB_FORM...), elle açılanda kullanıcı seçer.
-  leadSource       String? // FACEBOOK, INSTAGRAM, WHATSAPP, WEB_FORM, REFERRAL, INBOUND, WALK_IN...
+  // İki ayrı kavram takip edilir:
+  //
+  //   channel   → GELİŞ KANALI: kişi bizimle NASIL iletişim kurdu?
+  //               WHATSAPP, FACEBOOK, INSTAGRAM, EMAIL, PHONE, FORM,
+  //               WEB_WIDGET, AI_CALL, SMS, WALK_IN
+  //
+  //   leadSource → KAYNAK: kişi bizi NEREDEN duydu / neden geldi?
+  //               FACEBOOK (Meta reklam), GOOGLE (Google Ads),
+  //               REFERRAL, EVENT, INSTAGRAM, WEBSITE, OTHER...
+  //
+  // Otomatik açılan case'lerde channel konuşmadan otomatik dolar.
+  // leadSource ise reklam bilgisinden veya kullanıcı seçiminden gelir.
+  // Sipariş (Deal) ve randevu her iki alanı da devralır.
+  channel          String? // WHATSAPP, FACEBOOK, INSTAGRAM, EMAIL, PHONE, FORM, WEB_WIDGET, AI_CALL, SMS, WALK_IN
+  leadSource       String? // FACEBOOK, GOOGLE, REFERRAL, INSTAGRAM, WEBSITE, EVENT, SMS, OTHER...
   leadSourceDetail String? // Serbest metin: "Instagram reklamı", "Ahmet Bey referansı"
 
   // Case-level attribution: her başvurunun kendi reklam/kampanya detayı
@@ -2280,6 +2290,7 @@ model Case {
   @@index([caseNumber])
   @@index([branchId])
   @@index([workspaceId, leadSource])
+  @@index([workspaceId, channel])
   @@map("cases")
 }
 

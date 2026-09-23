@@ -55,6 +55,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [newTitle, setNewTitle] = useState('');
     const [newLeadSource, setNewLeadSource] = useState('');
     const [newLeadSourceDetail, setNewLeadSourceDetail] = useState('');
+    const [newChannel, setNewChannel] = useState('');
     const [funnels, setFunnels] = useState([]);
     const [editingCaseId, setEditingCaseId] = useState(null);
     const [assigningCaseId, setAssigningCaseId] = useState(null);
@@ -270,10 +271,12 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             await caseAPI.create(workspaceId, contactId, {
                 title: newTitle.trim(),
                 conversationId: conversationId || null,
+                channel: newChannel || null,
                 leadSource: newLeadSource || null,
                 leadSourceDetail: newLeadSourceDetail || null
             });
             setNewTitle('');
+            setNewChannel('');
             setNewLeadSource('');
             setNewLeadSourceDetail('');
             setShowCreateForm(false);
@@ -293,10 +296,12 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             await caseAPI.create(workspaceId, contactId, {
                 title: inlineNewTitle.trim(),
                 conversationId: conversationId || null,
+                channel: newChannel || null,
                 leadSource: newLeadSource || null,
                 leadSourceDetail: newLeadSourceDetail || null
             });
             setInlineNewTitle('');
+            setNewChannel('');
             setNewLeadSource('');
             setNewLeadSourceDetail('');
             setShowInlineCreate(false);
@@ -1008,20 +1013,33 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                             </div>
                         )}
 
-                        {/* Kaynak — silik gösterim (admin/rapor amaçlı) */}
-                        {displayCase?.source && (
+                        {/* Geliş Kanalı ve Kaynak — ayrı ayrı gösterim */}
+                        {(displayCase?.channel || displayCase?.leadSource || displayCase?.source) && (
                             <div style={{
                                 padding: showOnly === 'actions' ? '4px 0' : '4px 12px 2px',
-                                fontSize: '0.6rem', color: '#94a3b8', opacity: 0.5,
-                                display: 'flex', alignItems: 'center', gap: 4,
+                                fontSize: '0.65rem', color: '#94a3b8',
+                                display: 'flex', flexDirection: 'column', gap: 2,
                                 borderTop: '1px solid #f1f5f9', marginTop: 4, paddingTop: 6,
                             }}>
-                                <span>📡</span>
-                                <span>
-                                    {{ GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', WHATSAPP_AD: 'WhatsApp Reklam', FORM: 'Form', CAMPAIGN: 'Kampanya', COLD_CALL: 'Cold Call', REFERRAL: 'Referans', ORGANIC: 'Organik', MANUAL: 'Manuel' }[displayCase.source] || displayCase.source}
-                                </span>
+                                {displayCase.channel && (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span>📡</span>
+                                        <span style={{ color: '#64748b', fontWeight: 500 }}>Kanal:</span>
+                                        <span>{{ WHATSAPP: '💬 WhatsApp', FACEBOOK: '💬 Facebook', INSTAGRAM: '📸 Instagram', EMAIL: '📧 E-posta', PHONE: '📞 Telefon', FORM: '📝 Form', WEB_WIDGET: '🌐 Web', AI_CALL: '🤖 AI Arama', SMS: '✉️ SMS', WALK_IN: '🚶 Yüz Yüze' }[displayCase.channel] || displayCase.channel}</span>
+                                    </span>
+                                )}
+                                {(displayCase.leadSource || displayCase.source) && (
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span>🎯</span>
+                                        <span style={{ color: '#64748b', fontWeight: 500 }}>Kaynak:</span>
+                                        <span>{{ GOOGLE: '🔍 Google', GOOGLE_ADS: '🔍 Google Ads', FACEBOOK: '📘 Facebook', META_ADS: '📘 Meta Ads', INSTAGRAM: '📸 Instagram', WHATSAPP_AD: '📱 WhatsApp Reklam', REFERRAL: '🤝 Referans', INBOUND: '📞 Telefon', WALK_IN: '🚶 Yüz Yüze', WEB_FORM: '📝 Web Formu', WEBSITE: '🌐 Web Sitesi', EVENT: '🎪 Etkinlik', SMS: '✉️ SMS', CAMPAIGN: 'Kampanya', ORGANIC: 'Organik', OTHER: 'Diğer' }[displayCase.leadSource || displayCase.source] || displayCase.leadSource || displayCase.source}</span>
+                                    </span>
+                                )}
+                                {displayCase.leadSourceDetail && (
+                                    <span style={{ paddingLeft: 20, color: '#cbd5e1', fontSize: '0.6rem' }}>{displayCase.leadSourceDetail}</span>
+                                )}
                                 {displayCase.campaign?.name && (
-                                    <span style={{ color: '#cbd5e1' }}>• {displayCase.campaign.name}</span>
+                                    <span style={{ paddingLeft: 20, color: '#cbd5e1', fontSize: '0.6rem' }}>• Kampanya: {displayCase.campaign.name}</span>
                                 )}
                             </div>
                         )}

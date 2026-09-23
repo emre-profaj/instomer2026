@@ -416,12 +416,12 @@ const ChatPopup = ({ conversationId, onClose }) => {
         setAssignMegaMenuOpen(false);
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, conversation.id, { teamId, agentId });
-            // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
+            // Mesai dışı atamada backend uyarı döner
             if (res?.data?.warning) {
                 if (toast?.showWarning) {
                     toast.showWarning('Mesai Dışı Atama', res.data.warning);
                 } else {
-                    alert(`⚠️ ${res.data.warning}`);
+                    console.warn('Mesai Dışı Atama:', res.data.warning);
                 }
             }
             const conv = res.data.conversation || res.data;

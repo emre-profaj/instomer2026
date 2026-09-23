@@ -58,17 +58,14 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         }
     }
 
-    // Mesai dışındaki temsilciye konuşma atanmasın. Saati girilmemiş
-    // kişilerde kısıt yok sayılır (isWorkingAt true döner).
-    const humanMembers = branchFilteredMembers.filter(m => isWorkingAt(m.user?.workingHours));
+    // Mesai saatindeki üyeleri öncelikle tercih et. Saati girilmemiş kişilerde kısıt yok sayılır (isWorkingAt true döner).
+    let humanMembers = branchFilteredMembers.filter(m => isWorkingAt(m.user?.workingHours));
     if (humanMembers.length === 0) {
-        const kapali = branchFilteredMembers
-            .map(m => `${m.user?.name}: ${unavailabilityReason(m.user?.workingHours) || 'uygun değil'}`)
-            .join(', ');
-        console.log(`🕒 [Distribute] "${team.name}" → şu an çalışan üye yok, havuzda bekliyor (${kapali})`);
-        return null;
-    }
-    if (humanMembers.length < branchFilteredMembers.length) {
+        // Mesai saatinde kimse yoksa (akşam/gece/hafta sonu), konuşmayı sahipsiz bırakmamak için
+        // takımdaki tüm üyelere dağıt (mesai dışı fallback).
+        console.log(`🕒 [Distribute] "${team.name}" → şu an mesaide üye yok, takımdaki tüm üyelere dağıtılıyor (${branchFilteredMembers.length} üye)`);
+        humanMembers = [...branchFilteredMembers];
+    } else if (humanMembers.length < branchFilteredMembers.length) {
         const atlanan = branchFilteredMembers
             .filter(m => !humanMembers.includes(m))
             .map(m => m.user?.name)
@@ -77,8 +74,7 @@ async function distributeByMethod(team, conversationId, method, force = false) {
     }
 
     // Kapasitesi dolmuş temsilciye yeni iş verilmez. Sınır tanımlı değilse
-    // (null) kısıt yok. Herkes doluysa konuşma havuzda bekler — birine
-    // zorla yığmaktansa görünür şekilde beklemesi daha iyi.
+    // (null) kısıt yok. Herkes doluysa havuzda kalmak yerine en az yüke sahip olana ver.
     const musaitUyeler = [];
     for (const m of humanMembers) {
         const uyelik = await prisma.workspaceMember.findFirst({
@@ -93,21 +89,19 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         if (acik < limit) musaitUyeler.push(m);
         else console.log(`📦 [Distribute] ${m.user?.name} kapasitesi dolu (${acik}/${limit}) — atlandı`);
     }
-    if (musaitUyeler.length === 0) {
-        console.log(`📦 [Distribute] "${team.name}" → herkesin kapasitesi dolu, havuzda bekliyor`);
-        return null;
+    if (musaitUyeler.length > 0) {
+        humanMembers.length = 0;
+        humanMembers.push(...musaitUyeler);
+    } else {
+        console.log(`📦 [Distribute] "${team.name}" → herkesin kapasitesi dolu, yükü dengelemek için havuzdaki üyeler arasından seçiliyor`);
     }
-    humanMembers.length = 0;
-    humanMembers.push(...musaitUyeler);
 
     let assignedUserId = null;
     const effectiveMethod = method || team.distributionMethod || 'ROUND_ROBIN';
 
     switch (effectiveMethod) {
         case 'ROUND_ROBIN': {
-            // İndeksi ÖNCE atomik artır, sonra dönen değeri kullan. Eski hâlde
-            // iki mesaj aynı anda gelince ikisi de aynı indeksi okuyup aynı
-            // kişiye atanıyordu.
+            // İndeksi ÖNCE atomik artır, sonra dönen değeri kullan.
             const guncel = await prisma.team.update({
                 where: { id: team.id },
                 data: { roundRobinIndex: { increment: 1 } },
@@ -130,18 +124,15 @@ async function distributeByMethod(team, conversationId, method, force = false) {
         }
         case 'ONLINE_ONLY': {
             const online = humanMembers.filter(m => m.user?.isOnline);
-            if (online.length > 0) {
-                const guncel = await prisma.team.update({
-                    where: { id: team.id },
-                    data: { roundRobinIndex: { increment: 1 } },
-                    select: { roundRobinIndex: true }
-                });
-                const idx = ((guncel.roundRobinIndex || 1) - 1) % online.length;
-                assignedUserId = online[idx].userId;
-                console.log(`🟢 [Distribute] "${team.name}" → ONLINE → ${online[idx].user.name}`);
-            } else {
-                console.log(`🟢 [Distribute] "${team.name}" → kimse online değil, havuzda`);
-            }
+            const candidates = online.length > 0 ? online : humanMembers;
+            const guncel = await prisma.team.update({
+                where: { id: team.id },
+                data: { roundRobinIndex: { increment: 1 } },
+                select: { roundRobinIndex: true }
+            });
+            const idx = ((guncel.roundRobinIndex || 1) - 1) % candidates.length;
+            assignedUserId = candidates[idx].userId;
+            console.log(`🟢 [Distribute] "${team.name}" → ONLINE (${online.length > 0 ? 'online' : 'fallback'}) → ${candidates[idx].user.name}`);
             break;
         }
     }

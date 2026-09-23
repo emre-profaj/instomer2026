@@ -345,6 +345,7 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                         caseTypeId,
                         campaignId: conv.campaignId || null,
                         priority: 'NORMAL',
+                        channel: conv.channel || null, // Geliş kanalı (WhatsApp, Form, Instagram vb.)
                         leadSource: caseLeadSource,
                         leadSourceDetail: options.leadSourceDetail || null
                     }
@@ -826,7 +827,7 @@ export const getCase = async (req, res) => {
 export const createCase = async (req, res) => {
     try {
         const { workspaceId, contactId } = req.params;
-        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId, branchId, leadSource, leadSourceDetail } = req.body;
+        const { title, description, funnelType, funnelStageId, assignedToId, assignedTeamId, conversationId, priority, caseTypeId, branchId, leadSource, leadSourceDetail, channel } = req.body;
 
         if (!title?.trim()) {
             return res.status(400).json({ error: 'Case başlığı gerekli' });
@@ -885,8 +886,10 @@ export const createCase = async (req, res) => {
                 priority: priority || 'NORMAL',
                 caseTypeId: caseTypeId || null,
                 branchId: branchId || null,
-                // Elle açılan case: kullanıcının seçtiği kaynak. Seçilmediyse
-                // varsa konuşmanın kanalından, o da yoksa kişiden devralınır.
+                // Elle açılan case: geliş kanalı ve kaynak ayrı takip edilir.
+                // Kanal: kullanıcı seçimi → konuşma kanalı
+                // Kaynak: kullanıcı seçimi → kanaldan türetme → kişiden devralma
+                channel: channel || convChannel || null,
                 leadSource: manualCaseSource,
                 leadSourceDetail: leadSourceDetail || null
             }

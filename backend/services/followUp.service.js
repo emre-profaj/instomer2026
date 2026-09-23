@@ -190,12 +190,15 @@ async function shouldSkipReminder(conversation) {
     }
     
     // Guard 2: Has customer responded after bot's last message?
+    // Buffer +5 saniye: Bot yanıtı ile müşteri mesajı aynı saniyede olabiliyor (request-response cycle)
+    // Bu durumda müşterinin asıl "sessiz kalması" ile karıştırılmasını engelle
     if (conversation.lastBotMessageAt) {
+        const bufferTime = new Date(conversation.lastBotMessageAt.getTime() + 5000); // +5 saniye
         const customerMessage = await prisma.message.findFirst({
             where: {
                 conversationId: conversation.id,
                 isFromContact: true,
-                createdAt: { gt: conversation.lastBotMessageAt }
+                createdAt: { gt: bufferTime }
             }
         });
         if (customerMessage) {
@@ -284,7 +287,15 @@ export const processSmartReminders = async () => {
             take: 100 // Her dakika 100 adede kadar kontrol et (tüm workspaceler için adil dağılım)
         });
 
-        if (conversations.length === 0) return;
+        if (conversations.length === 0) {
+            // Her 5 dakikada bir "aday bulunamadı" logu bas (log gürültüsü önlemek için)
+            if (!processSmartReminders._lastEmptyLog || Date.now() - processSmartReminders._lastEmptyLog > 300000) {
+                console.log(`📩 [SmartReminder] Aday konuşma bulunamadı (botEnabled=true, status=OPEN, lastBotMessageAt var, reminderCount<5)`);
+                processSmartReminders._lastEmptyLog = Date.now();
+            }
+            return;
+        }
+        console.log(`📩 [SmartReminder] ${conversations.length} aday konuşma bulundu`);
 
         let sent = 0, skipped = { qualified_lead: 0, customer_responded: 0, agent_responded: 0, planned_activity: 0, planned_appointment: 0, no_bot: 0, no_step: 0, time_not_elapsed: 0 };
 
@@ -305,6 +316,7 @@ export const processSmartReminders = async () => {
 
             if (!bot) {
                 // Bot bulunamadıysa kuyruğu sürekli meşgul etmemesi için sayacı sonlandır
+                console.warn(`⚠️ [SmartReminder] Bot bulunamadı: conv=${conversation.id}, channel=${conversation.channel}, assignedBotId=${conversation.assignedBotId}, fbPage=${conversation.facebookPage?.id || 'none'}`);
                 await prisma.conversation.update({
                     where: { id: conversation.id },
                     data: { reminderCount: 5 }
@@ -338,6 +350,7 @@ export const processSmartReminders = async () => {
             // Smart guard checks (müşteri yazdı mı, temsilci yazdı mı, nitelikli lead mi, randevu var mı)
             const skipReason = await shouldSkipReminder(conversation);
             if (skipReason) {
+                console.log(`🛡️ [SmartReminder] Guard tetiklendi: conv=${conversation.id}, sebep=${skipReason}, contact=${conversation.contact?.name || 'N/A'}, channel=${conversation.channel}, lastBotMsg=${conversation.lastBotMessageAt?.toISOString()}`);
                 // Bu döngüyü sonlandır (müşteri veya bot tekrar yazdığında sayaç sıfırlanır)
                 await prisma.conversation.update({
                     where: { id: conversation.id },

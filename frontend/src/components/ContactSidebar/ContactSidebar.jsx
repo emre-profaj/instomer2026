@@ -1587,12 +1587,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             // Always use conversationAPI.assign with full payload to ensure both teamId and userId are sent
             const assignRes = await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
 
-            // Mesai dışı atamada backend uyarı döner — sessiz geçmeyelim
+            // Mesai dışı atamada backend uyarı döner
             if (assignRes?.data?.warning) {
                 if (toast?.showWarning) {
                     toast.showWarning('Mesai Dışı Atama', assignRes.data.warning);
                 } else {
-                    alert(`⚠️ ${assignRes.data.warning}`);
+                    console.warn('Mesai Dışı Atama:', assignRes.data.warning);
                 }
             }
 
