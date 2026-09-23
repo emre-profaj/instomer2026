@@ -199,6 +199,34 @@ export async function getBaseKnowledgeContext(workspaceId) {
             sections.push(`📍 ŞUBELER VE ADRESLER:\n${branchLines.join('\n')}`);
         }
 
+        // 2b. Şubeler ekranındaki konumlar (WorkspaceRule / CLINIC_LOCATIONS).
+        // Adresler pratikte burada tutuluyor; appointment_branches ise bazı
+        // çalışma alanlarında tıbbi branş listesi olarak kullanılıyor. Şube
+        // kaydında adres yoksa bot "nerede" sorusuna hiç cevap veremiyordu.
+        try {
+            const adresliSubeVar = branches.some(b => b.address);
+            if (!adresliSubeVar) {
+                const kural = await prisma.workspaceRule.findFirst({
+                    where: { workspaceId, ruleType: 'CLINIC_LOCATIONS' },
+                    select: { config: true }
+                });
+                const konumlar = kural?.config
+                    ? (JSON.parse(kural.config).locations || []).filter(l => l && l.isActive !== false && l.address)
+                    : [];
+                if (konumlar.length > 0) {
+                    const lines = konumlar.map(l => {
+                        let info = `- ${l.name}`;
+                        if (l.address) info += ` | Adres: ${l.address}`;
+                        if (l.phone) info += ` | Tel: ${l.phone}`;
+                        return info;
+                    });
+                    sections.push(`📍 ADRESLER VE KONUMLAR:\n${lines.join('\n')}`);
+                }
+            }
+        } catch (konumErr) {
+            console.error('[BaseKnowledge] Konumlar okunamadı:', konumErr.message);
+        }
+
         // 3. Kategoriler
         if (categories.length > 0) {
             const catLines = categories.map(c => {

@@ -69,6 +69,57 @@ export const getLocations = async (req, res) => {
     }
 };
 
+/**
+ * Şubeler ekranındaki konum bilgisini appointment_branches tablosuna da yazar.
+ *
+ * Sistemde iki ayrı "şube" listesi var: bu ekran WorkspaceRule içindeki
+ * CLINIC_LOCATIONS JSON'unu yazıyor, bot ve widget ise appointment_branches
+ * tablosunu okuyor. Adresler yalnızca JSON'a girdiği için bot "nerede"
+ * sorusuna cevap veremiyordu. Tek kaynağa inene kadar burada aynalıyoruz.
+ *
+ * Eşleştirme isimle: "Bornova Erkek Şube" ile "Bornova Erkek" aynı sayılır.
+ */
+const SUBE_EKLERI = /\s*(şube|sube|branch|poliklinik)\s*$/i;
+
+function subeAdiNormalize(ad) {
+    return String(ad || '')
+        .replace(SUBE_EKLERI, '')
+        .toLocaleLowerCase('tr-TR')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function konumuSubeyeAynala(workspaceId, konum) {
+    if (!konum?.name) return;
+    try {
+        const subeler = await prisma.appointmentBranch.findMany({
+            where: { workspaceId },
+            select: { id: true, name: true }
+        });
+        const hedefAd = subeAdiNormalize(konum.name);
+        const sube = subeler.find(b => subeAdiNormalize(b.name) === hedefAd);
+        if (!sube) return;
+
+        // Harita alanına yanlışlıkla adres metni yazılmış olabiliyor;
+        // link değilse "Yol tarifi" düğmesi çıkmasın diye almıyoruz.
+        const maps = /^https?:\/\//i.test(String(konum.googleMapsUrl || '').trim())
+            ? konum.googleMapsUrl.trim()
+            : null;
+
+        await prisma.appointmentBranch.update({
+            where: { id: sube.id },
+            data: {
+                address: konum.address ? String(konum.address).trim() : null,
+                phone: konum.phone ? String(konum.phone).trim() : null,
+                googleMapsUrl: maps
+            }
+        });
+        console.log(`📍 [Konum] "${konum.name}" bilgisi ${sube.name} şubesine aynalandı`);
+    } catch (err) {
+        console.error('[Konum] Şubeye aynalanamadı:', err.message);
+    }
+}
+
 export const createLocation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
@@ -98,6 +149,7 @@ export const createLocation = async (req, res) => {
 
         config.locations.push(newLocation);
         await saveLocationsConfig(workspaceId, config);
+        await konumuSubeyeAynala(workspaceId, newLocation);
 
         res.status(201).json({ location: newLocation });
     } catch (error) {
@@ -130,6 +182,7 @@ export const updateLocation = async (req, res) => {
         if (defaultFunnelId !== undefined) config.locations[index].defaultFunnelId = defaultFunnelId || null;
 
         await saveLocationsConfig(workspaceId, config);
+        await konumuSubeyeAynala(workspaceId, config.locations[index]);
         res.json({ location: config.locations[index] });
     } catch (error) {
         console.error('Update location error:', error);

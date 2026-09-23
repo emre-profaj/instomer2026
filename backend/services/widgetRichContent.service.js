@@ -123,9 +123,47 @@ async function katalogBloklari(workspaceId, { conversationId, userMessage, botId
     }
 }
 
+/**
+ * Şubeler ekranındaki konumlar (WorkspaceRule / CLINIC_LOCATIONS).
+ *
+ * Adresler pratikte burada tutuluyor. appointment_branches tablosu ise
+ * çalışma alanına göre farklı anlamlar taşıyor: Fes Spa'da gerçek şube,
+ * Metropol Hastanesi'nde tıbbi branş (Kardiyoloji, Nöroloji...). Bu yüzden
+ * adres için önce şube kaydına, o boşsa buraya bakıyoruz.
+ */
+async function ekranKonumlari(workspaceId) {
+    try {
+        const kural = await prisma.workspaceRule.findFirst({
+            where: { workspaceId, ruleType: 'CLINIC_LOCATIONS' },
+            select: { config: true }
+        });
+        if (!kural?.config) return [];
+        const parsed = JSON.parse(kural.config);
+        return (parsed.locations || [])
+            .filter(l => l && l.isActive !== false && (l.address || l.googleMapsUrl))
+            .map(l => ({
+                kind: 'location',
+                name: l.name,
+                address: l.address || null,
+                phone: l.phone || null,
+                mapsUrl: guvenliUrl(l.googleMapsUrl)
+            }));
+    } catch (err) {
+        console.error('[WidgetKart] Ekran konumları okunamadı:', err.message);
+        return [];
+    }
+}
+
 /** Müşteri adres/konum sorduysa şube ya da şirket konum kartı. */
-async function konumBlogu(workspaceId, { conversationId, userMessage }) {
-    if (!iceriyorMu(userMessage, KONUM_KELIMELERI)) return [];
+async function konumBlogu(workspaceId, { conversationId, userMessage, recentMessages = [] }) {
+    // Yalnızca o anki mesaja bakmak yetmiyordu: bot "hangi şubenin konumunu
+    // istersiniz?" diye sorup müşteri "Bornova Erkek" yazdığında o mesajda
+    // konum kelimesi geçmiyor ve kart hiç çıkmıyordu. Bir önceki bot
+    // mesajına da bakıyoruz — yalnızca ona, yoksa kart sonsuza dek tekrarlar.
+    const sonBot = [...(recentMessages || [])].reverse().find(m => m && m.isFromContact === false);
+    const konumSoruldu = iceriyorMu(userMessage, KONUM_KELIMELERI)
+        || iceriyorMu(sonBot?.content, KONUM_KELIMELERI);
+    if (!konumSoruldu) return [];
     try {
         const conv = conversationId
             ? await prisma.conversation.findUnique({
@@ -134,9 +172,21 @@ async function konumBlogu(workspaceId, { conversationId, userMessage }) {
             })
             : null;
 
-        if (conv?.branchId) {
+        // Müşteri bu mesajda bir şube adı yazdıysa onu öne al
+        let hedefSubeId = conv?.branchId || null;
+        if (userMessage) {
+            const hepsi = await prisma.appointmentBranch.findMany({
+                where: { workspaceId, isActive: true },
+                select: { id: true, name: true }
+            });
+            const metin = userMessage.toLocaleLowerCase('tr-TR');
+            const yazilan = hepsi.find(b => b.name && metin.includes(b.name.toLocaleLowerCase('tr-TR')));
+            if (yazilan) hedefSubeId = yazilan.id;
+        }
+
+        if (hedefSubeId) {
             const sube = await prisma.appointmentBranch.findUnique({
-                where: { id: conv.branchId },
+                where: { id: hedefSubeId },
                 select: { name: true, address: true, phone: true, googleMapsUrl: true }
             });
             if (sube && (sube.address || sube.googleMapsUrl)) {
@@ -166,6 +216,10 @@ async function konumBlogu(workspaceId, { conversationId, userMessage }) {
                 mapsUrl: guvenliUrl(b.googleMapsUrl)
             }));
         }
+
+        // Şube kaydında adres yoksa Şubeler ekranındaki konumlara düş
+        const ekran = await ekranKonumlari(workspaceId);
+        if (ekran.length > 0) return ekran.slice(0, 4);
 
         const ws = await prisma.workspace.findUnique({
             where: { id: workspaceId },
@@ -468,7 +522,7 @@ export async function buildWidgetRichContent(workspaceId, {
 
         const [katalog, konum, bilgi, menu] = await Promise.all([
             acik('services') ? katalogBloklari(workspaceId, { conversationId, userMessage, botId, recentMessages }) : Promise.resolve([]),
-            acik('branches') ? konumBlogu(workspaceId, { conversationId, userMessage }) : Promise.resolve([]),
+            acik('branches') ? konumBlogu(workspaceId, { conversationId, userMessage, recentMessages }) : Promise.resolve([]),
             acik('catalog') ? bilgiBankasiBloklari(workspaceId, { userMessage, aiText }) : Promise.resolve([]),
             ilkCevap ? bolumMenusu(workspaceId, ayarlar) : Promise.resolve(null)
         ]);
