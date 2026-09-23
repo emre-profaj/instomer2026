@@ -1833,36 +1833,23 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                 const leadPhone = contact?.phone || lead?.phone || '-';
                 const leadEmail = contact?.email || lead?.email || '-';
 
-                const emailSubject = `🎯 Yeni Lead: ${leadName}`;
-                const emailBody = `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                        <h2 style="color: #4F46E5;">Yeni Lead Bildirimi</h2>
-                        <p>Merhaba ${ownerName},</p>
-                        <p><strong>${workspace?.name || 'İşletme'}</strong> işletmenize yeni bir lead geldi:</p>
-                        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                            <tr style="background: #f3f4f6;">
-                                <td style="padding: 10px; border: 1px solid #e5e7eb;"><strong>Ad Soyad</strong></td>
-                                <td style="padding: 10px; border: 1px solid #e5e7eb;">${leadName}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #e5e7eb;"><strong>Telefon</strong></td>
-                                <td style="padding: 10px; border: 1px solid #e5e7eb;">${leadPhone}</td>
-                            </tr>
-                            <tr style="background: #f3f4f6;">
-                                <td style="padding: 10px; border: 1px solid #e5e7eb;"><strong>E-posta</strong></td>
-                                <td style="padding: 10px; border: 1px solid #e5e7eb;">${leadEmail}</td>
-                            </tr>
-                        </table>
-                        <p>
-                            <a href="https://app.instomer.com/inbox?contactId=${contact?.id || ''}" 
-                               style="display: inline-block; background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-                                Lead'i Görüntüle
-                            </a>
-                        </p>
-                        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-                        <p style="color: #6b7280; font-size: 12px;">Bu e-posta Instomer CRM tarafından otomatik gönderilmiştir.</p>
-                    </div>
-                `;
+                const emailSubject = `Yeni lead · ${leadName}`;
+                const { bildirimMaili } = await import('../utils/emailTemplate.js');
+                const panelUrl = process.env.FRONTEND_URL || 'https://app.instomer.com';
+                const emailBody = bildirimMaili({
+                    baslik: 'Yeni lead geldi',
+                    ozet: `${workspace?.name || 'İşletmenize'} yeni bir başvuru düştü. Detaylar aşağıda.`,
+                    satirlar: [
+                        { etiket: 'Ad Soyad', deger: leadName },
+                        { etiket: 'Telefon', deger: leadPhone !== '-' ? leadPhone : null, link: leadPhone !== '-' ? `tel:${String(leadPhone).replace(/\s+/g, '')}` : null },
+                        { etiket: 'E-posta', deger: leadEmail !== '-' ? leadEmail : null, link: leadEmail !== '-' ? `mailto:${leadEmail}` : null },
+                        { etiket: 'Form', deger: lead?.formName || lead?.source || null },
+                        { etiket: 'İşletme', deger: workspace?.name || null }
+                    ],
+                    butonMetni: 'Lead\'i aç',
+                    butonUrl: `${panelUrl}/inbox?contactId=${contact?.id || ''}`,
+                    altNot: `${ownerName} adına gönderildi. Bildirim tercihlerinizi Ayarlar → Bildirim Ayarları menüsünden değiştirebilirsiniz.`
+                });
 
                 await sendSystemEmail(recipientList, emailSubject, emailBody);
                 console.log(`📧 [AUTOMATION] Lead notification sent to recipients: [${recipientList.join(', ')}]`);

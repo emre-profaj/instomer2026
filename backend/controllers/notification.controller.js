@@ -220,16 +220,22 @@ export const createNotification = async (workspaceId, userId, type, title, body,
 
                 if (targetEmails.length > 0) {
                     const { sendSystemEmail } = await import('../services/systemEmail.service.js');
-                    const emailBody = `
-                        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;border:1px solid #eaeaea;border-radius:10px;">
-                            <h2 style="color:#1a1a2e;font-size:18px;margin-top:0;">🔔 ${title}</h2>
-                            <p style="color:#4b5563;font-size:15px;line-height:1.6;">${body}</p>
-                            <hr style="border:none;border-top:1px solid #f3f4f6;margin:24px 0;">
-                            <p style="color:#9ca3af;font-size:12px;margin-bottom:0;">Bu bildirimi Instomer panelindeki <strong>Ayarlar → Bildirim Ayarları</strong> menüsünden yönetebilirsiniz.</p>
-                        </div>
-                    `;
-                    // Instomer sistem mailinden alıcıların mailine gönder
-                    await sendSystemEmail(targetEmails, `Instomer Bildirimi: ${title}`, emailBody, { isHtml: true });
+                    const { bildirimMaili } = await import('../utils/emailTemplate.js');
+
+                    const panelUrl = process.env.FRONTEND_URL || 'https://app.instomer.com';
+                    const emailBody = bildirimMaili({
+                        baslik: title,
+                        ozet: body,
+                        butonMetni: 'Panelde aç',
+                        butonUrl: panelUrl
+                    });
+                    // Konu satırındaki emoji istemcilerde çöp karakter olabiliyor;
+                    // şablon başlığı zaten temizliyor, konuyu da sade tutuyoruz.
+                    const konu = String(title || 'Bildirim')
+                        .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    await sendSystemEmail(targetEmails, `Instomer · ${konu}`, emailBody, { isHtml: true });
                     console.log(`📧 [Notification] System email sent to [${targetEmails.join(', ')}]: ${title}`);
                 }
             } catch (emailErr) {
