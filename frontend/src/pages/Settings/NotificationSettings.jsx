@@ -174,7 +174,9 @@ const NotificationSettings = () => {
                                         <div className="ws-settings-card-info">
                                             <div className="ws-settings-card-name">E-posta Bildirimi</div>
                                             <div className="ws-settings-card-desc">
-                                                {user?.email ? (
+                                                {preferences.notificationEmail?.trim() ? (
+                                                    <>Bildirimler <strong>yalnızca</strong> aşağıda yazdığınız adreslere gönderilir</>
+                                                ) : user?.email ? (
                                                     <>Bildirimler hesabınızdaki e-posta adresine <strong>({user.email})</strong> gönderilir</>
                                                 ) : (
                                                     'Bildirimler hesabınızdaki e-posta adresine gönderilir'
@@ -197,7 +199,7 @@ const NotificationSettings = () => {
                                 {/* Ek / Manuel E-posta Yazma Alanı */}
                                 {preferences.emailEnabled && (
                                     <div className="notif-email-card">
-                                        <label>Manuel E-posta Adresi (Opsiyonel)</label>
+                                        <label>Bildirim Gönderilecek Adresler (Opsiyonel)</label>
                                         <div className="notif-email-row">
                                             <input
                                                 type="text"
@@ -216,7 +218,9 @@ const NotificationSettings = () => {
                                             </button>
                                         </div>
                                         <span className="notif-email-hint">
-                                            Varsayılan olarak bildirimler hesap e-postanıza{user?.email ? ` (${user.email})` : ''} gider. Buraya manuel e-posta yazarsanız, bildirimler bu adrese de eşzamanlı olarak gönderilir.
+                                            {preferences.notificationEmail?.trim()
+                                                ? <>Bildirimler <strong>yalnızca</strong> buradaki adreslere gider; hesap e-postanıza{user?.email ? ` (${user.email})` : ''} gönderilmez. Birden fazla adresi virgülle ayırın.</>
+                                                : <>Boş bırakırsanız bildirimler hesap e-postanıza{user?.email ? ` (${user.email})` : ''} gider. Buraya adres yazarsanız yalnızca o adreslere gönderilir.</>}
                                         </span>
                                     </div>
                                 )}

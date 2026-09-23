@@ -1811,21 +1811,18 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
             });
 
             const ownerUser = workspace?.members?.[0]?.user;
-            const targetEmails = new Set();
-            if (ownerUser?.email && ownerUser.email.includes('@')) {
-                targetEmails.add(ownerUser.email.trim().toLowerCase());
-            }
-
             const ownerPrefs = ownerUser?.notificationPreferences;
-            if (ownerPrefs?.notificationEmail) {
-                String(ownerPrefs.notificationEmail)
-                    .split(/[,;]+/)
-                    .map(e => e.trim().toLowerCase())
-                    .filter(e => e && e.includes('@'))
-                    .forEach(e => targetEmails.add(e));
-            }
 
-            const recipientList = Array.from(targetEmails);
+            // Manuel adres alanı doluysa YALNIZCA oraya gider; hesap
+            // e-postası eklenmez (bildirim ayarlarıyla aynı kural).
+            const manuelListe = String(ownerPrefs?.notificationEmail || '')
+                .split(/[,;]+/)
+                .map(e => e.trim().toLowerCase())
+                .filter(e => e && e.includes('@'));
+
+            const recipientList = manuelListe.length > 0
+                ? Array.from(new Set(manuelListe))
+                : (ownerUser?.email && ownerUser.email.includes('@') ? [ownerUser.email.trim().toLowerCase()] : []);
             const ownerName = ownerUser?.name || 'Değerli Kullanıcı';
 
             if (recipientList.length > 0) {

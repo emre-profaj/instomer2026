@@ -197,26 +197,17 @@ export const createNotification = async (workspaceId, userId, type, title, body,
         // E-posta bildirim gönder (isteğe bağlı)
         if (prefs.emailEnabled) {
             try {
-                const recipientEmails = new Set();
+                // Manuel adres alanı doluysa YALNIZCA oraya gider; hesap
+                // e-postası eklenmez. Önceden ikisine birden gidiyordu ve
+                // kullanıcı istemediği adresi listeden çıkaramıyordu.
+                const manuelListe = String(prefs.notificationEmail || '')
+                    .split(/[,;]+/)
+                    .map(e => e.trim().toLowerCase())
+                    .filter(e => e && e.includes('@'));
 
-                // 1. Kullanıcının hesap e-postası
-                if (user?.email && user.email.includes('@')) {
-                    recipientEmails.add(user.email.trim().toLowerCase());
-                }
-
-                // 2. Manuel girilen ek bildirim e-postası (virgül veya noktalı virgül ile birden fazla olabilir)
-                if (prefs.notificationEmail) {
-                    const customList = String(prefs.notificationEmail)
-                        .split(/[,;]+/)
-                        .map(e => e.trim().toLowerCase())
-                        .filter(e => e && e.includes('@'));
-
-                    for (const email of customList) {
-                        recipientEmails.add(email);
-                    }
-                }
-
-                const targetEmails = Array.from(recipientEmails);
+                const targetEmails = manuelListe.length > 0
+                    ? Array.from(new Set(manuelListe))
+                    : (user?.email && user.email.includes('@') ? [user.email.trim().toLowerCase()] : []);
 
                 if (targetEmails.length > 0) {
                     const { sendSystemEmail } = await import('../services/systemEmail.service.js');
