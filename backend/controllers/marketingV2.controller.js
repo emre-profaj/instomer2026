@@ -1116,45 +1116,76 @@ export const executeGroupSend = async (req, res) => {
 export const previewAudience = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { audienceType, tagNames = [], segmentId, listId } = req.body;
+        const { audienceType, tagNames = [], segmentId, segmentIds = [], listId, listIds = [] } = req.body;
 
-        if (listId || audienceType === 'LIST') {
+        // ── LIST (çoklu destek) ────────────────────────────────────────
+        const resolvedListIds = listIds.length > 0 ? listIds : (listId ? [listId] : []);
+        if (resolvedListIds.length > 0 || audienceType === 'LIST') {
+            if (resolvedListIds.length === 0) {
+                return res.json({ success: true, count: 0, sampleContacts: [] });
+            }
             const total = await prisma.contactGroupMember.count({
                 where: {
-                    groupId: listId,
+                    groupId: { in: resolvedListIds },
                     contact: { isArchived: false, isDeleted: false }
                 }
             });
             const sample = await prisma.contactGroupMember.findMany({
                 where: {
-                    groupId: listId,
+                    groupId: { in: resolvedListIds },
                     contact: { isArchived: false, isDeleted: false }
                 },
-                take: 5,
+                take: 10,
                 include: { contact: { select: { id: true, name: true, phone: true } } }
             });
+            // Deduplicate contacts across lists
+            const seen = new Set();
+            const uniqueSamples = sample.map(s => s.contact).filter(Boolean).filter(c => {
+                if (seen.has(c.id)) return false;
+                seen.add(c.id);
+                return true;
+            }).slice(0, 5);
             return res.json({
                 success: true,
                 count: total,
-                sampleContacts: sample.map(s => s.contact).filter(Boolean)
+                sampleContacts: uniqueSamples
             });
         }
 
-        if (segmentId || audienceType === 'SEGMENT') {
+        // ── SEGMENT (çoklu destek) ─────────────────────────────────────
+        const resolvedSegmentIds = segmentIds.length > 0 ? segmentIds : (segmentId ? [segmentId] : []);
+        if (resolvedSegmentIds.length > 0 || audienceType === 'SEGMENT') {
+            if (resolvedSegmentIds.length === 0) {
+                return res.json({ success: true, count: 0, sampleContacts: [] });
+            }
             const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
-            const segResult = await buildSegmentWhere(segmentId, workspaceId);
-            const where = { workspaceId, isDeleted: false, isArchived: false, ...segResult.where };
-            if (segResult.contactIds) where.id = { in: segResult.contactIds };
-            const total = await prisma.contact.count({ where });
-            const sampleContacts = await prisma.contact.findMany({
-                where,
-                take: 5,
-                select: { id: true, name: true, phone: true }
-            });
+            const allContactIds = new Set();
+            let combinedTotal = 0;
+            let combinedSamples = [];
+
+            for (const sid of resolvedSegmentIds) {
+                const segResult = await buildSegmentWhere(sid, workspaceId);
+                const where = { workspaceId, isDeleted: false, isArchived: false, ...segResult.where };
+                if (segResult.contactIds) where.id = { in: segResult.contactIds };
+                const total = await prisma.contact.count({ where });
+                const samples = await prisma.contact.findMany({
+                    where,
+                    take: 5,
+                    select: { id: true, name: true, phone: true }
+                });
+                combinedTotal += total;
+                samples.forEach(s => {
+                    if (!allContactIds.has(s.id)) {
+                        allContactIds.add(s.id);
+                        combinedSamples.push(s);
+                    }
+                });
+            }
+
             return res.json({
                 success: true,
-                count: total,
-                sampleContacts
+                count: combinedTotal,
+                sampleContacts: combinedSamples.slice(0, 5)
             });
         }
 
@@ -1236,7 +1267,9 @@ export const wizardLaunchCampaign = async (req, res) => {
             audienceType = 'TAGS', // TAGS, SEGMENT, LIST, ALL
             tagNames = [],
             segmentId,
+            segmentIds = [],
             listId,
+            listIds = [],
             // Multi-Group Builder (Ad Sets / Steps)
             groups = [],
             // Legacy / Fallback Channels: ['WHATSAPP', 'AI_CALL']
@@ -1254,17 +1287,39 @@ export const wizardLaunchCampaign = async (req, res) => {
         }
 
         // 1. Resolve Target Contact List
-        let targetListId = listId;
+        // Çoklu liste desteği: listIds > listId fallback
+        const resolvedListIds = listIds.length > 0 ? listIds : (listId ? [listId] : []);
+        let targetListId = resolvedListIds.length === 1 ? resolvedListIds[0] : null;
 
         if (!targetListId && audienceType !== 'ALL') {
             let matchedContacts = [];
 
-            if (audienceType === 'SEGMENT' && segmentId) {
-                const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
-                const segResult = await buildSegmentWhere(segmentId, workspaceId);
-                const where = { workspaceId, isDeleted: false, isArchived: false, ...segResult.where };
-                if (segResult.contactIds) where.id = { in: segResult.contactIds };
-                matchedContacts = await prisma.contact.findMany({ where, select: { id: true } });
+            if (audienceType === 'LIST' && resolvedListIds.length > 1) {
+                // Çoklu liste: tüm listelerin üyelerini birleştir
+                const members = await prisma.contactGroupMember.findMany({
+                    where: {
+                        groupId: { in: resolvedListIds },
+                        contact: { isArchived: false, isDeleted: false }
+                    },
+                    select: { contactId: true }
+                });
+                const uniqueIds = [...new Set(members.map(m => m.contactId))];
+                matchedContacts = uniqueIds.map(id => ({ id }));
+            } else if (audienceType === 'SEGMENT') {
+                // Çoklu segment desteği: segmentIds > segmentId fallback
+                const resolvedSegIds = segmentIds.length > 0 ? segmentIds : (segmentId ? [segmentId] : []);
+                if (resolvedSegIds.length > 0) {
+                    const { buildSegmentWhere } = await import('../services/smartSegment.service.js');
+                    const allIds = new Set();
+                    for (const sid of resolvedSegIds) {
+                        const segResult = await buildSegmentWhere(sid, workspaceId);
+                        const where = { workspaceId, isDeleted: false, isArchived: false, ...segResult.where };
+                        if (segResult.contactIds) where.id = { in: segResult.contactIds };
+                        const contacts = await prisma.contact.findMany({ where, select: { id: true } });
+                        contacts.forEach(c => allIds.add(c.id));
+                    }
+                    matchedContacts = [...allIds].map(id => ({ id }));
+                }
             } else if (audienceType === 'TAGS' && tagNames.length > 0) {
                 const candidates = await prisma.contact.findMany({
                     where: {

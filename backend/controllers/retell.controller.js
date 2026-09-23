@@ -1245,7 +1245,11 @@ async function buildRetellDynamicVariables(workspaceId, contactId, contactName, 
         try {
             const contact = await prisma.contact.findUnique({
                 where: { id: contactId },
-                select: { name: true, email: true, tags: true, notes: true, source: true }
+                select: {
+                    name: true, email: true, tags: true, notes: true, source: true,
+                    birthDate: true, company: true, city: true, leadTemperature: true,
+                    phone: true, language: true, country: true, category: true, status: true
+                }
             });
             if (contact) {
                 if (contact.name && !dynVars.customer_name) {
@@ -1258,22 +1262,45 @@ async function buildRetellDynamicVariables(workspaceId, contactId, contactName, 
                 }
                 if (contact.email) dynVars.customer_email = contact.email;
                 if (contact.source) dynVars.lead_source = contact.source;
+                // Yeni alanlar
+                if (contact.birthDate) dynVars.birth_date = contact.birthDate.toISOString().split('T')[0];
+                if (contact.company) dynVars.customer_company = contact.company;
+                if (contact.city) dynVars.customer_city = contact.city;
+                if (contact.country) dynVars.customer_country = contact.country;
+                if (contact.language) dynVars.customer_language = contact.language;
+                if (contact.leadTemperature && contact.leadTemperature !== 'COLD') dynVars.lead_temperature = contact.leadTemperature;
+                if (contact.category) dynVars.customer_category = contact.category;
+                if (contact.status) dynVars.customer_status = contact.status;
                 try {
                     const tags = JSON.parse(contact.tags || '[]');
                     if (tags.length > 0) dynVars.customer_tags = tags.join(', ');
                 } catch (_) {}
+                if (contact.notes) dynVars.customer_notes = contact.notes.substring(0, 500);
             }
             
-            // Get the active Case (if any) to use as topic
+            // Get the active Case (if any) — kategori ve ürün bilgisi dahil
             const activeCase = await prisma.case.findFirst({
                 where: { contactId, workspaceId, status: 'ACTIVE' },
                 orderBy: { createdAt: 'desc' },
-                select: { title: true }
+                select: { title: true, description: true, products: true, category: { select: { name: true } } }
             });
             
             if (activeCase?.title) {
                 dynVars.interest_topic = activeCase.title;
-            } else {
+            }
+            if (activeCase?.category?.name) {
+                dynVars.interest_category = activeCase.category.name;
+            }
+            if (activeCase?.products) {
+                try {
+                    const products = JSON.parse(activeCase.products || '[]');
+                    if (products.length > 0) {
+                        dynVars.interest_products = products.map(p => p.name).filter(Boolean).join(', ');
+                    }
+                } catch (_) {}
+            }
+
+            if (!dynVars.interest_topic) {
                 // Fallback to conversation topic
                 const latestConv = await prisma.conversation.findFirst({
                     where: { contactId, workspaceId },
@@ -1285,7 +1312,81 @@ async function buildRetellDynamicVariables(workspaceId, contactId, contactName, 
             }
         } catch (e) { console.warn('⚠️ [Call] Failed to build dynamic vars:', e.message); }
     }
+
+    // Workspace bilgisi
+    if (workspaceId && !dynVars.company_name) {
+        try {
+            const ws = await prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { companyName: true }
+            });
+            if (ws?.companyName) dynVars.company_name = ws.companyName;
+        } catch (_) {}
+    }
+
     return dynVars;
+}
+
+/**
+ * Gelen arama için dynamic variables hazırla.
+ * Arayan numaradan kişiyi bulur ve tüm bilgileri toplar.
+ * Retell tüm değerleri string olarak bekler.
+ */
+async function resolveInboundDynamicVars(fromNumber, toNumber) {
+    try {
+        // 1. Workspace'i bul (aranan numara bizimkidir)
+        const workspaceId = await resolveWorkspaceIdByNumber(toNumber)
+            || await resolveWorkspaceIdByNumber(fromNumber);
+        if (!workspaceId) {
+            console.log(`📞 [Inbound DynVars] Workspace bulunamadı: from=${fromNumber} to=${toNumber}`);
+            return {};
+        }
+
+        // 2. Arayan numaradan kişiyi bul
+        let contactId = null;
+        if (fromNumber) {
+            const normalized = normalizePhone(fromNumber);
+            const contact = await prisma.contact.findFirst({
+                where: {
+                    workspaceId,
+                    OR: [
+                        { phone: normalized },
+                        { phone: fromNumber },
+                        { phone: fromNumber.replace(/\D/g, '') }
+                    ]
+                },
+                select: { id: true, name: true }
+            });
+            contactId = contact?.id || null;
+        }
+
+        if (!contactId) {
+            console.log(`📞 [Inbound DynVars] Kişi bulunamadı: ${fromNumber}`);
+            // En azından workspace bilgisini dön
+            const ws = await prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { companyName: true }
+            });
+            return ws?.companyName ? { company_name: ws.companyName } : {};
+        }
+
+        // 3. Tüm bilgileri topla
+        const dynVars = await buildRetellDynamicVariables(workspaceId, contactId, null);
+
+        // 4. Retell tüm değerleri string olarak bekler
+        const stringified = {};
+        for (const [key, value] of Object.entries(dynVars)) {
+            if (value !== null && value !== undefined) {
+                stringified[key] = String(value);
+            }
+        }
+
+        console.log(`📞 [Inbound DynVars] ${fromNumber} → ${Object.keys(stringified).length} değişken hazırlandı`);
+        return stringified;
+    } catch (e) {
+        console.error('⚠️ [Inbound DynVars] Hata:', e.message);
+        return {};
+    }
 }
 
 // Execute a phone call via Retell API (used by both immediate & scheduled calls)
@@ -2820,8 +2921,13 @@ export const handleWebhook = async (req, res) => {
                         to_number: call.to_number,
                         agent_id: call.agent_id,
                     }).catch(e => console.error('❌ [Retell] call_inbound handler error:', e.message));
-                    // Respond 200 immediately so Retell proceeds with the configured agent
-                    return res.status(200).json({});
+                    // Kişi bilgilerini Retell agent'ına aktar
+                    const inboundDynVars = await resolveInboundDynamicVars(call.from_number, call.to_number);
+                    return res.status(200).json({
+                        call_inbound: {
+                            dynamic_variables: inboundDynVars
+                        }
+                    });
                 }
                 default:
                     console.log(`📞 [Retell Webhook] Unhandled event: ${event}`);
@@ -2840,8 +2946,13 @@ export const handleWebhook = async (req, res) => {
                 console.error('❌ [Retell] Inbound routing handler error:', e.message)
             );
 
-            // Respond with 200 (no override needed — phone number already has agent configured)
-            return res.status(200).json({});
+            // Kişi bilgilerini Retell agent'ına aktar
+            const routingDynVars = await resolveInboundDynamicVars(body.from_number, body.to_number);
+            return res.status(200).json({
+                call_inbound: {
+                    dynamic_variables: routingDynVars
+                }
+            });
         }
 
         // Unknown format — log and ignore

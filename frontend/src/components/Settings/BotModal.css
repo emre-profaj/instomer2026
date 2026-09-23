@@ -1605,3 +1605,83 @@ textarea.input-modern {
     .bm-tools { grid-template-columns: 1fr; }
     .bm-rule-body { padding-left: 16px; }
 }
+
+/* ── Sıralanabilir blok listesi ────────────────────────────── */
+.bm-block-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.bm-block-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    transition: opacity 0.15s;
+}
+.bm-block-item.disabled {
+    opacity: 0.45;
+}
+.bm-block-order {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+.bm-block-arrow {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 9px;
+    color: #9ca3af;
+    padding: 0;
+    line-height: 1;
+}
+.bm-block-arrow:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+}
+.bm-block-num {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    min-width: 16px;
+    text-align: center;
+}
+.bm-block-emoji {
+    font-size: 16px;
+}
+.bm-block-label {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+}
+.bm-input-sm {
+    padding: 4px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+}
+.bm-select-sm {
+    padding: 4px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    background: white;
+}
+.bm-day-btn {
+    padding: 4px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 12px;
+    background: white;
+    cursor: pointer;
+}
+.bm-day-btn.active {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}

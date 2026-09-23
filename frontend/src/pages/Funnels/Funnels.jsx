@@ -1001,6 +1001,14 @@ const Funnels = () => {
                                             {availablePresets.length > 0 && (
                                                 <select
                                                     value="" onChange={e => {
+                                                        if (e.target.value === '__custom') {
+                                                            const label = prompt('Özel alan adı girin (örn: TC Kimlik No):');
+                                                            if (label?.trim()) {
+                                                                const key = 'custom_' + label.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_ğüşöçıİĞÜŞÖÇ]/gi, '');
+                                                                updateConfig({ ...config, fields: [...fields, { key, label: label.trim(), type: 'text', required: false, prompt: '' }] });
+                                                            }
+                                                            return;
+                                                        }
                                                         const preset = PRESET_FIELDS.find(p => p.key === e.target.value);
                                                         if (preset) updateConfig({ ...config, fields: [...fields, { ...preset, required: false, prompt: '' }] });
                                                     }}

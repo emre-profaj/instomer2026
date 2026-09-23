@@ -413,6 +413,9 @@ model AIBot {
   //         stageGoals, suggestProducts, shareLocation, admitUncertainty }
   // null = varsayılan bloklar kullanılır (tümü açık, suggestProducts kapalı)
   behaviorBlocks         Json?
+  // Blok sıralaması: ["greeting","collectName","collectPhone","askBranch",...] 
+  // null = varsayılan sıralama
+  blockOrder             Json?
   // Üslup: FRIENDLY_PRO | FORMAL | CASUAL | CONCISE
   tone                   String   @default("FRIENDLY_PRO")
   // Mesaj uzunluğu: SHORT | NORMAL | DETAILED
@@ -423,6 +426,10 @@ model AIBot {
   multilingualEnabled    Boolean  @default(false)
   // Randevu modu: AUTO = kesin ver, REQUEST = talep al, null = kapalı
   appointmentMode        String?
+  // Bot çalışma saatleri: { enabled: bool, start: "09:00", end: "18:00", days: [1,2,3,4,5] }
+  workingHours           Json?
+  // Dış mesaj gönderim saatleri: { enabled: bool, start: "09:00", end: "20:00", days: [1,2,3,4,5,6] }
+  outboundHours          Json?
 
   @@index([workspaceId])
   @@map("ai_bots")

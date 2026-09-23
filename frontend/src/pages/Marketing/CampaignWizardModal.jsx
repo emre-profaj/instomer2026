@@ -51,9 +51,9 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
     const [selectedTags, setSelectedTags] = useState([]);
     const [tagSearch, setTagSearch] = useState('');
     const [smartSegments, setSmartSegments] = useState([]);
-    const [selectedSegmentId, setSelectedSegmentId] = useState('');
+    const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
     const [contactGroups, setContactGroups] = useState([]);
-    const [selectedListId, setSelectedListId] = useState('');
+    const [selectedListIds, setSelectedListIds] = useState([]);
 
     // Audience Preview State
     const [previewCount, setPreviewCount] = useState(null);
@@ -76,9 +76,10 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
         }
     ]);
 
-    // Kaynaklar (WhatsApp Şablonları & Retell Asistanları)
+    // Kaynaklar (WhatsApp Şablonları & AI Arama Şablonları)
     const [waTemplates, setWaTemplates] = useState([]);
     const [retellAgents, setRetellAgents] = useState([]);
+    const [callTemplates, setCallTemplates] = useState([]);
 
     // Zamanlama & Hız
     const [scheduleType, setScheduleType] = useState('IMMEDIATE'); // 'IMMEDIATE' | 'SCHEDULED'
@@ -107,9 +108,6 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
             .then(res => {
                 if (res.data?.segments) {
                     setSmartSegments(res.data.segments);
-                    if (res.data.segments.length > 0) {
-                        setSelectedSegmentId(res.data.segments[0].id);
-                    }
                 }
             })
             .catch(() => {});
@@ -135,15 +133,19 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
             })
             .catch(() => {});
 
-        // 5. Retell Asistanları
+        // 5. AI Sesli Arama Asistanları
         api.get(`/retell/${workspaceId}/agents`)
             .then(res => {
                 const agents = res.data?.agents || res.data || [];
                 setRetellAgents(Array.isArray(agents) ? agents : []);
-                if (agents.length > 0) {
-                    const firstAgentId = agents[0].agent_id || agents[0].id || '';
-                    setGroups(prev => prev.map(g => g.channel === 'AI_CALL' && !g.agentId ? { ...g, agentId: firstAgentId } : g));
-                }
+            })
+            .catch(() => {});
+
+        // 6. AI Arama Şablonları
+        api.get(`/retell/${workspaceId}/templates`)
+            .then(res => {
+                const tpls = res.data?.templates || res.data || [];
+                setCallTemplates(Array.isArray(tpls) ? tpls.filter(t => t.isActive !== false) : []);
             })
             .catch(() => {});
 
@@ -159,8 +161,10 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
             const payload = {
                 audienceType,
                 tagNames: audienceType === 'TAGS' ? selectedTags : [],
-                segmentId: audienceType === 'SEGMENT' ? selectedSegmentId : null,
-                listId: audienceType === 'LIST' ? selectedListId : null
+                segmentId: audienceType === 'SEGMENT' && selectedSegmentIds.length > 0 ? selectedSegmentIds[0] : null,
+                segmentIds: audienceType === 'SEGMENT' ? selectedSegmentIds : [],
+                listId: audienceType === 'LIST' && selectedListIds.length > 0 ? selectedListIds[0] : null,
+                listIds: audienceType === 'LIST' ? selectedListIds : []
             };
             const res = await api.post(`/marketing-v2/${workspaceId}/preview-audience`, payload);
             if (res.data?.success) {
@@ -172,7 +176,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
         } finally {
             setPreviewLoading(false);
         }
-    }, [workspaceId, audienceType, selectedTags, selectedSegmentId, selectedListId]);
+    }, [workspaceId, audienceType, selectedTags, selectedSegmentIds, selectedListIds]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -205,7 +209,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 },
                 {
                     id: 'g_2',
-                    name: 'Grup 2: Retell AI Arama (90. Gün)',
+                    name: 'Grup 2: AI Sesli Arama (90. Gün)',
                     channel: 'AI_CALL',
                     delayDays: 90,
                     targetMilestone: 'DAY_90',
@@ -223,7 +227,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 },
                 {
                     id: 'g_4',
-                    name: 'Grup 4: Retell AI Arama (120. Gün)',
+                    name: 'Grup 4: AI Sesli Arama (120. Gün)',
                     channel: 'AI_CALL',
                     delayDays: 120,
                     targetMilestone: 'DAY_120',
@@ -233,10 +237,10 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
             ]);
             // İlgili akıllı segmenti seç (varsa INACTIVE_30D veya benzeri)
             const inactiveSeg = smartSegments.find(s => s.id.includes('INACTIVE'));
-            if (inactiveSeg) setSelectedSegmentId(inactiveSeg.id);
+            if (inactiveSeg) setSelectedSegmentIds([inactiveSeg.id]);
         } else if (presetType === 'YENI_PROJE') {
             setName('Urla One Proje Lansmanı');
-            setDescription('Urla One yeni proje duyurusu: WhatsApp şablonu ve Retell AI sesli araması');
+            setDescription('Urla One yeni proje duyurusu: WhatsApp şablonu ve AI sesli arama');
             setCampaignType('ONE_TIME');
             setGroups([
                 {
@@ -250,7 +254,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 },
                 {
                     id: 'g_2',
-                    name: 'Grup 2: Urla One Retell Sesli Arama 1',
+                    name: 'Grup 2: Urla One AI Sesli Arama 1',
                     channel: 'AI_CALL',
                     delayDays: 0,
                     targetMilestone: 'IMMEDIATE',
@@ -276,12 +280,195 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 },
                 {
                     id: 'g_2',
-                    name: 'Grup 2: Retell AI Sesli Arama',
+                    name: 'Grup 2: AI Sesli Arama',
                     channel: 'AI_CALL',
                     delayDays: 0,
                     targetMilestone: 'IMMEDIATE',
                     agentId: defaultAgent,
                     callTemplate: 'Talebiniz üzerine geri dönüş sağlıyorum.'
+                }
+            ]);
+        } else if (presetType === 'BAYRAM_KUTLAMA') {
+            // ── Tek Seferlik: Yılbaşı / Bayram Kutlaması ──
+            setName('Yılbaşı / Bayram Kutlama Mesajı');
+            setDescription('Tüm müşterilere tek seferlik kutlama mesajı gönderimi');
+            setCampaignType('ONE_TIME');
+            setAudienceType('ALL');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Kutlama',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                }
+            ]);
+        } else if (presetType === 'FIYAT_GUNCELLEME') {
+            // ── Tek Seferlik: Fiyat Güncelleme Duyurusu ──
+            setName('Fiyat Güncelleme Duyurusu');
+            setDescription('Tüm müşterilere fiyat değişikliği duyurusu');
+            setCampaignType('ONE_TIME');
+            setAudienceType('ALL');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Fiyat Duyurusu',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: E-posta Fiyat Duyurusu',
+                    channel: 'EMAIL',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    emailSubject: 'Fiyat Güncelleme Bildirimi',
+                    emailBody: ''
+                }
+            ]);
+        } else if (presetType === 'HAFTALIK_BULTEN') {
+            // ── Tekrarlı: Haftalık Bülten ──
+            setName('Haftalık Bülten');
+            setDescription('Her hafta belirlenen günde müşterilere WhatsApp bülten gönderimi');
+            setCampaignType('RECURRING');
+            setRecurringFrequency('WEEKLY');
+            setRecurringDayOfWeek(1);
+            setRecurringTime('10:00');
+            setAudienceType('SEGMENT');
+            const weekSeg = smartSegments.find(s => s.id.includes('WEEK') || s.id.includes('THIS_WEEK'));
+            if (weekSeg) setSelectedSegmentIds([weekSeg.id]);
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Haftalık Bülten',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                }
+            ]);
+        } else if (presetType === 'AYLIK_RAPOR') {
+            // ── Tekrarlı: Aylık Durum Raporu ──
+            setName('Aylık Durum Raporu');
+            setDescription('Her ayın 1\'inde müşterilere WhatsApp ve E-posta ile özet rapor');
+            setCampaignType('RECURRING');
+            setRecurringFrequency('MONTHLY');
+            setRecurringDayOfMonth(1);
+            setRecurringTime('09:00');
+            setAudienceType('ALL');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Aylık Rapor',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: E-posta Aylık Rapor',
+                    channel: 'EMAIL',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    emailSubject: 'Aylık Durum Raporunuz',
+                    emailBody: ''
+                }
+            ]);
+        } else if (presetType === 'YENI_LEAD_HOSGELDIN') {
+            // ── Olay Bazlı: Yeni Lead Hoşgeldin ──
+            setName('Yeni Lead Hoşgeldin Akışı');
+            setDescription('Yeni lead geldiğinde otomatik hoşgeldin mesajı ve AI araması');
+            setCampaignType('EVENT_BASED');
+            setEventTrigger('NEW_LEAD');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Hoşgeldin',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: AI Tanışma Araması',
+                    channel: 'AI_CALL',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    agentId: defaultAgent,
+                    callTemplate: 'Merhaba, başvurunuz için teşekkür ederiz. Size projemiz hakkında bilgi vermek istiyorum.'
+                }
+            ]);
+        } else if (presetType === 'ASAMA_DEGISIKLIK') {
+            // ── Olay Bazlı: Aşama Değişikliğinde Bilgilendirme ──
+            setName('Aşama Değişikliği Bildirimi');
+            setDescription('Müşteri akışta yeni aşamaya geçtiğinde otomatik bilgilendirme mesajı');
+            setCampaignType('EVENT_BASED');
+            setEventTrigger('STAGE_CHANGE');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Bilgilendirme',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                }
+            ]);
+        } else if (presetType === 'DOGUM_GUNU') {
+            // ── Gün Bazlı: Doğum Günü Tebriği ──
+            setName('Doğum Günü Kutlaması');
+            setDescription('Doğum günü olan müşterilere otomatik kutlama mesajı');
+            setCampaignType('DAY_BASED');
+            setDayTrigger('BIRTHDAY');
+            setAudienceType('ALL');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Doğum Günü Kutlaması',
+                    channel: 'WHATSAPP',
+                    delayDays: 0,
+                    targetMilestone: 'IMMEDIATE',
+                    templateName: defaultWa,
+                    bodyText: ''
+                }
+            ]);
+        } else if (presetType === 'MUSTERI_60_GUN') {
+            // ── Gün Bazlı: 60 Günlük Müşteri Kutlaması ──
+            setName('60 Günlük Müşteri Kutlaması');
+            setDescription('60 gündür müşteri olanlara teşekkür ve sadakat mesajı');
+            setCampaignType('DAY_BASED');
+            setDayTrigger('CUSTOMER_AGE_DAYS');
+            setDayMilestoneDays(60);
+            setAudienceType('ALL');
+            setGroups([
+                {
+                    id: 'g_1',
+                    name: 'Grup 1: WhatsApp Teşekkür Mesajı',
+                    channel: 'WHATSAPP',
+                    delayDays: 60,
+                    targetMilestone: 'DAY_60',
+                    templateName: defaultWa,
+                    bodyText: ''
+                },
+                {
+                    id: 'g_2',
+                    name: 'Grup 2: AI Teşekkür Araması',
+                    channel: 'AI_CALL',
+                    delayDays: 60,
+                    targetMilestone: 'DAY_60',
+                    agentId: defaultAgent,
+                    callTemplate: 'Merhaba, sizi 60 gündür aramızda görmekten mutluluk duyuyoruz. Size özel fırsatlarımızı paylaşmak istedik.'
                 }
             ]);
         }
@@ -315,8 +502,12 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
             if (field === 'channel') {
                 if (value === 'WHATSAPP' && !updated.templateName) {
                     updated.templateName = waTemplates[0]?.name || '';
-                } else if (value === 'AI_CALL' && !updated.agentId) {
-                    updated.agentId = retellAgents[0]?.agent_id || retellAgents[0]?.id || '';
+                } else if (value === 'AI_CALL') {
+                    if (callTemplates.length > 0 && !updated.callTemplateId) {
+                        updated.callTemplateId = callTemplates[0]?.id || '';
+                    } else if (!updated.agentId) {
+                        updated.agentId = retellAgents[0]?.agent_id || retellAgents[0]?.id || '';
+                    }
                 }
             }
             return updated;
@@ -361,8 +552,10 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                 retryIntervalMinutes: Number(retryIntervalMinutes),
                 audienceType,
                 tagNames: audienceType === 'TAGS' ? selectedTags : [],
-                segmentId: audienceType === 'SEGMENT' ? selectedSegmentId : null,
-                listId: audienceType === 'LIST' ? selectedListId : null,
+                segmentId: audienceType === 'SEGMENT' && selectedSegmentIds.length > 0 ? selectedSegmentIds[0] : null,
+                segmentIds: audienceType === 'SEGMENT' ? selectedSegmentIds : [],
+                listId: audienceType === 'LIST' && selectedListIds.length > 0 ? selectedListIds[0] : null,
+                listIds: audienceType === 'LIST' ? selectedListIds : [],
                 groups: groups.map((g, idx) => ({
                     name: g.name || `Grup ${idx + 1}`,
                     channel: g.channel,
@@ -372,6 +565,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                     bodyText: g.bodyText || undefined,
                     headerMediaUrl: g.headerMediaUrl || undefined,
                     agentId: g.agentId || undefined,
+                    callTemplateId: g.callTemplateId || undefined,
                     callTemplate: g.callTemplate || undefined,
                     emailSubject: g.emailSubject || undefined,
                     emailBody: g.emailBody || undefined,
@@ -494,29 +688,43 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
                             {/* Hızlı Örnek Doldurma Kısayolları */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', padding: '10px 14px', borderRadius: 8, border: '1px dashed #cbd5e1' }}>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>💡 Hazır Örnekler:</span>
-                                <button
-                                    type="button"
-                                    onClick={() => applyPreset('PASIF_UYE')}
-                                    style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', color: '#1e293b' }}
-                                >
-                                    📅 Pasif Üye (90-120 Gün)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => applyPreset('YENI_PROJE')}
-                                    style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', color: '#1e293b' }}
-                                >
-                                    ⚡ Urla One / Yeni Proje
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => applyPreset('UNCONTACTED_LEAD')}
-                                    style={{ padding: '4px 10px', fontSize: 11.5, fontWeight: 600, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', color: '#1e293b' }}
-                                >
-                                    🎯 30 Gün Aranmayan Lead
-                                </button>
+                            <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: 8, border: '1px dashed #cbd5e1' }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8 }}>💡 Hazır Örnekler — tıklayın, tüm form otomatik dolsun:</span>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {[
+                                        { key: 'YENI_PROJE',        label: '⚡ Yeni Proje Lansmanı',         color: '#1e40af', bg: '#eff6ff', border: '#bfdbfe' },
+                                        { key: 'BAYRAM_KUTLAMA',    label: '🎉 Bayram / Kutlama',            color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+                                        { key: 'FIYAT_GUNCELLEME',  label: '📢 Fiyat Güncelleme',            color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4' },
+                                        { key: 'HAFTALIK_BULTEN',   label: '📰 Haftalık Bülten',             color: '#166534', bg: '#f0fdf4', border: '#bbf7d0' },
+                                        { key: 'AYLIK_RAPOR',       label: '📊 Aylık Rapor',                 color: '#166534', bg: '#f0fdf4', border: '#bbf7d0' },
+                                        { key: 'UNCONTACTED_LEAD',  label: '🎯 30 Gün Aranmayan Lead',       color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+                                        { key: 'YENI_LEAD_HOSGELDIN', label: '🤝 Yeni Lead Hoşgeldin',       color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+                                        { key: 'ASAMA_DEGISIKLIK', label: '🔄 Aşama Değişikliği',            color: '#9a3412', bg: '#fff7ed', border: '#fed7aa' },
+                                        { key: 'PASIF_UYE',         label: '📅 Pasif Üye (90-120 Gün)',      color: '#6b21a8', bg: '#faf5ff', border: '#e9d5ff' },
+                                        { key: 'DOGUM_GUNU',        label: '🎂 Doğum Günü Tebriği',          color: '#6b21a8', bg: '#faf5ff', border: '#e9d5ff' },
+                                        { key: 'MUSTERI_60_GUN',    label: '🏆 60 Gün Müşteri Kutlaması',    color: '#6b21a8', bg: '#faf5ff', border: '#e9d5ff' }
+                                    ].map(p => (
+                                        <button
+                                            key={p.key}
+                                            type="button"
+                                            onClick={() => applyPreset(p.key)}
+                                            style={{
+                                                padding: '5px 11px',
+                                                fontSize: 11.5,
+                                                fontWeight: 600,
+                                                background: p.bg,
+                                                border: `1px solid ${p.border}`,
+                                                borderRadius: 6,
+                                                cursor: 'pointer',
+                                                color: p.color,
+                                                transition: 'all 0.15s',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             {/* 4 Temel Kampanya Türü Kartları */}
@@ -605,7 +813,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                             <span>Gün / Süreç Bazlı (Milestone)</span>
                                         </div>
                                         <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
-                                            90 gün pasif üyeye WhatsApp/Retell, 120. gün tekrarı, 60 günlük müşteri veya doğum günü tebriği.
+                                            90 gün pasif üyeye WhatsApp/AI Arama, 120. gün tekrarı, 60 günlük müşteri veya doğum günü tebriği.
                                         </p>
                                     </div>
                                 </div>
@@ -772,19 +980,40 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
 
                             {audienceType === 'SEGMENT' && (
                                 <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                                    <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>Akıllı Segment Seçin</label>
-                                    <select
-                                        className="grp-input"
-                                        value={selectedSegmentId}
-                                        onChange={e => setSelectedSegmentId(e.target.value)}
-                                    >
-                                        <option value="">-- Bir segment seçin --</option>
-                                        {smartSegments.map(s => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.icon || '⚡'} {s.label} ({s.group})
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                        <span style={{ fontSize: 13, fontWeight: 650, color: '#334155' }}>
+                                            Akıllı Segment Seçin ({selectedSegmentIds.length} seçildi)
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
+                                        {smartSegments.map(s => {
+                                            const isSelected = selectedSegmentIds.includes(s.id);
+                                            return (
+                                                <span
+                                                    key={s.id}
+                                                    onClick={() => setSelectedSegmentIds(prev =>
+                                                        prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                                                    )}
+                                                    style={{
+                                                        padding: '5px 12px',
+                                                        borderRadius: 14,
+                                                        fontSize: 12,
+                                                        fontWeight: 500,
+                                                        cursor: 'pointer',
+                                                        background: isSelected ? '#2563eb' : '#fff',
+                                                        color: isSelected ? '#fff' : '#475569',
+                                                        border: isSelected ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    {isSelected && '✓ '}{s.icon || '⚡'} {s.label}
+                                                </span>
+                                            );
+                                        })}
+                                        {smartSegments.length === 0 && (
+                                            <span style={{ fontSize: 12, color: '#94a3b8' }}>Henüz segment tanımlı değil</span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -830,19 +1059,41 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
 
                             {audienceType === 'LIST' && (
                                 <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                                    <label className="grp-label" style={{ marginBottom: 8, display: 'block' }}>Kayıtlı Liste Seçin</label>
-                                    <select
-                                        className="grp-input"
-                                        value={selectedListId}
-                                        onChange={e => setSelectedListId(e.target.value)}
-                                    >
-                                        <option value="">-- Bir liste seçin --</option>
-                                        {contactGroups.map(g => (
-                                            <option key={g.id} value={g.id}>
-                                                {g.icon || '👥'} {g.name} ({g.members?.length || g._count?.members || 0} kişi)
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                        <span style={{ fontSize: 13, fontWeight: 650, color: '#334155' }}>
+                                            Kayıtlı Liste Seçin ({selectedListIds.length} seçildi)
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
+                                        {contactGroups.map(g => {
+                                            const isSelected = selectedListIds.includes(g.id);
+                                            const memberCount = g.members?.length || g._count?.members || 0;
+                                            return (
+                                                <span
+                                                    key={g.id}
+                                                    onClick={() => setSelectedListIds(prev =>
+                                                        prev.includes(g.id) ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                                                    )}
+                                                    style={{
+                                                        padding: '5px 12px',
+                                                        borderRadius: 14,
+                                                        fontSize: 12,
+                                                        fontWeight: 500,
+                                                        cursor: 'pointer',
+                                                        background: isSelected ? '#2563eb' : '#fff',
+                                                        color: isSelected ? '#fff' : '#475569',
+                                                        border: isSelected ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    {isSelected && '✓ '}{g.icon || '👥'} {g.name} ({memberCount})
+                                                </span>
+                                            );
+                                        })}
+                                        {contactGroups.length === 0 && (
+                                            <span style={{ fontSize: 12, color: '#94a3b8' }}>Henüz kayıtlı liste yok</span>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -988,7 +1239,7 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
                                                     onChange={e => updateGroup(grp.id, 'channel', e.target.value)}
                                                 >
                                                     <option value="WHATSAPP">💬 WhatsApp</option>
-                                                    <option value="AI_CALL">📞 Retell AI Sesli Arama</option>
+                                                    <option value="AI_CALL">📞 AI Sesli Arama</option>
                                                     <option value="EMAIL">✉️ E-posta</option>
                                                     <option value="SMS">📱 SMS</option>
                                                 </select>
@@ -1033,19 +1284,34 @@ export default function CampaignWizardModal({ workspaceId, isOpen, onClose, onSu
 
                                                 {grp.channel === 'AI_CALL' && (
                                                     <>
-                                                        <label className="grp-label">Retell AI Sesli Asistan</label>
-                                                        <select
-                                                            className="grp-input"
-                                                            value={grp.agentId}
-                                                            onChange={e => updateGroup(grp.id, 'agentId', e.target.value)}
-                                                        >
-                                                            <option value="">-- Asistan seçin --</option>
-                                                            {retellAgents.map(a => (
-                                                                <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
-                                                                    {a.agent_name || a.agent_id || 'Asistan'}
-                                                                </option>
-                                                            ))}
-                                                        </select>
+                                                        <label className="grp-label">🎙️ Arama Şablonu</label>
+                                                        {callTemplates.length > 0 ? (
+                                                            <select
+                                                                className="grp-input"
+                                                                value={grp.callTemplateId || ''}
+                                                                onChange={e => updateGroup(grp.id, 'callTemplateId', e.target.value)}
+                                                            >
+                                                                <option value="">-- Şablon seçin --</option>
+                                                                {callTemplates.map(t => (
+                                                                    <option key={t.id} value={t.id}>
+                                                                        {t.icon || '📞'} {t.name}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <select
+                                                                className="grp-input"
+                                                                value={grp.agentId || ''}
+                                                                onChange={e => updateGroup(grp.id, 'agentId', e.target.value)}
+                                                            >
+                                                                <option value="">-- Asistan seçin --</option>
+                                                                {retellAgents.map(a => (
+                                                                    <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
+                                                                        {a.agent_name || a.agent_id || 'Asistan'}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        )}
                                                     </>
                                                 )}
 

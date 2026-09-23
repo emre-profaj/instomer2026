@@ -4639,7 +4639,7 @@ GENEL DAVRANIŞ KURALLARI:
             </div>
           </div>
 
-          {/* 5. Retell AI Sesli Arama */}
+          {/* 5. AI Sesli Arama */}
           <div style={{
             border: retellSettings?.isConfigured ? '1.5px solid #0d9488' : '1px solid #e2e8f0',
             borderRadius: '12px',
@@ -4657,7 +4657,7 @@ GENEL DAVRANIŞ KURALLARI:
                 </div>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Retell AI Sesli Arama (Voice AI)</h4>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>AI Sesli Arama</h4>
                     <span style={{ fontSize: '11px', background: '#f0fdfa', color: '#0d9488', border: '1px solid #99f6e4', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>Telefon Görüşmesi</span>
                   </div>
                   <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
@@ -4697,7 +4697,7 @@ GENEL DAVRANIŞ KURALLARI:
                 style={{ ...primaryBtnStyle, background: '#0d9488' }}
               >
                 <Phone size={15} />
-                {retellSettings?.isConfigured ? 'Sesli Arama Ayarlarını Düzenle' : '📞 Sesli Arama Yapılandır (Retell AI)'}
+                {retellSettings?.isConfigured ? 'Sesli Arama Ayarlarını Düzenle' : '📞 Sesli Arama Yapılandır'}
               </button>
             </div>
           </div>
@@ -7285,7 +7285,7 @@ Ziyaretinizi sabırsızlıkla bekliyoruz!`}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Phone size={22} color="#0d9488" />
-                Retell AI Sesli Arama Ayarları
+                AI Sesli Arama Ayarları
               </h3>
               <button type="button" onClick={() => setShowRetellModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}>
                 <X size={20} />

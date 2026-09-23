@@ -16,12 +16,20 @@ export const DEFAULT_BLOCKS = {
     greeting: true,
     collectName: true,
     collectPhone: true,
+    askBranch: true,         // Şube tercihi sor
     classifyNeeds: true,
     stageGoals: true,
     suggestProducts: false,
     shareLocation: true,
     admitUncertainty: true,
 };
+
+// Varsayılan blok sıralaması
+export const DEFAULT_BLOCK_ORDER = [
+    'greeting', 'collectName', 'collectPhone', 'askBranch',
+    'classifyNeeds', 'stageGoals', 'suggestProducts',
+    'shareLocation', 'admitUncertainty'
+];
 
 // ── Üslup prompt'ları ─────────────────────────────────────────────
 const TONE_PROMPTS = {
@@ -126,6 +134,19 @@ Müşteri konum, adres veya nasıl geleceğini sorarsa aşağıdaki şube bilgil
 ${branchInfo}`;
 }
 
+function askBranchBlock(branches) {
+    if (!branches || branches.length === 0) {
+        return `🏢 ŞUBE TERCİHİ SOR:
+Müşteriye hangi şubeye gelmek istediğini sor.
+"Hangi şubemize gelmek istersiniz?" gibi doğal bir şekilde sor.`;
+    }
+    const branchNames = branches.map(b => `- ${b.name}`).join('\n');
+    return `🏢 ŞUBE TERCİHİ SOR:
+Müşteriye hangi şubeye gelmek istediğini sor. Şubelerimiz:
+${branchNames}
+Müşteri bir şube seçtiğinde konuşmayı o şubeyle ilişkilendir.`;
+}
+
 // ── Ana fonksiyon ──────────────────────────────────────────────────
 
 /**
@@ -168,15 +189,30 @@ export function buildBehaviorPrompt(bot, workspace, context = {}) {
         parts.push(`🌍 DİL: Her zaman ${langName} yanıt ver.`);
     }
 
-    // ── Davranış blokları ──
-    if (b.greeting !== false) parts.push(greetingBlock(workspace));
-    if (b.collectName !== false) parts.push(COLLECT_NAME_BLOCK);
-    if (b.collectPhone !== false) parts.push(COLLECT_PHONE_BLOCK);
-    if (b.classifyNeeds !== false) parts.push(classifyBlock(context.categories));
-    if (b.stageGoals !== false) parts.push(STAGE_GOALS_BLOCK);
-    if (b.suggestProducts === true) parts.push(SUGGEST_PRODUCTS_BLOCK);
-    if (b.shareLocation !== false) parts.push(shareLocationBlock(context.branches));
-    if (b.admitUncertainty !== false) parts.push(ADMIT_UNCERTAINTY_BLOCK);
+    // ── Davranış blokları (sıralama destekli) ──
+    const blockOrder = bot?.blockOrder || DEFAULT_BLOCK_ORDER;
+    // JSON string'se parse et
+    const order = typeof blockOrder === 'string' ? JSON.parse(blockOrder) : blockOrder;
+
+    const BLOCK_GENERATORS = {
+        greeting:          () => b.greeting !== false ? greetingBlock(workspace) : null,
+        collectName:       () => b.collectName !== false ? COLLECT_NAME_BLOCK : null,
+        collectPhone:      () => b.collectPhone !== false ? COLLECT_PHONE_BLOCK : null,
+        askBranch:         () => b.askBranch !== false ? askBranchBlock(context.branches) : null,
+        classifyNeeds:     () => b.classifyNeeds !== false ? classifyBlock(context.categories) : null,
+        stageGoals:        () => b.stageGoals !== false ? STAGE_GOALS_BLOCK : null,
+        suggestProducts:   () => b.suggestProducts === true ? SUGGEST_PRODUCTS_BLOCK : null,
+        shareLocation:     () => b.shareLocation !== false ? shareLocationBlock(context.branches) : null,
+        admitUncertainty:  () => b.admitUncertainty !== false ? ADMIT_UNCERTAINTY_BLOCK : null,
+    };
+
+    for (const key of order) {
+        const gen = BLOCK_GENERATORS[key];
+        if (gen) {
+            const text = gen();
+            if (text) parts.push(text);
+        }
+    }
 
     // ── Randevu modu ──
     if (bot?.appointmentMode === 'AUTO') parts.push(APPOINTMENT_AUTO_BLOCK);

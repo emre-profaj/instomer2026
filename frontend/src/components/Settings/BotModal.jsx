@@ -165,6 +165,22 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
     const [emojiEnabled, setEmojiEnabled] = useState(bot.emojiEnabled !== false);
     const [multilingualEnabled, setMultilingualEnabled] = useState(bot.multilingualEnabled || false);
     const [appointmentMode, setAppointmentMode] = useState(bot.appointmentMode || null);
+    const [blockOrder, setBlockOrder] = useState(() => {
+        try {
+            const parsed = bot.blockOrder ? (typeof bot.blockOrder === 'string' ? JSON.parse(bot.blockOrder) : bot.blockOrder) : null;
+            return parsed || ['greeting', 'collectName', 'collectPhone', 'askBranch', 'classifyNeeds', 'stageGoals', 'suggestProducts', 'shareLocation', 'admitUncertainty'];
+        } catch { return ['greeting', 'collectName', 'collectPhone', 'askBranch', 'classifyNeeds', 'stageGoals', 'suggestProducts', 'shareLocation', 'admitUncertainty']; }
+    });
+    const [workingHours, setWorkingHours] = useState(() => {
+        try {
+            return bot.workingHours ? (typeof bot.workingHours === 'string' ? JSON.parse(bot.workingHours) : bot.workingHours) : { enabled: false, start: '09:00', end: '18:00', days: [1,2,3,4,5] };
+        } catch { return { enabled: false, start: '09:00', end: '18:00', days: [1,2,3,4,5] }; }
+    });
+    const [outboundHours, setOutboundHours] = useState(() => {
+        try {
+            return bot.outboundHours ? (typeof bot.outboundHours === 'string' ? JSON.parse(bot.outboundHours) : bot.outboundHours) : { enabled: false, start: '09:00', end: '20:00', days: [1,2,3,4,5,6] };
+        } catch { return { enabled: false, start: '09:00', end: '20:00', days: [1,2,3,4,5,6] }; }
+    });
     // Sol raydaki aktif bölüm
     const [activeSection, setActiveSection] = useState('channels');
     // Alt çubuktaki kayıt geri bildirimi
@@ -439,6 +455,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                 enabledTools: JSON.stringify(enabledTools),
                 // Agent davranış blokları
                 behaviorBlocks,
+                blockOrder: JSON.stringify(blockOrder),
+                workingHours: JSON.stringify(workingHours),
+                outboundHours: JSON.stringify(outboundHours),
                 tone,
                 messageLength: msgLength,
                 emojiEnabled,
@@ -492,13 +511,32 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
         routingConfig.routingEnabled !== !!bot.routingEnabled
     ].filter(Boolean).length;
 
+    const BLOCK_LABELS = {
+        greeting: { emoji: '👋', label: 'Karşılama ve selamlama' },
+        collectName: { emoji: '📋', label: 'Kişisel bilgileri al' },
+        collectPhone: { emoji: '📞', label: 'İletişim bilgilerini al' },
+        askBranch: { emoji: '🏢', label: 'Şube tercihi sor' },
+        classifyNeeds: { emoji: '🏷️', label: 'İhtiyacı anla ve sınıflandır' },
+        stageGoals: { emoji: '📈', label: 'Aşama bazlı satış hedefleri' },
+        suggestProducts: { emoji: '🛍️', label: 'Aktif ürün/hizmet öner' },
+        shareLocation: { emoji: '📍', label: 'Konum ve adres paylaş' },
+        admitUncertainty: { emoji: '🤝', label: 'Bilmediğinde itiraf et ve aktar' }
+    };
+
+    const moveBlock = (index, direction) => {
+        setBlockOrder(prev => {
+            const newOrder = [...prev];
+            const targetIndex = index + direction;
+            if (targetIndex < 0 || targetIndex >= newOrder.length) return prev;
+            [newOrder[index], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[index]];
+            return newOrder;
+        });
+    };
+
     const navItems = [
         { key: 'channels', icon: <Zap size={17} />, label: 'Kimlik ve kanallar', hint: channelsLoading ? 'Yükleniyor…' : `${assignedChannelCount} kanal bağlı` },
-        { key: 'prompt', icon: <FileText size={17} />, label: 'Talimat ve devir', hint: `${prompt.length.toLocaleString('tr-TR')} karakter` },
-        { key: 'behaviour', icon: <Gauge size={17} />, label: 'Davranış kuralları', hint: `${behaviourRules.length} kural, ${openBehaviourCount} açık` },
-        { key: 'tools', icon: <Sparkles size={17} />, label: 'Yetenekler', hint: `${enabledTools.length} / ${TOOL_LIST.length} açık` },
-        { key: 'agent', icon: <Bot size={17} />, label: 'Agent davranışları', hint: 'Otomatik prompt' },
-        { key: 'routing', icon: <GitBranch size={17} />, label: 'Yönlendirme', hint: routingConfig.routingEnabled ? 'Açık' : 'Kapalı' },
+        { key: 'permissions', icon: <Shield size={17} />, label: 'Yetkiler', hint: `${enabledTools.length} yetenek açık` },
+        { key: 'flow', icon: <MessageSquare size={17} />, label: 'Konuşma akışı', hint: `${Object.values(behaviorBlocks).filter(v => v === true).length} blok açık` },
         { key: 'knowledge', icon: <BookOpen size={17} />, label: 'Bilgi bankası', hint: 'PDF ve DOCX' }
     ];
     if (appointmentMode) {
@@ -641,563 +679,366 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList, onClo
                         </section>
                     )}
 
-                    {activeSection === 'prompt' && (
-                        <>
-                            <section className="bm-sec">
-                                <div className="bm-sec-head">
-                                    <h3>Ek talimatlar</h3>
-                                    <span className="bm-sec-note">Botun kişiliği, tonu ve kuralları</span>
-                                </div>
-                                <textarea
-                                    className="input-modern bm-textarea"
-                                    rows="12"
-                                    value={prompt}
-                                    onChange={(e) => setPrompt(e.target.value)}
-                                    placeholder="Örn: Sen yardımsever bir teknik destek uzmanısın. Müşterilere kibar dille yanıt ver…"
-                                />
-                                <div className="bm-meter">
-                                    <span>{prompt.length.toLocaleString('tr-TR')} karakter</span>
-                                    <span className="bm-meter-ok">Bilgi bankası ve şube listesi otomatik ekleniyor</span>
-                                </div>
-                            </section>
-
-                            <section className="bm-sec">
-                                <div className="bm-sec-head">
-                                    <h3>Devir mesajı</h3>
-                                    <span className="bm-sec-note">Bot emin olmadığında müşteriye bunu yazar</span>
-                                </div>
-                                <textarea
-                                    className="input-modern bm-textarea"
-                                    rows="3"
-                                    value={handoffMessage}
-                                    onChange={(e) => setHandoffMessage(e.target.value)}
-                                    placeholder="Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır…"
-                                />
-                                <p className="bm-hint">Boş bırakırsanız varsayılan mesaj kullanılır.</p>
-                            </section>
-                        </>
-                    )}
-
-                    {activeSection === 'agent' && (
+                    {activeSection === 'permissions' && (
                         <section className="bm-sec">
                             <div className="bm-sec-head">
-                                <h3>Agent davranışları</h3>
-                                <span className="bm-sec-note">Toggle'ları açıp kapatarak agent'ın nasıl davranacağını belirleyin. Prompt yazmaya gerek yok.</span>
+                                <h3>Yetkiler</h3>
+                                <span className="bm-sec-note">Bot neleri yapabilir, neleri yapamaz</span>
                             </div>
 
-                            {/* ── Tanışma ── */}
-                            <div className="bm-list">
-                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '8px 0 4px 4px' }}>Tanışma</p>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Karşılama & Selamlama</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Müşteriyi firma adıyla sıcak karşıla</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.greeting !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, greeting: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Kişisel bilgileri al</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Ad, soyad bilgilerini doğal akışta topla</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.collectName !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, collectName: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>İletişim bilgilerini al</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Telefon numarasını iste ve doğrula</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.collectPhone !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, collectPhone: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                {/* ── Satış ── */}
-                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>Satış</p>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>İhtiyacı anla & Sınıflandır</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Müşterinin ne istediğini anla, kategorilere eşle</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.classifyNeeds !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, classifyNeeds: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Sıralı katalog akışı</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Şube → Kategori → Ürün sırasıyla daralt</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={catalogFlowOn} disabled={catalogSaving} onChange={e => handleCatalogFlowToggle(e.target.checked)} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                {catalogFlowOn && (
-                                    <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', marginLeft: '20px', cursor: 'pointer' }}>
-                                        <span style={{ fontSize: '0.82rem' }}>
-                                            <strong>Fiyat bilgisi paylaş</strong><br />
-                                            <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Ürün fiyatlarını müşteriye söyle</span>
-                                        </span>
-                                        <label className="toggle-switch"><input type="checkbox" checked={catalogFlow?.priceDisclosure || false} disabled={catalogSaving} onChange={async e => { setCatalogSaving(true); try { const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogPriceDisclosure: e.target.checked, botId: bot.id }); setCatalogFlow(res.data?.capability || null); } catch (err) { console.error(err); } finally { setCatalogSaving(false); } }} /><span className="toggle-slider"></span></label>
-                                    </label>
-                                )}
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Aşama bazlı satış hedefleri</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Hunideki aşamaya göre hedef belirle ve ilerlet</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.stageGoals !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, stageGoals: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Aktif ürün/hizmet öner</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Cross-sell ve upsell yaparak proaktif öneride bulun</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.suggestProducts === true} onChange={e => setBehaviorBlocks(prev => ({ ...prev, suggestProducts: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
-
-                                {/* ── Randevu ── */}
-                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>Randevu</p>
-
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Randevu yönetimi</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>{appointmentMode === 'AUTO' ? 'API üzerinden otomatik randevu oluşturur' : appointmentMode === 'REQUEST' ? 'Bilgileri toplar, yetkiliye iletir' : 'Kapalı'}</span>
-                                    </span>
-                                    <select className="input-modern input-sm" value={appointmentMode || ''} onChange={e => setAppointmentMode(e.target.value || null)} style={{ width: '140px', fontSize: '0.78rem' }}>
-                                        <option value="">Kapalı</option>
-                                        <option value="AUTO">Kesin randevu ver</option>
-                                        <option value="REQUEST">Talep al</option>
-                                    </select>
+                            {/* Tool toggles */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Yetenekler</label>
+                                <div className="bm-checks">
+                                    {TOOL_LIST.map(tool => (
+                                        <label key={tool.key} className="bm-check-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={enabledTools.includes(tool.key)}
+                                                onChange={() => {
+                                                    setEnabledTools(prev =>
+                                                        prev.includes(tool.key)
+                                                            ? prev.filter(t => t !== tool.key)
+                                                            : [...prev, tool.key]
+                                                    );
+                                                }}
+                                            />
+                                            {tool.label}
+                                        </label>
+                                    ))}
                                 </div>
+                            </div>
 
-                                {/* ── İletişim ── */}
-                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>İletişim</p>
+                            {/* Randevu modu */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Randevu yönetimi</label>
+                                <select className="bm-select" value={appointmentMode || ''} onChange={e => setAppointmentMode(e.target.value || null)}>
+                                    <option value="">Kapalı</option>
+                                    <option value="AUTO">Otomatik randevu ver</option>
+                                    <option value="REQUEST">Randevu talebi topla</option>
+                                </select>
+                            </div>
 
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Konum & Adres paylaş</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Şube adresi ve harita bilgisi gönder</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.shareLocation !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, shareLocation: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
+                            {/* Yazışma devralma */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Yazışma devralma</label>
+                                <div className="bm-row">
+                                    <div className="bm-row-text">
+                                        <span className="bm-row-title">Temsilci müdahalesi</span>
+                                        <span className="bm-row-desc">Bot yanıt veremezse temsilciye aktarsın</span>
+                                    </div>
+                                    <label className="bm-toggle">
+                                        <input type="checkbox" checked={fallbackEnabled} onChange={e => setFallbackEnabled(e.target.checked)} />
+                                        <span className="bm-toggle-slider" />
+                                    </label>
+                                </div>
+                                {fallbackEnabled && (
+                                    <>
+                                        <select className="bm-select" value={fallbackScope} onChange={e => setFallbackScope(e.target.value)}>
+                                            <option value="UNASSIGNED">Sadece atanmamış konuşmalar</option>
+                                            <option value="MY_TEAMS">Kendi ekibimdeki konuşmalar</option>
+                                            <option value="ALL">Tüm konuşmalar</option>
+                                        </select>
+                                        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:4}}>
+                                            <span style={{fontSize:12,color:'#6b7280'}}>Bekleme süresi:</span>
+                                            <input type="range" min={1} max={120} value={fallbackDelayMinutes} onChange={e => setFallbackDelayMinutes(Number(e.target.value))} style={{flex:1}} />
+                                            <span style={{fontSize:12,fontWeight:600,minWidth:40}}>{fallbackDelayMinutes} dk</span>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
 
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Bilmediğinde itiraf et & aktar</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Cevaplayamadığında uydurma, yetkiliye yönlendir</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={behaviorBlocks.admitUncertainty !== false} onChange={e => setBehaviorBlocks(prev => ({ ...prev, admitUncertainty: e.target.checked }))} /><span className="toggle-slider"></span></label>
-                                </label>
+                            {/* Çalışma saatleri */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Çalışma saatleri</label>
+                                <div className="bm-row">
+                                    <div className="bm-row-text">
+                                        <span className="bm-row-title">Bot çalışma saatleri</span>
+                                        <span className="bm-row-desc">Bu saatler dışında bot yanıt vermez</span>
+                                    </div>
+                                    <label className="bm-toggle">
+                                        <input type="checkbox" checked={workingHours.enabled} onChange={e => setWorkingHours(prev => ({...prev, enabled: e.target.checked}))} />
+                                        <span className="bm-toggle-slider" />
+                                    </label>
+                                </div>
+                                {workingHours.enabled && (
+                                    <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
+                                        <input type="time" value={workingHours.start} onChange={e => setWorkingHours(prev => ({...prev, start: e.target.value}))} className="bm-input-sm" />
+                                        <span style={{color:'#6b7280'}}>—</span>
+                                        <input type="time" value={workingHours.end} onChange={e => setWorkingHours(prev => ({...prev, end: e.target.value}))} className="bm-input-sm" />
+                                    </div>
+                                )}
+                            </div>
 
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Çok dilli yanıt ver</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Müşteri farklı dilde yazarsa o dilde yanıt verir</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={multilingualEnabled} onChange={e => setMultilingualEnabled(e.target.checked)} /><span className="toggle-slider"></span></label>
-                                </label>
+                            {/* Dış mesaj saatleri */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Dış mesaj saatleri</label>
+                                <div className="bm-row">
+                                    <div className="bm-row-text">
+                                        <span className="bm-row-title">Hatırlatma gönderim saatleri</span>
+                                        <span className="bm-row-desc">Hatırlatma ve follow-up mesajları bu saatler içinde gönderilir</span>
+                                    </div>
+                                    <label className="bm-toggle">
+                                        <input type="checkbox" checked={outboundHours.enabled} onChange={e => setOutboundHours(prev => ({...prev, enabled: e.target.checked}))} />
+                                        <span className="bm-toggle-slider" />
+                                    </label>
+                                </div>
+                                {outboundHours.enabled && (
+                                    <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
+                                        <input type="time" value={outboundHours.start} onChange={e => setOutboundHours(prev => ({...prev, start: e.target.value}))} className="bm-input-sm" />
+                                        <span style={{color:'#6b7280'}}>—</span>
+                                        <input type="time" value={outboundHours.end} onChange={e => setOutboundHours(prev => ({...prev, end: e.target.value}))} className="bm-input-sm" />
+                                    </div>
+                                )}
+                            </div>
 
-                                {/* ── Stil ── */}
-                                <p className="bm-group-label" style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 4px 4px' }}>Stil</p>
+                            {/* Zamanlayıcı */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Zamanlayıcı</label>
+                                <div className="bm-row">
+                                    <div className="bm-row-text">
+                                        <span className="bm-row-title">Bot zamanlayıcı</span>
+                                        <span className="bm-row-desc">Belirli tarihler arasında çalışsın</span>
+                                    </div>
+                                    <label className="bm-toggle">
+                                        <input type="checkbox" checked={schedulerEnabled} onChange={e => setSchedulerEnabled(e.target.checked)} />
+                                        <span className="bm-toggle-slider" />
+                                    </label>
+                                </div>
+                                {schedulerEnabled && (
+                                    <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:4}}>
+                                        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                                            <input type="date" value={scheduleStartDate} onChange={e => setScheduleStartDate(e.target.value)} className="bm-input-sm" />
+                                            <span style={{color:'#6b7280'}}>—</span>
+                                            <input type="date" value={scheduleEndDate} onChange={e => setScheduleEndDate(e.target.value)} className="bm-input-sm" />
+                                        </div>
+                                        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                                            <input type="time" value={scheduleStartTime} onChange={e => setScheduleStartTime(e.target.value)} className="bm-input-sm" />
+                                            <span style={{color:'#6b7280'}}>—</span>
+                                            <input type="time" value={scheduleEndTime} onChange={e => setScheduleEndTime(e.target.value)} className="bm-input-sm" />
+                                        </div>
+                                        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                                            {['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day, i) => (
+                                                <button key={i} type="button"
+                                                    className={`bm-day-btn ${scheduleDays.includes(i) ? 'active' : ''}`}
+                                                    onClick={() => setScheduleDays(prev => prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i])}>
+                                                    {day}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    )}
 
-                                <div style={{ display: 'flex', gap: '12px', marginBottom: '6px' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', marginBottom: '4px', display: 'block' }}>Üslup</label>
-                                        <select className="input-modern input-sm" value={tone} onChange={e => setTone(e.target.value)} style={{ width: '100%', fontSize: '0.78rem' }}>
-                                            <option value="FRIENDLY_PRO">Samimi & Profesyonel</option>
-                                            <option value="FORMAL">Resmi & Kurumsal</option>
-                                            <option value="CASUAL">Arkadaşça & Rahat</option>
-                                            <option value="CONCISE">Kısa & Net</option>
+                    {activeSection === 'flow' && (
+                        <section className="bm-sec">
+                            <div className="bm-sec-head">
+                                <h3>Konuşma akışı</h3>
+                                <span className="bm-sec-note">Blokları sıralayarak konuşma akışını belirle</span>
+                            </div>
+
+                            {/* Sıralanabilir bloklar */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Davranış blokları</label>
+                                <div className="bm-block-list">
+                                    {blockOrder.map((key, index) => {
+                                        const info = BLOCK_LABELS[key];
+                                        if (!info) return null;
+                                        const isEnabled = key === 'suggestProducts' ? behaviorBlocks[key] === true : behaviorBlocks[key] !== false;
+                                        return (
+                                            <div key={key} className={`bm-block-item ${isEnabled ? '' : 'disabled'}`}>
+                                                <div className="bm-block-order">
+                                                    <button type="button" className="bm-block-arrow" disabled={index === 0} onClick={() => moveBlock(index, -1)}>▲</button>
+                                                    <span className="bm-block-num">{index + 1}</span>
+                                                    <button type="button" className="bm-block-arrow" disabled={index === blockOrder.length - 1} onClick={() => moveBlock(index, 1)}>▼</button>
+                                                </div>
+                                                <span className="bm-block-emoji">{info.emoji}</span>
+                                                <span className="bm-block-label">{info.label}</span>
+                                                <label className="bm-toggle">
+                                                    <input type="checkbox" checked={isEnabled}
+                                                        onChange={e => setBehaviorBlocks(prev => ({...prev, [key]: key === 'suggestProducts' ? e.target.checked : (e.target.checked ? true : false)}))}
+                                                    />
+                                                    <span className="bm-toggle-slider" />
+                                                </label>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Sınıflandırma sırası */}
+                            {catalogFlow && (
+                                <div className="bm-group">
+                                    <label className="bm-group-label">📋 Sınıflandırma sırası</label>
+                                    <span style={{ fontSize: 11, color: '#94a3b8', display: 'block', marginBottom: 6 }}>Bot müşteriyi doğru akışa yönlendirmek için sırasıyla bu bilgileri toplar</span>
+                                    {(() => {
+                                        const order = catalogFlow?.classificationOrder || ['branch', 'category', 'product'];
+                                        const STEPS = {
+                                            branch: { label: 'Şube tespiti', emoji: '🏢', count: catalogFlow?.branchCount || 0 },
+                                            category: { label: 'Kategori tespiti', emoji: '🏷️', count: catalogFlow?.categoryCount || 0 },
+                                            product: { label: 'Ürün/Hizmet tespiti', emoji: '📦', count: catalogFlow?.productCount || 0 },
+                                        };
+                                        const handleReorder = async (from, to) => {
+                                            const newOrder = [...order];
+                                            const [item] = newOrder.splice(from, 1);
+                                            newOrder.splice(to, 0, item);
+                                            setCatalogFlow(prev => ({ ...prev, classificationOrder: newOrder }));
+                                            try {
+                                                await workspaceAPI.updateCatalogFlow(workspaceId, { classificationOrder: newOrder, botId: bot.id });
+                                            } catch (err) { console.error('Classification order error:', err); }
+                                        };
+                                        return (
+                                            <div className="bm-block-list">
+                                                {order.map((key, idx) => {
+                                                    const step = STEPS[key];
+                                                    if (!step) return null;
+                                                    const disabled = step.count === 0;
+                                                    return (
+                                                        <div key={key} className={`bm-block-item ${disabled ? 'disabled' : ''}`}>
+                                                            <div className="bm-block-order">
+                                                                <button type="button" className="bm-block-arrow" disabled={idx === 0} onClick={() => handleReorder(idx, idx - 1)}>▲</button>
+                                                                <span className="bm-block-num">{idx + 1}</span>
+                                                                <button type="button" className="bm-block-arrow" disabled={idx === order.length - 1} onClick={() => handleReorder(idx, idx + 1)}>▼</button>
+                                                            </div>
+                                                            <span className="bm-block-emoji">{step.emoji}</span>
+                                                            <span className="bm-block-label">{step.label}</span>
+                                                            <span style={{ fontSize: 11, color: disabled ? '#ef4444' : '#059669', background: disabled ? '#fee2e2' : '#dcfce7', padding: '1px 6px', borderRadius: 4, marginLeft: 'auto' }}>
+                                                                {disabled ? 'Yok' : `${step.count} kayıt`}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                    <span style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, display: 'block' }}>0 kayıt olan adımlar otomatik atlanır. 1 kayıt varsa sorulmaz, otomatik atanır.</span>
+                                </div>
+                            )}
+
+                            {/* Hatırlatma kademeleri */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Hatırlatma kademeleri</label>
+                                {reminderSteps.map((step, i) => (
+                                    <div key={i} className="bm-row" style={{gap: 8}}>
+                                        <label className="bm-toggle" style={{flex:'none'}}>
+                                            <input type="checkbox" checked={step.enabled} onChange={e => {
+                                                const updated = [...reminderSteps];
+                                                updated[i] = {...updated[i], enabled: e.target.checked};
+                                                setReminderSteps(updated);
+                                            }} />
+                                            <span className="bm-toggle-slider" />
+                                        </label>
+                                        <span style={{fontSize:13,color:'#6b7280',minWidth:70}}>Kademe {i+1}</span>
+                                        <input type="number" min={1} className="bm-input-sm" style={{width:60}} value={step.value || Math.round(step.delayMinutes / (step.unit === 'day' ? 1440 : 60))}
+                                            onChange={e => {
+                                                const updated = [...reminderSteps];
+                                                const val = Number(e.target.value) || 1;
+                                                const unit = updated[i].unit || (updated[i].delayMinutes >= 1440 ? 'day' : 'hour');
+                                                updated[i] = {...updated[i], value: val, delayMinutes: unit === 'day' ? val * 1440 : val * 60};
+                                                setReminderSteps(updated);
+                                            }}
+                                        />
+                                        <select className="bm-select-sm" value={step.unit || (step.delayMinutes >= 1440 ? 'day' : 'hour')}
+                                            onChange={e => {
+                                                const updated = [...reminderSteps];
+                                                const unit = e.target.value;
+                                                const val = updated[i].value || Math.round(updated[i].delayMinutes / (updated[i].unit === 'day' ? 1440 : 60));
+                                                updated[i] = {...updated[i], unit, delayMinutes: unit === 'day' ? val * 1440 : val * 60};
+                                                setReminderSteps(updated);
+                                            }}>
+                                            <option value="hour">saat</option>
+                                            <option value="day">gün</option>
+                                        </select>
+                                        <span style={{fontSize:12,color:'#9ca3af'}}>sonra</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Otomatik yanıt gecikmesi */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Otomatik yanıt gecikmesi</label>
+                                <div className="bm-row">
+                                    <div className="bm-row-text">
+                                        <span className="bm-row-title">Yanıt gecikmesi</span>
+                                        <span className="bm-row-desc">Müşteri art arda yazarsa bekle, tek yanıt ver</span>
+                                    </div>
+                                    <label className="bm-toggle">
+                                        <input type="checkbox" checked={autoReplyDelayEnabled} onChange={e => setAutoReplyDelayEnabled(e.target.checked)} />
+                                        <span className="bm-toggle-slider" />
+                                    </label>
+                                </div>
+                                {autoReplyDelayEnabled && (
+                                    <div style={{display:'flex',gap:8,alignItems:'center',marginTop:4}}>
+                                        <input type="number" min={5} max={300} value={autoReplyDelaySeconds} onChange={e => setAutoReplyDelaySeconds(Number(e.target.value))} className="bm-input-sm" style={{width:70}} />
+                                        <span style={{fontSize:12,color:'#6b7280'}}>saniye bekle</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Üslup ayarları */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Konuşma stili</label>
+                                <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+                                    <div style={{flex:1,minWidth:140}}>
+                                        <label style={{fontSize:12,color:'#6b7280',marginBottom:2,display:'block'}}>Üslup</label>
+                                        <select className="bm-select" value={tone} onChange={e => setTone(e.target.value)}>
+                                            <option value="FRIENDLY_PRO">Samimi-profesyonel</option>
+                                            <option value="FORMAL">Resmi</option>
+                                            <option value="CASUAL">Rahat</option>
+                                            <option value="CONCISE">Kısa ve öz</option>
                                         </select>
                                     </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', marginBottom: '4px', display: 'block' }}>Mesaj uzunluğu</label>
-                                        <select className="input-modern input-sm" value={msgLength} onChange={e => setMsgLength(e.target.value)} style={{ width: '100%', fontSize: '0.78rem' }}>
+                                    <div style={{flex:1,minWidth:140}}>
+                                        <label style={{fontSize:12,color:'#6b7280',marginBottom:2,display:'block'}}>Mesaj uzunluğu</label>
+                                        <select className="bm-select" value={msgLength} onChange={e => setMsgLength(e.target.value)}>
                                             <option value="SHORT">Kısa</option>
                                             <option value="NORMAL">Normal</option>
                                             <option value="DETAILED">Detaylı</option>
                                         </select>
                                     </div>
                                 </div>
-
-                                <label className="bm-toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', border: '1px solid #f1f5f9', marginBottom: '6px', cursor: 'pointer' }}>
-                                    <span style={{ fontSize: '0.82rem' }}>
-                                        <strong>Emoji kullan</strong><br />
-                                        <span style={{ color: '#6b7280', fontSize: '0.76rem' }}>Mesajlarda emoji ve sembol kullan</span>
-                                    </span>
-                                    <label className="toggle-switch"><input type="checkbox" checked={emojiEnabled} onChange={e => setEmojiEnabled(e.target.checked)} /><span className="toggle-slider"></span></label>
-                                </label>
-                            </div>
-                        </section>
-                    )}
-
-                    {activeSection === 'behaviour' && (
-                        <section className="bm-sec">
-                            <div className="bm-sec-head">
-                                <h3>Davranış kuralları</h3>
-                                <span className="bm-sec-note">Bot ne zaman devreye girsin, ne zaman sussun</span>
-                            </div>
-
-                            <div className="bm-list">
-                                {/* Şube bazlı sıralı akış */}
-                                {catalogFlow && (
-                                    <div className={`bm-rule ${catalogFlowOn ? 'on' : ''}`}>
-                                        <div className="bm-rule-head">
-                                            <span className="bm-rule-ico"><GitBranch size={15} /></span>
-                                            <span className="bm-rule-text">
-                                                <span className="bm-rule-title">Şube bazlı sıralı akış</span>
-                                                <span className="bm-rule-desc">
-                                                    Bot sırayla şube, kategori, ürün grubu ve ürün soruyor. Kapatınca serbest akışta çalışır.
-                                                </span>
-                                            </span>
-                                            <span className="bm-count">{catalogSaving ? 'Kaydediliyor…' : 'Anında kaydedilir'}</span>
-                                            <label className="toggle-switch" title="Şube bazlı sıralı akış">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={catalogFlowOn}
-                                                    disabled={catalogSaving}
-                                                    onChange={(e) => handleCatalogFlowToggle(e.target.checked)}
-                                                />
-                                                <span className="toggle-slider"></span>
-                                            </label>
+                                <div style={{display:'flex',gap:16,marginTop:8}}>
+                                    <div className="bm-row" style={{flex:1}}>
+                                        <div className="bm-row-text">
+                                            <span className="bm-row-title">Emoji kullan</span>
                                         </div>
-                                        <div className="bm-rule-body">
-                                            <p className="bm-hint" style={{ margin: 0 }}>
-                                                {catalogFlow.flag === null
-                                                    ? (catalogFlow.hasHealthApi
-                                                        ? 'Şu an otomatik: randevu entegrasyonu olduğu için kapalı, randevu asistanının kendi akışı kullanılıyor.'
-                                                        : `Şu an otomatik: ${catalogFlow.branchCount} şube ve ${catalogFlow.productCount} ürün tanımlı olduğu için ${catalogFlow.auto ? 'açık' : 'kapalı'}. Otomatik açılması için en az 2 şube ve 1 ürün gerekir.`)
-                                                    : catalogFlowOn
-                                                        ? 'Elle açıldı. Kapatırsanız bot anında eski davranışına döner.'
-                                                        : 'Elle kapatıldı. Bot serbest akışta, yani eski haliyle çalışıyor.'}
-                                            </p>
-                                        </div>
-
-                                        {/* Bot fiyat söyleyebilsin toggle */}
-                                        {catalogFlowOn && (
-                                            <div className="bm-rule-body" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '6px' }}>
-                                                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={catalogFlow.priceDisclosure || false}
-                                                        disabled={catalogSaving}
-                                                        onChange={async (e) => {
-                                                            setCatalogSaving(true);
-                                                            try {
-                                                                const res = await workspaceAPI.updateCatalogFlow(workspaceId, { catalogPriceDisclosure: e.target.checked, botId: bot.id });
-                                                                setCatalogFlow(res.data?.capability || null);
-                                                            } catch (err) {
-                                                                console.error('Price disclosure toggle error:', err);
-                                                            } finally {
-                                                                setCatalogSaving(false);
-                                                            }
-                                                        }}
-                                                    />
-                                                    <span style={{ fontSize: '0.82rem' }}>
-                                                        <strong>Bot fiyat söyleyebilsin</strong>
-                                                        <br />
-                                                        <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>
-                                                            Kapalıyken bot rakam vermez, fiyat sorusunu yetkiliye aktarır. Açıkken şubeye tanımlı fiyatı yazar.
-                                                        </span>
-                                                    </span>
-                                                </label>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Sınıflandırma sırası */}
-                                <div className="bm-rule on" style={{ borderLeft: '3px solid #8b5cf6' }}>
-                                    <div className="bm-rule-head">
-                                        <span className="bm-rule-ico">📋</span>
-                                        <span className="bm-rule-text">
-                                            <span className="bm-rule-title">Sınıflandırma sırası</span>
-                                            <span className="bm-rule-desc">Bot müşteriyi doğru akışa yönlendirmek için sırasıyla bu bilgileri toplar</span>
-                                        </span>
-                                    </div>
-                                    <div className="bm-rule-body" style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '6px' }}>
-                                        {(() => {
-                                            const order = (catalogFlow && typeof catalogFlow === 'object' && catalogFlow.classificationOrder) 
-                                                ? catalogFlow.classificationOrder 
-                                                : ['branch', 'category', 'product'];
-                                            const STEPS = {
-                                                branch: { label: 'Şube tespiti', icon: '🏢', count: catalogFlow?.branchCount || 0 },
-                                                category: { label: 'Kategori tespiti', icon: '🏷️', count: catalogFlow?.categoryCount || 0 },
-                                                product: { label: 'Ürün/Hizmet tespiti', icon: '📦', count: catalogFlow?.productCount || 0 },
-                                            };
-                                            const handleReorder = (from, to) => {
-                                                const newOrder = [...order];
-                                                const [item] = newOrder.splice(from, 1);
-                                                newOrder.splice(to, 0, item);
-                                                workspaceAPI.updateCatalogFlow(workspaceId, { classificationOrder: newOrder, botId: bot.id }).catch(console.error);
-                                            };
-                                            return (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                                    {order.map((key, idx) => {
-                                                        const step = STEPS[key];
-                                                        if (!step) return null;
-                                                        const disabled = step.count === 0;
-                                                        return (
-                                                            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: disabled ? '#f9fafb' : '#f0fdf4', borderRadius: 6, border: `1px solid ${disabled ? '#e5e7eb' : '#bbf7d0'}`, opacity: disabled ? 0.6 : 1 }}>
-                                                                <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, minWidth: 18 }}>{idx + 1}.</span>
-                                                                <span style={{ fontSize: 14 }}>{step.icon}</span>
-                                                                <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{step.label}</span>
-                                                                <span style={{ fontSize: 11, color: disabled ? '#ef4444' : '#059669', background: disabled ? '#fee2e2' : '#dcfce7', padding: '1px 6px', borderRadius: 4 }}>
-                                                                    {disabled ? 'Yok' : `${step.count} kayıt`}
-                                                                </span>
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                                                                    <button disabled={idx === 0} onClick={() => handleReorder(idx, idx - 1)} style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', fontSize: 10, color: idx === 0 ? '#d1d5db' : '#6b7280', padding: 0, lineHeight: 1 }}>▲</button>
-                                                                    <button disabled={idx === order.length - 1} onClick={() => handleReorder(idx, idx + 1)} style={{ background: 'none', border: 'none', cursor: idx === order.length - 1 ? 'default' : 'pointer', fontSize: 10, color: idx === order.length - 1 ? '#d1d5db' : '#6b7280', padding: 0, lineHeight: 1 }}>▼</button>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                    <span style={{ fontSize: 11, color: '#94a3b8' }}>0 kayıt olan adımlar otomatik atlanır. 1 kayıt varsa sorulmaz, otomatik atanır.</span>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                </div>
-
-                                {/* Yazışma devralma */}
-                                <div className={`bm-rule ${fallbackEnabled ? 'on' : ''}`}>
-                                    <div className="bm-rule-head">
-                                        <span className="bm-rule-ico"><Zap size={15} /></span>
-                                        <span className="bm-rule-text">
-                                            <span className="bm-rule-title">Yazışma devralma</span>
-                                            <span className="bm-rule-desc">Kimsenin üzerine almadığı veya yanıt verilmeyen konuşmalarda bot devralır</span>
-                                        </span>
-                                        <label className="toggle-switch">
-                                            <input type="checkbox" checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} />
-                                            <span className="toggle-slider"></span>
+                                        <label className="bm-toggle">
+                                            <input type="checkbox" checked={emojiEnabled} onChange={e => setEmojiEnabled(e.target.checked)} />
+                                            <span className="bm-toggle-slider" />
                                         </label>
                                     </div>
-                                    {fallbackEnabled && (
-                                        <div className="bm-rule-body">
-                                            <div className="bm-field">
-                                                <label className="form-label-sm">Devralma kapsamı</label>
-                                                <select className="input-modern input-sm" value={fallbackScope} onChange={(e) => setFallbackScope(e.target.value)}>
-                                                    <option value="UNASSIGNED">Sadece atanmamış konuşmalar</option>
-                                                    <option value="MY_TEAMS">Kendi takımımdaki tüm konuşmalar</option>
-                                                    <option value="ALL">Tüm konuşmalar (çalışma alanı geneli)</option>
-                                                </select>
-                                            </div>
-                                            <div className="bm-field">
-                                                <label className="form-label-sm">Bekleme süresi: <strong>{fallbackDelayMinutes} dakika</strong></label>
-                                                <input
-                                                    type="range"
-                                                    min="1"
-                                                    max="120"
-                                                    value={fallbackDelayMinutes}
-                                                    onChange={(e) => setFallbackDelayMinutes(parseInt(e.target.value))}
-                                                />
-                                                <div className="bm-scale"><span>1 dk</span><span>30 dk</span><span>60 dk</span><span>120 dk</span></div>
-                                            </div>
+                                    <div className="bm-row" style={{flex:1}}>
+                                        <div className="bm-row-text">
+                                            <span className="bm-row-title">Çok dilli yanıt</span>
                                         </div>
-                                    )}
-                                </div>
-
-                                {/* Zamanlayıcı */}
-                                <div className={`bm-rule ${schedulerEnabled ? 'on' : ''}`}>
-                                    <div className="bm-rule-head">
-                                        <span className="bm-rule-ico"><Clock size={15} /></span>
-                                        <span className="bm-rule-text">
-                                            <span className="bm-rule-title">{t('assistants.scheduler')}</span>
-                                            <span className="bm-rule-desc">Botun çalışacağı saatler ve günler</span>
-                                        </span>
-                                        <label className="toggle-switch">
-                                            <input type="checkbox" checked={schedulerEnabled} onChange={(e) => setSchedulerEnabled(e.target.checked)} />
-                                            <span className="toggle-slider"></span>
+                                        <label className="bm-toggle">
+                                            <input type="checkbox" checked={multilingualEnabled} onChange={e => setMultilingualEnabled(e.target.checked)} />
+                                            <span className="bm-toggle-slider" />
                                         </label>
-                                    </div>
-                                    {schedulerEnabled && (
-                                        <div className="bm-rule-body">
-                                            <div className="scheduler-row">
-                                                <div className="bm-field">
-                                                    <label className="form-label-sm">{t('assistants.startTime')}</label>
-                                                    <input type="time" className="input-modern input-sm" value={scheduleStartTime} onChange={(e) => setScheduleStartTime(e.target.value)} />
-                                                </div>
-                                                <div className="bm-field">
-                                                    <label className="form-label-sm">Bitiş saati</label>
-                                                    <input type="time" className="input-modern input-sm" value={scheduleEndTime} onChange={(e) => setScheduleEndTime(e.target.value)} />
-                                                </div>
-                                            </div>
-                                            <div className="scheduler-row">
-                                                <div className="bm-field">
-                                                    <label className="form-label-sm">Başlangıç tarihi (opsiyonel)</label>
-                                                    <input type="date" className="input-modern input-sm" value={scheduleStartDate} onChange={(e) => setScheduleStartDate(e.target.value)} />
-                                                </div>
-                                                <div className="bm-field">
-                                                    <label className="form-label-sm">Bitiş tarihi (opsiyonel)</label>
-                                                    <input type="date" className="input-modern input-sm" value={scheduleEndDate} onChange={(e) => setScheduleEndDate(e.target.value)} />
-                                                </div>
-                                            </div>
-                                            <div className="bm-field">
-                                                <label className="form-label-sm">Aktif günler</label>
-                                                <div className="days-selector">
-                                                    {daysOfWeek.map(day => (
-                                                        <button
-                                                            key={day.key}
-                                                            type="button"
-                                                            className={`day-btn ${scheduleDays.includes(day.key) ? 'active' : ''}`}
-                                                            onClick={() => toggleDay(day.key)}
-                                                        >
-                                                            {day.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <p className="bm-hint">Hiçbiri seçilmezse her gün aktif olur.</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Otomatik yanıt gecikmesi */}
-                                <div className={`bm-rule ${autoReplyDelayEnabled ? 'on' : ''}`}>
-                                    <div className="bm-rule-head">
-                                        <span className="bm-rule-ico"><Timer size={15} /></span>
-                                        <span className="bm-rule-text">
-                                            <span className="bm-rule-title">Otomatik yanıt gecikmesi</span>
-                                            <span className="bm-rule-desc">Müşteri mesajına bu süre içinde yanıt verilmezse bot yazar</span>
-                                        </span>
-                                        <label className="toggle-switch">
-                                            <input type="checkbox" checked={autoReplyDelayEnabled} onChange={(e) => setAutoReplyDelayEnabled(e.target.checked)} />
-                                            <span className="toggle-slider"></span>
-                                        </label>
-                                    </div>
-                                    {autoReplyDelayEnabled && (
-                                        <div className="bm-rule-body">
-                                            <div className="bm-field">
-                                                <label className="form-label-sm">Bekleme süresi (saniye)</label>
-                                                <input
-                                                    type="number"
-                                                    className="input-modern input-sm"
-                                                    min="5"
-                                                    max="300"
-                                                    value={autoReplyDelaySeconds}
-                                                    onChange={(e) => setAutoReplyDelaySeconds(parseInt(e.target.value) || 30)}
-                                                    style={{ width: '120px' }}
-                                                />
-                                            </div>
-                                            <div className="bm-field">
-                                                <label className="form-label-sm">Otomatik mesaj (opsiyonel)</label>
-                                                <textarea
-                                                    className="input-modern bm-textarea"
-                                                    rows="2"
-                                                    value={autoReplyDelayMessage}
-                                                    onChange={(e) => setAutoReplyDelayMessage(e.target.value)}
-                                                    placeholder="Boş bırakılırsa AI yanıtı gönderilir. Özel mesaj için buraya yazın…"
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Akıllı hatırlatma kademeleri */}
-                                <div className={`bm-rule ${reminderSteps.some(s => s.enabled) ? 'on' : ''}`}>
-                                    <div className="bm-rule-head">
-                                        <span className="bm-rule-ico"><AlertCircle size={15} /></span>
-                                        <span className="bm-rule-text">
-                                            <span className="bm-rule-title">Akıllı hatırlatma kademeleri</span>
-                                            <span className="bm-rule-desc">Müşteri yanıt vermezse bot konuşmaya uygun hatırlatma üretir</span>
-                                        </span>
-                                        <span className="bm-count">{reminderSteps.filter(s => s.enabled).length} / {reminderSteps.length}</span>
-                                    </div>
-                                    <div className="bm-rule-body">
-                                        <div className="bm-steps">
-                                            {reminderSteps.map((step, idx) => (
-                                                <div key={idx} className={`bm-step ${step.enabled ? 'on' : ''}`}>
-                                                    <label className="toggle-switch">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={step.enabled}
-                                                            onChange={(e) => {
-                                                                const updated = [...reminderSteps];
-                                                                updated[idx] = { ...updated[idx], enabled: e.target.checked };
-                                                                setReminderSteps(updated);
-                                                            }}
-                                                        />
-                                                        <span className="toggle-slider"></span>
-                                                    </label>
-                                                    <span className="bm-step-name">Kademe {idx + 1}</span>
-                                                    <input
-                                                        type="number"
-                                                        className="input-modern input-sm"
-                                                        min="1"
-                                                        max="999"
-                                                        value={step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440)}
-                                                        onChange={(e) => {
-                                                            const val = parseInt(e.target.value) || 1;
-                                                            const unit = step.delayMinutes < 1440 ? 'saat' : 'gun';
-                                                            const minutes = unit === 'saat' ? val * 60 : val * 1440;
-                                                            const updated = [...reminderSteps];
-                                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
-                                                            setReminderSteps(updated);
-                                                        }}
-                                                        style={{ width: '62px', textAlign: 'center' }}
-                                                    />
-                                                    <select
-                                                        className="input-modern input-sm"
-                                                        value={step.delayMinutes < 1440 ? 'saat' : 'gun'}
-                                                        onChange={(e) => {
-                                                            const unit = e.target.value;
-                                                            const currentVal = step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440);
-                                                            const minutes = unit === 'saat' ? currentVal * 60 : currentVal * 1440;
-                                                            const updated = [...reminderSteps];
-                                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
-                                                            setReminderSteps(updated);
-                                                        }}
-                                                        style={{ width: '76px' }}
-                                                    >
-                                                        <option value="saat">saat</option>
-                                                        <option value="gun">gün</option>
-                                                    </select>
-                                                    <span className="bm-step-tail">sonra</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <p className="bm-note-ok">Her hatırlatmada bot, konuşma geçmişine göre farklı ve doğal bir mesaj üretir. Sabit mesaj yazmanız gerekmez.</p>
                                     </div>
                                 </div>
                             </div>
-                        </section>
-                    )}
 
-                    {activeSection === 'tools' && (
-                        <section className="bm-sec">
-                            <div className="bm-sec-head">
-                                <h3>Yetenekler</h3>
-                                <span className="bm-sec-note">Botun kendi başına yapabilecekleri</span>
-                                <span className="bm-sec-count">{enabledTools.length} / {TOOL_LIST.length} açık</span>
+                            {/* Ek talimatlar */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Ek talimatlar</label>
+                                <textarea className="bm-textarea" rows={8} value={prompt} onChange={e => setPrompt(e.target.value)}
+                                    placeholder="Bot'a özel talimatlar yazın... (opsiyonel)" />
+                                <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
+                                    <span style={{fontSize:11,color:'#9ca3af'}}>Bilgi bankası ve şube listesi otomatik eklenir</span>
+                                    <span style={{fontSize:11,color:'#9ca3af'}}>{prompt.length.toLocaleString('tr-TR')} karakter</span>
+                                </div>
                             </div>
-                            <div className="bm-tools">
-                                {TOOL_LIST.map(tool => {
-                                    const on = enabledTools.includes(tool.key);
-                                    return (
-                                        <label key={tool.key} className={`bm-tool ${on ? 'on' : ''}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={on}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setEnabledTools(prev => [...prev, tool.key]);
-                                                    else setEnabledTools(prev => prev.filter(x => x !== tool.key));
-                                                }}
-                                            />
-                                            <span>{tool.label}</span>
-                                        </label>
-                                    );
-                                })}
-                            </div>
-                            <p className="bm-hint">Kapalı yetenekler bota hiç sunulmaz, yanlışlıkla kullanamaz.</p>
-                        </section>
-                    )}
 
-                    {activeSection === 'routing' && (
-                        <section className="bm-sec">
-                            <BotRoutingSettings routingConfig={routingConfig} onChange={setRoutingConfig} />
+                            {/* Handoff mesajı */}
+                            <div className="bm-group">
+                                <label className="bm-group-label">Devir mesajı</label>
+                                <textarea className="bm-textarea" rows={2} value={handoffMessage} onChange={e => setHandoffMessage(e.target.value)}
+                                    placeholder="Temsilciye aktarırken gönderilecek mesaj" />
+                                <span style={{fontSize:11,color:'#9ca3af'}}>Boş bırakılırsa varsayılan mesaj kullanılır</span>
+                            </div>
                         </section>
                     )}
 
