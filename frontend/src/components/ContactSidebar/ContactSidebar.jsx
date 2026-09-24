@@ -3385,6 +3385,82 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             })()}
                                         </div>
 
+                                        {/* ── Son Temas & AI Özet Mini Kartı ── */}
+                                        {(() => {
+                                            // Last call info from activities
+                                            const caseActs = (profile?.activities || []).filter(a => {
+                                                if (c?.id && a.caseId && a.caseId !== c.id) return false;
+                                                return a.type === 'CALL' || a.type === 'REMINDER';
+                                            });
+                                            const lastCompletedCall = caseActs
+                                                .filter(a => a.status === 'COMPLETED')
+                                                .sort((a, b) => new Date(b.completedAt || b.dueDate || b.createdAt) - new Date(a.completedAt || a.dueDate || a.createdAt))[0];
+                                            
+                                            // Last AI call
+                                            const lastAiCall = (aiCalls || [])
+                                                .filter(ac => ac.status !== 'not_connected')
+                                                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+                                            
+                                            // AI topic from conversation
+                                            const convTopic = activeConv?.aiTopic || activeConv?.classificationData?.primaryTopic || null;
+                                            
+                                            if (!lastCompletedCall && !lastAiCall && !convTopic) return null;
+                                            
+                                            return (
+                                                <div style={{
+                                                    margin: '2px 12px 6px',
+                                                    padding: '6px 8px',
+                                                    background: '#f0f9ff',
+                                                    borderRadius: 6,
+                                                    border: '1px solid #bae6fd',
+                                                    fontSize: '0.68rem'
+                                                }}>
+                                                    {/* Last human call */}
+                                                    {lastCompletedCall && (() => {
+                                                        const callerName = lastCompletedCall.assignedToName || lastCompletedCall.completedByName || 'Temsilci';
+                                                        const isAi = lastCompletedCall.source === 'AI' || lastCompletedCall.source === 'RETELL';
+                                                        const callDate = new Date(lastCompletedCall.completedAt || lastCompletedCall.dueDate || lastCompletedCall.createdAt);
+                                                        const sentimentEmoji = lastCompletedCall.callSentiment === 'Positive' ? '😊' : lastCompletedCall.callSentiment === 'Negative' ? '😞' : lastCompletedCall.callSentiment === 'WrongSend' ? '⚠️' : '';
+                                                        const successIcon = lastCompletedCall.callSuccessful === true ? '✅' : lastCompletedCall.callSuccessful === false ? '❌' : '📞';
+                                                        return (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: lastAiCall || convTopic ? 3 : 0, color: '#0369a1' }}>
+                                                                <span>{successIcon}</span>
+                                                                <span style={{ fontWeight: 600 }}>{isAi ? 'AI Asistan' : callerName}</span>
+                                                                <span style={{ color: '#64748b' }}>·</span>
+                                                                <span style={{ color: '#64748b' }}>{callDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</span>
+                                                                {sentimentEmoji && <span>{sentimentEmoji}</span>}
+                                                                {lastCompletedCall.content && (
+                                                                    <span style={{ color: '#475569', marginLeft: 2, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                        — {lastCompletedCall.content.length > 50 ? lastCompletedCall.content.substring(0, 50) + '...' : lastCompletedCall.content}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                    
+                                                    {/* Last AI call summary */}
+                                                    {lastAiCall && lastAiCall.summary && (
+                                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: convTopic ? 3 : 0, color: '#6d28d9' }}>
+                                                            <span>🤖</span>
+                                                            <span style={{ fontWeight: 600, flexShrink: 0 }}>AI Özet:</span>
+                                                            <span style={{ color: '#475569', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                                                                {lastAiCall.summary.length > 120 ? lastAiCall.summary.substring(0, 120) + '...' : lastAiCall.summary}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Conversation topic */}
+                                                    {convTopic && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#0f766e' }}>
+                                                            <span>📝</span>
+                                                            <span style={{ fontWeight: 600 }}>Konu:</span>
+                                                            <span style={{ color: '#475569' }}>{convTopic}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* ═══ SATIR 3: Akış / Aşama — Durum (82px) ═══ */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 12px 6px' }}>
                                             {/* Akış / Aşama (CaseCards) */}
