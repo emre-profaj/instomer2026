@@ -3992,9 +3992,6 @@ const Customers = () => {
                                                                         <PhoneCall size={12} /> Ara
                                                                     </a>
                                                                 )}
-                                                                <button type="button" onClick={() => handleSelectContact(contact)} className="ccv2-exp-btn ccv2-exp-btn--profile">
-                                                                    <User size={12} /> Profil
-                                                                </button>
                                                             </div>
                                                         </div>
                                                     </div>
