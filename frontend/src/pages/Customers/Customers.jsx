@@ -865,8 +865,8 @@ const Customers = () => {
                 setAvailableImportGroups(response.data.allImportGroups);
             }
 
-            // Auto-select first contact if none selected
-            if (!selectedContact && response.data.contacts?.length > 0) {
+            // Auto-select first contact if none selected (skip in card view - sidebar not needed)
+            if (!selectedContact && response.data.contacts?.length > 0 && viewMode !== 'card') {
                 setSelectedContact(response.data.contacts[0]);
             }
         } catch (error) {
@@ -2322,16 +2322,23 @@ const Customers = () => {
         const acts = contact.activities || [];
         acts.forEach((act, idx) => {
             const isCall = act.type === 'CALL' || act.source === 'RETELL' || act.source === 'INSTOMER_CALL' || act.assignedByType === 'AI' || act._isRetell;
-            const isAi = act.assignedByType === 'AI' || act.source === 'RETELL' || act._isRetell || (act.title && act.title.toLowerCase().includes('ai'));
+            const isAi = act.source === 'RETELL' || act.sourceType === 'RETELL' || act.assignedByType === 'AI' || act._isRetell || (act.title && act.title.toLowerCase().includes('ai'));
+            const isHumanCall = isCall && !isAi;
+            const isAutomation = act.source === 'AUTOMATION' || act.sourceType === 'STAGE_ACTION';
             const isMeeting = act.type === 'MEETING' || act.type === 'APPOINTMENT';
             const isNote = act.type === 'NOTE';
             const isReached = act.callSuccessful === true || (act.result && (act.result.includes('REACHED') || act.result.toLowerCase().includes('ulaşıldı') || act.result.toLowerCase().includes('görüşüldü')));
             const isFailed = act.callSuccessful === false || (act.result && (act.result.includes('NO_ANSWER') || act.result.toLowerCase().includes('cevapsız') || act.result.toLowerCase().includes('ulaşılamadı')));
+            const isPlanned = act.status === 'PLANNED';
+            const aiFallback = act.aiFallbackTriggered;
 
             let sentimentEmoji = '';
             if (act.callSentiment) {
                 sentimentEmoji = act.callSentiment === 'Positive' ? ' 😊' : act.callSentiment === 'Negative' ? ' 😞' : ' 😐';
             }
+
+            // Result label
+            const resultLabel = isReached ? '✅ Ulaşıldı' : isFailed ? '❌ Cevapsız' : isPlanned ? '⏳ Planlandı' : '';
 
             let mTitle = act.title || act.type;
             let mIcon = '📌';
@@ -2340,11 +2347,15 @@ const Customers = () => {
             if (isAi) {
                 mIcon = '🤖';
                 mColor = '#7c3aed';
-                mTitle = `AI Arama (Retell)${sentimentEmoji}`;
-            } else if (isCall) {
+                const aiResult = isReached ? ' · Ulaşıldı' : isFailed ? ' · Cevapsız' : '';
+                const transferLabel = aiFallback ? ' → İnsana Devredildi' : '';
+                mTitle = `AI Arama (Retell)${sentimentEmoji}${aiResult}${transferLabel}`;
+            } else if (isHumanCall) {
                 mIcon = '📞';
                 mColor = isReached ? '#16a34a' : isFailed ? '#dc2626' : '#2563eb';
-                mTitle = `Telefon Araması (${act.assignee?.name || act.creator?.name || 'Temsilci'})`;
+                const callerName = act.assignee?.name || act.creator?.name || 'Temsilci';
+                const autoLabel = isAutomation ? ' · Otomasyon' : '';
+                mTitle = `İnsan Araması · ${callerName}${autoLabel} ${resultLabel}`.trim();
             } else if (isMeeting) {
                 mIcon = '📅';
                 mColor = '#d97706';
@@ -2365,13 +2376,20 @@ const Customers = () => {
                 type: act.type,
                 isAi,
                 isCall,
+                isHumanCall,
                 isMeeting,
                 isNote,
                 isReached,
                 isFailed,
+                isPlanned,
                 duration: act.duration,
                 sentiment: act.callSentiment,
                 summary: act.summary || (isAi && act.result ? act.result : null),
+                source: act.source,
+                sourceType: act.sourceType,
+                transcript: act.transcript || null,
+                callTopic: act.callTopic || null,
+                callerName: act.assignee?.name || act.creator?.name || null,
                 rawActivity: act
             });
         });
@@ -3295,7 +3313,7 @@ const Customers = () => {
                                     <button
                                         key={v.key}
                                         className={`cust-view-switch-btn ${viewMode === v.key ? 'active' : ''}`}
-                                        onClick={() => { setViewMode(v.key); try { localStorage.setItem(`customers_viewMode_${currentWorkspace?.id}`, v.key); } catch {} }}
+                                        onClick={() => { setViewMode(v.key); if (v.key === 'card') setSelectedContact(null); try { localStorage.setItem(`customers_viewMode_${currentWorkspace?.id}`, v.key); } catch {} }}
                                         title={v.label}
                                     >
                                         {v.icon}
@@ -3857,8 +3875,35 @@ const Customers = () => {
                                                                                                                 </div>
                                                                                                             )}
 
+                                                                                                            {/* İnsan Araması Detay Kartı */}
+                                                                                                            {m.isHumanCall && (
+                                                                                                                <div className="ccv2-call-card">
+                                                                                                                    <div className="ccv2-call-card-header">
+                                                                                                                        <span className="ccv2-call-card-icon">{m.isReached ? '✅' : m.isFailed ? '❌' : m.isPlanned ? '⏳' : '📞'}</span>
+                                                                                                                        <div className="ccv2-call-card-meta">
+                                                                                                                            <span className="ccv2-call-card-caller">{m.callerName || 'Temsilci'}</span>
+                                                                                                                            {m.source && <span className="ccv2-call-card-source">{m.source === 'AUTOMATION' ? 'Otomasyon' : m.source === 'MANUAL' ? 'Manuel' : m.source}</span>}
+                                                                                                                        </div>
+                                                                                                                        {m.duration > 0 && <span className="ccv2-call-card-dur">🕐 {formatDuration(m.duration)}</span>}
+                                                                                                                    </div>
+                                                                                                                    {m.callTopic && <div className="ccv2-call-card-topic">📋 Konu: {m.callTopic}</div>}
+                                                                                                                    {m.sentiment && (
+                                                                                                                        <div className="ccv2-call-card-sentiment">
+                                                                                                                            {m.sentiment === 'Positive' ? '😊 Pozitif' : m.sentiment === 'Negative' ? '😞 Negatif' : '😐 Nötr'}
+                                                                                                                        </div>
+                                                                                                                    )}
+                                                                                                                    {m.detail && <div className="ccv2-call-card-result">{m.detail}</div>}
+                                                                                                                    {m.transcript && (
+                                                                                                                        <details className="ccv2-call-transcript">
+                                                                                                                            <summary>📜 Arama Notu / Kayıt</summary>
+                                                                                                                            <div className="ccv2-call-transcript-body">{m.transcript.length > 300 ? m.transcript.substring(0, 300) + '...' : m.transcript}</div>
+                                                                                                                        </details>
+                                                                                                                    )}
+                                                                                                                </div>
+                                                                                                            )}
+
                                                                                                             {/* Normal Not / Detay */}
-                                                                                                            {!m.isAi && !m.isMeeting && m.detail && (
+                                                                                                            {!m.isAi && !m.isMeeting && !m.isHumanCall && m.detail && (
                                                                                                                 <div className="ccv2-tl-detail">{m.detail}</div>
                                                                                                             )}
                                                                                                         </div>

@@ -5556,3 +5556,89 @@
     font-size: 0.64rem;
     color: #b45309;
 }
+
+/* ── İnsan Araması Detay Kartı ── */
+.ccv2-call-card {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-top: 4px;
+    font-size: 0.73rem;
+}
+.ccv2-call-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.ccv2-call-card-icon {
+    font-size: 14px;
+}
+.ccv2-call-card-meta {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.ccv2-call-card-caller {
+    font-weight: 700;
+    color: #15803d;
+}
+.ccv2-call-card-source {
+    font-size: 0.62rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #dcfce7;
+    color: #166534;
+    font-weight: 500;
+}
+.ccv2-call-card-dur {
+    font-size: 0.68rem;
+    color: #64748b;
+    margin-left: auto;
+}
+.ccv2-call-card-topic {
+    color: #334155;
+    margin-bottom: 3px;
+}
+.ccv2-call-card-sentiment {
+    font-size: 0.72rem;
+    margin-bottom: 3px;
+}
+.ccv2-call-card-result {
+    color: #475569;
+    font-size: 0.71rem;
+    line-height: 1.4;
+    border-top: 1px solid #d1fae5;
+    padding-top: 4px;
+    margin-top: 4px;
+}
+.ccv2-call-transcript {
+    margin-top: 6px;
+    border-top: 1px solid #d1fae5;
+    padding-top: 4px;
+}
+.ccv2-call-transcript summary {
+    cursor: pointer;
+    font-size: 0.68rem;
+    color: #2563eb;
+    font-weight: 600;
+    user-select: none;
+}
+.ccv2-call-transcript summary:hover {
+    color: #1d4ed8;
+}
+.ccv2-call-transcript-body {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.68rem;
+    color: #475569;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+}
