@@ -5186,3 +5186,256 @@
         padding-left: 0;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CARD VIEW V2 — PART 2: Case İçi Bileşenler
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Case Metadata Badge'leri ── */
+.ccv2-case-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    padding: 4px 0 6px;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 6px;
+}
+.ccv2-cbadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 5px;
+    white-space: nowrap;
+}
+.ccv2-cbadge--source { background: #f0fdf4; color: #16a34a; }
+.ccv2-cbadge--type { background: #ede9fe; color: #6d28d9; }
+.ccv2-cbadge--mode { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+.ccv2-cbadge--stage { background: #dbeafe; color: #1d4ed8; }
+.ccv2-cbadge--cat { background: #fef3c7; color: #92400e; }
+.ccv2-cbadge--branch { background: #f1f5f9; color: #334155; }
+.ccv2-cbadge--team { background: #fce7f3; color: #9d174d; }
+.ccv2-cbadge--product { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+
+/* ── Chat Baloncukları ── */
+.ccv2-chat-section {
+    margin: 6px 0;
+    padding: 6px 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+.ccv2-chat-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 6px;
+}
+.ccv2-chat-time {
+    font-size: 0.6rem;
+    font-weight: 400;
+    color: #94a3b8;
+    margin-left: auto;
+}
+.ccv2-chat-bubbles {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.ccv2-bubble {
+    max-width: 85%;
+    padding: 6px 10px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    word-break: break-word;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+}
+.ccv2-bubble--in {
+    align-self: flex-start;
+    background: #f1f5f9;
+    color: #1e293b;
+    border-bottom-left-radius: 4px;
+}
+.ccv2-bubble--out {
+    align-self: flex-end;
+    background: #6366f1;
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+.ccv2-bubble-text {
+    flex: 1;
+}
+.ccv2-bubble-status {
+    font-size: 0.58rem;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+/* ── Müşteri Alıntı (Customer Quote) ── */
+.ccv2-customer-quote {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: linear-gradient(135deg, #f0f9ff, #eff6ff);
+    border-left: 3px solid #60a5fa;
+    border-radius: 0 8px 8px 0;
+}
+.ccv2-cq-icon {
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+.ccv2-cq-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.ccv2-cq-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #3b82f6;
+}
+.ccv2-cq-text {
+    font-size: 0.7rem;
+    color: #1e40af;
+    font-style: italic;
+    line-height: 1.45;
+}
+
+/* ── Randevu / Ziyaret Kartı ── */
+.ccv2-meeting-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 6px 10px;
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 8px;
+}
+.ccv2-meeting-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+.ccv2-meeting-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.ccv2-meeting-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #92400e;
+}
+.ccv2-meeting-date {
+    font-size: 0.65rem;
+    color: #b45309;
+}
+.ccv2-meeting-detail {
+    font-size: 0.68rem;
+    color: #78350f;
+    margin-top: 2px;
+    font-style: italic;
+}
+
+/* ── Case Aksiyon Butonları ── */
+.ccv2-case-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px;
+    border-top: 1px dashed #e2e8f0;
+    margin-top: 6px;
+}
+.ccv2-ca-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: #475569;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.ccv2-ca-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.ccv2-ca-btn--call {
+    color: #10b981;
+    border-color: #a7f3d0;
+    background: #ecfdf5;
+}
+.ccv2-ca-btn--call:hover {
+    background: #d1fae5;
+    border-color: #6ee7b7;
+}
+.ccv2-ca-btn--note {
+    color: #6366f1;
+    border-color: #c7d2fe;
+    background: #eef2ff;
+}
+.ccv2-ca-btn--note:hover {
+    background: #e0e7ff;
+    border-color: #a5b4fc;
+}
+.ccv2-ca-btn--plan {
+    color: #d97706;
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+.ccv2-ca-btn--plan:hover {
+    background: #fef3c7;
+    border-color: #fcd34d;
+}
+
+/* ── Quick Note Target Badge ── */
+.ccv2-qn-target {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #eef2ff;
+    color: #4f46e5;
+    border: 1px solid #c7d2fe;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.ccv2-qn-target-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: none;
+    background: #c7d2fe;
+    color: #4338ca;
+    font-size: 0.6rem;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 2px;
+    line-height: 1;
+}
+.ccv2-qn-target-x:hover {
+    background: #818cf8;
+    color: white;
+}

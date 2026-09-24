@@ -4360,7 +4360,7 @@ export const getContactGroupedConversations = async (req, res) => {
                         isStarred: true, starredAt: true,
                         teamIds: true,
                         assignedTo: { select: { id: true, name: true, avatar: true } },
-                        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, content: true, createdAt: true, isFromContact: true, messageType: true, status: true, mediaUrl: true, mediaType: true } }
+                        messages: { orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, content: true, createdAt: true, isFromContact: true, messageType: true, status: true, mediaUrl: true, mediaType: true } }
                     },
                     orderBy: [
                         { isStarred: 'desc' },

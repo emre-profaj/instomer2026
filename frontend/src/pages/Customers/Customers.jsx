@@ -2026,17 +2026,23 @@ const Customers = () => {
         const text = quickNotes[contactId];
         if (!text || !text.trim()) return;
         const target = quickNotes[`${contactId}_target`] || 'contact';
+        const action = quickNotes[`${contactId}_action`] || 'note';
         const payload = {
-            type: 'NOTE',
+            type: action === 'plan' ? 'CALL' : 'NOTE',
             description: text.trim(),
             workspaceId: currentWorkspace?.id
         };
+        if (action === 'plan') {
+            payload.status = 'PLANNED';
+            payload.title = text.trim();
+            payload.callTopic = text.trim();
+        }
         if (target !== 'contact') {
             payload.caseId = target;
         }
         try {
             await activityAPI.createActivity(contactId, payload);
-            setQuickNotes(prev => ({ ...prev, [contactId]: '', [`${contactId}_target`]: 'contact' }));
+            setQuickNotes(prev => ({ ...prev, [contactId]: '', [`${contactId}_target`]: 'contact', [`${contactId}_action`]: 'note' }));
             loadContacts();
         } catch (err) {
             console.error('Not kaydedilemedi:', err);
@@ -3666,10 +3672,34 @@ const Customers = () => {
                                                                 const caseTypeLabel = c.caseType?.name || c.caseTypeName || '';
                                                                 const caseDotColor = c.status === 'ACTIVE' ? '#10b981' : isWon ? '#f59e0b' : isLost ? '#ef4444' : '#94a3b8';
 
+                                                                // Case metadata for badges
+                                                                const caseBranch = c.branch?.name || c.branchName || null;
+                                                                const caseTeam = c.team?.name || c.teamName || null;
+                                                                const caseProducts = c.products || c.product ? [c.product || c.products].flat().filter(Boolean) : [];
+                                                                const caseSource = c.source || c.channel || null;
+                                                                const caseIsManual = c.source === 'MANUAL' || c.createdBy != null;
+                                                                const caseFunnelStage = c.funnelStage?.name || c.stageName || null;
+                                                                const caseCategory = c.category || c.categoryName || null;
+
+                                                                // Conversations & messages for chat bubbles
+                                                                const caseConversations = (contact.conversations || []).filter(conv => {
+                                                                    if (conv.caseId === c.id) return true;
+                                                                    if (!conv.caseId && c.id === primaryCase?.id) return true;
+                                                                    return false;
+                                                                });
+                                                                const caseMessages = caseConversations.flatMap(conv =>
+                                                                    (conv.messages || []).map(msg => ({
+                                                                        ...msg,
+                                                                        channel: conv.channel,
+                                                                        conversationId: conv.id
+                                                                    }))
+                                                                ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
                                                                 // Case-specific milestones
                                                                 const caseMilestones = cardMilestones.filter(m => {
+                                                                    if (m.rawActivity?.caseId === c.id) return true;
                                                                     if (m.caseId && m.caseId === c.id) return true;
-                                                                    if (!m.caseId && c.id === primaryCase?.id) return true;
+                                                                    if (!m.caseId && !m.rawActivity?.caseId && c.id === primaryCase?.id) return true;
                                                                     return false;
                                                                 });
 
@@ -3724,87 +3754,154 @@ const Customers = () => {
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* Vaka İçi Timeline */}
+                                                                        {/* Vaka İçi Detay */}
                                                                         {isCaseExpanded && (
                                                                             <div className="ccv2-case-body">
-                                                                                {caseMilestones.length === 0 && cardMilestones.length > 0 ? (
-                                                                                    /* Eğer case-specific milestone yoksa tüm milestoneları göster */
-                                                                                    <div className="ccv2-timeline">
-                                                                                        {cardMilestones.slice(0, 10).map((m, idx) => (
-                                                                                            <div key={m.id || idx} className="ccv2-tl-item">
-                                                                                                <div className={`ccv2-tl-dot ${m.isAi ? 'ccv2-tl-dot--ai' : m.isCall ? (m.isReached ? 'ccv2-tl-dot--call-ok' : 'ccv2-tl-dot--call-fail') : m.type === 'MEETING' ? 'ccv2-tl-dot--meet' : 'ccv2-tl-dot--note'}`}></div>
-                                                                                                <div className="ccv2-tl-content">
-                                                                                                    <div className="ccv2-tl-header">
-                                                                                                        <span className="ccv2-tl-title">
-                                                                                                            {m.isAi ? '🤖' : m.isCall ? '📞' : m.type === 'MEETING' ? '📅' : m.type === 'CONVERSATION' ? '💬' : '📝'} {m.title}
-                                                                                                        </span>
-                                                                                                        {m.isReached && <span className="ccv2-tl-status ccv2-tl-status--ok">✓ Ulaşıldı</span>}
-                                                                                                        {m.isFailed && <span className="ccv2-tl-status ccv2-tl-status--fail">✗ Cevapsız</span>}
-                                                                                                        {m.duration > 0 && <span className="ccv2-tl-dur">{formatDuration(m.duration)}</span>}
-                                                                                                        <span className="ccv2-tl-time">{formatActivityDate(m.date)}</span>
-                                                                                                    </div>
-                                                                                                    {/* AI Özet */}
-                                                                                                    {m.isAi && (m.summary || m.detail) && (
-                                                                                                        <div className="ccv2-ai-box">
-                                                                                                            <div className="ccv2-ai-header">
-                                                                                                                <Sparkles size={11} style={{ color: '#7c3aed' }} />
-                                                                                                                <span>AI Özet</span>
-                                                                                                                {m.sentiment && (
-                                                                                                                    <span className={`ccv2-ai-mood ${m.sentiment === 'Positive' ? 'ccv2-ai-mood--pos' : m.sentiment === 'Negative' ? 'ccv2-ai-mood--neg' : ''}`}>
-                                                                                                                        {m.sentiment === 'Positive' ? '😊' : m.sentiment === 'Negative' ? '😞' : '😐'}
-                                                                                                                    </span>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                            <div className="ccv2-ai-body">{m.summary || m.detail}</div>
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                    {/* Normal detay */}
-                                                                                                    {!m.isAi && m.detail && (
-                                                                                                        <div className="ccv2-tl-detail">{m.detail}</div>
+
+                                                                                {/* ── Case Metadata Badge'leri ── */}
+                                                                                <div className="ccv2-case-badges">
+                                                                                    {caseSource && <span className="ccv2-cbadge ccv2-cbadge--source">🌐 {caseSource}</span>}
+                                                                                    {caseTypeLabel && <span className="ccv2-cbadge ccv2-cbadge--type">{caseTypeLabel}</span>}
+                                                                                    <span className="ccv2-cbadge ccv2-cbadge--mode">{caseIsManual ? '👤 Manuel' : '⚡ Otomasyon'}</span>
+                                                                                    {caseFunnelStage && <span className="ccv2-cbadge ccv2-cbadge--stage">● {caseFunnelStage}</span>}
+                                                                                    {caseCategory && <span className="ccv2-cbadge ccv2-cbadge--cat">{caseCategory}</span>}
+                                                                                    {caseBranch && <span className="ccv2-cbadge ccv2-cbadge--branch">🏢 {caseBranch}</span>}
+                                                                                    {caseTeam && <span className="ccv2-cbadge ccv2-cbadge--team">👥 {caseTeam}</span>}
+                                                                                    {caseProducts.length > 0 && caseProducts.map((p, pi) => (
+                                                                                        <span key={pi} className="ccv2-cbadge ccv2-cbadge--product">📦 {typeof p === 'object' ? p.name || p.title : p}</span>
+                                                                                    ))}
+                                                                                </div>
+
+                                                                                {/* ── Yazışmalar (Chat Baloncukları) ── */}
+                                                                                {caseMessages.length > 0 && (
+                                                                                    <div className="ccv2-chat-section">
+                                                                                        <div className="ccv2-chat-label">
+                                                                                            💬 {caseMessages[0]?.channel === 'WHATSAPP' ? 'WhatsApp' : caseMessages[0]?.channel === 'INSTAGRAM' ? 'Instagram' : 'Mesajlar'}
+                                                                                            <span className="ccv2-chat-time">{formatActivityDate(caseMessages[caseMessages.length - 1]?.createdAt)}</span>
+                                                                                        </div>
+                                                                                        <div className="ccv2-chat-bubbles">
+                                                                                            {caseMessages.slice(-5).map((msg, mi) => (
+                                                                                                <div key={msg.id || mi} className={`ccv2-bubble ${msg.isFromContact ? 'ccv2-bubble--in' : 'ccv2-bubble--out'}`}>
+                                                                                                    <span className="ccv2-bubble-text">
+                                                                                                        {msg.content ? (msg.content.length > 120 ? msg.content.substring(0, 120) + '...' : msg.content) : (msg.mediaType ? `📎 ${msg.mediaType}` : '...')}
+                                                                                                    </span>
+                                                                                                    {msg.status && msg.status !== 'SENT' && !msg.isFromContact && (
+                                                                                                        <span className="ccv2-bubble-status">{msg.status === 'DELIVERED' ? '✓✓' : msg.status === 'READ' ? '✓✓' : '✓'}</span>
                                                                                                     )}
                                                                                                 </div>
-                                                                                            </div>
-                                                                                        ))}
+                                                                                            ))}
+                                                                                        </div>
                                                                                     </div>
-                                                                                ) : caseMilestones.length > 0 ? (
-                                                                                    <div className="ccv2-timeline">
-                                                                                        {caseMilestones.slice(0, 10).map((m, idx) => (
-                                                                                            <div key={m.id || idx} className="ccv2-tl-item">
-                                                                                                <div className={`ccv2-tl-dot ${m.isAi ? 'ccv2-tl-dot--ai' : m.isCall ? (m.isReached ? 'ccv2-tl-dot--call-ok' : 'ccv2-tl-dot--call-fail') : m.type === 'MEETING' ? 'ccv2-tl-dot--meet' : 'ccv2-tl-dot--note'}`}></div>
-                                                                                                <div className="ccv2-tl-content">
-                                                                                                    <div className="ccv2-tl-header">
-                                                                                                        <span className="ccv2-tl-title">
-                                                                                                            {m.isAi ? '🤖' : m.isCall ? '📞' : m.type === 'MEETING' ? '📅' : m.type === 'CONVERSATION' ? '💬' : '📝'} {m.title}
-                                                                                                        </span>
-                                                                                                        {m.isReached && <span className="ccv2-tl-status ccv2-tl-status--ok">✓ Ulaşıldı</span>}
-                                                                                                        {m.isFailed && <span className="ccv2-tl-status ccv2-tl-status--fail">✗ Cevapsız</span>}
-                                                                                                        {m.duration > 0 && <span className="ccv2-tl-dur">{formatDuration(m.duration)}</span>}
-                                                                                                        <span className="ccv2-tl-time">{formatActivityDate(m.date)}</span>
-                                                                                                    </div>
-                                                                                                    {m.isAi && (m.summary || m.detail) && (
-                                                                                                        <div className="ccv2-ai-box">
-                                                                                                            <div className="ccv2-ai-header">
-                                                                                                                <Sparkles size={11} style={{ color: '#7c3aed' }} />
-                                                                                                                <span>AI Özet</span>
-                                                                                                                {m.sentiment && (
-                                                                                                                    <span className={`ccv2-ai-mood ${m.sentiment === 'Positive' ? 'ccv2-ai-mood--pos' : m.sentiment === 'Negative' ? 'ccv2-ai-mood--neg' : ''}`}>
-                                                                                                                        {m.sentiment === 'Positive' ? '😊' : m.sentiment === 'Negative' ? '😞' : '😐'}
-                                                                                                                    </span>
-                                                                                                                )}
-                                                                                                            </div>
-                                                                                                            <div className="ccv2-ai-body">{m.summary || m.detail}</div>
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                    {!m.isAi && m.detail && (
-                                                                                                        <div className="ccv2-tl-detail">{m.detail}</div>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <div className="ccv2-tl-empty">Henüz aktivite bulunmuyor.</div>
                                                                                 )}
+
+                                                                                {/* ── Aktivite Timeline ── */}
+                                                                                {(() => {
+                                                                                    const milesToShow = caseMilestones.length > 0 ? caseMilestones : (cardMilestones.length > 0 ? cardMilestones : []);
+                                                                                    return milesToShow.length > 0 ? (
+                                                                                        <div className="ccv2-timeline">
+                                                                                            {milesToShow.slice(0, 10).map((m, idx) => {
+                                                                                                const act = m.rawActivity || {};
+                                                                                                const customerSaid = act.description && m.isAi && act.description.length > 20 
+                                                                                                    ? act.description 
+                                                                                                    : (act.transcript ? act.transcript.split('\n').filter(l => l.toLowerCase().includes('müşteri') || l.toLowerCase().includes('customer')).slice(0, 2).join(' ') : null);
+                                                                                                return (
+                                                                                                    <div key={m.id || idx} className="ccv2-tl-item">
+                                                                                                        <div className={`ccv2-tl-dot ${m.isAi ? 'ccv2-tl-dot--ai' : m.isCall ? (m.isReached ? 'ccv2-tl-dot--call-ok' : 'ccv2-tl-dot--call-fail') : m.isMeeting ? 'ccv2-tl-dot--meet' : m.isNote ? 'ccv2-tl-dot--note' : ''}`}></div>
+                                                                                                        <div className="ccv2-tl-content">
+                                                                                                            <div className="ccv2-tl-header">
+                                                                                                                <span className="ccv2-tl-title">
+                                                                                                                    {m.isAi ? '🤖' : m.isCall ? '📞' : m.isMeeting ? '📅' : m.type === 'CONVERSATION' ? '💬' : m.isNote ? '📝' : '📌'} {m.title}
+                                                                                                                </span>
+                                                                                                                {m.isReached && <span className="ccv2-tl-status ccv2-tl-status--ok">✓ Ulaşıldı</span>}
+                                                                                                                {m.isFailed && <span className="ccv2-tl-status ccv2-tl-status--fail">✗ Cevapsız</span>}
+                                                                                                                {m.duration > 0 && <span className="ccv2-tl-dur">{formatDuration(m.duration)}</span>}
+                                                                                                                <span className="ccv2-tl-time">{formatActivityDate(m.date)}</span>
+                                                                                                            </div>
+
+                                                                                                            {/* AI Görüşme Özeti */}
+                                                                                                            {m.isAi && (m.summary || m.detail) && (
+                                                                                                                <div className="ccv2-ai-box">
+                                                                                                                    <div className="ccv2-ai-header">
+                                                                                                                        <Sparkles size={11} style={{ color: '#7c3aed' }} />
+                                                                                                                        <span>AI Görüşme Özeti</span>
+                                                                                                                        {m.sentiment && (
+                                                                                                                            <span className={`ccv2-ai-mood ${m.sentiment === 'Positive' ? 'ccv2-ai-mood--pos' : m.sentiment === 'Negative' ? 'ccv2-ai-mood--neg' : ''}`}>
+                                                                                                                                {m.sentiment === 'Positive' ? '😊 Pozitif' : m.sentiment === 'Negative' ? '😞 Negatif' : '😐 Nötr'}
+                                                                                                                            </span>
+                                                                                                                        )}
+                                                                                                                    </div>
+                                                                                                                    <div className="ccv2-ai-body">{m.summary || m.detail}</div>
+                                                                                                                    {/* Müşteri Ne Dedi */}
+                                                                                                                    {customerSaid && (
+                                                                                                                        <div className="ccv2-customer-quote">
+                                                                                                                            <span className="ccv2-cq-icon">🗣️</span>
+                                                                                                                            <div className="ccv2-cq-content">
+                                                                                                                                <span className="ccv2-cq-label">Müşteri ne dedi:</span>
+                                                                                                                                <span className="ccv2-cq-text">"{customerSaid.length > 150 ? customerSaid.substring(0, 150) + '...' : customerSaid}"</span>
+                                                                                                                            </div>
+                                                                                                                        </div>
+                                                                                                                    )}
+                                                                                                                </div>
+                                                                                                            )}
+
+                                                                                                            {/* Randevu / Ziyaret Kartı */}
+                                                                                                            {m.isMeeting && (
+                                                                                                                <div className="ccv2-meeting-card">
+                                                                                                                    <span className="ccv2-meeting-icon">🗓️</span>
+                                                                                                                    <div className="ccv2-meeting-info">
+                                                                                                                        <span className="ccv2-meeting-title">{act.title || m.title}</span>
+                                                                                                                        {act.dueDate && <span className="ccv2-meeting-date">{new Date(act.dueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
+                                                                                                                    </div>
+                                                                                                                    {m.detail && <div className="ccv2-meeting-detail">{m.detail}</div>}
+                                                                                                                </div>
+                                                                                                            )}
+
+                                                                                                            {/* Normal Not / Detay */}
+                                                                                                            {!m.isAi && !m.isMeeting && m.detail && (
+                                                                                                                <div className="ccv2-tl-detail">{m.detail}</div>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="ccv2-tl-empty">Henüz aktivite bulunmuyor.</div>
+                                                                                    );
+                                                                                })()}
+
+                                                                                {/* ── Aksiyon Butonları (Arama Yap / Not Gir / Planla) ── */}
+                                                                                <div className="ccv2-case-actions">
+                                                                                    {phone && (
+                                                                                        <a href={`tel:${phone}`} className="ccv2-ca-btn ccv2-ca-btn--call" onClick={e => e.stopPropagation()}>
+                                                                                            <PhoneCall size={12} /> Arama Yap
+                                                                                        </a>
+                                                                                    )}
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="ccv2-ca-btn ccv2-ca-btn--note"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'note' }));
+                                                                                            const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                            if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                        }}
+                                                                                    >
+                                                                                        <StickyNote size={12} /> Not Gir
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="ccv2-ca-btn ccv2-ca-btn--plan"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'plan' }));
+                                                                                            const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                            if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                        }}
+                                                                                    >
+                                                                                        <Calendar size={12} /> Arama Planla
+                                                                                    </button>
+                                                                                </div>
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -3812,18 +3909,29 @@ const Customers = () => {
                                                             })
                                                         )}
 
-                                                        {/* HIZLI NOT */}
+                                                        {/* HIZLI NOT / ARAMA NOTU */}
                                                         <div className="ccv2-quick-note-row">
+                                                            {quickNotes[`${contact.id}_target`] && quickNotes[`${contact.id}_target`] !== 'contact' && (
+                                                                <span className="ccv2-qn-target">
+                                                                    {quickNotes[`${contact.id}_action`] === 'plan' ? '📅' : '📝'}
+                                                                    {(() => {
+                                                                        const targetCase = allCases.find(cc => cc.id === quickNotes[`${contact.id}_target`]);
+                                                                        return targetCase ? (targetCase.title || `Vaka #${targetCase.caseNumber || ''}`) : 'Vaka';
+                                                                    })()}
+                                                                    <button type="button" className="ccv2-qn-target-x" onClick={() => setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: 'contact', [`${contact.id}_action`]: 'note' }))}>×</button>
+                                                                </span>
+                                                            )}
                                                             <input
+                                                                id={`ccv2-note-${contact.id}`}
                                                                 type="text"
                                                                 className="ccv2-quick-note-input"
-                                                                placeholder="Not ekle... (Enter)"
+                                                                placeholder={quickNotes[`${contact.id}_action`] === 'plan' ? 'Arama konusu / planla... (Enter)' : 'Not ekle... (Enter)'}
                                                                 value={quickNotes[contact.id] || ''}
                                                                 onChange={e => setQuickNotes(prev => ({ ...prev, [contact.id]: e.target.value }))}
                                                                 onKeyDown={e => { if (e.key === 'Enter') handleQuickNoteSave(contact.id); }}
                                                             />
                                                             <button type="button" className="ccv2-quick-note-btn" onClick={() => handleQuickNoteSave(contact.id)}>
-                                                                <Plus size={12} /> Ekle
+                                                                <Plus size={12} /> {quickNotes[`${contact.id}_action`] === 'plan' ? 'Planla' : 'Ekle'}
                                                             </button>
                                                         </div>
 
