@@ -4765,6 +4765,24 @@
     color: #1e293b;
     word-break: break-all;
 }
+.ccv2-ig-item--full {
+    grid-column: 1 / -1;
+}
+.ccv2-ig-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+.ccv2-ig-tag {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 6px;
+    background: #ede9fe;
+    color: #6d28d9;
+    white-space: nowrap;
+}
 
 /* Stat Strip */
 .ccv2-stat-strip {

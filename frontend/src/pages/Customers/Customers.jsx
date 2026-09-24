@@ -3647,6 +3647,61 @@ const Customers = () => {
                                                                     <span className="ccv2-ig-val">🏢 {company}</span>
                                                                 </div>
                                                             )}
+                                                            {(contact.country || contact.city) && (
+                                                                <div className="ccv2-ig-item">
+                                                                    <span className="ccv2-ig-label">ÜLKE / ŞEHİR</span>
+                                                                    <span className="ccv2-ig-val">
+                                                                        📍 {contact.country === 'Türkiye' ? '🇹🇷' : contact.country === 'Almanya' ? '🇩🇪' : contact.country === 'İngiltere' ? '🇬🇧' : contact.country === 'ABD' ? '🇺🇸' : contact.country === 'Rusya' ? '🇷🇺' : ''}{' '}
+                                                                        {[contact.country, contact.city].filter(Boolean).join(' · ')}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {contact.language && (
+                                                                <div className="ccv2-ig-item">
+                                                                    <span className="ccv2-ig-label">DİL</span>
+                                                                    <span className="ccv2-ig-val">
+                                                                        🌐 {contact.language === 'tr' ? '🇹🇷 Türkçe' : contact.language === 'en' ? '🇬🇧 English' : contact.language === 'de' ? '🇩🇪 Deutsch' : contact.language === 'fr' ? '🇫🇷 Français' : contact.language === 'ar' ? '🇸🇦 العربية' : contact.language === 'ru' ? '🇷🇺 Русский' : contact.language === 'nl' ? '🇳🇱 Nederlands' : contact.language}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {contact.birthDate && (
+                                                                <div className="ccv2-ig-item">
+                                                                    <span className="ccv2-ig-label">DOĞUM TARİHİ</span>
+                                                                    <span className="ccv2-ig-val">
+                                                                        🎂 {new Date(contact.birthDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                                                        {(() => { const age = new Date().getFullYear() - new Date(contact.birthDate).getFullYear(); return age > 0 && age < 120 ? <span style={{ marginLeft: 6, color: '#e11d48', fontWeight: 600, fontSize: '0.7rem', background: '#fff1f2', padding: '1px 5px', borderRadius: 4 }}>{age} yaş</span> : null; })()}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {contact.leadSource && (
+                                                                <div className="ccv2-ig-item">
+                                                                    <span className="ccv2-ig-label">KAYNAK</span>
+                                                                    <span className="ccv2-ig-val">🎯 {contact.leadSource}{contact.leadSourceDetail ? ` · ${contact.leadSourceDetail}` : ''}</span>
+                                                                </div>
+                                                            )}
+                                                            {contactTags.length > 0 && (
+                                                                <div className="ccv2-ig-item ccv2-ig-item--full">
+                                                                    <span className="ccv2-ig-label">ETİKETLER</span>
+                                                                    <span className="ccv2-ig-val ccv2-ig-tags">
+                                                                        {contactTags.map((tag, ti) => (
+                                                                            <span key={ti} className="ccv2-ig-tag">{String(tag)}</span>
+                                                                        ))}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {contact.notes && (() => {
+                                                                let notesArr = [];
+                                                                try { notesArr = JSON.parse(contact.notes); } catch { notesArr = typeof contact.notes === 'string' ? [{ text: contact.notes }] : []; }
+                                                                if (!Array.isArray(notesArr) || notesArr.length === 0) return null;
+                                                                const latestNote = notesArr[notesArr.length - 1];
+                                                                const noteText = typeof latestNote === 'string' ? latestNote : latestNote?.text || latestNote?.note || JSON.stringify(latestNote);
+                                                                return (
+                                                                    <div className="ccv2-ig-item ccv2-ig-item--full">
+                                                                        <span className="ccv2-ig-label">SON NOT</span>
+                                                                        <span className="ccv2-ig-val" style={{ color: '#7c3aed', fontStyle: 'italic' }}>📝 {noteText}</span>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
 
                                                         {/* AKTİVİTE ÖZET ŞERİDİ */}
