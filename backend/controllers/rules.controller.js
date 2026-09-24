@@ -687,18 +687,19 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             return;
         }
 
-        // 2. Detect phone number in incoming message
-        // Supports: 05XX XXX XX XX, 05XXXXXXXXX, 0XXXXXXXXX (10-11 digits), +90...
-        const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
-        const simplePhoneRegex2 = /(?:\+?90|0)5\d{8,9}/gi;
-        if (!phoneRegex.test(messageContent) && !simplePhoneRegex2.test(messageContent)) return;
-
-        // 3. Get conversation + contact EARLY (needed for status check)
+        // 2. Get conversation + contact EARLY (phone check needs contact.phone)
         const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
             include: { contact: true }
         });
         if (!conversation || !conversation.contact) return;
+
+        // 3. Detect phone: mesajda mı yazıyor, yoksa contact'ta zaten var mı?
+        const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
+        const simplePhoneRegex2 = /(?:\+?90|0)5\d{8,9}/gi;
+        const phoneInMessage = phoneRegex.test(messageContent) || simplePhoneRegex2.test(messageContent);
+        const contactHasPhone = !!conversation.contact.phone;
+        if (!phoneInMessage && !contactHasPhone) return;
 
         // 3b. Check Marketing Consent for CALL
         if (conversation.contact.consentChannels) {
@@ -715,6 +716,7 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
 
         // 4. Detect call intent in recent conversation messages (last 10)
         //    OR if contact is already an OPPORTUNITY → phone number alone is enough
+        //    Telefon mesajda yoksa (mevcut numara) → call intent ZORUNLU
         const isOpportunity = ['OPPORTUNITY', 'HOT_OPPORTUNITY'].includes(conversation.contact.status);
         const CALL_INTENT_KEYWORDS = [
             // Agent/bot side
@@ -747,9 +749,14 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             const lower = (msg.content || '').toLowerCase();
             return CALL_INTENT_KEYWORDS.some(kw => lower.includes(kw));
         });
-        // Pass if: explicit call intent in messages OR contact is already an opportunity
-        if (!hasCallIntent && !isOpportunity) {
-            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] No call intent and contact status is ${conversation.contact.status}, skipping`);
+
+        // Karar matrisi:
+        // phoneInMessage + any intent/opportunity → ✅ (numara verdi = talep)
+        // contactHasPhone + callIntent → ✅ (mevcut numara + "beni arayın")
+        // contactHasPhone + opportunity → ✅ (fırsat + numara var)
+        // contactHasPhone + intent yok → ❌ (sadece WA'dan yazdı, arama istemedi)
+        if (!phoneInMessage && !hasCallIntent && !isOpportunity) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] No phone in message, no call intent, status: ${conversation.contact.status}, skipping`);
             return;
         }
 
