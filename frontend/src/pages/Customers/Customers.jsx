@@ -251,6 +251,7 @@ const Customers = () => {
     }); // 'list' | 'card' | 'pipeline'
     const [expandedCards, setExpandedCards] = useState(new Set()); // card view: expanded contact ids
     const [expandedCasesInCard, setExpandedCasesInCard] = useState({}); // card view: { contactId: Set(caseId) }
+    const [cardCaseActionMenu, setCardCaseActionMenu] = useState(null); // card view: caseId of open dropdown
     const [quickNotes, setQuickNotes] = useState({}); // card view: { contactId: noteText }
 
     // Filtre state'leri (sayfa yenilendiğinde sessionStorage'dan okunur) ---
@@ -3870,37 +3871,79 @@ const Customers = () => {
                                                                                     );
                                                                                 })()}
 
-                                                                                {/* ── Aksiyon Butonları (Arama Yap / Not Gir / Planla) ── */}
-                                                                                <div className="ccv2-case-actions">
-                                                                                    {phone && (
-                                                                                        <a href={`tel:${phone}`} className="ccv2-ca-btn ccv2-ca-btn--call" onClick={e => e.stopPropagation()}>
-                                                                                            <PhoneCall size={12} /> Arama Yap
-                                                                                        </a>
+                                                                                {/* ── + Arama Notu / Planla... Dropdown ── */}
+                                                                                <div className="ccv2-case-actions" style={{ position: 'relative' }}>
+                                                                                    <div className="ccv2-action-plus-icon" onClick={(e) => { e.stopPropagation(); setCardCaseActionMenu(cardCaseActionMenu === c.id ? null : c.id); }}>
+                                                                                        +
+                                                                                    </div>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="ccv2-action-dropdown-btn"
+                                                                                        onClick={(e) => { e.stopPropagation(); setCardCaseActionMenu(cardCaseActionMenu === c.id ? null : c.id); }}
+                                                                                    >
+                                                                                        <span style={{ fontWeight: 800 }}>+</span>
+                                                                                        <span>Arama Notu / Planla...</span>
+                                                                                        <ChevronDown size={12} style={{ transform: cardCaseActionMenu === c.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+                                                                                    </button>
+
+                                                                                    {/* Dropdown Popover */}
+                                                                                    {cardCaseActionMenu === c.id && (
+                                                                                        <div className="ccv2-action-popover" onClick={(e) => e.stopPropagation()}>
+                                                                                            {/* Dahili Not */}
+                                                                                            <button type="button" className="ccv2-ap-item ccv2-ap-item--highlight" onClick={() => {
+                                                                                                setCardCaseActionMenu(null);
+                                                                                                setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'note' }));
+                                                                                                const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                                if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                            }}>
+                                                                                                <span className="ccv2-ap-icon" style={{ background: '#fde68a' }}>📝</span>
+                                                                                                <div className="ccv2-ap-text">
+                                                                                                    <div className="ccv2-ap-title">Dahili Not Ekle</div>
+                                                                                                    <div className="ccv2-ap-desc">Timeline'a not ekler</div>
+                                                                                                </div>
+                                                                                            </button>
+                                                                                            {/* Arama Notu */}
+                                                                                            <button type="button" className="ccv2-ap-item" onClick={() => {
+                                                                                                setCardCaseActionMenu(null);
+                                                                                                setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'note' }));
+                                                                                                const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                                if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                            }}>
+                                                                                                <span className="ccv2-ap-icon" style={{ background: '#ecfdf5', color: '#059669' }}>📞</span>
+                                                                                                <span>Arama Notu Gir</span>
+                                                                                            </button>
+                                                                                            {/* Arama Planla */}
+                                                                                            <button type="button" className="ccv2-ap-item" onClick={() => {
+                                                                                                setCardCaseActionMenu(null);
+                                                                                                setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'plan' }));
+                                                                                                const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                                if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                            }}>
+                                                                                                <span className="ccv2-ap-icon" style={{ background: '#eff6ff', color: '#2563eb' }}>📅</span>
+                                                                                                <span>Arama Planla</span>
+                                                                                            </button>
+                                                                                            {/* Görüşme Planla */}
+                                                                                            <button type="button" className="ccv2-ap-item" onClick={() => {
+                                                                                                setCardCaseActionMenu(null);
+                                                                                                setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'plan' }));
+                                                                                                const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                                if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                            }}>
+                                                                                                <span className="ccv2-ap-icon" style={{ background: '#f5f3ff', color: '#7c3aed' }}>🤝</span>
+                                                                                                <span>Görüşme / Randevu Planla</span>
+                                                                                            </button>
+                                                                                            {/* Hatırlatıcı */}
+                                                                                            <button type="button" className="ccv2-ap-item" onClick={() => {
+                                                                                                setCardCaseActionMenu(null);
+                                                                                                setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'note' }));
+                                                                                                const inp = document.querySelector(`#ccv2-note-${contact.id}`);
+                                                                                                if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                                                                                            }}>
+                                                                                                <span className="ccv2-ap-icon" style={{ background: '#fef2f2', color: '#dc2626' }}>⏰</span>
+                                                                                                <span>Hatırlatıcı Ekle</span>
+                                                                                            </button>
+                                                                                        </div>
                                                                                     )}
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        className="ccv2-ca-btn ccv2-ca-btn--note"
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'note' }));
-                                                                                            const inp = document.querySelector(`#ccv2-note-${contact.id}`);
-                                                                                            if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-                                                                                        }}
-                                                                                    >
-                                                                                        <StickyNote size={12} /> Not Gir
-                                                                                    </button>
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        className="ccv2-ca-btn ccv2-ca-btn--plan"
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            setQuickNotes(prev => ({ ...prev, [`${contact.id}_target`]: c.id, [`${contact.id}_action`]: 'plan' }));
-                                                                                            const inp = document.querySelector(`#ccv2-note-${contact.id}`);
-                                                                                            if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-                                                                                        }}
-                                                                                    >
-                                                                                        <Calendar size={12} /> Arama Planla
-                                                                                    </button>
                                                                                 </div>
                                                                             </div>
                                                                         )}
