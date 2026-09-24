@@ -390,6 +390,17 @@ export const ensureCaseForConversation = async (workspaceId, conversationId, opt
                 });
 
                 console.log(`📦 [AutoCase] Auto-created case "${caseNumber}" (${title}) for conv ${conversationId}`);
+
+                // 🔔 "Talep Alındı Bildirimi" — yeni case açıldığında tetikle
+                // Case bazlı çalışır: aynı kişi farklı konuyla gelirse yeni bildirim gider
+                try {
+                    const { executeRule } = await import('../services/ruleEngine.service.js');
+                    executeRule(workspaceId, 'REQUEST_RECEIVED_NOTIFY', {
+                        contactId: conv.contactId,
+                        conversationId
+                    }, { duplicateHours: 1 }).catch(e => console.error('[AutoCase] REQUEST_RECEIVED_NOTIFY error:', e.message));
+                } catch (_) {}
+
                 return newCase;
             });
         });

@@ -1001,15 +1001,7 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             }
         });
         console.log(`📞 [RULE:SALES_PHONE_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contact.id} (user: ${inheritedAssigneeId || 'HAVUZ'}, case: ${inheritedCaseId || 'YOK'})`);
-
-        // 11b. "Talep Alındı Bildirimi" otomasyonunu tetikle — mevcut kişiler de dahil
-        try {
-            const { executeRule } = await import('../services/ruleEngine.service.js');
-            executeRule(workspaceId, 'REQUEST_RECEIVED_NOTIFY', {
-                contactId: contact.id,
-                conversationId
-            }).catch(e => console.error('[RULE:SALES_PHONE_CALL] REQUEST_RECEIVED_NOTIFY error:', e.message));
-        } catch (_) {}
+        // NOT: REQUEST_RECEIVED_NOTIFY artık case oluşturma anında tetiklenir (case.controller.js)
 
         // 12. Emit socket update so inbox badges refresh instantly
         emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });

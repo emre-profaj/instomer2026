@@ -2734,9 +2734,8 @@ export const createContact = async (req, res) => {
         // --- AUTO CALL PLANNING END ---
 
         // 🤖 Otomasyon Hook'ları — Yeni lead/kişi oluşturuldu
+        // NOT: REQUEST_RECEIVED_NOTIFY artık case oluşturma anında tetiklenir (case.controller.js)
         try {
-            // Talep alındı bildirimi
-            executeRule(workspaceId, 'REQUEST_RECEIVED_NOTIFY', { contactId: contact.id }).catch(e => console.error('[AutoHook] REQUEST_RECEIVED_NOTIFY error:', e.message));
             // Hoşgeldin mesajı
             executeRule(workspaceId, 'LEAD_WELCOME', { contactId: contact.id }).catch(e => console.error('[AutoHook] LEAD_WELCOME error:', e.message));
             // Otomatik lead atama (round-robin)
