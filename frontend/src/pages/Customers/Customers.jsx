@@ -250,6 +250,7 @@ const Customers = () => {
         try { return localStorage.getItem(`customers_viewMode_${currentWorkspace?.id}`) || 'list'; } catch { return 'list'; }
     }); // 'list' | 'card' | 'pipeline'
     const [expandedCards, setExpandedCards] = useState(new Set()); // card view: expanded contact ids
+    const [expandedCasesInCard, setExpandedCasesInCard] = useState({}); // card view: { contactId: Set(caseId) }
     const [quickNotes, setQuickNotes] = useState({}); // card view: { contactId: noteText }
 
     // Filtre state'leri (sayfa yenilendiğinde sessionStorage'dan okunur) ---
@@ -1985,6 +1986,15 @@ const Customers = () => {
         });
     };
 
+    const toggleCaseInCard = (contactId, caseId) => {
+        setExpandedCasesInCard(prev => {
+            const contactCases = prev[contactId] ? new Set(prev[contactId]) : new Set();
+            if (contactCases.has(caseId)) contactCases.delete(caseId);
+            else contactCases.add(caseId);
+            return { ...prev, [contactId]: contactCases };
+        });
+    };
+
     const timeAgo = (dateString) => {
         if (!dateString) return null;
         const d = new Date(dateString);
@@ -3407,7 +3417,7 @@ const Customers = () => {
                         </div>
                     )}
 
-                    {/* ═══ CARD VIEW (KART GÖRÜNÜMÜ - SATICI ODAKLI & CASE BAZLI AKTİVİTELER) ═══ */}
+                    {/* ═══ CARD VIEW V2 (KART İÇİNDE KART — SİDEBAR GEREKTİRMEZ) ═══ */}
                     {viewMode === 'card' && (
                         <div className="cust-card-list-wrapper">
                             {loading ? (
@@ -3425,582 +3435,414 @@ const Customers = () => {
                                         const caseCount = allCases.length;
                                         const touchInfo = getCaseTouchInfo(contact, primaryCase);
                                         const channelInfo = getDetailedChannelInfo(contact);
-                                        const source = getCardSourceInfo(contact);
                                         const customerInquiry = getCustomerInquiry(contact);
                                         const phone = getContactPrimaryPhone(contact);
                                         const email = contact.email || (Array.isArray(contact.emails) ? contact.emails[0] : null) || null;
                                         const company = contact.company || contact.companyName || null;
                                         const displayName = getDisplayName(contact);
-                                        const touchDays = getOverallTouchDays(contact);
                                         const lastMsgAgo = timeAgo(contact.lastMessageAt);
                                         const createdShort = contact.createdAt && !isNaN(new Date(contact.createdAt).getTime())
                                             ? new Date(contact.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
                                             : null;
-
-                                        // Aktiviteler ve Sayaçlar
                                         const allContactActs = contact.activities || [];
                                         const contactStats = getActivityCounters(allContactActs);
                                         const leadScore = primaryCase?.leadScore ?? contact.leadScore ?? 0;
                                         const assignedName = primaryCase?.assignedTo?.name || primaryCase?.assignedToName || (Array.isArray(members) ? members.find(m => m.userId === primaryCase?.assignedToId)?.user?.name : null) || contact.assignedTo?.name || null;
                                         const cardMilestones = getCardMilestones(contact);
+                                        const isStarred = contact.isStarred || (contact.conversations || []).some(c => c.isStarred);
+
+                                        // Tags
+                                        let contactTags = contact.tags || [];
+                                        if (typeof contactTags === 'string') {
+                                            try { contactTags = JSON.parse(contactTags); } catch { contactTags = []; }
+                                        }
+
+                                        // Funnel stage name
+                                        const currentStageName = (() => {
+                                            const stageId = primaryCase?.funnelStageId || contact.funnelStageId;
+                                            if (!stageId) return null;
+                                            for (const f of (availableFunnels || [])) {
+                                                const st = (f.stages || []).find(s => s.id === stageId);
+                                                if (st) return st.name;
+                                            }
+                                            return null;
+                                        })();
+
+                                        // CaseType name
+                                        const caseTypeName = primaryCase?.caseType?.name || primaryCase?.caseTypeName || null;
+
+                                        // Additional phones & emails
+                                        let extraPhones = [];
+                                        if (contact.phones) {
+                                            try { extraPhones = typeof contact.phones === 'string' ? JSON.parse(contact.phones) : (Array.isArray(contact.phones) ? contact.phones : []); } catch { extraPhones = []; }
+                                        }
+                                        let extraEmails = [];
+                                        if (contact.emails) {
+                                            try { extraEmails = typeof contact.emails === 'string' ? JSON.parse(contact.emails) : (Array.isArray(contact.emails) ? contact.emails : []); } catch { extraEmails = []; }
+                                        }
 
                                         return (
                                             <div
                                                 key={contact.id}
-                                                className={`cust-card ${isExpanded ? 'cust-card--open' : ''} ${selectedIds.includes(contact.id) ? 'cust-card--selected' : ''}`}
+                                                className={`cust-card ${isExpanded ? 'cust-card--open' : ''} ${selectedIds.includes(contact.id) ? 'cust-card--selected' : ''} ${isStarred ? 'cust-card--starred' : ''}`}
                                             >
-                                                {/* ── COLLAPSED PART (KAPALI KİŞİ KARTI) ── */}
-                                                <div className="cust-card__collapsed" onClick={() => toggleCardExpanded(contact.id)}>
-                                                    {/* Row 1: Kişi Kimlik & Belirgin Aç/Kapa Butonu */}
-                                                    <div className="cust-card__id-row">
-                                                        <div className="cust-card__avatar" style={{ background: getCardAvatarColor(contact) }}>
+                                                {/* ── KAPALI KART: 3 SATIR KOMPAKT ── */}
+                                                <div className="ccv2-collapsed" onClick={() => toggleCardExpanded(contact.id)}>
+                                                    {/* SATIR 1: Avatar + İsim + Telefon + Yıldız + Durum */}
+                                                    <div className="ccv2-row1">
+                                                        <div className="cust-card__avatar" style={{ background: getCardAvatarColor(contact), width: 34, height: 34, fontSize: '0.7rem' }}>
                                                             {getCardInitials(contact)}
-                                                            <span className="cust-card__src-dot" style={{ background: channelInfo.badgeColor || '#94a3b8' }} title={channelInfo.label || ''}>
+                                                            <span className="cust-card__src-dot" style={{ background: channelInfo.badgeColor || '#94a3b8' }}>
                                                                 {channelInfo.icon || '📥'}
                                                             </span>
                                                         </div>
-                                                        <div className="cust-card__id-info">
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                                <span className="cust-card__name" onClick={(e) => { e.stopPropagation(); handleSelectContact(contact); }} style={{ cursor: 'pointer' }} title="Kişi Detay Panelini Aç">
-                                                                    {displayName}
-                                                                </span>
-                                                                {/* Vaka Sayısı Rozeti */}
-                                                                <span className="cust-card__case-badge" style={{ background: caseCount > 0 ? '#6366f1' : '#94a3b8' }}>
-                                                                    {caseCount > 0 ? `${caseCount} Vaka` : 'Vaka Yok'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="cust-card__details">
-                                                                {phone ? (
-                                                                    <a
-                                                                        href={`tel:${phone}`}
-                                                                        onClick={e => e.stopPropagation()}
-                                                                        className="cust-card__phone"
-                                                                        style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                                    >
-                                                                        <Phone size={11} style={{ color: '#10b981' }} /> {phone}
-                                                                    </a>
-                                                                ) : (
-                                                                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                                                                        Telefon yok
-                                                                    </span>
-                                                                )}
-                                                                {email && (
-                                                                    <>
-                                                                        <span className="cust-card__sep">·</span>
-                                                                        <span className="cust-card__email">{email}</span>
-                                                                    </>
-                                                                )}
-                                                                <span className="cust-card__sep">·</span>
-                                                                {/* Belirgin Geliş Kanalı Rozeti */}
-                                                                <span
-                                                                    className="cust-card__channel-badge"
-                                                                    style={{ color: channelInfo.badgeColor, background: channelInfo.bg }}
-                                                                    title={`Geliş Kanalı: ${channelInfo.label}${channelInfo.extra ? ` · ${channelInfo.extra}` : ''}`}
-                                                                >
-                                                                    <span>{channelInfo.icon}</span>
-                                                                    <span>{channelInfo.label}</span>
-                                                                    {channelInfo.extra && <span className="cust-card__channel-extra">· {channelInfo.extra}</span>}
-                                                                </span>
-                                                                {company && (
-                                                                    <>
-                                                                        <span className="cust-card__sep">·</span>
-                                                                        <span className="cust-card__company">🏢 {company}</span>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Sağ Taraf: BELİRGİN AÇ / KAPA BUTONU */}
-                                                        <div className="cust-card__id-right" onClick={e => e.stopPropagation()}>
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => { e.stopPropagation(); toggleCardExpanded(contact.id); }}
-                                                                className={`cust-card__toggle-btn ${isExpanded ? 'cust-card__toggle-btn--open' : ''}`}
-                                                                title={isExpanded ? "Vakaları ve Aktiviteleri Gizle" : "Vakaları ve Aktiviteleri Aç"}
-                                                            >
-                                                                {isExpanded ? (
-                                                                    <>
-                                                                        <ChevronUp size={14} />
-                                                                        <span>Kapat</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <ChevronDown size={14} />
-                                                                        <span>Vakalar & Aktiviteler ({caseCount})</span>
-                                                                    </>
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* MÜŞTERİ TALEBİ BARI (Tıklanabilir - Doğrudan Aktivitelere / Vakaya Girer) */}
-                                                    {customerInquiry && (
-                                                        <div
-                                                            className={`cust-card__demand-bar ${isExpanded ? 'cust-card__demand-bar--open' : ''}`}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                toggleCardExpanded(contact.id);
-                                                            }}
-                                                            title="Müşteri talebini ve aktivitelerini incelemek için tıklayın"
-                                                        >
-                                                            <div className="cust-card__demand-left">
-                                                                <span className="cust-card__demand-badge">
-                                                                    <Target size={12} /> MÜŞTERİ TALEBİ
-                                                                </span>
-                                                                <span className="cust-card__demand-title">
-                                                                    "{customerInquiry.title}"
-                                                                </span>
-                                                                {customerInquiry.caseNumber && (
-                                                                    <span className="cust-card__demand-cse">CSE-{customerInquiry.caseNumber}</span>
-                                                                )}
-                                                            </div>
-                                                            <div className="cust-card__demand-right">
-                                                                <span className="cust-card__demand-toggle-hint">
-                                                                    {isExpanded ? (
-                                                                        <>Aktiviteleri Gizle <ChevronUp size={13} /></>
-                                                                    ) : (
-                                                                        <>Aktiviteleri Gör ({allContactActs.length}) <ChevronDown size={13} /></>
-                                                                    )}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Row 2: Aktivite & Arama Sayaçları Şeridi */}
-                                                    <div className="cust-card__stat-pills-row">
-                                                        <div className="cust-card__stat-pills">
-                                                            {contactStats.totalCalls > 0 ? (
-                                                                <span className="cust-card__stat-pill cust-card__stat-pill--call" title={`${contactStats.reachedCalls} ulaşıldı, ${contactStats.failedCalls} cevapsız`}>
-                                                                    <PhoneCall size={11} /> {contactStats.totalCalls} Arama
-                                                                    {contactStats.failedCalls > 0 && <span style={{ opacity: 0.85, fontSize: '0.65rem' }}>({contactStats.reachedCalls} ulaşıldı)</span>}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="cust-card__stat-pill cust-card__stat-pill-fail">
-                                                                    <PhoneOff size={11} /> Aranmadı
-                                                                </span>
+                                                        <div className="ccv2-identity">
+                                                            <span className="ccv2-name" onClick={(e) => { e.stopPropagation(); handleSelectContact(contact); }} title="Kişi Detay Panelini Aç">
+                                                                {isStarred && <span className="ccv2-star">⭐</span>}
+                                                                {displayName}
+                                                            </span>
+                                                            {phone && (
+                                                                <a href={`tel:${phone}`} onClick={e => e.stopPropagation()} className="ccv2-phone">
+                                                                    <Phone size={10} /> {phone}
+                                                                </a>
                                                             )}
-                                                            {contactStats.aiCalls > 0 && (
-                                                                <span className="cust-card__stat-pill cust-card__stat-pill--ai">
-                                                                    <Bot size={11} /> {contactStats.aiCalls} AI Arama
-                                                                </span>
-                                                            )}
-                                                            {contactStats.meetings > 0 && (
-                                                                <span className="cust-card__stat-pill cust-card__stat-pill--meeting">
-                                                                    <Calendar size={11} /> {contactStats.meetings} Randevu
-                                                                </span>
-                                                            )}
-                                                            {contactStats.notes > 0 && (
-                                                                <span className="cust-card__stat-pill cust-card__stat-pill--note">
-                                                                    <StickyNote size={11} /> {contactStats.notes} Not
-                                                                </span>
-                                                            )}
+                                                            {!phone && <span className="ccv2-no-phone">telefon yok</span>}
+                                                            {email && <span className="ccv2-email">{email}</span>}
+                                                            {company && <span className="ccv2-company">🏢 {company}</span>}
                                                         </div>
-
-                                                        {/* Dokunma Durumu Rozeti */}
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                            <span className="cust-card__pc-touch" style={{ background: touchInfo?.bg || '#fef2f2', color: touchInfo?.color || '#dc2626', padding: '2px 8px', borderRadius: '6px' }}>
-                                                                <span className="cust-card__dot" style={{ background: touchInfo?.color || '#dc2626' }}></span>
+                                                        <div className="ccv2-status-area" onClick={e => e.stopPropagation()}>
+                                                            <span className={`ccv2-touch-badge ${touchInfo?.color === '#15803d' ? 'ccv2-touch--ok' : touchInfo?.color === '#d97706' ? 'ccv2-touch--warn' : 'ccv2-touch--danger'}`}>
+                                                                <span className="ccv2-touch-dot" style={{ background: touchInfo?.color || '#dc2626' }}></span>
                                                                 {touchInfo?.text || 'Hiç aranmadı'}
                                                             </span>
                                                         </div>
                                                     </div>
 
-                                                    {/* Row 2.5: Son Not (Varsa) */}
-                                                    {contact.lastNote && (
-                                                        <div className="cust-card__top-note">
-                                                            <span className="cust-card__top-note-icon">📌</span>
-                                                            <span className="cust-card__top-note-text">{contact.lastNote}</span>
-                                                        </div>
-                                                    )}
+                                                    {/* SATIR 2: Pill etiketler — CaseType, Aşama, Kaynak, Atanan, Puan, Etiketler */}
+                                                    <div className="ccv2-row2">
+                                                        {caseCount > 0 && (
+                                                            <span className="ccv2-pill ccv2-pill--count">{caseCount} Vaka</span>
+                                                        )}
+                                                        {caseTypeName && <span className="ccv2-pill ccv2-pill--type">{caseTypeName}</span>}
+                                                        {currentStageName && <span className="ccv2-pill ccv2-pill--stage">{currentStageName}</span>}
+                                                        <span className="ccv2-pill ccv2-pill--source">{channelInfo.icon} {channelInfo.label}</span>
+                                                        {assignedName && <span className="ccv2-pill ccv2-pill--assigned">👤 {assignedName}</span>}
+                                                        {leadScore >= 30 && <span className="ccv2-pill ccv2-pill--hot">🔥 Sıcak ({leadScore})</span>}
+                                                        {leadScore >= 15 && leadScore < 30 && <span className="ccv2-pill ccv2-pill--warm">⚡ Ilık ({leadScore})</span>}
+                                                        {contactTags.slice(0, 3).map((tag, ti) => (
+                                                            <span key={ti} className="ccv2-pill ccv2-pill--tag">{String(tag)}</span>
+                                                        ))}
+                                                        {contactTags.length > 3 && <span className="ccv2-pill ccv2-pill--tag">+{contactTags.length - 3}</span>}
+                                                    </div>
 
-                                                    {/* Row 3: Zamanlama & Anlaşılır Hızlı Butonlar */}
-                                                    <div className="cust-card__footer">
-                                                        <div className="cust-card__time-chips">
-                                                            {createdShort && <span className="cust-card__tc">📥 <strong>{createdShort}</strong></span>}
-                                                            {lastMsgAgo && (
-                                                                <span className={`cust-card__tc ${(daysSince(contact.lastMessageAt) || 999) > 7 ? 'cust-card__tc--danger' : (daysSince(contact.lastMessageAt) || 999) > 3 ? 'cust-card__tc--warn' : 'cust-card__tc--ok'}`}>
-                                                                    💬 <strong>{lastMsgAgo}</strong>
-                                                                </span>
-                                                            )}
-                                                            {!lastMsgAgo && <span className="cust-card__tc cust-card__tc--danger">💬 <strong>Hiç yazılmadı</strong></span>}
-                                                        </div>
-                                                        <div className="cust-card__quick-btns" onClick={e => e.stopPropagation()}>
+                                                    {/* SATIR 3: Talep özeti + Süre + Aksiyon butonları */}
+                                                    <div className="ccv2-row3">
+                                                        <span className="ccv2-inquiry">
+                                                            📝 {customerInquiry?.title || contact.lastNote || (contact.conversations?.[0]?.messages?.[0]?.content?.slice(0, 80)) || '—'}
+                                                        </span>
+                                                        <span className="ccv2-time-ago">{lastMsgAgo || createdShort || ''}</span>
+                                                        <div className="ccv2-quick-btns" onClick={e => e.stopPropagation()}>
                                                             {phone && (
-                                                                <a
-                                                                    href={`https://wa.me/${phone.replace(/\D/g, '')}`}
-                                                                    target="_blank"
-                                                                    rel="noreferrer"
-                                                                    className="cust-card__qb-btn cust-card__qb-btn--wa"
-                                                                    title="WhatsApp ile mesaj gönder"
-                                                                >
-                                                                    <MessageCircle size={12} />
-                                                                    <span>WhatsApp</span>
-                                                                </a>
-                                                            )}
-                                                            {phone && (
-                                                                <a
-                                                                    href={`tel:${phone}`}
-                                                                    className="cust-card__qb-btn cust-card__qb-btn--call"
-                                                                    title="Telefonla hemen ara"
-                                                                >
+                                                                <a href={`tel:${phone}`} className="ccv2-qb ccv2-qb--call" title="Ara">
                                                                     <PhoneCall size={12} />
-                                                                    <span>Ara</span>
                                                                 </a>
                                                             )}
+                                                            {phone && (
+                                                                <a href={`https://wa.me/${phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="ccv2-qb ccv2-qb--wa" title="WhatsApp">
+                                                                    <MessageCircle size={12} />
+                                                                </a>
+                                                            )}
+                                                            <button type="button" className="ccv2-qb ccv2-qb--expand" title={isExpanded ? 'Kapat' : 'Detayları Aç'}>
+                                                                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                {/* ── EXPANDED PART (AÇIK KART: MÜŞTERİ YOLCULUĞU, AI ARAMALARI VE VAKALAR) ── */}
+                                                {/* Sabitlenmiş Not */}
+                                                {contact.lastNote && !isExpanded && (
+                                                    <div className="ccv2-pinned-note">
+                                                        <span>📌</span>
+                                                        <span className="ccv2-pinned-text">{contact.lastNote}</span>
+                                                    </div>
+                                                )}
+
+                                                {/* ── AÇIK KART: İLETİŞİM + VAKA KARTLARI ── */}
                                                 {isExpanded && (
-                                                    <div className="cust-card__expanded" onClick={e => e.stopPropagation()}>
-                                                        {/* ── BÖLÜM 1: MÜŞTERİ YOLCULUĞU & AI / ÇAĞRI GEÇMİŞİ (SAĞ PANELİN KART İÇİ KARŞILIĞI) ── */}
-                                                        <div className="cust-card__journey-section">
-                                                            <div className="cust-card__exp-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
-                                                                    <Target size={13} style={{ color: '#6366f1' }} />
-                                                                    MÜŞTERİ YOLCULUĞU & ÇAĞRI GEÇMİŞİ ({cardMilestones.length})
+                                                    <div className="ccv2-expanded" onClick={e => e.stopPropagation()}>
+                                                        
+                                                        {/* İLETİŞİM BİLGİLERİ TABLOSU */}
+                                                        <div className="ccv2-info-grid">
+                                                            <div className="ccv2-ig-item">
+                                                                <span className="ccv2-ig-label">TELEFON</span>
+                                                                <span className="ccv2-ig-val" style={{ fontFamily: 'monospace' }}>
+                                                                    {phone ? (
+                                                                        <a href={`tel:${phone}`} style={{ textDecoration: 'none', color: '#10b981' }}>{phone}</a>
+                                                                    ) : <i style={{ color: '#cbd5e1' }}>Yok</i>}
+                                                                    {extraPhones.filter(p => p && p !== phone).slice(0, 2).map((p, i) => (
+                                                                        <span key={i} style={{ marginLeft: 6, color: '#64748b', fontSize: '0.68rem' }}>
+                                                                            · <a href={`tel:${p}`} style={{ textDecoration: 'none', color: '#64748b' }}>{p}</a>
+                                                                        </span>
+                                                                    ))}
                                                                 </span>
-                                                                <span className="cust-card__pc-touch" style={{ background: touchInfo?.bg || '#fef2f2', color: touchInfo?.color || '#dc2626', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem' }}>
-                                                                    <span className="cust-card__dot" style={{ background: touchInfo?.color || '#dc2626' }}></span>
-                                                                    {touchInfo?.text || 'İşlem yok'}
-                                                                </span>
                                                             </div>
-
-                                                            {/* Journey Timeline List */}
-                                                            <div className="cust-card__journey-list">
-                                                                {cardMilestones.length === 0 ? (
-                                                                    <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', color: '#94a3b8', fontSize: '0.72rem', fontStyle: 'italic' }}>
-                                                                        Bu kişi için henüz kaydedilmiş bir aktivite veya çağrı bulunmuyor.
-                                                                    </div>
-                                                                ) : (
-                                                                    cardMilestones.map((m, idx) => {
-                                                                        if (m.isAi) {
-                                                                            return (
-                                                                                <div key={m.id || idx} className="cust-card__ai-call-box">
-                                                                                    <div className="cust-card__ai-call-header">
-                                                                                        <div className="cust-card__ai-call-title-group">
-                                                                                            <span className="cust-card__ai-call-badge">
-                                                                                                <Bot size={13} /> {m.title}
-                                                                                            </span>
-                                                                                            {m.duration > 0 && (
-                                                                                                <span className="cust-card__ai-dur-pill">
-                                                                                                    <Clock size={11} /> {formatDuration(m.duration)}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {m.isReached && <span className="cust-card__call-status cust-card__call-status--reached">✓ Ulaşıldı</span>}
-                                                                                            {m.isFailed && <span className="cust-card__call-status cust-card__call-status--failed">✗ Ulaşılamadı</span>}
-                                                                                        </div>
-                                                                                        <span className="cust-card__act-time">{formatActivityDate(m.date)}</span>
-                                                                                    </div>
-
-                                                                                    {/* AI Özet Kutusu - En Az 2-3 Satır Net Görünür */}
-                                                                                    {(m.summary || m.detail) && (
-                                                                                        <div className="cust-card__ai-summary-box">
-                                                                                            <div className="cust-card__ai-summary-header">
-                                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                                                    <Sparkles size={12} style={{ color: '#7c3aed' }} />
-                                                                                                    <span className="cust-card__ai-summary-title">AI Görüşme Özeti:</span>
-                                                                                                </div>
-                                                                                                {m.sentiment && (
-                                                                                                    <span className={`cust-card__sentiment-badge cust-card__sentiment-badge--${m.sentiment.toLowerCase()}`}>
-                                                                                                        {m.sentiment === 'Positive' ? '😊 Pozitif' : m.sentiment === 'Negative' ? '😞 Negatif' : '😐 Nötr'}
-                                                                                                    </span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                            <div className="cust-card__ai-summary-content">
-                                                                                                {m.summary || m.detail}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        if (m.isCall) {
-                                                                            return (
-                                                                                <div key={m.id || idx} className={`cust-card__journey-item ${m.isReached ? 'cust-card__journey-item--reached' : m.isFailed ? 'cust-card__journey-item--failed' : ''}`}>
-                                                                                    <div className="cust-card__journey-icon" style={{ background: m.isReached ? '#dcfce7' : '#fee2e2' }}>
-                                                                                        {m.isReached ? <PhoneCall size={12} color="#15803d" /> : <PhoneOff size={12} color="#dc2626" />}
-                                                                                    </div>
-                                                                                    <div className="cust-card__journey-content">
-                                                                                        <div className="cust-card__journey-header">
-                                                                                            <span className="cust-card__journey-title">{m.title}</span>
-                                                                                            <span className="cust-card__act-time">{formatActivityDate(m.date)}</span>
-                                                                                        </div>
-                                                                                        <div className="cust-card__journey-desc">
-                                                                                            {m.isReached && <span className="cust-card__act-tag-reached">Ulaşıldı — </span>}
-                                                                                            {m.isFailed && <span className="cust-card__act-tag-failed">Cevapsız — </span>}
-                                                                                            {m.detail || 'Telefon görüşmesi yapıldı.'}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        if (m.type === 'RECORD') {
-                                                                            return (
-                                                                                <div key={m.id || idx} className="cust-card__journey-item cust-card__journey-item--record">
-                                                                                    <div className="cust-card__journey-icon" style={{ background: '#e0e7ff' }}>
-                                                                                        <CheckCircle2 size={12} color="#4f46e5" />
-                                                                                    </div>
-                                                                                    <div className="cust-card__journey-content">
-                                                                                        <div className="cust-card__journey-header">
-                                                                                            <span className="cust-card__journey-title">📋 Kayıt Oluşturuldu</span>
-                                                                                            <span className="cust-card__act-time">{formatActivityDate(m.date)}</span>
-                                                                                        </div>
-                                                                                        <div className="cust-card__journey-desc">{m.detail}</div>
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        if (m.type === 'CONVERSATION') {
-                                                                            return (
-                                                                                <div key={m.id || idx} className="cust-card__journey-item cust-card__journey-item--conv">
-                                                                                    <div className="cust-card__journey-icon" style={{ background: '#e0f2fe' }}>
-                                                                                        <MessageSquare size={12} color="#0284c7" />
-                                                                                    </div>
-                                                                                    <div className="cust-card__journey-content">
-                                                                                        <div className="cust-card__journey-header">
-                                                                                            <span className="cust-card__journey-title">💬 İlk İletişim / Sohbet</span>
-                                                                                            <span className="cust-card__act-time">{formatActivityDate(m.date)}</span>
-                                                                                        </div>
-                                                                                        <div className="cust-card__journey-desc">{m.detail}</div>
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        if (m.type === 'PHONE') {
-                                                                            return (
-                                                                                <div key={m.id || idx} className="cust-card__journey-item cust-card__journey-item--phone">
-                                                                                    <div className="cust-card__journey-icon" style={{ background: '#dcfce7' }}>
-                                                                                        <Phone size={12} color="#15803d" />
-                                                                                    </div>
-                                                                                    <div className="cust-card__journey-content">
-                                                                                        <div className="cust-card__journey-header">
-                                                                                            <span className="cust-card__journey-title">📱 Telefon Numarası Alındı</span>
-                                                                                            <span className="cust-card__act-time">{formatActivityDate(m.date)}</span>
-                                                                                        </div>
-                                                                                        <div className="cust-card__journey-desc">{m.detail}</div>
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        }
-
-                                                                        // Default Note / Meeting / Task
-                                                                        return (
-                                                                            <div key={m.id || idx} className="cust-card__journey-item">
-                                                                                <div className="cust-card__journey-icon" style={{ background: '#fef3c7' }}>
-                                                                                    <StickyNote size={12} color="#d97706" />
-                                                                                </div>
-                                                                                <div className="cust-card__journey-content">
-                                                                                    <div className="cust-card__journey-header">
-                                                                                        <span className="cust-card__journey-title">{m.title}</span>
-                                                                                        <span className="cust-card__act-time">{formatActivityDate(m.date)}</span>
-                                                                                    </div>
-                                                                                    <div className="cust-card__journey-desc">{m.detail}</div>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })
-                                                                )}
+                                                            <div className="ccv2-ig-item">
+                                                                <span className="ccv2-ig-label">E-POSTA</span>
+                                                                <span className="ccv2-ig-val">{email || <i style={{ color: '#cbd5e1' }}>Yok</i>}</span>
                                                             </div>
-
-                                                            {/* Kişi İçin Hızlı Not Inputu */}
-                                                            <div className="cust-card__case-quick-note" style={{ marginTop: '10px' }}>
-                                                                <input
-                                                                    type="text"
-                                                                    className="cust-card__case-quick-input"
-                                                                    placeholder="Bu aday için hızlı not veya görüşme sonucu ekle... (Enter)"
-                                                                    value={quickNotes[contact.id] || ''}
-                                                                    onChange={e => setQuickNotes(prev => ({ ...prev, [contact.id]: e.target.value }))}
-                                                                    onKeyDown={e => { if (e.key === 'Enter') handleQuickNoteSave(contact.id); }}
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    className="cust-card__case-quick-btn"
-                                                                    onClick={() => handleQuickNoteSave(contact.id)}
-                                                                >
-                                                                    <Plus size={12} /> Ekle
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* ── BÖLÜM 2: VAKALAR & SATIŞ DURUMU ── */}
-                                                        <div style={{ marginTop: '14px' }}>
-                                                            <div className="cust-card__exp-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                                <span style={{ fontWeight: 800 }}>VAKALAR & SATIŞ DURUMU ({caseCount})</span>
-                                                            </div>
-
-                                                            {allCases.length === 0 ? (
-                                                                <div className="cust-card__case-box" style={{ borderColor: '#cbd5e1' }}>
-                                                                    <div className="cust-card__case-header" style={{ background: '#f8fafc' }}>
-                                                                        <div className="cust-card__case-header-left">
-                                                                            <span className="cust-card__ec-dot" style={{ background: '#94a3b8' }}></span>
-                                                                            <div>
-                                                                                <div className="cust-card__case-title-row">
-                                                                                    <span className="cust-card__case-name">Açık Vaka Bulunmuyor</span>
-                                                                                    <span className="cust-card__ec-stage" style={{ background: '#f1f5f9', color: '#64748b' }}>Vakasız Aday</span>
-                                                                                </div>
-                                                                                <div className="cust-card__case-meta">
-                                                                                    <span>Bu aday için henüz bir satış vakası açılmamış.</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="cust-card__case-header-right">
-                                                                            <button
-                                                                                type="button"
-                                                                                className="cust-card__exp-btn cust-card__exp-btn--gray"
-                                                                                onClick={() => handleSelectContact(contact)}
-                                                                                style={{ fontSize: '0.72rem', padding: '4px 10px' }}
-                                                                            >
-                                                                                + Vaka Oluştur
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                allCases.map(c => {
-                                                                    const isWon = c.status === 'WON';
-                                                                    const isLost = c.status === 'LOST';
-                                                                    const caseAgent = c.assignedTo?.name || c.assignedToName || (Array.isArray(members) ? members.find(m => m.userId === c.assignedToId)?.user?.name : null) || null;
-                                                                    const caseDateStr = c.createdAt && !isNaN(new Date(c.createdAt).getTime())
-                                                                        ? new Date(c.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
-                                                                        : '';
-                                                                    const cScore = c.leadScore ?? 0;
-
-                                                                    return (
-                                                                        <div key={c.id} className={`cust-card__case-box ${c.status === 'ACTIVE' ? 'cust-card__case-box--active' : ''}`}>
-                                                                            {/* Case Başlık Barı (Sıcaklık, Aşama, Değer, Sorumlu burada!) */}
-                                                                            <div className="cust-card__case-header">
-                                                                                <div className="cust-card__case-header-left">
-                                                                                    <span className="cust-card__ec-dot" style={{ background: c.status === 'ACTIVE' ? '#10b981' : isWon ? '#f59e0b' : isLost ? '#ef4444' : '#94a3b8' }}></span>
-                                                                                    <div>
-                                                                                        <div className="cust-card__case-title-row">
-                                                                                            <span className="cust-card__case-name">{c.title || `Vaka #${c.caseNumber || ''}`}</span>
-                                                                                            {c.caseNumber && <span className="cust-card__case-code">CSE-{c.caseNumber}</span>}
-                                                                                            
-                                                                                            {/* Case'e Özel Sıcaklık Rozeti */}
-                                                                                            {cScore >= 30 ? (
-                                                                                                <span className="cust-badge-hot" title={`Sıcak Vaka (Skor: ${cScore})`}>🔥 Sıcak ({cScore})</span>
-                                                                                            ) : cScore >= 15 ? (
-                                                                                                <span className="cust-badge-warm" title={`Ilık Vaka (Skor: ${cScore})`}>⚡ Ilık ({cScore})</span>
-                                                                                            ) : (
-                                                                                                <span className="cust-badge-cold">❄️ Normal ({cScore})</span>
-                                                                                            )}
-
-                                                                                            <span className="cust-card__ec-stage" style={{ background: c.status === 'ACTIVE' ? '#dcfce7' : '#f1f5f9', color: c.status === 'ACTIVE' ? '#15803d' : '#64748b' }}>
-                                                                                                {c.status === 'ACTIVE' ? 'Aktif Vaka' : isWon ? 'Kazanıldı' : isLost ? 'Kaybedildi' : 'Kapandı'}
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <div className="cust-card__case-meta">
-                                                                                            {caseAgent && <span>👤 Sorumlu: <strong>{caseAgent}</strong></span>}
-                                                                                            {caseDateStr && <span>· 📅 {caseDateStr}'den beri</span>}
-                                                                                            {c.priority && <span>· <strong style={{ color: c.priority === 'URGENT' ? '#dc2626' : '#d97706' }}>⚡ {c.priority}</strong></span>}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </div>
-
-                                                                                {/* Case Değer & Kendi Bağımsız Aşama Dropdown'ı */}
-                                                                                <div className="cust-card__case-header-right">
-                                                                                    {(c.dealValue || c.value) && (
-                                                                                        <span className="cust-card__case-value">
-                                                                                            💰 {Number(c.dealValue || c.value).toLocaleString('tr-TR')} ₺
-                                                                                        </span>
-                                                                                    )}
-                                                                                    <select
-                                                                                        value={c.funnelStageId || ''}
-                                                                                        onChange={e => handleCaseStageChange(contact, c, e.target.value)}
-                                                                                        className="cust-card__stage-select"
-                                                                                        title="Bu vakanın aşamasını güncelle"
-                                                                                    >
-                                                                                        {getStagesForCase(c).map(st => (
-                                                                                            <option key={st.id || st.value} value={st.id || st.value}>
-                                                                                                {st.name || st.label}
-                                                                                            </option>
-                                                                                        ))}
-                                                                                    </select>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    );
-                                                                })
-                                                            )}
-                                                        </div>
-
-                                                        {/* ── BÖLÜM 3: İLETİŞİM & DETAY BİLGİLERİ TABLOSU ── */}
-                                                        <div className="cust-card__info-grid">
-                                                            <div className="cust-card__ig-item">
-                                                                <span className="cust-card__ig-label">TELEFON</span>
-                                                                <span className="cust-card__ig-val" style={{ fontFamily: 'monospace' }}>{phone || 'Telefon Yok'}</span>
-                                                            </div>
-                                                            <div className="cust-card__ig-item">
-                                                                <span className="cust-card__ig-label">E-POSTA</span>
-                                                                <span className="cust-card__ig-val">{email || 'E-posta Yok'}</span>
-                                                            </div>
-                                                            <div className="cust-card__ig-item">
-                                                                <span className="cust-card__ig-label">GELDİĞİ KANAL</span>
-                                                                <span className="cust-card__ig-val" style={{ fontWeight: 600, color: channelInfo.badgeColor }}>
+                                                            <div className="ccv2-ig-item">
+                                                                <span className="ccv2-ig-label">KANAL</span>
+                                                                <span className="ccv2-ig-val" style={{ fontWeight: 600, color: channelInfo.badgeColor }}>
                                                                     {channelInfo.icon} {channelInfo.label}
+                                                                    {channelInfo.extra && <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 4 }}>· {channelInfo.extra}</span>}
                                                                 </span>
                                                             </div>
-                                                            <div className="cust-card__ig-item">
-                                                                <span className="cust-card__ig-label">REKLAM / KAMPANYA</span>
-                                                                <span className="cust-card__ig-val">
-                                                                    {channelInfo.campaign || channelInfo.form || channelInfo.page || 'Organik / Doğrudan'}
-                                                                </span>
+                                                            <div className="ccv2-ig-item">
+                                                                <span className="ccv2-ig-label">REKLAM / KAMPANYA</span>
+                                                                <span className="ccv2-ig-val">{channelInfo.campaign || channelInfo.form || channelInfo.page || 'Organik'}</span>
                                                             </div>
-                                                            <div className="cust-card__ig-item">
-                                                                <span className="cust-card__ig-label">İLK KAYIT</span>
-                                                                <span className="cust-card__ig-val">
+                                                            <div className="ccv2-ig-item">
+                                                                <span className="ccv2-ig-label">İLK KAYIT</span>
+                                                                <span className="ccv2-ig-val">
                                                                     {contact.createdAt && !isNaN(new Date(contact.createdAt).getTime())
                                                                         ? new Date(contact.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
                                                                         : '—'}
                                                                 </span>
                                                             </div>
+                                                            {company && (
+                                                                <div className="ccv2-ig-item">
+                                                                    <span className="ccv2-ig-label">FİRMA</span>
+                                                                    <span className="ccv2-ig-val">🏢 {company}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
 
-                                                        {/* ── BÖLÜM 4: ALT AKSİYON ÇUBUĞU ── */}
-                                                        <div className="cust-card__exp-footer">
-                                                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                                                                <span>Kişi ID: {contact.id?.slice(0, 8)}...</span>
+                                                        {/* AKTİVİTE ÖZET ŞERİDİ */}
+                                                        <div className="ccv2-stat-strip">
+                                                            {contactStats.totalCalls > 0 ? (
+                                                                <span className="ccv2-stat ccv2-stat--call">
+                                                                    <PhoneCall size={11} /> {contactStats.totalCalls} Arama
+                                                                    {contactStats.failedCalls > 0 && <span className="ccv2-stat-sub">({contactStats.reachedCalls}✓ {contactStats.failedCalls}✗)</span>}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="ccv2-stat ccv2-stat--nocall"><PhoneOff size={11} /> Aranmadı</span>
+                                                            )}
+                                                            {contactStats.aiCalls > 0 && (
+                                                                <span className="ccv2-stat ccv2-stat--ai"><Bot size={11} /> {contactStats.aiCalls} AI</span>
+                                                            )}
+                                                            {contactStats.meetings > 0 && (
+                                                                <span className="ccv2-stat ccv2-stat--meet"><Calendar size={11} /> {contactStats.meetings} Randevu</span>
+                                                            )}
+                                                            {contactStats.notes > 0 && (
+                                                                <span className="ccv2-stat ccv2-stat--note"><StickyNote size={11} /> {contactStats.notes} Not</span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* VAKA KARTLARI */}
+                                                        <div className="ccv2-cases-label">
+                                                            📋 Vakalar ({caseCount})
+                                                        </div>
+
+                                                        {allCases.length === 0 ? (
+                                                            <div className="ccv2-case-card ccv2-case-card--empty">
+                                                                <div className="ccv2-case-header">
+                                                                    <span className="ccv2-case-dot" style={{ background: '#94a3b8' }}></span>
+                                                                    <span className="ccv2-case-title">Açık Vaka Bulunmuyor</span>
+                                                                    <button type="button" className="ccv2-case-action-btn" onClick={() => handleSelectContact(contact)}>
+                                                                        + Vaka Oluştur
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                        ) : (
+                                                            allCases.map(c => {
+                                                                const isCaseExpanded = expandedCasesInCard[contact.id]?.has?.(c.id);
+                                                                const isWon = c.status === 'WON';
+                                                                const isLost = c.status === 'LOST';
+                                                                const caseAgent = c.assignedTo?.name || c.assignedToName || (Array.isArray(members) ? members.find(m => m.userId === c.assignedToId)?.user?.name : null) || null;
+                                                                const cScore = c.leadScore ?? 0;
+                                                                const caseDateStr = c.createdAt && !isNaN(new Date(c.createdAt).getTime())
+                                                                    ? new Date(c.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+                                                                    : '';
+                                                                const caseTypeLabel = c.caseType?.name || c.caseTypeName || '';
+                                                                const caseDotColor = c.status === 'ACTIVE' ? '#10b981' : isWon ? '#f59e0b' : isLost ? '#ef4444' : '#94a3b8';
+
+                                                                // Case-specific milestones
+                                                                const caseMilestones = cardMilestones.filter(m => {
+                                                                    if (m.caseId && m.caseId === c.id) return true;
+                                                                    if (!m.caseId && c.id === primaryCase?.id) return true;
+                                                                    return false;
+                                                                });
+
+                                                                return (
+                                                                    <div key={c.id} className={`ccv2-case-card ${isCaseExpanded ? 'ccv2-case-card--open' : ''} ${c.status === 'ACTIVE' ? 'ccv2-case-card--active' : ''}`}>
+                                                                        {/* Vaka Kartı Başlığı */}
+                                                                        <div className="ccv2-case-header" onClick={() => toggleCaseInCard(contact.id, c.id)}>
+                                                                            <span className="ccv2-case-dot" style={{ background: caseDotColor }}></span>
+                                                                            <div className="ccv2-case-info">
+                                                                                <div className="ccv2-case-title-row">
+                                                                                    <span className="ccv2-case-title">{c.title || `Vaka #${c.caseNumber || ''}`}</span>
+                                                                                    {c.caseNumber && <span className="ccv2-case-code">CSE-{c.caseNumber}</span>}
+                                                                                    {caseTypeLabel && <span className="ccv2-case-type-pill">{caseTypeLabel}</span>}
+                                                                                    {/* Vaka bazlı puan */}
+                                                                                    {cScore >= 30 ? (
+                                                                                        <span className="ccv2-score ccv2-score--hot">🔥 {cScore}</span>
+                                                                                    ) : cScore >= 15 ? (
+                                                                                        <span className="ccv2-score ccv2-score--warm">⚡ {cScore}</span>
+                                                                                    ) : cScore > 0 ? (
+                                                                                        <span className="ccv2-score ccv2-score--cold">❄️ {cScore}</span>
+                                                                                    ) : null}
+                                                                                    <span className="ccv2-case-status-pill" style={{ 
+                                                                                        background: c.status === 'ACTIVE' ? '#dcfce7' : isWon ? '#fef3c7' : isLost ? '#fef2f2' : '#f1f5f9', 
+                                                                                        color: c.status === 'ACTIVE' ? '#15803d' : isWon ? '#92400e' : isLost ? '#dc2626' : '#64748b' 
+                                                                                    }}>
+                                                                                        {c.status === 'ACTIVE' ? 'Aktif' : isWon ? 'Kazanıldı' : isLost ? 'Kaybedildi' : 'Kapandı'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="ccv2-case-meta">
+                                                                                    {caseAgent && <span>👤 {caseAgent}</span>}
+                                                                                    {caseDateStr && <span>📅 {caseDateStr}</span>}
+                                                                                    {(c.dealValue || c.value) && (
+                                                                                        <span className="ccv2-case-value">💰 {Number(c.dealValue || c.value).toLocaleString('tr-TR')} ₺</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="ccv2-case-right">
+                                                                                <select
+                                                                                    value={c.funnelStageId || ''}
+                                                                                    onChange={e => { e.stopPropagation(); handleCaseStageChange(contact, c, e.target.value); }}
+                                                                                    onClick={e => e.stopPropagation()}
+                                                                                    className="ccv2-stage-select"
+                                                                                    title="Aşamayı güncelle"
+                                                                                >
+                                                                                    {getStagesForCase(c).map(st => (
+                                                                                        <option key={st.id || st.value} value={st.id || st.value}>{st.name || st.label}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                                <span className={`ccv2-case-chevron ${isCaseExpanded ? 'ccv2-case-chevron--open' : ''}`}>
+                                                                                    <ChevronDown size={14} />
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Vaka İçi Timeline */}
+                                                                        {isCaseExpanded && (
+                                                                            <div className="ccv2-case-body">
+                                                                                {caseMilestones.length === 0 && cardMilestones.length > 0 ? (
+                                                                                    /* Eğer case-specific milestone yoksa tüm milestoneları göster */
+                                                                                    <div className="ccv2-timeline">
+                                                                                        {cardMilestones.slice(0, 10).map((m, idx) => (
+                                                                                            <div key={m.id || idx} className="ccv2-tl-item">
+                                                                                                <div className={`ccv2-tl-dot ${m.isAi ? 'ccv2-tl-dot--ai' : m.isCall ? (m.isReached ? 'ccv2-tl-dot--call-ok' : 'ccv2-tl-dot--call-fail') : m.type === 'MEETING' ? 'ccv2-tl-dot--meet' : 'ccv2-tl-dot--note'}`}></div>
+                                                                                                <div className="ccv2-tl-content">
+                                                                                                    <div className="ccv2-tl-header">
+                                                                                                        <span className="ccv2-tl-title">
+                                                                                                            {m.isAi ? '🤖' : m.isCall ? '📞' : m.type === 'MEETING' ? '📅' : m.type === 'CONVERSATION' ? '💬' : '📝'} {m.title}
+                                                                                                        </span>
+                                                                                                        {m.isReached && <span className="ccv2-tl-status ccv2-tl-status--ok">✓ Ulaşıldı</span>}
+                                                                                                        {m.isFailed && <span className="ccv2-tl-status ccv2-tl-status--fail">✗ Cevapsız</span>}
+                                                                                                        {m.duration > 0 && <span className="ccv2-tl-dur">{formatDuration(m.duration)}</span>}
+                                                                                                        <span className="ccv2-tl-time">{formatActivityDate(m.date)}</span>
+                                                                                                    </div>
+                                                                                                    {/* AI Özet */}
+                                                                                                    {m.isAi && (m.summary || m.detail) && (
+                                                                                                        <div className="ccv2-ai-box">
+                                                                                                            <div className="ccv2-ai-header">
+                                                                                                                <Sparkles size={11} style={{ color: '#7c3aed' }} />
+                                                                                                                <span>AI Özet</span>
+                                                                                                                {m.sentiment && (
+                                                                                                                    <span className={`ccv2-ai-mood ${m.sentiment === 'Positive' ? 'ccv2-ai-mood--pos' : m.sentiment === 'Negative' ? 'ccv2-ai-mood--neg' : ''}`}>
+                                                                                                                        {m.sentiment === 'Positive' ? '😊' : m.sentiment === 'Negative' ? '😞' : '😐'}
+                                                                                                                    </span>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                            <div className="ccv2-ai-body">{m.summary || m.detail}</div>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {/* Normal detay */}
+                                                                                                    {!m.isAi && m.detail && (
+                                                                                                        <div className="ccv2-tl-detail">{m.detail}</div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                ) : caseMilestones.length > 0 ? (
+                                                                                    <div className="ccv2-timeline">
+                                                                                        {caseMilestones.slice(0, 10).map((m, idx) => (
+                                                                                            <div key={m.id || idx} className="ccv2-tl-item">
+                                                                                                <div className={`ccv2-tl-dot ${m.isAi ? 'ccv2-tl-dot--ai' : m.isCall ? (m.isReached ? 'ccv2-tl-dot--call-ok' : 'ccv2-tl-dot--call-fail') : m.type === 'MEETING' ? 'ccv2-tl-dot--meet' : 'ccv2-tl-dot--note'}`}></div>
+                                                                                                <div className="ccv2-tl-content">
+                                                                                                    <div className="ccv2-tl-header">
+                                                                                                        <span className="ccv2-tl-title">
+                                                                                                            {m.isAi ? '🤖' : m.isCall ? '📞' : m.type === 'MEETING' ? '📅' : m.type === 'CONVERSATION' ? '💬' : '📝'} {m.title}
+                                                                                                        </span>
+                                                                                                        {m.isReached && <span className="ccv2-tl-status ccv2-tl-status--ok">✓ Ulaşıldı</span>}
+                                                                                                        {m.isFailed && <span className="ccv2-tl-status ccv2-tl-status--fail">✗ Cevapsız</span>}
+                                                                                                        {m.duration > 0 && <span className="ccv2-tl-dur">{formatDuration(m.duration)}</span>}
+                                                                                                        <span className="ccv2-tl-time">{formatActivityDate(m.date)}</span>
+                                                                                                    </div>
+                                                                                                    {m.isAi && (m.summary || m.detail) && (
+                                                                                                        <div className="ccv2-ai-box">
+                                                                                                            <div className="ccv2-ai-header">
+                                                                                                                <Sparkles size={11} style={{ color: '#7c3aed' }} />
+                                                                                                                <span>AI Özet</span>
+                                                                                                                {m.sentiment && (
+                                                                                                                    <span className={`ccv2-ai-mood ${m.sentiment === 'Positive' ? 'ccv2-ai-mood--pos' : m.sentiment === 'Negative' ? 'ccv2-ai-mood--neg' : ''}`}>
+                                                                                                                        {m.sentiment === 'Positive' ? '😊' : m.sentiment === 'Negative' ? '😞' : '😐'}
+                                                                                                                    </span>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                            <div className="ccv2-ai-body">{m.summary || m.detail}</div>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                    {!m.isAi && m.detail && (
+                                                                                                        <div className="ccv2-tl-detail">{m.detail}</div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="ccv2-tl-empty">Henüz aktivite bulunmuyor.</div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        )}
+
+                                                        {/* HIZLI NOT */}
+                                                        <div className="ccv2-quick-note-row">
+                                                            <input
+                                                                type="text"
+                                                                className="ccv2-quick-note-input"
+                                                                placeholder="Not ekle... (Enter)"
+                                                                value={quickNotes[contact.id] || ''}
+                                                                onChange={e => setQuickNotes(prev => ({ ...prev, [contact.id]: e.target.value }))}
+                                                                onKeyDown={e => { if (e.key === 'Enter') handleQuickNoteSave(contact.id); }}
+                                                            />
+                                                            <button type="button" className="ccv2-quick-note-btn" onClick={() => handleQuickNoteSave(contact.id)}>
+                                                                <Plus size={12} /> Ekle
+                                                            </button>
+                                                        </div>
+
+                                                        {/* ALT AKSİYON ÇUBUĞU */}
+                                                        <div className="ccv2-exp-footer">
+                                                            <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>ID: {contact.id?.slice(0, 8)}</span>
+                                                            <div className="ccv2-exp-actions">
                                                                 {phone && (
-                                                                    <a
-                                                                        href={`https://wa.me/${phone.replace(/\D/g, '')}`}
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
-                                                                        className="cust-card__exp-btn cust-card__exp-btn--wa"
-                                                                    >
-                                                                        <MessageCircle size={13} /> WhatsApp Yaz
+                                                                    <a href={`https://wa.me/${phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="ccv2-exp-btn ccv2-exp-btn--wa">
+                                                                        <MessageCircle size={12} /> WhatsApp
                                                                     </a>
                                                                 )}
                                                                 {phone && (
-                                                                    <a
-                                                                        href={`tel:${phone}`}
-                                                                        className="cust-card__exp-btn cust-card__exp-btn--call"
-                                                                    >
-                                                                        <PhoneCall size={13} /> Hemen Ara
+                                                                    <a href={`tel:${phone}`} className="ccv2-exp-btn ccv2-exp-btn--call">
+                                                                        <PhoneCall size={12} /> Ara
                                                                     </a>
                                                                 )}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleSelectContact(contact)}
-                                                                    className="cust-card__exp-btn cust-card__exp-btn--dark"
-                                                                    title="Kişi Profil Panelini Aç"
-                                                                >
-                                                                    <User size={13} /> Kişi Profili
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => toggleCardExpanded(contact.id)}
-                                                                    className="cust-card__exp-btn"
-                                                                    style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}
-                                                                >
-                                                                    <ChevronUp size={13} /> Kartı Kapat
+                                                                <button type="button" onClick={() => handleSelectContact(contact)} className="ccv2-exp-btn ccv2-exp-btn--profile">
+                                                                    <User size={12} /> Profil
                                                                 </button>
                                                             </div>
                                                         </div>

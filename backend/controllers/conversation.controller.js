@@ -4419,6 +4419,8 @@ export const getContactGroupedConversations = async (req, res) => {
                 funnelType: lastConv?.funnelType,
                 funnelStageId: lastConv?.funnelStageId,
                 botEnabled: lastConv?.botEnabled,
+                // Yıldız durumu (herhangi bir conversation yıldızlıysa)
+                isStarred: convs.some(c => c.isStarred),
                 // Tüm konuşma ID'leri (popup için)
                 conversations: convs.map(c => ({
                     id: c.id,
@@ -4428,6 +4430,7 @@ export const getContactGroupedConversations = async (req, res) => {
                     lastMessageAt: c.lastMessageAt,
                     assignedToId: c.assignedToId,
                     assignedTo: c.assignedTo,
+                    isStarred: c.isStarred,
                 }))
             };
         });
