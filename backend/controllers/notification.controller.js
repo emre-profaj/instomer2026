@@ -226,7 +226,14 @@ export const createNotification = async (workspaceId, userId, type, title, body,
                         .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
                         .replace(/\s+/g, ' ')
                         .trim();
-                    await sendSystemEmail(targetEmails, `Instomer · ${konu}`, emailBody, { isHtml: true });
+                    // Olay anahtarı: aynı bildirim aynı adrese iki kez gitmesin.
+                    // Çalışma alanında birden çok yönetici aynı adresi yazmış
+                    // olabiliyor; kişi bazlı üretim bozulmadan kopya engelleniyor.
+                    const olayAnahtari = `${workspaceId}|${type}|${title}|${body}`;
+                    await sendSystemEmail(targetEmails, `Instomer · ${konu}`, emailBody, {
+                        isHtml: true,
+                        dedupeKey: olayAnahtari
+                    });
                     console.log(`📧 [Notification] System email sent to [${targetEmails.join(', ')}]: ${title}`);
                 }
             } catch (emailErr) {

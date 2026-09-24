@@ -1848,7 +1848,9 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                     altNot: `${ownerName} adına gönderildi. Bildirim tercihlerinizi Ayarlar → Bildirim Ayarları menüsünden değiştirebilirsiniz.`
                 });
 
-                await sendSystemEmail(recipientList, emailSubject, emailBody);
+                await sendSystemEmail(recipientList, emailSubject, emailBody, {
+                    dedupeKey: `${workspaceId}|LEAD|${lead?.id || contact?.id || leadName}`
+                });
                 console.log(`📧 [AUTOMATION] Lead notification sent to recipients: [${recipientList.join(', ')}]`);
             }
         } catch (notifyError) {

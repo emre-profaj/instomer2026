@@ -5,6 +5,22 @@ import { decrypt } from '../utils/encryption.js';
 
 const BREVO_API = 'https://api.brevo.com/v3';
 
+// ─── Mükerrer gönderim koruması ──────────────────────────────
+// Bildirimler kullanıcı bazlı üretiliyor ve bu doğru: her kullanıcının
+// kendi alıcı listesi olabilir. Ama iki kullanıcı AYNI adresi yazdıysa
+// o adres aynı olay için iki özdeş mail alıyordu (Rotowash'ta iki OWNER
+// da teklif@ yazmıştı). Kişi bazlı gönderimi bozmadan, aynı olay için
+// aynı adrese ikinci kopyayı atlıyoruz.
+const GONDERIM_IZLERI = new Map();   // "olayAnahtari|adres" -> zaman
+const IZ_OMRU_MS = 3 * 60 * 1000;
+
+function izleriTemizle() {
+    const simdi = Date.now();
+    for (const [k, t] of GONDERIM_IZLERI) {
+        if (simdi - t > IZ_OMRU_MS) GONDERIM_IZLERI.delete(k);
+    }
+}
+
 // Sistem e-postası göndericisi.
 // Kaynak sırası: önce veritabanı (süper admin paneli), sonra .env.
 // Panelden girilebilmesinin sebebi: sunucuda SYSTEM_EMAIL_* hiç tanımlı
@@ -103,6 +119,27 @@ const getSystemTransporter = async () => {
  */
 export const sendSystemEmail = async (to, subject, body, options = {}) => {
     const cfgOn = await getSystemEmailConfig();
+
+    // Aynı olay için aynı adrese ikinci kez gönderme
+    let aliciListesi = Array.isArray(to) ? to.slice() : String(to || '').split(/[,;]+/);
+    aliciListesi = aliciListesi.map(e => String(e).trim()).filter(e => e.includes('@'));
+
+    if (options.dedupeKey) {
+        izleriTemizle();
+        const kalan = [];
+        const atlanan = [];
+        for (const adres of aliciListesi) {
+            const anahtar = `${options.dedupeKey}|${adres.toLowerCase()}`;
+            if (GONDERIM_IZLERI.has(anahtar)) atlanan.push(adres);
+            else { GONDERIM_IZLERI.set(anahtar, Date.now()); kalan.push(adres); }
+        }
+        if (atlanan.length > 0) {
+            console.log(`↩️ [SystemEmail] Mükerrer atlandı (${subject}): ${atlanan.join(', ')}`);
+        }
+        if (kalan.length === 0) return null;
+        aliciListesi = kalan;
+    }
+    to = aliciListesi;
 
     // ── Brevo API (HTTP) ──
     if (cfgOn?.yontem === 'BREVO_API') {
