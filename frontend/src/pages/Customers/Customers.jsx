@@ -2214,7 +2214,7 @@ const Customers = () => {
             !caseObj || (a.caseId === caseObj.id) || (!a.caseId)
         );
 
-        // Check calls (including AI and Retell)
+        // Check calls (including AI calls)
         const calls = acts.filter(a =>
             a.type === 'CALL' || a.source === 'RETELL' || a.source === 'INSTOMER_CALL' || a.assignedByType === 'AI' || a._isRetell
         ).sort((a, b) => new Date(b.completedAt || b.createdAt || 0) - new Date(a.completedAt || a.createdAt || 0));
@@ -2242,10 +2242,17 @@ const Customers = () => {
         if (lastCallDate) {
             const days = daysSince(lastCallDate);
             const prefix = isAiCall ? '🤖 ' : '📞 ';
-            if (days === 0) return { text: `${prefix}Bugün arandı`, color: '#15803d', bg: '#f0fdf4' };
-            if (days === 1) return { text: `${prefix}Dün arandı`, color: '#15803d', bg: '#f0fdf4' };
-            if (days <= 3) return { text: `${prefix}${days}g önce arandı`, color: '#15803d', bg: '#f0fdf4' };
-            if (days <= 7) return { text: `${prefix}${days}g önce arandı`, color: '#d97706', bg: '#fffbeb' };
+            const callerLabel = isAiCall 
+                ? 'AI aradı' 
+                : (() => {
+                    const firstCall = calls[0];
+                    const name = firstCall?.assignee?.name || firstCall?.creator?.name || '';
+                    return name ? `${name} aradı` : 'Arandı';
+                })();
+            if (days === 0) return { text: `${prefix}Bugün ${callerLabel}`, color: '#15803d', bg: '#f0fdf4' };
+            if (days === 1) return { text: `${prefix}Dün ${callerLabel}`, color: '#15803d', bg: '#f0fdf4' };
+            if (days <= 3) return { text: `${prefix}${days}g önce ${callerLabel}`, color: '#15803d', bg: '#f0fdf4' };
+            if (days <= 7) return { text: `${prefix}${days}g önce ${callerLabel}`, color: '#d97706', bg: '#fffbeb' };
             return { text: `${prefix}${days}g dokunulmadı`, color: '#dc2626', bg: '#fef2f2' };
         }
 
@@ -2349,7 +2356,7 @@ const Customers = () => {
                 mColor = '#7c3aed';
                 const aiResult = isReached ? ' · Ulaşıldı' : isFailed ? ' · Cevapsız' : '';
                 const transferLabel = aiFallback ? ' → İnsana Devredildi' : '';
-                mTitle = `AI Arama (Retell)${sentimentEmoji}${aiResult}${transferLabel}`;
+                mTitle = `AI Asistan Araması${sentimentEmoji}${aiResult}${transferLabel}`;
             } else if (isHumanCall) {
                 mIcon = '📞';
                 mColor = isReached ? '#16a34a' : isFailed ? '#dc2626' : '#2563eb';
