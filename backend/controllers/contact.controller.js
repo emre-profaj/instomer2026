@@ -777,11 +777,25 @@ export const getContacts = async (req, res) => {
                 if (dateTo)   { lte = parseDateEndTR(dateTo); }
             }
             if (gte || lte) {
-                const createdAtFilter = {};
-                if (gte) createdAtFilter.gte = gte;
-                if (lte) createdAtFilter.lte = lte;
-                where = { AND: [where, { createdAt: createdAtFilter }] };
-                console.log(`   DateFilter '${dateFilter}' applied: ${gte?.toISOString()} → ${lte?.toISOString()}`);
+                const dateRange = {};
+                if (gte) dateRange.gte = gte;
+                if (lte) dateRange.lte = lte;
+                // Tarih filtresi: müşterinin son mesaj tarihine VEYA kayıt tarihine bakar.
+                // Böylece geçen ay kayıt olup bu ay tekrar yazan müşteriler de görünür.
+                where = {
+                    AND: [
+                        where,
+                        {
+                            OR: [
+                                // Müşterinin herhangi bir konuşmasında son mesaj bu dönemde
+                                { conversations: { some: { lastMessageAt: dateRange } } },
+                                // VEYA müşteri bu dönemde oluşturulmuş (yeni müşteri)
+                                { createdAt: dateRange }
+                            ]
+                        }
+                    ]
+                };
+                console.log(`   DateFilter '${dateFilter}' applied (lastMessageAt OR createdAt): ${gte?.toISOString()} → ${lte?.toISOString()}`);
             }
         }
 

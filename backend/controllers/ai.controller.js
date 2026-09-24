@@ -1379,15 +1379,17 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             try {
                 const conv = await prisma.conversation.findUnique({
                     where: { id: conversationId },
-                    select: { classifiedAt: true, isQualifiedLead: true, contactId: true }
+                    select: { classifiedAt: true, isQualifiedLead: true, contactId: true, funnelStageId: true }
                 });
 
                 // Son 30 dk içinde sınıflandırılmışsa tekrar yapma
                 // AMA mesajda telefon numarası varsa cooldown'u bypass et (numara geldiğinde arama planla tetiklenmeli)
+                // AMA aktif aşamada collectFields varsa her mesajda çalışmalı
                 const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
                 const phoneRegex = /(?:\+?90|0)?[\s.-]?[5][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{2}[\s.-]?[0-9]{2}/;
                 const hasPhoneInMessage = phoneRegex.test(userMessage);
-                const shouldClassify = hasPhoneInMessage || !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
+                const hasActiveStageForCooldown = !!conv?.funnelStageId;
+                const shouldClassify = hasPhoneInMessage || hasActiveStageForCooldown || !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
 
                 if (shouldClassify) {
                     // Feature Flag: Birleşik AI modu açıksa ayrı classifier çağrısını atla.
