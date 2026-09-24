@@ -1229,7 +1229,7 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 };
 
 // Helper to build dynamic variables for Retell LLM
-async function buildRetellDynamicVariables(workspaceId, contactId, contactName, initialVars = {}) {
+export async function buildRetellDynamicVariables(workspaceId, contactId, contactName, initialVars = {}) {
     const dynVars = { ...(initialVars || {}) };
     
     if (contactName && !dynVars.customer_name) {

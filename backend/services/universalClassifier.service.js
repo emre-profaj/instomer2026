@@ -1262,13 +1262,28 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     let config;
                     try { config = JSON.parse(stage.collectFields); } catch { config = null; }
                     if (config?.fields?.length > 0) {
-                        // Toplanan verileri birleştir
+                        // Toplanan verileri birleştir (geçmiş turlar + anlık + contact)
                         const contact = conv.contactId ? await prisma.contact.findUnique({
                             where: { id: conv.contactId },
                             select: { name: true, phone: true, email: true, companyName: true }
                         }) : null;
 
+                        // Geçmiş turların classificationData'sından toplanan alanları çıkar
+                        let historicalData = {};
+                        try {
+                            const fullConv = await prisma.conversation.findUnique({
+                                where: { id: conversationId },
+                                select: { classificationData: true }
+                            });
+                            if (fullConv?.classificationData) {
+                                const cd = typeof fullConv.classificationData === 'string'
+                                    ? JSON.parse(fullConv.classificationData) : fullConv.classificationData;
+                                historicalData = { ...(cd?.extractedData || {}), ...(cd?.collectedFields || {}) };
+                            }
+                        } catch { }
+
                         const collected = {
+                            ...historicalData,
                             ...(extractedData || {}),
                             ...(contact?.phone && { phone: contact.phone }),
                             ...(contact?.name && contact.name !== 'Instagram Kullanıcısı' && contact.name !== 'Web Kullanıcısı' && { name: contact.name }),

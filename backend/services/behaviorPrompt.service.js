@@ -309,7 +309,7 @@ ${steps.join('\n\n')}
 // ── Katman 2: Aşama Bazlı Veri Toplama Bloğu ────────────────────────
 
 // Hazır alan soru şablonları
-const FIELD_PROMPTS = {
+export const FIELD_PROMPTS = {
     phone: 'Sizi bilgilendirebilmemiz için bir telefon numarası paylaşır mısınız?',
     name: 'Görüşmemizde size nasıl hitap edebilirim?',
     email: 'E-posta adresinizi alabilir miyim?',

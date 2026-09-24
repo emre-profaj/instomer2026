@@ -1107,21 +1107,36 @@ export const updateCatalogFlowSettings = async (req, res) => {
             return res.status(400).json({ error: 'Güncellenecek alan bulunamadı.' });
         }
 
-        // Bot bazlı: botId verilmişse AIBot tablosunu güncelle
-        if (botId) {
+        // classificationOrder Workspace'e ait, AIBot'a değil — ayır
+        const wsOnlyData = {};
+        const botCompatData = { ...data };
+        if ('classificationOrder' in botCompatData) {
+            wsOnlyData.classificationOrder = botCompatData.classificationOrder;
+            delete botCompatData.classificationOrder;
+        }
+
+        // Bot bazlı: botId verilmişse AIBot tablosunu güncelle (sadece bot alanları)
+        if (botId && Object.keys(botCompatData).length > 0) {
             const existing = await prisma.aIBot.findFirst({ where: { id: botId, workspaceId } });
             if (!existing) {
                 return res.status(404).json({ error: 'Bot bulunamadı.' });
             }
-            await prisma.aIBot.update({ where: { id: botId }, data });
-        } else {
+            await prisma.aIBot.update({ where: { id: botId }, data: botCompatData });
+        } else if (!botId && Object.keys(botCompatData).length > 0) {
             // Geriye uyumluluk: botId yoksa workspace güncellenir
-            await prisma.workspace.update({ where: { id: workspaceId }, data });
+            await prisma.workspace.update({ where: { id: workspaceId }, data: botCompatData });
+        }
+
+        // Workspace-only alanları her zaman workspace'e kaydet
+        if (Object.keys(wsOnlyData).length > 0) {
+            await prisma.workspace.update({ where: { id: workspaceId }, data: wsOnlyData });
         }
 
         const { getCatalogCapability } = await import('../services/catalogFlow.service.js');
         const capability = await getCatalogCapability(workspaceId, botId || null);
-        res.json({ success: true, capability });
+        // classificationOrder'ı yanıta ekle
+        const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { classificationOrder: true } });
+        res.json({ success: true, capability: { ...capability, classificationOrder: ws?.classificationOrder || null } });
     } catch (error) {
         console.error('updateCatalogFlowSettings error:', error);
         res.status(500).json({ error: 'Katalog akışı ayarları güncellenemedi.' });

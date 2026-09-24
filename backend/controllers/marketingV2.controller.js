@@ -7,6 +7,7 @@ import { sendSms } from '../services/netgsm.service.js';
 import { sendEmailViaChannel } from '../services/emailSender.service.js';
 import { calculateNextRun } from '../services/marketingEngine.service.js';
 import { resolveFromNumber } from '../services/retellAgent.service.js';
+import { buildRetellDynamicVariables } from './retell.controller.js';
 import { buildSendComponents, hasCarousel } from '../services/whatsappTemplate.service.js';
 
 // ─── Kampanya triggerType → WorkspaceRule ruleType eşlemesi ──────
@@ -836,9 +837,16 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                     if (!phone) continue;
 
                     try {
-                        // Numara ve agent bağımsız: adımda numara seçilmişse o, yoksa varsayılan.
+                        // Kişi bilgilerini + şablon değişkenlerini Retell'e gönder
+                        const dynVars = await buildRetellDynamicVariables(workspaceId, contact.id, contact.name);
+
+                        // Şablon beginMessage varsa → begin_message_override olarak ekle
+                        if (msgTemplate?.content) {
+                            dynVars.begin_message_override = String(msgTemplate.content);
+                        }
+
                         const kampanyaFrom = await resolveFromNumber(workspaceId, msgTemplate?.fromNumber, workspace.retellFromNumber);
-                        const callResponse = await client.call.createPhoneCall({
+                        const callParams = {
                             from_number: normalizePhone(kampanyaFrom),
                             to_number: phone,
                             override_agent_id: effectiveAgentId,
@@ -849,7 +857,13 @@ export const executeGroupSendCore = async (workspaceId, groupId) => {
                                 campaignId: group.campaignId,
                                 groupId: group.id
                             }
-                        });
+                        };
+
+                        if (Object.keys(dynVars).length > 0) {
+                            callParams.retell_llm_dynamic_variables = dynVars;
+                        }
+
+                        const callResponse = await client.call.createPhoneCall(callParams);
 
                         await prisma.retellCall.create({
                             data: {
@@ -1432,13 +1446,31 @@ export const wizardLaunchCampaign = async (req, res) => {
                         }
                     });
                 } else if (gChannel === 'AI_CALL') {
+                    // Şablon seçildiyse → agentId ve beginMessage şablondan çözümle
+                    let resolvedAgentId = gDef.agentId || aiCallConfig?.agentId || null;
+                    let resolvedCallTemplate = gDef.callTemplate || aiCallConfig?.callTemplate || '';
+                    let resolvedTemplateId = gDef.callTemplateId || null;
+
+                    if (resolvedTemplateId) {
+                        try {
+                            const tpl = await prisma.retellTemplate.findUnique({
+                                where: { id: resolvedTemplateId },
+                                select: { agentId: true, beginMessage: true, name: true, promptSuffix: true }
+                            });
+                            if (tpl) {
+                                resolvedAgentId = tpl.agentId || resolvedAgentId;
+                                if (tpl.beginMessage) resolvedCallTemplate = tpl.beginMessage;
+                            }
+                        } catch (e) { console.warn('⚠️ [Campaign] Şablon çözümlenemedi:', e.message); }
+                    }
+
                     marketingMessage = await prisma.marketingMessage.create({
                         data: {
                             workspaceId,
                             name: `${gName} - AI Arama`,
                             channel: 'AI_CALL',
-                            retellAgentId: gDef.agentId || aiCallConfig?.agentId || null,
-                            content: gDef.callTemplate || aiCallConfig?.callTemplate || ''
+                            retellAgentId: resolvedAgentId,
+                            content: resolvedCallTemplate
                         }
                     });
                 } else if (gChannel === 'EMAIL') {

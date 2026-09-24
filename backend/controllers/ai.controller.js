@@ -1459,7 +1459,8 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     const freshContact = await prisma.contact.findUnique({ where: { id: conv.contactId }, select: { phone: true } });
                     const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
                     const hasClassification = !!(classResult.topicCategoryId || classResult.matchedProductIds?.length > 0 || classResult.matchedBranchId);
-                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone || hasClassification;
+                    const hasActiveStage = !!conv?.funnelStageId; // collectFields kontrolü için
+                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone || hasClassification || hasActiveStage;
                     if (shouldRunActions) {
                         await executeClassificationActions(
                             workspaceId, conversationId, conv.contactId, classResult
@@ -1908,7 +1909,8 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                                 : null;
                             const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
                             const hasClassification = !!(classResult.topicCategoryId || classResult.matchedProductIds?.length > 0 || classResult.matchedBranchId);
-                            const shouldRunActions = (classResult.isQualifiedLead && !conversation?.isQualifiedLead) || contactHasPhone || hasClassification;
+                            const hasActiveStage = !!conversation?.funnelStageId; // collectFields kontrolü için
+                            const shouldRunActions = (classResult.isQualifiedLead && !conversation?.isQualifiedLead) || contactHasPhone || hasClassification || hasActiveStage;
                             if (shouldRunActions && conversation?.contactId) {
                                 try {
                                     const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
